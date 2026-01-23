@@ -1,0 +1,425 @@
+# Compiled class file
+*.class
+
+# Log files
+*.log
+logs
+*.out
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/crash_hotspot.xml
+hs_err_pid*
+replay_pid*
+
+# Exceptions to the rule
+!*.jar
+
+#######################
+#                     #
+# IDE SPECIFIC        #
+#                     #
+#######################
+
+# Eclipse #
+###########
+# Metadata
+.META-INF/
+META-INF/
+
+# Cache files
+*.cache
+
+# Code coverage
+coverage/
+*.clover
+*.coverages
+*.gcov
+*.lcov
+*.pycov
+
+# STS
+.springBeans
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# JDT specific
+*.launch
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# Externalized Gradle build
+.gradle
+build/
+
+# Eclipse Core `.svnignore` patterns
+atlassian-ide-plugin.xml
+**/atlassian-ide-plugin.xml
+
+# NetBeans #
+#############
+nbproject/private/
+nbproject/build-impl.xml
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# IntelliJ IDEA #
+#################
+.idea
+*.iws
+*.iml
+*.ipr
+*.iws
+*.idea/
+out/
+
+# Visual Studio Code #
+######################
+.vscode
+*.code-workspace
+
+# Vim #
+#######
+*.swp
+*.swo
+*~
+
+# Emacs #
+#########
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Compile and build output #
+###########################
+target/
+build/
+.gradle/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+/dist
+.nyc_output
+coverage
+/lib
+.a
+.o
+
+# Spring Boot #
+###############
+*.pid
+
+# Database #
+############
+*.db
+*.db-journal
+
+# Maven #
+#########
+# Generated file
+dependency-reduced-pom.xml
+original-*
+maven-status/
+
+# Gradle #
+##########
+.gradle/
+.gradle2/
+build/
+
+# Others #
+##########
+*.DS_Store
+.DS_Store
+Thumbs.db
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Icon?
+iTunes Music Library.xml
+.sendtonewsfire
+*~
+*.gem
+*.rbc
+.rbuild
+mtimes
+*.backup
+*.bk
+*.bmp
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.tif
+*.tiff
+*.cr2
+*.xcf
+*.psd
+*.eps
+*.ai
+*.indd
+*.cdr
+*.svg
+*.pdf
+*.rtf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.odt
+*.ods
+*.odp
+*.pages
+*.numbers
+*.key
+*.sketch
+*.fig
+*.xd
+*.ps
+*.mov
+*.avi
+*.mp4
+*.mp3
+*.flv
+*.swf
+*.iso
+*.dmg
+*.exe
+*.msi
+*.deb
+*.rpm
+*.pkg
+*.bin
+*.jar
+*.war
+*.ear
+*.zip
+*.rar
+*.tar
+*.gz
+*.bz2
+*.xz
+*.7z
+*.tgz
+*.tbz2
+*.zipx
+*.s7z
+*.ace
+*.arj
+*.bz
+*.cab
+*.chm
+*.deb
+*.dmg
+*.iso
+*.jar
+*.lz
+*.lzh
+*.msi
+*.pkg
+*.rar
+*.rpm
+*.tar
+*.tbz
+*.tbz2
+*.tgz
+*.tlz
+*.txz
+*.war
+*.whl
+*.xar
+*.xz
+*.z
+*.zip
+*.zipx
+*.zpaq
+
+# Environment variable configuration file
+.env
+.env.local
+.env.dev
+.env.test
+.env.prod
+
+# Local development settings
+config/local.*
+!config/local.example.*
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Windows system files #
+nul
+NULL
+con
+prn
+aux
+*.sys
+$RECYCLE.BIN/
+
+# Git attributes for line endings #
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.reg text eol=crlf
+*.sh text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.env text eol=lf
+*.conf text eol=lf
+*.properties text eol=lf
+
+# Temporary folders #
+#####################
+tmp/
+temp/
+cache/
+
+# Secrets and sensitive data #
+##############################
+secrets/
+secret/
+*.key
+*.pem
+*.crt
+*.cert
+*.der
+*.p12
+*.jks
+*.keystore
+credentials.json
+*.credentials
+.id_rsa
+.id_rsa.pub
+
+# Environment configuration files #
+.env
+.env.local
+.env.dev
+.env.test
+.env.prod
+*.env
+
+# Testing #
+###########
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+coverage/
+.nyc_output/
+.jest/
+jest/
+
+# Documentation #
+###############
+docs/_build/
+*.pdf
+*.docx
+*.epub
+*.mobi
+
+# CI/CD #
+#########
+.circleci/config.yml
+.github/workflows/
+ Jenkinsfile
+
+# Docker #
+##########
+.docker/
+docker-compose*.yml
+*.dockerignore
+
+# Frontend specific (for xuman-ui module)
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.nuxt
+.next
+public/*
+!public/index.html
+!public/manifest.json
+!public/favicon.ico
+!public/robots.txt
+!public/sitemap.xml
+*.min.js
+*.min.css
+
+# Backend specific
+*.jar
+*.war
+*.class
+*.aar
+*.hprof
+*.dump
+*.pid
+*.ser
+*.idx
+*.log
+hs_err_pid*
+replay_pid*
+
+# Target folder for Maven builds
+**/target/

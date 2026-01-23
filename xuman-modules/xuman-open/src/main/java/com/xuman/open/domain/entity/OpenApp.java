@@ -1,0 +1,106 @@
+package com.xuman.open.domain.entity;
+
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.xuman.common.mybatis.domain.entity.BizEntity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+/**
+ * 开放平台应用实体
+ * 第三方应用接入配置
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("open_app")
+public class OpenApp extends BizEntity {
+
+    /**
+     * 应用名称
+     */
+    private String appName;
+
+    /**
+     * 应用Key(Client ID)
+     */
+    private String appKey;
+
+    /**
+     * 应用密钥(Client Secret)
+     */
+    private String appSecret;
+
+    /**
+     * 应用图标
+     */
+    private String appIcon;
+
+    /**
+     * 应用描述
+     */
+    private String appDesc;
+
+    /**
+     * 应用类型(web/native/spa)
+     */
+    private String appType;
+
+    /**
+     * 授权回调地址(多个用逗号分隔)
+     */
+    private String redirectUris;
+
+    /**
+     * 登出回调地址
+     */
+    private String logoutUri;
+
+    /**
+     * 授权范围(多个用逗号分隔)
+     */
+    private String scopes;
+
+    /**
+     * 授权类型(authorization_code,client_credentials,refresh_token)
+     */
+    private String grantTypes;
+
+    /**
+     * AccessToken有效期(秒)
+     */
+    private Integer accessTokenTtl;
+
+    /**
+     * RefreshToken有效期(秒)
+     */
+    private Integer refreshTokenTtl;
+
+    /**
+     * 是否启用PKCE
+     */
+    private Integer requirePkce;
+
+    /**
+     * 是否自动授权(跳过授权确认页)
+     */
+    private Integer autoApprove;
+
+    /**
+     * 状态(0正常 1停用)
+     */
+    private Integer status;
+
+    /**
+     * 联系人
+     */
+    private String contactName;
+
+    /**
+     * 联系电话
+     */
+    private String contactPhone;
+
+    /**
+     * 联系邮箱
+     */
+    private String contactEmail;
+}

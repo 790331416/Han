@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xuman</groupId>
+        <artifactId>xuman-common</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>xuman-common-tenant</artifactId>
+    <description>多租户模块 - 租户上下文、数据隔离</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.xuman</groupId>
+            <artifactId>xuman-common-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- TransmittableThreadLocal (线程池上下文传递) -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>transmittable-thread-local</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

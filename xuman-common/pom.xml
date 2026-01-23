@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xuman</groupId>
+        <artifactId>xuman-cloud</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>xuman-common</artifactId>
+    <packaging>pom</packaging>
+    <description>公共模块</description>
+
+    <modules>
+        <module>xuman-common-core</module>
+        <module>xuman-common-redis</module>
+        <module>xuman-common-security</module>
+        <module>xuman-common-web</module>
+        <module>xuman-common-mybatis</module>
+        <module>xuman-common-datasource</module>
+        <module>xuman-common-tenant</module>
+        <module>xuman-common-log</module>
+        <module>xuman-common-doc</module>
+    </modules>
+
+</project>

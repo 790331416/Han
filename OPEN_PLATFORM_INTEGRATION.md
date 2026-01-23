@@ -1,0 +1,641 @@
+# XuMan Cloud 开放平台接入指南
+
+## 概述
+
+XuMan Cloud 开放平台提供标准的 OAuth 2.0 授权和 SSO 单点登录能力，支持第三方应用安全接入。
+
+### 支持的授权模式
+
+| 模式 | 适用场景 | 安全级别 |
+|------|----------|----------|
+| 授权码模式 (Authorization Code) | Web应用、移动App | 高 |
+| 授权码+PKCE | 移动端、SPA应用 | 高 |
+| 客户端凭证模式 (Client Credentials) | 服务器间通信 | 中 |
+| SSO单点登录 | 企业内部系统互通 | 高 |
+
+---
+
+## 接入准备
+
+### 1. 申请应用
+
+联系平台管理员创建应用，获取以下凭证：
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| client_id | 应用唯一标识 | `app_abc123456` |
+| client_secret | 应用密钥(保密) | `secret_xyz789...` |
+| redirect_uri | 授权回调地址 | `https://your-app.com/callback` |
+
+### 2. 配置回调地址
+
+回调地址必须是HTTPS协议(开发环境可用localhost)，支持配置多个回调地址。
+
+### 3. 选择授权范围(Scope)
+
+| Scope | 说明 | 包含数据 |
+|-------|------|----------|
+| openid | OpenID Connect | 用户唯一标识 |
+| profile | 基本信息 | 用户名、昵称、头像 |
+| email | 邮箱 | 邮箱地址 |
+| phone | 手机号 | 手机号码 |
+
+---
+
+## OAuth 2.0 授权码模式
+
+### 流程说明
+
+```
+┌──────────┐                              ┌──────────────┐                              ┌────────────┐
+│  用户    │                              │   第三方应用  │                              │  XuMan平台  │
+└────┬─────┘                              └───────┬──────┘                              └─────┬──────┘
+     │  1. 点击"使用XuMan登录"                   │                                           │
+     │─────────────────────────────────────────>│                                           │
+     │                                          │  2. 重定向到授权页面                        │
+     │<─────────────────────────────────────────│─────────────────────────────────────────>│
+     │                                          │                                           │
+     │  3. 用户登录并授权                                                                    │
+     │─────────────────────────────────────────────────────────────────────────────────────>│
+     │                                          │                                           │
+     │  4. 重定向回callback，携带code                                                        │
+     │<─────────────────────────────────────────│<─────────────────────────────────────────│
+     │                                          │                                           │
+     │                                          │  5. 用code换取access_token                │
+     │                                          │─────────────────────────────────────────>│
+     │                                          │                                           │
+     │                                          │  6. 返回access_token                      │
+     │                                          │<─────────────────────────────────────────│
+     │                                          │                                           │
+     │                                          │  7. 使用access_token获取用户信息          │
+     │                                          │─────────────────────────────────────────>│
+     │                                          │                                           │
+     │                                          │  8. 返回用户信息                          │
+     │                                          │<─────────────────────────────────────────│
+```
+
+### Step 1: 跳转授权页面
+
+将用户重定向到授权端点：
+
+```
+GET https://xuman.example.com/oauth2/authorize
+  ?response_type=code
+  &client_id={your_client_id}
+  &redirect_uri={your_redirect_uri}
+  &scope=openid profile email
+  &state={random_state_string}
+```
+
+**参数说明：**
+
+| 参数 | 必须 | 说明 |
+|------|------|------|
+| response_type | 是 | 固定值 `code` |
+| client_id | 是 | 应用ID |
+| redirect_uri | 是 | 回调地址，需与申请时一致 |
+| scope | 是 | 授权范围，空格分隔 |
+| state | 推荐 | 随机字符串，防CSRF攻击 |
+
+### Step 2: 用户授权
+
+用户登录XuMan平台并确认授权后，平台将重定向回您的回调地址：
+
+```
+https://your-app.com/callback?code=AUTH_CODE_HERE&state=your_state
+```
+
+**注意：** 请验证 `state` 参数与请求时一致。
+
+### Step 3: 获取访问令牌
+
+使用授权码换取访问令牌：
+
+```http
+POST https://xuman.example.com/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code={authorization_code}
+&redirect_uri={your_redirect_uri}
+&client_id={your_client_id}
+&client_secret={your_client_secret}
+```
+
+**成功响应：**
+
+```json
+{
+    "access_token": "eyJhbGciOiJSUzI1NiIs...",
+    "token_type": "Bearer",
+    "expires_in": 7200,
+    "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2...",
+    "scope": "openid profile email"
+}
+```
+
+### Step 4: 获取用户信息
+
+使用访问令牌获取用户信息：
+
+```http
+GET https://xuman.example.com/oauth2/userinfo
+Authorization: Bearer {access_token}
+```
+
+**响应示例：**
+
+```json
+{
+    "sub": "10001",
+    "name": "张三",
+    "nickname": "zhangsan",
+    "picture": "https://xuman.example.com/avatar/10001.jpg",
+    "email": "zhangsan@example.com",
+    "email_verified": true,
+    "phone_number": "13800138000",
+    "phone_number_verified": true
+}
+```
+
+### Step 5: 刷新令牌
+
+访问令牌过期后，使用刷新令牌获取新的访问令牌：
+
+```http
+POST https://xuman.example.com/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token={refresh_token}
+&client_id={your_client_id}
+&client_secret={your_client_secret}
+```
+
+---
+
+## PKCE 增强模式（移动端/SPA）
+
+对于无法安全存储 client_secret 的客户端（移动App、单页应用），使用 PKCE 增强安全性。
+
+### Step 1: 生成 code_verifier 和 code_challenge
+
+```javascript
+// 生成随机字符串 code_verifier (43-128字符)
+function generateCodeVerifier() {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return base64URLEncode(array);
+}
+
+// 计算 code_challenge = BASE64URL(SHA256(code_verifier))
+async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return base64URLEncode(new Uint8Array(digest));
+}
+
+function base64URLEncode(buffer) {
+    return btoa(String.fromCharCode(...buffer))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+```
+
+### Step 2: 授权请求携带 code_challenge
+
+```
+GET https://xuman.example.com/oauth2/authorize
+  ?response_type=code
+  &client_id={your_client_id}
+  &redirect_uri={your_redirect_uri}
+  &scope=openid profile
+  &state={random_state}
+  &code_challenge={code_challenge}
+  &code_challenge_method=S256
+```
+
+### Step 3: 换取Token时携带 code_verifier
+
+```http
+POST https://xuman.example.com/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code={authorization_code}
+&redirect_uri={your_redirect_uri}
+&client_id={your_client_id}
+&code_verifier={code_verifier}
+```
+
+注意：使用PKCE模式时不需要 `client_secret`。
+
+---
+
+## 客户端凭证模式
+
+适用于服务器间通信，无需用户参与。
+
+```http
+POST https://xuman.example.com/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id={your_client_id}
+&client_secret={your_client_secret}
+&scope=api:read api:write
+```
+
+**响应：**
+
+```json
+{
+    "access_token": "eyJhbGciOiJSUzI1NiIs...",
+    "token_type": "Bearer",
+    "expires_in": 7200,
+    "scope": "api:read api:write"
+}
+```
+
+---
+
+## SSO 单点登录
+
+### 接入流程
+
+```
+┌──────────┐          ┌──────────────┐          ┌────────────┐
+│  用户    │          │   第三方应用  │          │  XuMan平台  │
+└────┬─────┘          └───────┬──────┘          └─────┬──────┘
+     │  1. 访问第三方应用     │                       │
+     │───────────────────────>│                       │
+     │                        │  2. 检测未登录         │
+     │                        │  重定向到SSO登录       │
+     │<───────────────────────│──────────────────────>│
+     │                        │                       │
+     │  3. 在XuMan平台登录/已登录                      │
+     │───────────────────────────────────────────────>│
+     │                        │                       │
+     │  4. 返回Ticket，重定向回第三方应用              │
+     │<───────────────────────│<──────────────────────│
+     │                        │                       │
+     │                        │  5. 验证Ticket         │
+     │                        │──────────────────────>│
+     │                        │                       │
+     │                        │  6. 返回用户信息       │
+     │                        │<──────────────────────│
+     │                        │                       │
+     │  7. 登录成功           │                       │
+     │<───────────────────────│                       │
+```
+
+### Step 1: 跳转SSO登录
+
+```
+GET https://xuman.example.com/sso/login
+  ?client_id={your_client_id}
+  &redirect_uri={your_redirect_uri}
+  &state={random_state}
+```
+
+### Step 2: 接收回调
+
+用户登录后，平台重定向回您的应用：
+
+```
+https://your-app.com/sso/callback?ticket=ST-1234567890&state=your_state
+```
+
+### Step 3: 验证Ticket
+
+```http
+POST https://xuman.example.com/sso/validate
+Content-Type: application/x-www-form-urlencoded
+
+ticket={sso_ticket}
+&client_id={your_client_id}
+&client_secret={your_client_secret}
+```
+
+**响应：**
+
+```json
+{
+    "code": 200,
+    "msg": "success",
+    "data": {
+        "userId": "10001",
+        "username": "zhangsan",
+        "nickname": "张三",
+        "email": "zhangsan@example.com"
+    }
+}
+```
+
+### Step 4: 单点登出
+
+用户在任一应用登出时，通知其他应用同步登出：
+
+```
+GET https://xuman.example.com/sso/logout
+  ?redirect_uri={logout_callback_uri}
+```
+
+---
+
+## 代码示例
+
+### Java (Spring Boot)
+
+```java
+@RestController
+@RequestMapping("/auth")
+public class OAuth2ClientController {
+
+    @Value("${oauth2.client-id}")
+    private String clientId;
+
+    @Value("${oauth2.client-secret}")
+    private String clientSecret;
+
+    @Value("${oauth2.redirect-uri}")
+    private String redirectUri;
+
+    @Value("${oauth2.server-url}")
+    private String serverUrl;
+
+    /**
+     * 跳转授权页面
+     */
+    @GetMapping("/login")
+    public void login(HttpServletResponse response) throws IOException {
+        String state = UUID.randomUUID().toString();
+        // 存储state到session
+        
+        String authUrl = serverUrl + "/oauth2/authorize"
+            + "?response_type=code"
+            + "&client_id=" + clientId
+            + "&redirect_uri=" + URLEncoder.encode(redirectUri, "UTF-8")
+            + "&scope=openid profile email"
+            + "&state=" + state;
+        
+        response.sendRedirect(authUrl);
+    }
+
+    /**
+     * 授权回调
+     */
+    @GetMapping("/callback")
+    public R<UserInfo> callback(@RequestParam String code,
+                                 @RequestParam String state) {
+        // 验证state
+        
+        // 用code换取token
+        RestTemplate restTemplate = new RestTemplate();
+        
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("grant_type", "authorization_code");
+        params.add("code", code);
+        params.add("redirect_uri", redirectUri);
+        params.add("client_id", clientId);
+        params.add("client_secret", clientSecret);
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        
+        HttpEntity<MultiValueMap<String, String>> request = 
+            new HttpEntity<>(params, headers);
+        
+        TokenResponse tokenResponse = restTemplate.postForObject(
+            serverUrl + "/oauth2/token",
+            request,
+            TokenResponse.class
+        );
+        
+        // 获取用户信息
+        HttpHeaders userHeaders = new HttpHeaders();
+        userHeaders.setBearerAuth(tokenResponse.getAccessToken());
+        
+        ResponseEntity<UserInfo> userResponse = restTemplate.exchange(
+            serverUrl + "/oauth2/userinfo",
+            HttpMethod.GET,
+            new HttpEntity<>(userHeaders),
+            UserInfo.class
+        );
+        
+        return R.ok(userResponse.getBody());
+    }
+}
+```
+
+### JavaScript (前端)
+
+```javascript
+// OAuth2授权登录
+class OAuth2Client {
+    constructor(config) {
+        this.clientId = config.clientId;
+        this.redirectUri = config.redirectUri;
+        this.serverUrl = config.serverUrl;
+    }
+
+    // 跳转授权
+    login() {
+        const state = this.generateState();
+        sessionStorage.setItem('oauth2_state', state);
+
+        const params = new URLSearchParams({
+            response_type: 'code',
+            client_id: this.clientId,
+            redirect_uri: this.redirectUri,
+            scope: 'openid profile email',
+            state: state
+        });
+
+        window.location.href = `${this.serverUrl}/oauth2/authorize?${params}`;
+    }
+
+    // 处理回调
+    async handleCallback() {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const state = params.get('state');
+
+        // 验证state
+        const savedState = sessionStorage.getItem('oauth2_state');
+        if (state !== savedState) {
+            throw new Error('Invalid state');
+        }
+
+        // 发送code到后端换取token
+        const response = await fetch('/api/auth/callback?code=' + code);
+        return response.json();
+    }
+
+    generateState() {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+    }
+}
+
+// 使用示例
+const oauth2 = new OAuth2Client({
+    clientId: 'your_client_id',
+    redirectUri: 'https://your-app.com/callback',
+    serverUrl: 'https://xuman.example.com'
+});
+
+// 登录按钮点击
+document.getElementById('loginBtn').onclick = () => oauth2.login();
+
+// 回调页面处理
+if (window.location.pathname === '/callback') {
+    oauth2.handleCallback().then(user => {
+        console.log('登录成功', user);
+    });
+}
+```
+
+### Python
+
+```python
+import requests
+import secrets
+from urllib.parse import urlencode
+
+class OAuth2Client:
+    def __init__(self, client_id, client_secret, redirect_uri, server_url):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.redirect_uri = redirect_uri
+        self.server_url = server_url
+
+    def get_auth_url(self):
+        """生成授权URL"""
+        state = secrets.token_urlsafe(16)
+        params = {
+            'response_type': 'code',
+            'client_id': self.client_id,
+            'redirect_uri': self.redirect_uri,
+            'scope': 'openid profile email',
+            'state': state
+        }
+        return f"{self.server_url}/oauth2/authorize?{urlencode(params)}", state
+
+    def get_token(self, code):
+        """用授权码换取Token"""
+        response = requests.post(
+            f"{self.server_url}/oauth2/token",
+            data={
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': self.redirect_uri,
+                'client_id': self.client_id,
+                'client_secret': self.client_secret
+            }
+        )
+        return response.json()
+
+    def get_user_info(self, access_token):
+        """获取用户信息"""
+        response = requests.get(
+            f"{self.server_url}/oauth2/userinfo",
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        return response.json()
+
+    def refresh_token(self, refresh_token):
+        """刷新Token"""
+        response = requests.post(
+            f"{self.server_url}/oauth2/token",
+            data={
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token,
+                'client_id': self.client_id,
+                'client_secret': self.client_secret
+            }
+        )
+        return response.json()
+
+
+# 使用示例
+client = OAuth2Client(
+    client_id='your_client_id',
+    client_secret='your_client_secret',
+    redirect_uri='https://your-app.com/callback',
+    server_url='https://xuman.example.com'
+)
+
+# 1. 获取授权URL，引导用户跳转
+auth_url, state = client.get_auth_url()
+print(f"请访问: {auth_url}")
+
+# 2. 用户授权后，用code换取token
+# code = request.args.get('code')  # 从回调获取
+# token_data = client.get_token(code)
+# access_token = token_data['access_token']
+
+# 3. 获取用户信息
+# user_info = client.get_user_info(access_token)
+```
+
+---
+
+## 错误码说明
+
+| 错误码 | 说明 | 处理建议 |
+|--------|------|----------|
+| invalid_request | 请求参数错误 | 检查必填参数 |
+| invalid_client | 客户端认证失败 | 检查client_id和client_secret |
+| invalid_grant | 授权码无效或已过期 | 重新发起授权 |
+| unauthorized_client | 客户端无权使用该授权模式 | 联系管理员开通 |
+| access_denied | 用户拒绝授权 | 提示用户需要授权 |
+| invalid_scope | 请求的scope无效 | 检查scope是否已授权 |
+| invalid_token | Token无效或已过期 | 使用refresh_token刷新 |
+
+---
+
+## 安全建议
+
+1. **保护client_secret** - 仅在服务器端使用，切勿暴露在前端代码
+2. **验证state参数** - 防止CSRF攻击
+3. **使用HTTPS** - 所有OAuth2通信必须使用HTTPS
+4. **移动端使用PKCE** - 增强安全性
+5. **Token安全存储** - 使用HttpOnly Cookie或安全存储
+6. **定期刷新Token** - 减少Token泄露风险
+7. **监控异常授权** - 关注异常IP和频繁授权请求
+
+---
+
+## API参考
+
+### 授权端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| /oauth2/authorize | GET | 获取授权码 |
+| /oauth2/token | POST | 获取/刷新Token |
+| /oauth2/revoke | POST | 撤销Token |
+| /oauth2/introspect | POST | Token自省 |
+| /oauth2/userinfo | GET | 获取用户信息(OIDC) |
+
+### SSO端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| /sso/login | GET | SSO登录入口 |
+| /sso/logout | GET | SSO登出 |
+| /sso/validate | POST | 验证Ticket |
+| /sso/check | GET | 检查登录状态 |
+
+---
+
+## 联系支持
+
+如有问题，请联系开放平台技术支持：
+
+- 邮箱: open-support@xuman.com
+- 文档: https://open.xuman.com/docs

@@ -1,0 +1,47 @@
+server:
+  port: 9200
+
+spring:
+  application:
+    name: xuman-auth
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        namespace: xuman
+      config:
+        server-addr: localhost:8848
+        namespace: xuman
+        file-extension: yml
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
+# 认证配置
+xuman:
+  auth:
+    clients:
+      pc:
+        token-expire: 30m
+        refresh-expire: 7d
+        max-online: 1
+      app:
+        token-expire: 7d
+        refresh-expire: 30d
+        max-online: 3
+      wechat_mp:
+        token-expire: 30d
+        refresh-expire: 90d
+        max-online: 0
+      wechat_oa:
+        token-expire: 7d
+        refresh-expire: 30d
+        max-online: 0
+
+# 日志配置
+logging:
+  level:
+    com.xuman: debug
