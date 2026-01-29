@@ -1,0 +1,16 @@
+# JobFlow Nacos 配置引导文件
+spring:
+  application:
+    name: xuman-job
+  cloud:
+    nacos:
+      # Nacos 服务地址
+      server-addr: localhost:8848
+      # Nacos 配置中心
+      config:
+        file-extension: yml
+        # 共享配置（调度器配置）
+        shared-configs:
+          - data-id: jobflow-scheduler.yml
+            group: DEFAULT_GROUP
+            refresh: true  # 支持动态刷新

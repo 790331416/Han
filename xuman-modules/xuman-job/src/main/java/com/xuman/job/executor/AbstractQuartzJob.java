@@ -1,5 +1,6 @@
 package com.xuman.job.executor;
 
+import com.xuman.job.context.TraceContext;
 import com.xuman.job.domain.entity.SysJob;
 import com.xuman.job.domain.entity.SysJobLog;
 import com.xuman.job.mapper.SysJobLogMapper;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 
 /**
  * 任务执行抽象类
+ * JobFlow 改造：支持 TraceId 全链路追踪
  */
 @Slf4j
 @Component
@@ -38,11 +40,19 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
     public void execute(JobExecutionContext context) {
         SysJob job = (SysJob) context.getMergedJobDataMap().get("JOB_PROPERTIES");
         
+        // JobFlow 特性：生成 TraceId 并设置到 MDC
+        String traceId = TraceContext.generateTraceId();
+        TraceContext.setTraceId(traceId);
+        TraceContext.setJobId(job.getJobId());
+        
         SysJobLog jobLog = new SysJobLog();
         jobLog.setJobName(job.getJobName());
         jobLog.setJobGroup(job.getJobGroup());
         jobLog.setInvokeTarget(job.getInvokeTarget());
+        jobLog.setTraceId(traceId);  // 设置 TraceId
         jobLog.setStartTime(LocalDateTime.now());
+        
+        log.info("开始执行任务: {}, traceId={}", job.getJobName(), traceId);
 
         try {
             // 执行任务
@@ -50,14 +60,18 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
             
             jobLog.setStatus("0");
             jobLog.setJobMessage("执行成功");
+            log.info("任务执行成功: {}, traceId={}", job.getJobName(), traceId);
         } catch (Exception e) {
-            log.error("任务执行失败: {}", job.getJobName(), e);
+            log.error("任务执行失败: {}, traceId={}", job.getJobName(), traceId, e);
             jobLog.setStatus("1");
-            jobLog.setJobMessage("执行失败");
+            jobLog.setJobMessage("执行失败: " + e.getMessage());
             jobLog.setExceptionInfo(truncateException(e));
         } finally {
             jobLog.setStopTime(LocalDateTime.now());
             saveJobLog(jobLog);
+            
+            // 清除 MDC 上下文
+            TraceContext.clear();
         }
     }
 

@@ -16,6 +16,7 @@
     <modules>
         <module>xuman-api-system</module>
         <module>xuman-api-tenant</module>
+        <module>xuman-api-file</module>
     </modules>
 
 </project>

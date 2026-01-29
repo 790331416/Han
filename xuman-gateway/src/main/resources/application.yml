@@ -14,58 +14,60 @@ spring:
         namespace: xuman
         file-extension: yml
     gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      routes:
-        # 认证中心
-        - id: xuman-auth
-          uri: lb://xuman-auth
-          predicates:
-            - Path=/auth/**
-          filters:
-            - StripPrefix=0
+      server:
+        webflux:
+          discovery:
+            locator:
+              lower-case-service-id: true
+              enabled: true
+          routes:
+            # 认证中心
+            - id: xuman-auth
+              uri: lb://xuman-auth
+              predicates:
+                - Path=/auth/**
+              filters:
+                - StripPrefix=0
 
-        # 系统服务
-        - id: xuman-system
-          uri: lb://xuman-system
-          predicates:
-            - Path=/system/**
-          filters:
-            - StripPrefix=0
+            # 系统服务
+            - id: xuman-system
+              uri: lb://xuman-system
+              predicates:
+                - Path=/system/**
+              filters:
+                - StripPrefix=0
 
-        # 租户服务
-        - id: xuman-tenant
-          uri: lb://xuman-tenant
-          predicates:
-            - Path=/tenant/**
-          filters:
-            - StripPrefix=0
+            # 租户服务
+            - id: xuman-tenant
+              uri: lb://xuman-tenant
+              predicates:
+                - Path=/tenant/**
+              filters:
+                - StripPrefix=0
 
-        # 代码生成
-        - id: xuman-gen
-          uri: lb://xuman-gen
-          predicates:
-            - Path=/gen/**
-          filters:
-            - StripPrefix=0
+            # 代码生成
+            - id: xuman-gen
+              uri: lb://xuman-gen
+              predicates:
+                - Path=/gen/**
+              filters:
+                - StripPrefix=0
 
-        # 定时任务
-        - id: xuman-job
-          uri: lb://xuman-job
-          predicates:
-            - Path=/job/**
-          filters:
-            - StripPrefix=0
+            # 定时任务
+            - id: xuman-job
+              uri: lb://xuman-job
+              predicates:
+                - Path=/job/**
+              filters:
+                - StripPrefix=0
 
-        # 文件服务
-        - id: xuman-file
-          uri: lb://xuman-file
-          predicates:
-            - Path=/file/**
-          filters:
-            - StripPrefix=0
+            # 文件服务
+            - id: xuman-file
+              uri: lb://xuman-file
+              predicates:
+                - Path=/file/**
+              filters:
+                - StripPrefix=0
 
   data:
     redis:

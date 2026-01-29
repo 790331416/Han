@@ -1,0 +1,24 @@
+server:
+  port: 9207
+
+spring:
+  application:
+    name: xuman-file
+  
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        file-extension: yml
+
+# 存储配置
+xuman:
+  storage:
+    type: rustfs
+    rustfs:
+      endpoint: ${RUSTFS_ENDPOINT:http://rustfs:9000}
+      accessKey: ${RUSTFS_ACCESS_KEY:xumanadmin}
+      secretKey: ${RUSTFS_SECRET_KEY:xuman@2026}
+      bucket: xuman

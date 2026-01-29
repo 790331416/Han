@@ -39,6 +39,11 @@ public class SysJobLog implements Serializable {
     private String invokeTarget;
 
     /**
+     * 全链路追踪 ID (JobFlow 核心特性)
+     */
+    private String traceId;
+
+    /**
      * 日志信息
      */
     private String jobMessage;

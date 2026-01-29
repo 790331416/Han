@@ -52,6 +52,16 @@
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
+        <!-- Redis (用于分布式锁) -->
+        <dependency>
+            <groupId>com.xuman</groupId>
+            <artifactId>xuman-common-redis</artifactId>
+        </dependency>
+        <!-- 分布式锁 Starter -->
+        <dependency>
+            <groupId>com.xuman</groupId>
+            <artifactId>xuman-starter-lock</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
