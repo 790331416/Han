@@ -86,7 +86,7 @@ xuman-cloud/
 
 | 规模 | 适用场景 | 硬件要求 | 中间件组合 | 部署文件 |
 |------|----------|----------|-----------|----------|
-| **小型（极简版）** | 个人开发/学习/演示 | 2核4GB | PostgreSQL + Redis + Nacos | `docker-compose-small.yml` |
+| **小型（极简版）** | 个人开发/学习/演示 | 2核4GB | PostgreSQL + Redis + Nacos + RustFS | `docker-compose-small.yml` |
 | **中型（标准版）** | 小团队/测试环境 | 4核8GB | + RabbitMQ | `docker-compose.yml` |
 | **大型（企业版）** | 生产环境/大规模 | 8核16GB+ | + Kafka + Elasticsearch | Kubernetes 部署 |
 
@@ -114,6 +114,7 @@ docker-compose -f docker-compose-small.yml ps
 - ✅ PostgreSQL (数据库)
 - ✅ Redis (缓存 + 分布式锁)
 - ✅ Nacos (服务注册 + 配置中心)
+- ✅ RustFS (对象存储)
 - ✅ Gateway (网关)
 - ✅ Auth (认证服务)
 - ✅ System (系统管理)
@@ -238,13 +239,11 @@ XuMan Cloud 采用可插拔组件架构，根据部署规模灵活选择中间�
 核心组件 (必需)
 ├── PostgreSQL  - 主数据库
 ├── Redis       - 缓存 + 分布式锁
-└── Nacos       - 服务注册 + 配置中心
+├── Nacos       - 服务注册 + 配置中心
+└── RustFS      - 高性能对象存储 (S3 兼容)
 
 标准组件 (中型部署)
 └── RabbitMQ    - 异步消息队列
-
-可插拔存储组件
-└── RustFS      - 高性能对象存储 (S3 兼容)
 
 企业组件 (大型部署)
 ├── Kafka       - 大数据流处理
@@ -327,6 +326,7 @@ docker-compose -f docker-compose-dev.yml up -d
 | PostgreSQL | 5432 | 数据库 |
 | Redis | 6379 | 缓存 |
 | Nacos | 8848 | 注册/配置中心 |
+| RustFS | 9000, 9001 | 对象存储 (API/Console) |
 | RabbitMQ | 5672, 15672 | 消息队列 (管理界面) |
 | Kafka | 9092 | 流处理 |
 | Elasticsearch | 9200 | 搜索引擎 |

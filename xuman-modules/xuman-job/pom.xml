@@ -23,6 +23,14 @@
         </dependency>
         <dependency>
             <groupId>com.xuman</groupId>
+            <artifactId>xuman-common-log</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.xuman</groupId>
+            <artifactId>xuman-common-doc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.xuman</groupId>
             <artifactId>xuman-common-datasource</artifactId>
         </dependency>
         <dependency>

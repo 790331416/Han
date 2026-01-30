@@ -1,7 +1,7 @@
 package com.xuman.tenant.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.xuman.common.mybatis.domain.entity.BaseEntity;
+import com.xuman.common.mybatis.domain.entity.BizEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_tenant")
-public class Tenant extends BaseEntity {
+public class Tenant extends BizEntity {
 
     /**
      * 租户名称

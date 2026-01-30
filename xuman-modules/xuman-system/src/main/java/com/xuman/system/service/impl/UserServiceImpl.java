@@ -43,37 +43,73 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public UserVO selectUserById(Long userId) {
-        UserVO user = userMapper.selectUserVoById(userId);
-        if (user == null) {
-            throw new BusinessException("用户不存在");
-        }
-        // 查询角色和岗位
-        user.setRoleIds(userMapper.selectRoleIdsByUserId(userId));
-        user.setPostIds(userMapper.selectPostIdsByUserId(userId));
-        return user;
+    public List<UserDTO> selectListScope(UserQuery query) {
+        // TODO: 实现带数据权限的列表查询
+        return selectList(query);
     }
 
     @Override
-    public UserVO selectUserByUsername(String username) {
+    public List<UserDTO> selectList(UserQuery query) {
+        // TODO: 实现列表查询
+        return List.of();
+    }
+
+    @Override
+    public UserDTO selectById(Long id) {
+        User user = getById(id);
+        if (user == null) {
+            return null;
+        }
+        UserDTO dto = userConvert.toDto(user);
+        // 查询角色和岗位
+        dto.setRoleIds(userMapper.selectRoleIdsByUserId(id));
+        dto.setPostIds(userMapper.selectPostIdsByUserId(id));
+        return dto;
+    }
+
+    @Override
+    public List<UserDTO> selectByIds(List<Long> ids) {
+        List<User> users = listByIds(ids);
+        return userConvert.toDtoList(users);
+    }
+
+    @Override
+    public UserDTO selectUserByUsername(String username) {
         Long tenantId = SecurityContextHolder.getTenantId();
-        return userMapper.selectUserByUsername(username, tenantId);
+        UserVO userVO = userMapper.selectUserByUsername(username, tenantId);
+        if (userVO == null) {
+            return null;
+        }
+        // 转换为DTO
+        User user = new User();
+        user.setId(userVO.getUserId());
+        user.setUsername(userVO.getUsername());
+        // UserVO中没有password字段，需要单独查询
+        User dbUser = getById(userVO.getUserId());
+        if (dbUser != null) {
+            user.setPassword(dbUser.getPassword());
+        }
+        user.setNickname(userVO.getNickname());
+        user.setStatus(userVO.getStatus());
+        return userConvert.toDto(user);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void insertUser(UserDTO dto) {
+    public int insert(UserDTO dto) {
         Long tenantId = SecurityContextHolder.getTenantId();
         
         // 校验用户名唯一性
-        if (userMapper.checkUsernameUnique(dto.getUsername(), tenantId, null) > 0) {
-            throw new BusinessException("用户名'" + dto.getUsername() + "'已存在");
+        String username = dto.getBase() != null ? dto.getBase().getUsername() : null;
+        if (username != null && userMapper.checkUsernameUnique(username, tenantId, null) > 0) {
+            throw new BusinessException("用户名'" + username + "'已存在");
         }
         
         // 校验手机号唯一性
-        if (XuStrUtil.isNotBlank(dto.getPhone()) && 
-            userMapper.checkPhoneUnique(dto.getPhone(), tenantId, null) > 0) {
-            throw new BusinessException("手机号'" + dto.getPhone() + "'已存在");
+        String phone = dto.getBase() != null ? dto.getBase().getPhone() : null;
+        if (XuStrUtil.isNotBlank(phone) && 
+            userMapper.checkPhoneUnique(phone, tenantId, null) > 0) {
+            throw new BusinessException("手机号'" + phone + "'已存在");
         }
         
         // 校验密码强度
@@ -100,11 +136,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (dto.getPostIds() != null && !dto.getPostIds().isEmpty()) {
             insertUserPost(user.getId(), dto.getPostIds());
         }
+        return 1;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateUser(UserDTO dto) {
+    public int update(UserDTO dto) {
         Long tenantId = SecurityContextHolder.getTenantId();
         
         // 检查用户是否存在
@@ -114,9 +151,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         
         // 校验手机号唯一性
-        if (XuStrUtil.isNotBlank(dto.getPhone()) && 
-            userMapper.checkPhoneUnique(dto.getPhone(), tenantId, dto.getUserId()) > 0) {
-            throw new BusinessException("手机号'" + dto.getPhone() + "'已存在");
+        String phone = dto.getBase() != null ? dto.getBase().getPhone() : null;
+        if (XuStrUtil.isNotBlank(phone) && 
+            userMapper.checkPhoneUnique(phone, tenantId, dto.getUserId()) > 0) {
+            throw new BusinessException("手机号'" + phone + "'已存在");
         }
         
         // 更新用户信息
@@ -139,35 +177,40 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 insertUserPost(existUser.getId(), dto.getPostIds());
             }
         }
+        return 1;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteUserById(Long userId) {
+    public int deleteById(Long id) {
         // 不能删除超级管理员
-        if (userId == 1L) {
+        if (id == 1L) {
             throw new BusinessException("不允许删除超级管理员");
         }
         
         // 不能删除自己
-        if (userId.equals(SecurityContextHolder.getUserId())) {
+        if (id.equals(SecurityContextHolder.getUserId())) {
             throw new BusinessException("不能删除当前登录用户");
         }
         
         // 删除用户角色关联
-        deleteUserRole(userId);
+        deleteUserRole(id);
         // 删除用户岗位关联
-        deleteUserPost(userId);
+        deleteUserPost(id);
         // 逻辑删除用户
-        removeById(userId);
+        removeById(id);
+        return 1;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteUserByIds(List<Long> userIds) {
-        for (Long userId : userIds) {
-            deleteUserById(userId);
+    public int deleteByIds(List<Long> ids) {
+        int count = 0;
+        for (Long id : ids) {
+            deleteById(id);
+            count++;
         }
+        return count;
     }
 
     @Override

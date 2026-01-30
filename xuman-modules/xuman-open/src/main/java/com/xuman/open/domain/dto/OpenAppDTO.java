@@ -1,106 +1,56 @@
 package com.xuman.open.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.xuman.open.domain.entity.OpenApp;
 import lombok.Data;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
 
 /**
- * 开放平台应用DTO
+ * 开放平台应用DTO（采用组合模式）
+ * 
+ * @author XuMan Team
  */
 @Data
 public class OpenAppDTO implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
-    /**
-     * 应用ID(编辑时使用)
-     */
-    private Long appId;
+    @JsonUnwrapped
+    private OpenApp base;
 
-    /**
-     * 应用名称
-     */
-    @NotBlank(message = "应用名称不能为空")
-    @Size(max = 100, message = "应用名称不能超过100个字符")
-    private String appName;
+    // ==================== 扩展字段 ====================
 
-    /**
-     * 应用图标
-     */
-    private String appIcon;
-
-    /**
-     * 应用描述
-     */
-    @Size(max = 500, message = "应用描述不能超过500个字符")
-    private String appDesc;
-
-    /**
-     * 应用类型(web/native/spa)
-     */
-    @NotBlank(message = "应用类型不能为空")
-    private String appType;
-
-    /**
-     * 授权回调地址列表
-     */
+    /** 回调地址列表（前端传入） */
     private List<String> redirectUris;
 
-    /**
-     * 登出回调地址
-     */
-    private String logoutUri;
-
-    /**
-     * 授权范围列表
-     */
+    /** 授权范围列表（前端传入） */
     private List<String> scopes;
 
-    /**
-     * 授权类型列表
-     */
+    /** 授权类型列表（前端传入） */
     private List<String> grantTypes;
 
-    /**
-     * AccessToken有效期(秒)
-     */
-    private Integer accessTokenTtl;
+    // ==================== 隐藏敏感字段 ====================
 
-    /**
-     * RefreshToken有效期(秒)
-     */
-    private Integer refreshTokenTtl;
+    @JsonIgnore
+    public String getAppSecret() {
+        return null;
+    }
 
-    /**
-     * 是否启用PKCE
-     */
-    private Boolean requirePkce;
+    // ==================== 核心业务字段便捷访问 ====================
 
-    /**
-     * 是否自动授权
-     */
-    private Boolean autoApprove;
+    public Long getAppId() {
+        return base != null ? base.getId() : null;
+    }
 
-    /**
-     * 状态
-     */
-    private Integer status;
-
-    /**
-     * 联系人
-     */
-    private String contactName;
-
-    /**
-     * 联系电话
-     */
-    private String contactPhone;
-
-    /**
-     * 联系邮箱
-     */
-    private String contactEmail;
+    public void setAppId(Long appId) {
+        if (base == null) {
+            base = new OpenApp();
+        }
+        base.setId(appId);
+    }
 }

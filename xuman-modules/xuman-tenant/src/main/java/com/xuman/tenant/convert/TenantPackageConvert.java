@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xuman.tenant.domain.dto.TenantPackageDTO;
 import com.xuman.tenant.domain.entity.TenantPackage;
 import com.xuman.tenant.domain.vo.TenantPackageVO;
+import org.apache.ibatis.annotations.Param;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
@@ -29,7 +30,7 @@ public interface TenantPackageConvert {
      */
     @Mapping(source = "id", target = "packageId")
     @Mapping(source = "menuIds", target = "menuIds", qualifiedByName = "jsonToSet")
-    TenantPackageVO toVO(TenantPackage entity);
+    TenantPackageVO toVO(@Param("entity") TenantPackage entity);
 
     /**
      * Entity List -> VO List

@@ -46,6 +46,8 @@ public @interface OperLog {
         DELETE,
         /** 查询 */
         SELECT,
+        /** 列表查询 */
+        QUERY,
         /** 导出 */
         EXPORT,
         /** 导入 */

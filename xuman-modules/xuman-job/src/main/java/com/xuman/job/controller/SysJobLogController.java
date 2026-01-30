@@ -2,7 +2,7 @@ package com.xuman.job.controller;
 
 import com.xuman.common.core.domain.PageResult;
 import com.xuman.common.core.domain.R;
-import com.xuman.job.domain.dto.JobLogQueryDTO;
+import com.xuman.job.domain.query.JobLogQuery;
 import com.xuman.job.domain.vo.JobLogVO;
 import com.xuman.job.service.SysJobLogService;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +22,8 @@ public class SysJobLogController {
      * 分页查询任务日志
      */
     @GetMapping("/list")
-    public R<PageResult<JobLogVO>> list(JobLogQueryDTO dto) {
-        return R.ok(jobLogService.listJobLog(dto));
+    public R<PageResult<JobLogVO>> list(JobLogQuery query) {
+        return R.ok(jobLogService.listJobLog(query));
     }
 
     /**

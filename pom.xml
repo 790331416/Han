@@ -58,6 +58,7 @@
         <redisson.version>3.37.0</redisson.version>
         <jsoup.version>1.18.1</jsoup.version>
         <ttl.version>2.14.5</ttl.version>
+        <pagehelper.version>2.1.0</pagehelper.version>
 
         <!-- 工作流引擎 -->
         <flowable.version>7.1.0</flowable.version>
@@ -314,6 +315,13 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>transmittable-thread-local</artifactId>
                 <version>${ttl.version}</version>
+            </dependency>
+
+            <!-- PageHelper (分页插件) -->
+            <dependency>
+                <groupId>com.github.pagehelper</groupId>
+                <artifactId>pagehelper-spring-boot-starter</artifactId>
+                <version>${pagehelper.version}</version>
             </dependency>
 
             <!-- ==================== 工作流引擎 ==================== -->

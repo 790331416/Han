@@ -1,8 +1,9 @@
 package com.xuman.job.service;
 
 import com.xuman.common.core.domain.PageResult;
+import com.xuman.common.web.service.IBaseService;
 import com.xuman.job.domain.dto.JobDTO;
-import com.xuman.job.domain.dto.JobQueryDTO;
+import com.xuman.job.domain.query.JobQuery;
 import com.xuman.job.domain.vo.JobVO;
 import org.quartz.SchedulerException;
 
@@ -10,23 +11,25 @@ import java.util.List;
 
 /**
  * 定时任务服务接口
+ * 
+ * @author XuMan Team
  */
-public interface SysJobService {
+public interface SysJobService extends IBaseService<JobQuery, JobDTO> {
 
     /**
-     * 分页查询任务列表
+     * 分页查询任务
      */
-    PageResult<JobVO> listJob(JobQueryDTO dto);
+    PageResult<JobDTO> listJob(JobQuery query);
+    
+    /**
+     * 根据ID查询任务
+     */
+    JobDTO getJobById(Long jobId);
 
     /**
      * 查询所有任务
      */
     List<JobVO> listAllJob();
-
-    /**
-     * 根据ID查询任务
-     */
-    JobVO getJobById(Long jobId);
 
     /**
      * 创建任务

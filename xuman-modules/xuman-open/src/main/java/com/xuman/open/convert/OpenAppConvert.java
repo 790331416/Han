@@ -5,7 +5,6 @@ import com.xuman.open.domain.entity.OpenApp;
 import com.xuman.open.domain.vo.OpenAppVO;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
@@ -36,28 +35,58 @@ public interface OpenAppConvert {
     /**
      * DTO -> Entity
      */
-    @Mapping(source = "appId", target = "id")
-    @Mapping(source = "redirectUris", target = "redirectUris", qualifiedByName = "listToString")
-    @Mapping(source = "scopes", target = "scopes", qualifiedByName = "listToString")
-    @Mapping(source = "grantTypes", target = "grantTypes", qualifiedByName = "listToString")
-    @Mapping(source = "requirePkce", target = "requirePkce", qualifiedByName = "boolToInt")
-    @Mapping(source = "autoApprove", target = "autoApprove", qualifiedByName = "boolToInt")
-    @Mapping(target = "appKey", ignore = true)
-    @Mapping(target = "appSecret", ignore = true)
-    OpenApp toEntity(OpenAppDTO dto);
+    default OpenApp toEntity(OpenAppDTO dto) {
+        if (dto == null || dto.getBase() == null) {
+            return null;
+        }
+        OpenApp entity = dto.getBase();
+        // 转换列表字段为逗号分隔字符串
+        if (dto.getRedirectUris() != null) {
+            entity.setRedirectUris(listToString(dto.getRedirectUris()));
+        }
+        if (dto.getScopes() != null) {
+            entity.setScopes(listToString(dto.getScopes()));
+        }
+        if (dto.getGrantTypes() != null) {
+            entity.setGrantTypes(listToString(dto.getGrantTypes()));
+        }
+        return entity;
+    }
 
     /**
      * 更新实体
      */
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "appKey", ignore = true)
-    @Mapping(target = "appSecret", ignore = true)
-    @Mapping(source = "redirectUris", target = "redirectUris", qualifiedByName = "listToString")
-    @Mapping(source = "scopes", target = "scopes", qualifiedByName = "listToString")
-    @Mapping(source = "grantTypes", target = "grantTypes", qualifiedByName = "listToString")
-    @Mapping(source = "requirePkce", target = "requirePkce", qualifiedByName = "boolToInt")
-    @Mapping(source = "autoApprove", target = "autoApprove", qualifiedByName = "boolToInt")
-    void updateEntity(OpenAppDTO dto, @MappingTarget OpenApp entity);
+    default void updateEntity(OpenAppDTO dto, OpenApp entity) {
+        if (dto == null || dto.getBase() == null || entity == null) {
+            return;
+        }
+        OpenApp base = dto.getBase();
+        // 从base对象复制基础字段（跳过id、appKey、appSecret）
+        if (base.getAppName() != null) entity.setAppName(base.getAppName());
+        if (base.getAppIcon() != null) entity.setAppIcon(base.getAppIcon());
+        if (base.getAppDesc() != null) entity.setAppDesc(base.getAppDesc());
+        if (base.getAppType() != null) entity.setAppType(base.getAppType());
+        if (base.getLogoutUri() != null) entity.setLogoutUri(base.getLogoutUri());
+        if (base.getAccessTokenTtl() != null) entity.setAccessTokenTtl(base.getAccessTokenTtl());
+        if (base.getRefreshTokenTtl() != null) entity.setRefreshTokenTtl(base.getRefreshTokenTtl());
+        if (base.getRequirePkce() != null) entity.setRequirePkce(base.getRequirePkce());
+        if (base.getAutoApprove() != null) entity.setAutoApprove(base.getAutoApprove());
+        if (base.getStatus() != null) entity.setStatus(base.getStatus());
+        if (base.getContactName() != null) entity.setContactName(base.getContactName());
+        if (base.getContactPhone() != null) entity.setContactPhone(base.getContactPhone());
+        if (base.getContactEmail() != null) entity.setContactEmail(base.getContactEmail());
+        
+        // 转换列表字段
+        if (dto.getRedirectUris() != null) {
+            entity.setRedirectUris(listToString(dto.getRedirectUris()));
+        }
+        if (dto.getScopes() != null) {
+            entity.setScopes(listToString(dto.getScopes()));
+        }
+        if (dto.getGrantTypes() != null) {
+            entity.setGrantTypes(listToString(dto.getGrantTypes()));
+        }
+    }
 
     /**
      * 逗号分隔字符串 -> List
@@ -79,16 +108,5 @@ public interface OpenAppConvert {
             return "";
         }
         return String.join(",", list);
-    }
-
-    /**
-     * Boolean -> Integer
-     */
-    @Named("boolToInt")
-    default Integer boolToInt(Boolean bool) {
-        if (bool == null) {
-            return null;
-        }
-        return bool ? 1 : 0;
     }
 }

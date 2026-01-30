@@ -28,6 +28,12 @@
             <artifactId>spring-boot-starter-aspectj</artifactId>
         </dependency>
 
+        <!-- Spring Security (权限注解支持) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- TransmittableThreadLocal (线程池上下文传递) -->
         <dependency>
             <groupId>com.alibaba</groupId>

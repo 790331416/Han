@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xuman.common.core.domain.PageResult;
 import com.xuman.common.mybatis.util.PageHelper;
 import com.xuman.job.convert.SysJobLogConvert;
-import com.xuman.job.domain.dto.JobLogQueryDTO;
+import com.xuman.job.domain.query.JobLogQuery;
 import com.xuman.job.domain.entity.SysJobLog;
 import com.xuman.job.domain.vo.JobLogVO;
 import com.xuman.job.mapper.SysJobLogMapper;
@@ -27,14 +27,18 @@ public class SysJobLogServiceImpl implements SysJobLogService {
     private final SysJobLogConvert jobLogConvert;
 
     @Override
-    public PageResult<JobLogVO> listJobLog(JobLogQueryDTO dto) {
-        Page<SysJobLog> page = new Page<>(dto.getPageNum(), dto.getPageSize());
+    public PageResult<JobLogVO> listJobLog(JobLogQuery query) {
+        Page<SysJobLog> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysJobLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.like(StringUtils.hasText(dto.getJobName()), SysJobLog::getJobName, dto.getJobName())
-                .eq(StringUtils.hasText(dto.getJobGroup()), SysJobLog::getJobGroup, dto.getJobGroup())
-                .eq(StringUtils.hasText(dto.getStatus()), SysJobLog::getStatus, dto.getStatus())
-                .ge(dto.getStartTime() != null, SysJobLog::getStartTime, dto.getStartTime())
-                .le(dto.getEndTime() != null, SysJobLog::getStopTime, dto.getEndTime())
+        
+        SysJobLog base = query.getBase();
+        if (base != null) {
+            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobLog::getJobName, base.getJobName())
+                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobLog::getJobGroup, base.getJobGroup())
+                    .eq(StringUtils.hasText(base.getStatus()), SysJobLog::getStatus, base.getStatus());
+        }
+        wrapper.ge(query.getBeginTime() != null, SysJobLog::getStartTime, query.getBeginTime())
+                .le(query.getEndTime() != null, SysJobLog::getStopTime, query.getEndTime())
                 .orderByDesc(SysJobLog::getCreateTime);
         
         Page<SysJobLog> result = jobLogMapper.selectPage(page, wrapper);

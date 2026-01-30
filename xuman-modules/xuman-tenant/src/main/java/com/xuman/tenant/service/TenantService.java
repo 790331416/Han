@@ -1,45 +1,26 @@
 package com.xuman.tenant.service;
 
 import com.xuman.common.core.domain.PageResult;
+import com.xuman.common.web.service.IBaseService;
 import com.xuman.tenant.domain.dto.TenantDTO;
+import com.xuman.tenant.domain.query.TenantQuery;
 import com.xuman.tenant.domain.vo.TenantVO;
 
 import java.util.List;
 
 /**
  * 租户服务接口
+ * 
+ * <p>继承 {@link IBaseService} 获得通用CRUD能力
+ * 
+ * @author XuMan Team
  */
-public interface TenantService {
-
-    /**
-     * 分页查询租户列表
-     */
-    PageResult<TenantVO> listTenants(String tenantName, Integer status, Integer pageNum, Integer pageSize);
-
-    /**
-     * 根据ID查询租户详情
-     */
-    TenantVO getTenantById(Long tenantId);
+public interface TenantService extends IBaseService<TenantQuery, TenantDTO> {
 
     /**
      * 根据域名查询租户
      */
     TenantVO getTenantByDomain(String domain);
-
-    /**
-     * 创建租户
-     */
-    Long createTenant(TenantDTO dto);
-
-    /**
-     * 更新租户
-     */
-    void updateTenant(TenantDTO dto);
-
-    /**
-     * 删除租户
-     */
-    void deleteTenant(Long tenantId);
 
     /**
      * 修改租户状态
