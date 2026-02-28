@@ -30,6 +30,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
         "/auth/app/login",
         "/auth/wechat/mp/login",
         "/auth/wechat/oa/login",
+        "/auth/refresh",
+        "/auth/logout",
         "/auth/register",
         "/auth/captcha",
         "/doc.html",
