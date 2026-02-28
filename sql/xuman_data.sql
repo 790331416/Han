@@ -1,5 +1,5 @@
 -- =============================================
--- XuMan Cloud 初始化数据脚本
+-- Han Cloud 初始化数据脚本
 -- 数据库：MySQL 8.0+
 -- =============================================
 
@@ -21,7 +21,7 @@ INSERT INTO sys_tenant_package (id, package_name, menu_ids, status, remark) VALU
 -- 3. 初始化部门
 -- ----------------------------
 INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code, sort, status) VALUES
-(100, 1, 0, '0', 'XuMan科技', 'HQ', 0, 0),
+(100, 1, 0, '0', 'Han科技', 'HQ', 0, 0),
 (101, 1, 100, '0,100', '研发部门', 'RD', 1, 0),
 (102, 1, 100, '0,100', '产品部门', 'PD', 2, 0),
 (103, 1, 100, '0,100', '运营部门', 'OP', 3, 0),
@@ -33,7 +33,7 @@ INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code,
 -- ----------------------------
 INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phone, status, remark) VALUES
 (1, 1, 100, 'admin', '超级管理员', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000000', 0, '系统超级管理员'),
-(2, 1, 101, 'xuman', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
+(2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- ----------------------------
 -- 5. 初始化岗位
@@ -266,9 +266,9 @@ INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, 
 -- 14. 初始化客户端配置
 -- ----------------------------
 INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire, refresh_expire, max_online, kick_strategy, status, remark) VALUES
-(1, 'pc_admin', 'xuman_pc_secret_2024', 'pc', 1800, 604800, 1, 'kick_old', 0, 'PC后台管理端'),
-(2, 'app_client', 'xuman_app_secret_2024', 'app', 604800, 2592000, 3, 'kick_old', 0, 'App移动端'),
-(3, 'h5_client', 'xuman_h5_secret_2024', 'h5', 86400, 604800, 0, 'kick_old', 0, 'H5移动端'),
-(4, 'wechat_mp', 'xuman_mp_secret_2024', 'wechat_mp', 2592000, 7776000, 0, 'kick_old', 0, '微信小程序'),
-(5, 'wechat_oa', 'xuman_oa_secret_2024', 'wechat_oa', 604800, 2592000, 0, 'kick_old', 0, '微信公众号'),
-(6, 'open_api', 'xuman_api_secret_2024', 'api', 3600, 86400, 0, 'reject_new', 0, '开放API接口');
+(1, 'pc_admin', 'han_pc_secret_2024', 'pc', 1800, 604800, 1, 'kick_old', 0, 'PC后台管理端'),
+(2, 'app_client', 'han_app_secret_2024', 'app', 604800, 2592000, 3, 'kick_old', 0, 'App移动端'),
+(3, 'h5_client', 'han_h5_secret_2024', 'h5', 86400, 604800, 0, 'kick_old', 0, 'H5移动端'),
+(4, 'wechat_mp', 'han_mp_secret_2024', 'wechat_mp', 2592000, 7776000, 0, 'kick_old', 0, '微信小程序'),
+(5, 'wechat_oa', 'han_oa_secret_2024', 'wechat_oa', 604800, 2592000, 0, 'kick_old', 0, '微信公众号'),
+(6, 'open_api', 'han_api_secret_2024', 'api', 3600, 86400, 0, 'reject_new', 0, '开放API接口');

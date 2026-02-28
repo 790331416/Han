@@ -1,0 +1,19 @@
+﻿server:
+  port: 9100
+
+spring:
+  application:
+    name: han-monitor
+  security:
+    user:
+      name: admin
+      password: admin123
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        namespace: han
+  boot:
+    admin:
+      ui:
+        title: han监控中心

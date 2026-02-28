@@ -1,0 +1,89 @@
+﻿server:
+  port: 8080
+
+spring:
+  config:
+    import: "optional:nacos:han-gateway.yml"
+  application:
+    name: han-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: han
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: han
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+        file-extension: yml
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              lower-case-service-id: true
+              enabled: true
+          routes:
+            # 认证中心
+            - id: han-auth
+              uri: lb://han-auth
+              predicates:
+                - Path=/auth/**
+              filters:
+                - StripPrefix=0
+
+            # 系统服务
+            - id: han-system
+              uri: lb://han-system
+              predicates:
+                - Path=/system/**
+              filters:
+                - StripPrefix=0
+
+            # 租户服务
+            - id: han-tenant
+              uri: lb://han-tenant
+              predicates:
+                - Path=/tenant/**
+              filters:
+                - StripPrefix=0
+
+            # 代码生成
+            - id: han-gen
+              uri: lb://han-gen
+              predicates:
+                - Path=/gen/**
+              filters:
+                - StripPrefix=0
+
+            # 定时任务
+            - id: han-job
+              uri: lb://han-job
+              predicates:
+                - Path=/job/**
+              filters:
+                - StripPrefix=0
+
+            # 文件服务
+            - id: han-file
+              uri: lb://han-file
+              predicates:
+                - Path=/file/**
+              filters:
+                - StripPrefix=0
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:han@2026}
+      database: 0
+
+# 日志配置
+logging:
+  level:
+    com.han: debug
+    org.springframework.cloud.gateway: debug

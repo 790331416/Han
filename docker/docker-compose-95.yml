@@ -1,0 +1,303 @@
+x-spring-cloud-exclude: &spring-cloud-exclude
+  SPRING_AUTOCONFIGURE_EXCLUDE: >-
+    com.alibaba.cloud.nacos.NacosConfigAutoConfiguration,
+    com.alibaba.cloud.nacos.endpoint.NacosConfigEndpointAutoConfiguration,
+    com.alibaba.cloud.nacos.NacosConfigSpringCloudAutoConfiguration,
+    com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration,
+    com.alibaba.cloud.nacos.endpoint.NacosDiscoveryEndpointAutoConfiguration,
+    com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration,
+    com.alibaba.cloud.nacos.discovery.NacosDiscoveryClientConfiguration,
+    com.alibaba.cloud.nacos.discovery.NacosDiscoveryHeartBeatConfiguration,
+    com.alibaba.cloud.nacos.discovery.reactive.NacosReactiveDiscoveryClientConfiguration,
+    com.alibaba.cloud.nacos.discovery.configclient.NacosConfigServerAutoConfiguration,
+    com.alibaba.cloud.nacos.loadbalancer.LoadBalancerNacosAutoConfiguration,
+    com.alibaba.cloud.nacos.NacosServiceAutoConfiguration,
+    com.alibaba.cloud.nacos.util.UtilIPv6AutoConfiguration,
+    com.alibaba.cloud.circuitbreaker.sentinel.SentinelCircuitBreakerAutoConfiguration,
+    com.alibaba.cloud.circuitbreaker.sentinel.ReactiveSentinelCircuitBreakerAutoConfiguration,
+    com.alibaba.cloud.circuitbreaker.sentinel.feign.SentinelFeignClientAutoConfiguration,
+    com.alibaba.cloud.sentinel.SentinelWebAutoConfiguration,
+    com.alibaba.cloud.sentinel.SentinelWebFluxAutoConfiguration,
+    com.alibaba.cloud.sentinel.endpoint.SentinelEndpointAutoConfiguration,
+    com.alibaba.cloud.sentinel.custom.SentinelAutoConfiguration,
+    com.alibaba.cloud.sentinel.feign.SentinelFeignAutoConfiguration,
+    org.springframework.cloud.autoconfigure.LifecycleMvcEndpointAutoConfiguration
+
+services:
+  postgres:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/postgres:18.1
+    container_name: han-postgres
+    environment:
+      POSTGRES_DB: han
+      POSTGRES_USER: han
+      POSTGRES_PASSWORD: han@2026
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/02-ai.sql
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U han"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6-rc1
+    container_name: han-redis
+    command: redis-server --requirepass han@2026
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "han@2026", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rustfs:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/rustfs:1.0.0-alpha.81
+    container_name: han-rustfs
+    environment:
+      RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
+    networks:
+      - han-network
+
+  gateway:
+    build:
+      context: ./han-gateway
+      dockerfile: Dockerfile
+    container_name: han-gateway
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      AUTH_URI: http://han-auth:9200
+      SYSTEM_URI: http://han-system:9201
+      JOB_URI: http://han-job:9204
+      AI_URI: http://han-ai:9208
+      TENANT_URI: http://han-tenant:9202
+      JAVA_OPTS: -Xms256m -Xmx256m -Dio.netty.transport.noNative=true
+      TZ: Asia/Shanghai
+    ports:
+      - "9090:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 0"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+  auth:
+    build:
+      context: ./han-auth
+      dockerfile: Dockerfile
+    container_name: han-auth
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_AUTOCONFIGURE_EXCLUDE: >-
+        com.alibaba.cloud.nacos.NacosConfigAutoConfiguration,
+        com.alibaba.cloud.nacos.endpoint.NacosConfigEndpointAutoConfiguration,
+        com.alibaba.cloud.nacos.NacosConfigSpringCloudAutoConfiguration,
+        com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration,
+        com.alibaba.cloud.nacos.endpoint.NacosDiscoveryEndpointAutoConfiguration,
+        com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration,
+        com.alibaba.cloud.nacos.discovery.NacosDiscoveryClientConfiguration,
+        com.alibaba.cloud.nacos.discovery.NacosDiscoveryHeartBeatConfiguration,
+        com.alibaba.cloud.nacos.discovery.reactive.NacosReactiveDiscoveryClientConfiguration,
+        com.alibaba.cloud.nacos.discovery.configclient.NacosConfigServerAutoConfiguration,
+        com.alibaba.cloud.nacos.loadbalancer.LoadBalancerNacosAutoConfiguration,
+        com.alibaba.cloud.nacos.NacosServiceAutoConfiguration,
+        com.alibaba.cloud.nacos.util.UtilIPv6AutoConfiguration,
+        com.alibaba.cloud.circuitbreaker.sentinel.SentinelCircuitBreakerAutoConfiguration,
+        com.alibaba.cloud.circuitbreaker.sentinel.ReactiveSentinelCircuitBreakerAutoConfiguration,
+        com.alibaba.cloud.circuitbreaker.sentinel.feign.SentinelFeignClientAutoConfiguration,
+        com.alibaba.cloud.sentinel.SentinelWebAutoConfiguration,
+        com.alibaba.cloud.sentinel.SentinelWebFluxAutoConfiguration,
+        com.alibaba.cloud.sentinel.endpoint.SentinelEndpointAutoConfiguration,
+        com.alibaba.cloud.sentinel.custom.SentinelAutoConfiguration,
+        com.alibaba.cloud.sentinel.feign.SentinelFeignAutoConfiguration,
+        org.springframework.cloud.autoconfigure.LifecycleMvcEndpointAutoConfiguration,
+        org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
+        org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      SYSTEM_URI: http://han-system:9201
+      JAVA_OPTS: -Xms256m -Xmx256m
+      TZ: Asia/Shanghai
+    ports:
+      - "9200:9200"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  system:
+    build:
+      context: ./han-modules/han-system
+      dockerfile: Dockerfile
+    container_name: han-system
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx256m
+      TZ: Asia/Shanghai
+    ports:
+      - "9201:9201"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  job:
+    build:
+      context: ./han-modules/han-job
+      dockerfile: Dockerfile
+    container_name: han-job
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx256m
+      TZ: Asia/Shanghai
+    ports:
+      - "9204:9204"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9204/job/listAll > /dev/null 2>&1 || exit 0"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+  ai:
+    build:
+      context: ./han-modules/han-ai
+      dockerfile: Dockerfile
+    container_name: han-ai
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx256m
+      TZ: Asia/Shanghai
+    ports:
+      - "9208:9208"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9208/ai/model/list > /dev/null 2>&1 || exit 0"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+
+  tenant:
+    build:
+      context: ./han-modules/han-tenant
+      dockerfile: Dockerfile
+    container_name: han-tenant
+    environment:
+      <<: *spring-cloud-exclude
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT__CHECK_ENABLED: "false"
+      SPRING_CLOUD_DISCOVERY_ENABLED: "false"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx256m
+      TZ: Asia/Shanghai
+    ports:
+      - "9202:9202"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9202/tenant/list > /dev/null 2>&1 || exit 0"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  rustfs_data:
+
+networks:
+  han-network:
+    driver: bridge

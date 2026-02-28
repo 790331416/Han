@@ -1,5 +1,5 @@
 # 多阶段构建 Dockerfile 模板
-# 适用于所有 XuMan 微服务模块
+# 适用于所有 Han 微服务模块
 
 # 阶段1: 构建
 FROM registry.cn-hangzhou.aliyuncs.com/xzy0112/maven:4.0.0-rc-5-eclipse-temurin-21-alpine AS builder
@@ -8,9 +8,9 @@ WORKDIR /build
 
 # 复制 pom.xml 文件（利用 Docker 缓存）
 COPY pom.xml .
-COPY xuman-common ./xuman-common
-COPY xuman-starter ./xuman-starter
-COPY xuman-api ./xuman-api
+COPY han-common ./han-common
+COPY han-starter ./han-starter
+COPY han-api ./han-api
 
 # 下载依赖（这一层会被缓存）
 RUN mvn dependency:go-offline -B

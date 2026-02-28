@@ -387,10 +387,9 @@ docs/_build/
 # Docker #
 ##########
 .docker/
-docker-compose*.yml
 *.dockerignore
 
-# Frontend specific (for xuman-ui module)
+# Frontend specific (for han-ui module)
 node_modules/
 dist/
 npm-debug.log*

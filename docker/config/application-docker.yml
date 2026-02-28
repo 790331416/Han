@@ -1,4 +1,4 @@
-# Docker 环境配置模板（PostgreSQL 版本）
+﻿# Docker 环境配置模板（PostgreSQL 版本）
 # 复制此文件到各个模块的 src/main/resources/ 目录，命名为 application-docker.yml
 
 server:
@@ -6,14 +6,14 @@ server:
 
 spring:
   application:
-    name: ${SPRING_APPLICATION_NAME:xuman-service}
+    name: ${SPRING_APPLICATION_NAME:han-service}
   
   # PostgreSQL 数据源配置
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:xuman}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: ${POSTGRES_USER:xuman}
-    password: ${POSTGRES_PASSWORD:xuman@2026}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${POSTGRES_USER:han}
+    password: ${POSTGRES_PASSWORD:han@2026}
     
     # HikariCP 连接池配置
     hikari:
@@ -27,7 +27,7 @@ spring:
   redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:xuman@2026}
+    password: ${REDIS_PASSWORD:han@2026}
     database: 0
     timeout: 3000
     lettuce:
@@ -42,13 +42,13 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        username: ${NACOS_USERNAME:xuman}
-        password: ${NACOS_PASSWORD:xuman@2026}
+        username: ${NACOS_USERNAME:han}
+        password: ${NACOS_PASSWORD:han@2026}
         namespace: ${NACOS_NAMESPACE:}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        username: ${NACOS_USERNAME:xuman}
-        password: ${NACOS_PASSWORD:xuman@2026}
+        username: ${NACOS_USERNAME:han}
+        password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
         namespace: ${NACOS_NAMESPACE:}
         shared-configs:
@@ -57,19 +57,19 @@ spring:
             refresh: true
 
 # 存储配置
-xuman:
+han:
   storage:
     type: rustfs
     rustfs:
       endpoint: ${RUSTFS_ENDPOINT:http://localhost:9000}
-      accessKey: ${RUSTFS_ACCESS_KEY:xumanadmin}
-      secretKey: ${RUSTFS_SECRET_KEY:xuman@2026}
-      bucket: xuman
+      accessKey: ${RUSTFS_ACCESS_KEY:hanadmin}
+      secretKey: ${RUSTFS_SECRET_KEY:han@2026}
+      bucket: han
 
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
-  type-aliases-package: com.xuman.*.domain.entity
+  type-aliases-package: com.han.*.domain.entity
   configuration:
     map-underscore-to-camel-case: true
     cache-enabled: false
@@ -85,9 +85,9 @@ mybatis-plus:
 logging:
   level:
     root: INFO
-    com.xuman: INFO
-    com.xuman.job.shard: DEBUG
-    com.xuman.job.lock: DEBUG
+    com.han: INFO
+    com.han.job.shard: DEBUG
+    com.han.job.lock: DEBUG
   pattern:
     console: '%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] [%X{jobId}] [%X{shardIndex}] %-5level %logger{50} - %msg%n'
 

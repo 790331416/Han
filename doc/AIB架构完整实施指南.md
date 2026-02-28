@@ -1,8 +1,8 @@
-# AIB 架构完整实施指南
+﻿# AIB 架构完整实施指南
 
 ## 📖 文档说明
 
-本文档是 XuMan Cloud 项目 A/I/B 三层控制器架构的**生产就绪完整方案**，所有内容均为最终可用版本，无需额外升级或优化。
+本文档是 han Cloud 项目 A/I/B 三层控制器架构的**生产就绪完整方案**，所有内容均为最终可用版本，无需额外升级或优化。
 
 ---
 
@@ -71,26 +71,26 @@
 **标准模板**：
 
 ```java
-package com.xuman.system.controller.base;
+package com.han.system.controller.base;
 
-import com.xuman.common.web.controller.BaseController;
-import com.xuman.system.domain.query.SysUserQuery;
-import com.xuman.system.domain.dto.SysUserDto;
-import com.xuman.system.service.ISysUserService;
+import com.han.common.web.controller.BaseController;
+import com.han.system.domain.query.SysUserQuery;
+import com.han.system.domain.dto.SysUserDto;
+import com.han.system.service.ISysUserService;
 
 /**
  * 用户管理业务基类
  * 
  * <p><b>核心方法实现位置：</b>
  * <ul>
- *   <li>list/add/edit/delete → {@link com.xuman.common.web.controller.BaseController}
- *   <li>数据权限过滤 → {@link com.xuman.common.service.impl.BaseServiceImpl#selectListScope}
- *   <li>多租户注入 → {@link com.xuman.common.tenant.aspect.TenantLineInterceptor}
+ *   <li>list/add/edit/delete → {@link com.han.common.web.controller.BaseController}
+ *   <li>数据权限过滤 → {@link com.han.common.service.impl.BaseServiceImpl#selectListScope}
+ *   <li>多租户注入 → {@link com.han.common.tenant.aspect.TenantLineInterceptor}
  * </ul>
  * 
  * @see BaseController 基础CRUD模板
  * @see ISysUserService 业务服务层
- * @author XuMan Team
+ * @author han Team
  */
 public class BSysUserController extends BaseController<SysUserQuery, SysUserDto, ISysUserService> {
     
@@ -114,13 +114,13 @@ public class BSysUserController extends BaseController<SysUserQuery, SysUserDto,
 **标准模板**：
 
 ```java
-package com.xuman.system.controller.admin;
+package com.han.system.controller.admin;
 
-import com.xuman.common.core.domain.R;
-import com.xuman.common.security.annotation.AdminAuth;
-import com.xuman.common.log.annotation.OperLog;
-import com.xuman.common.core.enums.BusinessType;
-import com.xuman.system.controller.base.BSysUserController;
+import com.han.common.core.domain.R;
+import com.han.common.security.annotation.AdminAuth;
+import com.han.common.log.annotation.OperLog;
+import com.han.common.core.enums.BusinessType;
+import com.han.system.controller.base.BSysUserController;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -129,7 +129,7 @@ import java.util.List;
 /**
  * 用户管理 - 管理端接口
  * 
- * @author XuMan Team
+ * @author han Team
  */
 @AdminAuth
 @RestController("adminSysUserController")  // 必须指定唯一Bean名称
@@ -183,11 +183,11 @@ public class ASysUserController extends BSysUserController {
 **标准模板**：
 
 ```java
-package com.xuman.system.controller.inner;
+package com.han.system.controller.inner;
 
-import com.xuman.common.core.domain.R;
-import com.xuman.common.security.annotation.InnerAuth;
-import com.xuman.system.controller.base.BSysUserController;
+import com.han.common.core.domain.R;
+import com.han.common.security.annotation.InnerAuth;
+import com.han.system.controller.base.BSysUserController;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -195,7 +195,7 @@ import java.util.List;
 /**
  * 用户管理 - 内部调用接口
  * 
- * @author XuMan Team
+ * @author han Team
  */
 @RestController("innerSysUserController")
 @RequestMapping("/inner/user")
@@ -866,12 +866,12 @@ http://localhost:8080/admin/gen
 
 | 类名 | 路径 | 职责 |
 |------|------|------|
-| **BaseController** | xuman-common-web | 通用 CRUD 模板基类 |
-| **TreeController** | xuman-common-web | 树形结构专用基类 |
-| **BaseServiceImpl** | xuman-common-mybatis | Service 层通用实现 |
-| **TenantLineInterceptor** | xuman-common-tenant | 多租户数据隔离拦截器 |
-| **RequestContext** | xuman-common-security | 请求上下文管理 |
-| **PermissionCheckPostProcessor** | xuman-common-security | 权限校验后置处理器 |
+| **BaseController** | han-common-web | 通用 CRUD 模板基类 |
+| **TreeController** | han-common-web | 树形结构专用基类 |
+| **BaseServiceImpl** | han-common-mybatis | Service 层通用实现 |
+| **TenantLineInterceptor** | han-common-tenant | 多租户数据隔离拦截器 |
+| **RequestContext** | han-common-security | 请求上下文管理 |
+| **PermissionCheckPostProcessor** | han-common-security | 权限校验后置处理器 |
 
 ### 9.4 学习路径
 
@@ -892,4 +892,4 @@ http://localhost:8080/admin/gen
 
 ---
 
-**© XuMan Cloud Team - AIB 架构生产实施指南**
+**© han Cloud Team - AIB 架构生产实施指南**

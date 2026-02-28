@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.han</groupId>
+        <artifactId>han-cloud</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>han-auth</artifactId>
+    <description>认证中心</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-common-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-common-redis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-common-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-api-system</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Nacos Discovery -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+
+        <!-- LoadBalancer（解析服务名路由） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
+        <!-- Nacos Config -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

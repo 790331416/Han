@@ -1,8 +1,8 @@
-# XuMan Cloud - 企业级微服务平台
+﻿# han Cloud - 企业级微服务平台
 
 <p align="center">
   <img src="https://img.shields.io/badge/Spring%20Boot-4.0.2-brightgreen.svg" alt="Spring Boot"/>
-  <img src="https://img.shields.io/badge/Spring%20Cloud-2025.0.1-blue.svg" alt="Spring Cloud"/>
+  <img src="https://img.shields.io/badge/Spring%20Cloud-2025.1.0-blue.svg" alt="Spring Cloud"/>
   <img src="https://img.shields.io/badge/PostgreSQL-18.1-orange.svg" alt="PostgreSQL"/>
   <img src="https://img.shields.io/badge/Java-21-red.svg" alt="Java"/>
   <img src="https://img.shields.io/badge/License-Apache%202.0-green.svg" alt="License"/>
@@ -10,7 +10,7 @@
 
 ## 📖 项目简介
 
-XuMan Cloud 是一个基于 **Spring Boot 4.0 + Spring Cloud 2025** 的企业级多租户微服务平台，采用前后端分离架构，融合 **JobFlow** 任务调度架构理念，提供完整的企业应用开发解决方案。
+han Cloud 是一个基于 **Spring Boot 4.0 + Spring Cloud 2025** 的企业级多租户微服务平台，采用前后端分离架构，融合 **JobFlow** 任务调度架构理念，提供完整的企业应用开发解决方案。
 
 ### 🎯 核心特性
 
@@ -18,7 +18,12 @@ XuMan Cloud 是一个基于 **Spring Boot 4.0 + Spring Cloud 2025** 的企业级
 - 🏢 **多租户支持** - 逻辑隔离/物理隔离/混合隔离
 - 🔄 **JobFlow 任务调度** - 全链路 TraceId + 真分片 + 云原生配置
 - 🔐 **OAuth2 认证** - Spring Authorization Server 1.5.2
-- 📊 **工作流引擎** - Flowable 7.1.0 集成
+- 📊 **工作流引擎** - Flowable 7.2.0 集成
+- ⚡ **Virtual Threads** - Java 21 虚拟线程全面启用
+- 🌐 **声明式 HTTP 客户端** - @HttpExchange + @EnableHttpClients 自动注入
+- 📡 **全链路追踪** - Micrometer Tracing + OpenTelemetry 自动集成
+- 🛡️ **RFC 7807 错误响应** - ProblemDetail 标准化异常格式
+- 📦 **Java Record** - 不可变值对象，替代传统 @Data VO
 - 🎨 **现代前端** - Vue 3 + TypeScript + Vite
 - 🔌 **可插拔组件** - 根据场景灵活选择中间件组合
 
@@ -30,9 +35,10 @@ XuMan Cloud 是一个基于 **Spring Boot 4.0 + Spring Cloud 2025** 的企业级
 
 | 分类 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| **核心框架** | Spring Boot | 4.0.2 | 基础框架 |
-| | Spring Cloud | 2025.0.1 | 微服务框架 |
-| | Spring Cloud Alibaba | 2025.0.0.0 | Nacos 生态 |
+| **核心框架** | Spring Boot | 4.0.2 | Virtual Threads + ProblemDetail RFC 7807 |
+| | Spring Cloud | 2025.1.0 | 微服务框架 |
+| | Spring Cloud Alibaba | 2025.1.0.0 | Nacos 3.x gRPC 长连接 |
+| | Micrometer Tracing | BOM 管理 | OpenTelemetry 全链路追踪 |
 | **数据存储** | PostgreSQL | 18.1 | 主数据库 |
 | | Redis | 7 | 缓存/分布式锁 |
 | | RustFS | 1.0.0 | 高性能对象存储 (S3 兼容) |
@@ -41,39 +47,42 @@ XuMan Cloud 是一个基于 **Spring Boot 4.0 + Spring Cloud 2025** 的企业级
 | | Kafka | 3.x | 大数据流（可选） |
 | **服务治理** | Nacos | 3.1 | 注册中心/配置中心 |
 | **任务调度** | JobFlow | 自研 | 分布式任务调度（基于Spring Boot集成） |
-| **工作流** | Flowable | 7.1.0 | BPM 引擎 |
+| **工作流** | Flowable | 7.2.0 | BPM 引擎 |
 | **认证授权** | Spring Authorization Server | 1.5.2 | OAuth2/OIDC |
+| **工具库** | Hutool | 5.8.36 | Java 工具集 |
+| | MapStruct | 1.6.3 | 编译期对象映射 |
+| | Lombok | 1.18.38 | 代码简化 |
 
 ### 项目结构
 
 ```
-xuman-cloud/
-├── xuman-common/              # 公共模块
-│   ├── xuman-common-core          # 核心工具类
-│   ├── xuman-common-redis         # Redis 封装
-│   ├── xuman-common-security      # 安全模块
-│   ├── xuman-common-mybatis       # MyBatis 配置
-│   └── xuman-common-tenant        # 多租户支持
-├── xuman-starter/             # 自动装配 Starter
-│   ├── xuman-starter-cache        # 缓存 Starter
-│   ├── xuman-starter-mq           # 消息队列 Starter
-│   ├── xuman-starter-lock         # 分布式锁 Starter
-│   └── xuman-starter-storage      # 对象存储 Starter
-├── xuman-gateway/             # 网关服务
-├── xuman-auth/                # 认证服务
-├── xuman-api/                 # API接口定义
-│   ├── xuman-api-system           # 系统服务接口
-│   ├── xuman-api-tenant           # 租户服务接口
-│   └── xuman-api-file             # 文件服务接口
-├── xuman-modules/             # 业务模块
-│   ├── xuman-system               # 系统管理
-│   ├── xuman-tenant               # 租户管理
-│   ├── xuman-workflow             # 工作流
-│   ├── xuman-job                  # JobFlow 任务调度
-│   ├── xuman-open                 # 开放平台
-│   ├── xuman-gen                  # 代码生成
-│   └── xuman-file                 # 文件服务
-└── xuman-ui/                  # 前端项目 (Vue3)
+han-cloud/
+├── han-common/              # 公共模块
+│   ├── han-common-core          # 核心工具类
+│   ├── han-common-redis         # Redis 封装
+│   ├── han-common-security      # 安全模块
+│   ├── han-common-mybatis       # MyBatis 配置
+│   └── han-common-tenant        # 多租户支持
+├── han-starter/             # 自动装配 Starter
+│   ├── han-starter-cache        # 缓存 Starter
+│   ├── han-starter-mq           # 消息队列 Starter
+│   ├── han-starter-lock         # 分布式锁 Starter
+│   └── han-starter-storage      # 对象存储 Starter
+├── han-gateway/             # 网关服务
+├── han-auth/                # 认证服务
+├── han-api/                 # API接口定义
+│   ├── han-api-system           # 系统服务接口
+│   ├── han-api-tenant           # 租户服务接口
+│   └── han-api-file             # 文件服务接口
+├── han-modules/             # 业务模块
+│   ├── han-system               # 系统管理
+│   ├── han-tenant               # 租户管理
+│   ├── han-workflow             # 工作流
+│   ├── han-job                  # JobFlow 任务调度
+│   ├── han-open                 # 开放平台
+│   ├── han-gen                  # 代码生成
+│   └── han-file                 # 文件服务
+└── han-ui/                  # 前端项目 (Vue3)
 ```
 
 ---
@@ -97,7 +106,7 @@ xuman-cloud/
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd XuMan
+cd han
 
 # 2. 启动小型环境
 docker-compose -f docker-compose-small.yml up -d
@@ -106,7 +115,7 @@ docker-compose -f docker-compose-small.yml up -d
 docker-compose -f docker-compose-small.yml ps
 
 # 4. 访问服务
-# Nacos: http://localhost:8848/nacos (xuman/xuman@2026)
+# Nacos: http://localhost:8848/nacos (han/han@2026)
 # 网关:  http://localhost:8080
 ```
 
@@ -169,7 +178,7 @@ docker-compose ps
 
 ## 🎯 JobFlow 核心特性
 
-XuMan Cloud 融合了 **JobFlow** 设计理念，将任务调度能力深度集成到微服务体系：
+han Cloud 融合了 **JobFlow** 设计理念，将任务调度能力深度集成到微服务体系：
 
 ### ✨ 核心优势
 
@@ -231,7 +240,7 @@ public class OrderSyncTaskHandler {
 
 ## 🔌 可插拔组件设计
 
-XuMan Cloud 采用可插拔组件架构，根据部署规模灵活选择中间件：
+han Cloud 采用可插拔组件架构，根据部署规模灵活选择中间件：
 
 ### 组件依赖关系
 
@@ -287,10 +296,25 @@ spring:
 
 ### 环境要求
 
-- **JDK**: 21+
+- **JDK**: 21+（必须，Virtual Threads 依赖）
 - **Maven**: 3.9+
 - **Docker**: 20.10+ (推荐)
 - **Node.js**: 18+ (前端开发)
+
+### 新版本特性速览
+
+| 特性 | 说明 | 适用范围 |
+|------|------|----------|
+| **Virtual Threads** | `spring.threads.virtual.enabled=true` | han-auth、han-system 等 Servlet 服务 |
+| **Java Record** | 只读 VO 使用 `record` 替代 `@Data` | 全部模块 |
+| **Pattern Matching** | `if (x instanceof String s)` | 全部模块 |
+| **Switch Expression** | `return switch(e) { case A -> ...; };` | 全部模块 |
+| **Duration API** | `Duration.ofMinutes(30)` 替代魔法数字 | Redis 过期时间等 |
+| **@HttpExchange** | 声明式 HTTP 客户端，替代 Feign | 跨服务调用 |
+| **@EnableHttpClients** | 自动扫描注册 @HttpExchange 接口 | 启动类注解 |
+| **ProblemDetail** | RFC 7807 标准化错误响应 | Servlet 服务 |
+| **Micrometer Tracing** | OpenTelemetry 全链路追踪 | 通过 han-common-web 自动引入 |
+| **@Builder** | Lombok Builder 替代 15+ 行 setter | LoginUser 等复杂对象 |
 
 ### 本地开发
 
@@ -307,9 +331,9 @@ docker-compose -f docker-compose-dev.yml up -d
 # 在 Nacos 控制台创建配置: jobflow-scheduler.yml
 
 # 5. 启动服务
-# 右键运行 XumanGatewayApplication
-# 右键运行 XumanAuthApplication
-# 右键运行 XumanSystemApplication
+# 右键运行 hanGatewayApplication
+# 右键运行 hanAuthApplication
+# 右键运行 hanSystemApplication
 
 # 6. 访问
 # http://localhost:8080
@@ -372,10 +396,10 @@ docker-compose -f docker-compose-dev.yml up -d
 
 ## 📞 联系方式
 
-- 项目主页: [GitHub](https://github.com/your-org/xuman-cloud)
-- 问题反馈: [Issues](https://github.com/your-org/xuman-cloud/issues)
-- 邮件: support@xuman.com
+- 项目主页: [GitHub](https://github.com/your-org/han-cloud)
+- 问题反馈: [Issues](https://github.com/your-org/han-cloud/issues)
+- 邮件: support@han.com
 
 ---
 
-**开始使用 XuMan Cloud，构建您的企业级微服务应用！** 🚀
+**开始使用 han Cloud，构建您的企业级微服务应用！** 🚀

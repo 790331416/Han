@@ -1,25 +1,25 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.xuman</groupId>
-    <artifactId>xuman-cloud</artifactId>
+    <groupId>com.han</groupId>
+    <artifactId>han-cloud</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
 
-    <name>XuMan Cloud</name>
+    <name>han Cloud</name>
     <description>企业级多租户微服务平台</description>
 
     <modules>
-        <module>xuman-common</module>
-        <module>xuman-starter</module>
-        <module>xuman-api</module>
-        <module>xuman-gateway</module>
-        <module>xuman-auth</module>
-        <module>xuman-modules</module>
-        <module>xuman-visual</module>
+        <module>han-common</module>
+        <module>han-starter</module>
+        <module>han-api</module>
+        <module>han-gateway</module>
+        <module>han-auth</module>
+        <module>han-modules</module>
+        <module>han-visual</module>
     </modules>
 
     <properties>
@@ -31,37 +31,37 @@
 
         <!-- Spring Boot 4.0 -->
         <spring-boot.version>4.0.2</spring-boot.version>
-        <spring-cloud.version>2025.0.1</spring-cloud.version>
-        <spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
+        <spring-cloud.version>2025.1.0</spring-cloud.version>
+        <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
 
         <!-- 数据库相关 -->
-        <mybatis-plus.version>3.5.9</mybatis-plus.version>
-        <dynamic-datasource.version>4.3.1</dynamic-datasource.version>
+        <mybatis-plus.version>3.5.16</mybatis-plus.version>
+        <dynamic-datasource.version>4.5.0</dynamic-datasource.version>
         <druid.version>1.2.23</druid.version>
         <mysql.version>8.3.0</mysql.version>
         <postgresql.version>42.7.4</postgresql.version>
 
         <!-- 工具类 -->
-        <hutool.version>5.8.32</hutool.version>
+        <hutool.version>5.8.36</hutool.version>
         <mapstruct.version>1.6.3</mapstruct.version>
-        <lombok.version>1.18.34</lombok.version>
+        <lombok.version>1.18.38</lombok.version>
 
         <!-- 安全相关 -->
         <bcrypt.version>0.10.2</bcrypt.version>
-        <jwt.version>0.12.6</jwt.version>
+        <jwt.version>0.12.7</jwt.version>
 
         <!-- 文档 -->
         <knife4j.version>4.5.0</knife4j.version>
-        <springdoc.version>2.7.0</springdoc.version>
+        <springdoc.version>2.8.6</springdoc.version>
 
         <!-- 其他 -->
-        <redisson.version>3.37.0</redisson.version>
-        <jsoup.version>1.18.1</jsoup.version>
+        <redisson.version>4.2.0</redisson.version>
+        <jsoup.version>1.19.1</jsoup.version>
         <ttl.version>2.14.5</ttl.version>
         <pagehelper.version>2.1.0</pagehelper.version>
 
         <!-- 工作流引擎 -->
-        <flowable.version>7.1.0</flowable.version>
+        <flowable.version>7.2.0</flowable.version>
 
         <!-- 开放平台(OAuth2授权服务器) -->
         <spring-authorization-server.version>1.5.2</spring-authorization-server.version>
@@ -99,82 +99,82 @@
             <!-- ==================== 项目内部模块 ==================== -->
             <!-- common -->
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-core</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-redis</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-redis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-security</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-security</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-web</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-mybatis</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-mybatis</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-datasource</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-datasource</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-tenant</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-log</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-log</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-common-doc</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-common-doc</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
             <!-- starter -->
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-starter-cache</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-starter-cache</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-starter-mq</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-starter-mq</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-starter-storage</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-starter-storage</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-starter-lock</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-starter-lock</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
             <!-- api -->
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-api-system</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-api-system</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.xuman</groupId>
-                <artifactId>xuman-api-tenant</artifactId>
+                <groupId>com.han</groupId>
+                <artifactId>han-api-tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -204,8 +204,21 @@
             <!-- MyBatis-Plus -->
             <dependency>
                 <groupId>com.baomidou</groupId>
-                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.mybatis.spring.boot</groupId>
+                        <artifactId>mybatis-spring-boot-starter</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <!-- MyBatis Spring Boot 4.0.1（兼容 Spring Boot 4.0 / Spring Framework 7）-->
+            <dependency>
+                <groupId>org.mybatis.spring.boot</groupId>
+                <artifactId>mybatis-spring-boot-starter</artifactId>
+                <version>4.0.1</version>
             </dependency>
             <dependency>
                 <groupId>com.baomidou</groupId>
@@ -216,7 +229,7 @@
             <!-- 动态数据源 -->
             <dependency>
                 <groupId>com.baomidou</groupId>
-                <artifactId>dynamic-datasource-spring-boot3-starter</artifactId>
+                <artifactId>dynamic-datasource-spring-boot4-starter</artifactId>
                 <version>${dynamic-datasource.version}</version>
             </dependency>
 

@@ -1,0 +1,55 @@
+import { defineConfig, loadEnv } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import AutoImport from 'unplugin-auto-import/vite';
+import Components from 'unplugin-vue-components/vite';
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
+import { createSvgIconsPlugin } from 'vite-plugin-svg-icons';
+import path from 'path';
+export default defineConfig(function (_a) {
+    var mode = _a.mode;
+    var env = loadEnv(mode, process.cwd());
+    return {
+        base: env.VITE_PUBLIC_PATH || '/',
+        resolve: {
+            alias: {
+                '@': path.resolve(__dirname, 'src')
+            }
+        },
+        plugins: [
+            vue(),
+            AutoImport({
+                imports: ['vue', 'vue-router', 'pinia'],
+                resolvers: [ElementPlusResolver()],
+                dts: 'src/types/auto-imports.d.ts'
+            }),
+            Components({
+                resolvers: [ElementPlusResolver()],
+                dts: 'src/types/components.d.ts'
+            }),
+            createSvgIconsPlugin({
+                iconDirs: [path.resolve(process.cwd(), 'src/assets/icons')],
+                symbolId: 'icon-[dir]-[name]'
+            })
+        ],
+        server: {
+            host: '0.0.0.0',
+            port: Number(env.VITE_PORT) || 80,
+            open: true
+        },
+        build: {
+            outDir: 'dist',
+            chunkSizeWarningLimit: 2000,
+            rollupOptions: {
+                output: {
+                    chunkFileNames: 'assets/js/[name]-[hash].js',
+                    entryFileNames: 'assets/js/[name]-[hash].js',
+                    assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
+                    manualChunks: {
+                        vue: ['vue', 'vue-router', 'pinia'],
+                        elementPlus: ['element-plus', '@element-plus/icons-vue']
+                    }
+                }
+            }
+        }
+    };
+});

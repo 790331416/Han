@@ -3,10 +3,14 @@
 -- 自动创建所有需要的数据库和表结构
 -- =============================================
 
--- 创建 Nacos 数据库
-SELECT 'CREATE DATABASE nacos' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nacos')\gexec;
+-- 创建 Nacos 数据库（使用 PostgreSQL 兼容语法）
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nacos') THEN
+        CREATE DATABASE nacos;
+    END IF;
+END $$;
 
--- 切换到 xuman 主数据库
+-- 切换到 han 主数据库
 \c postgres;
 
 -- 设置字符集
@@ -197,8 +201,8 @@ COMMENT ON TABLE open_app IS '开放平台应用表';
 -- =============================================
 
 -- 插入管理员用户 (密码: admin123)
-INSERT INTO sys_user (user_id, username, password, nick_name, email, status) 
-VALUES (1, 'admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE/T/1RxrmdTBq', '管理员', 'admin@xuman.com', '0')
+INSERT INTO sys_user (user_id, username, password, nick_name, email, status)
+VALUES (1, 'admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE/T/1RxrmdTBq', '管理员', 'admin@han.com', '0')
 ON CONFLICT (username) DO NOTHING;
 
 -- 插入示例任务

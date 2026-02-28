@@ -1,0 +1,413 @@
+version: '3.8'
+
+
+# =============================================
+# han Cloud 中型部署 (标准版)
+# 适用: 小团队/测试环境
+# 硬件: 4核8GB
+# 中间件: PostgreSQL + Redis + Nacos + RustFS + RabbitMQ
+# 服务: 全部业务服务
+# =============================================
+
+
+services:
+  # ==================== �м�� ====================
+
+  postgres:
+    image: postgres:18.1
+    container_name: han-postgres
+    environment:
+      POSTGRES_DB: han
+      POSTGRES_USER: han
+      POSTGRES_PASSWORD: han@2026
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/02-ai.sql
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U han"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: han-redis
+    command: redis-server --requirepass han@2026
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "han@2026", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    container_name: han-nacos
+    environment:
+      MODE: standalone
+      SPRING_DATASOURCE_PLATFORM: ""
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_TOKEN: SecretKey012345678901234567890123456789012345678901234567890123456789
+      NACOS_AUTH_IDENTITY_KEY: serverIdentity
+      NACOS_AUTH_IDENTITY_VALUE: security
+      JVM_XMS: 512m
+      JVM_XMX: 512m
+      TZ: Asia/Shanghai
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos_data:/home/nacos/data
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  rustfs:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/rustfs:1.0.0-alpha.81
+    container_name: han-rustfs
+    environment:
+      RUSTFS_ROOT_USER: hanadmin
+      RUSTFS_ROOT_PASSWORD: han@2026
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - han-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: han-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: han
+      RABBITMQ_DEFAULT_PASS: han@2026
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ==================== ǰ�� ====================
+
+  han-ui:
+    build:
+      context: ./han-ui
+      dockerfile: Dockerfile
+    container_name: han-ui
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway
+    networks:
+      - han-network
+
+  # ==================== ҵ����� ====================
+
+  gateway:
+    build:
+      context: ./han-gateway
+      dockerfile: Dockerfile
+    container_name: han-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  auth:
+    build:
+      context: ./han-auth
+      dockerfile: Dockerfile
+    container_name: han-auth
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9200:9200"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  system:
+    build:
+      context: ./han-modules/han-system
+      dockerfile: Dockerfile
+    container_name: han-system
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9201:9201"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  tenant:
+    build:
+      context: ./han-modules/han-tenant
+      dockerfile: Dockerfile
+    container_name: han-tenant
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9202:9202"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  workflow:
+    build:
+      context: ./han-modules/han-workflow
+      dockerfile: Dockerfile
+    container_name: han-workflow
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9203:9203"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  job:
+    build:
+      context: ./han-modules/han-job
+      dockerfile: Dockerfile
+    container_name: han-job
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9204:9204"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  open:
+    build:
+      context: ./han-modules/han-open
+      dockerfile: Dockerfile
+    container_name: han-open
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9205:9205"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  gen:
+    build:
+      context: ./han-modules/han-gen
+      dockerfile: Dockerfile
+    container_name: han-gen
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9206:9206"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  file:
+    build:
+      context: ./han-modules/han-file
+      dockerfile: Dockerfile
+    container_name: han-file
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9207:9207"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    networks:
+      - han-network
+
+  ai:
+    build:
+      context: ./han-modules/han-ai
+      dockerfile: Dockerfile
+    container_name: han-ai
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      NACOS_SERVER_ADDR: nacos:8848
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: han
+      DB_USER: han
+      DB_PASSWORD: han@2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9208:9208"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - han-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  nacos_data:
+  rustfs_data:
+  rabbitmq_data:
+
+networks:
+  han-network:
+    driver: bridge
