@@ -1,0 +1,1 @@
+UPDATE sys_user SET password = '$2a$10$uqzxjb66RP7A9Dp1CpRu2eBURd.kcL4dO7pBLW6.vrBCEvWE9/l5q' WHERE username = 'admin';
