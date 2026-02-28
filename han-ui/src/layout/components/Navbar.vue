@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="navbar">
     <div class="left-menu">
       <el-icon class="hamburger" @click="toggleSidebar">

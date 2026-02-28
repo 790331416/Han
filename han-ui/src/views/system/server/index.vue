@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-container">
     <el-button :icon="Refresh" @click="getServerData" style="margin-bottom: 16px">刷新</el-button>
 

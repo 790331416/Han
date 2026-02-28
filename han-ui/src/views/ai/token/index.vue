@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-container">
     <!-- 时间范围选择 -->
     <el-card shadow="never" class="search-form">

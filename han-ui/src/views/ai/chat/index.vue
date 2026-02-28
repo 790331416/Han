@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="ai-chat-container">
     <!-- 左侧会话列表 -->
     <div class="chat-sidebar">

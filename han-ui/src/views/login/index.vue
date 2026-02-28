@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-container">
     <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
       <h3 class="title">HAN Cloud</h3>

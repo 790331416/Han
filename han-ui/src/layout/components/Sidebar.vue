@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="sidebar">
     <div class="logo">
       <img src="@/assets/logo.svg" alt="logo" class="logo-img" v-if="appStore.sidebar.opened" />

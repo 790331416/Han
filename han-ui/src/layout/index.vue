@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-layout" :class="{ 'sidebar-collapsed': !appStore.sidebar.opened }">
     <Sidebar class="sidebar-container" />
     <div class="main-container">

@@ -1,4 +1,4 @@
-﻿import { post, get } from '@/utils/request'
+import { post, get } from '@/utils/request'
 import type { LoginDTO, LoginVO, UserInfo, RouteMenu } from '@/types'
 
 // 登录

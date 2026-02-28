@@ -1,9 +1,12 @@
 package com.han.gateway.filter;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
 import com.han.common.core.util.XuStrUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -20,9 +23,12 @@ import java.util.List;
 /**
  * 认证过滤器（WebFlux 响应式）
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class AuthFilter implements GlobalFilter, Ordered {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 白名单路径 */
     private static final List<String> WHITE_LIST = List.of(
@@ -57,20 +63,23 @@ public class AuthFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, "未携带Token");
         }
 
-        // 验证Token
+        // 验证Token并提取用户信息传到下游
         String cacheKey = CacheConstants.TOKEN_KEY + token;
-        return redisTemplate.hasKey(cacheKey)
-            .flatMap(exists -> {
-                if (Boolean.TRUE.equals(exists)) {
-                    // Token有效，传递用户信息到下游
-                    ServerHttpRequest mutatedRequest = request.mutate()
-                        .header(Constants.AUTHORIZATION_HEADER, token)
-                        .build();
-                    return chain.filter(exchange.mutate().request(mutatedRequest).build());
-                } else {
-                    return unauthorized(exchange, "Token无效或已过期");
+        return redisTemplate.opsForValue().get(cacheKey)
+            .flatMap(userJson -> {
+                ServerHttpRequest.Builder reqBuilder = request.mutate()
+                    .header(Constants.AUTHORIZATION_HEADER, token);
+                try {
+                    JsonNode node = MAPPER.readTree(userJson);
+                    if (node.has("userId")) reqBuilder.header("X-User-Id", node.get("userId").asText());
+                    if (node.has("username")) reqBuilder.header("X-User-Name", node.get("username").asText());
+                    if (node.has("tenantId") && !node.get("tenantId").isNull()) reqBuilder.header(Constants.TENANT_ID_HEADER, node.get("tenantId").asText());
+                } catch (Exception e) {
+                    log.warn("解析用户信息失败", e);
                 }
-            });
+                return chain.filter(exchange.mutate().request(reqBuilder.build()).build());
+            })
+            .switchIfEmpty(unauthorized(exchange, "Token无效或已过期"));
     }
 
     private boolean isWhitelist(String path) {

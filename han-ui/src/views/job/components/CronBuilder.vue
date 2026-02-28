@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="cron-builder">
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 秒 -->

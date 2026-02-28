@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getToken, setToken, removeToken, setRefreshToken, removeRefreshToken } from '@/utils/auth'
 import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'

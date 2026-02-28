@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="error-page">
     <div class="error-content">
       <h1 class="error-code">404</h1>

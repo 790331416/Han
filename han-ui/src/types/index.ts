@@ -1,4 +1,4 @@
-﻿// 通用响应类型
+// 通用响应类型
 export interface R<T = any> {
   code: number
   msg: string

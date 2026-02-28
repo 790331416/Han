@@ -1,4 +1,4 @@
-﻿const TokenKey = 'Admin-Token'
+const TokenKey = 'Admin-Token'
 const RefreshTokenKey = 'Admin-Refresh-Token'
 
 export function getToken(): string | null {

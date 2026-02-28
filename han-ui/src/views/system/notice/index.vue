@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-container">
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">

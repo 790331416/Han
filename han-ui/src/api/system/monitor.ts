@@ -1,4 +1,4 @@
-﻿import { get, post } from '@/utils/request'
+import { get, post } from '@/utils/request'
 
 // 获取服务器信息
 export function getServerInfo() {
