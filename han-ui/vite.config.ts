@@ -35,7 +35,33 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: Number(env.VITE_PORT) || 80,
-      open: true
+      open: true,
+      proxy: {
+        '/auth': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/system': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/tenant': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/gen': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/job': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/file': {
+          target: 'http://localhost:8080',
+          changeOrigin: true
+        }
+      }
     },
     build: {
       outDir: 'dist',
