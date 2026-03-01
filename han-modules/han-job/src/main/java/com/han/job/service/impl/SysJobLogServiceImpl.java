@@ -4,12 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.mybatis.util.PageHelper;
-import com.han.job.convert.SysJobLogConvert;
+import com.han.job.converter.SysJobLogConverter;
 import com.han.job.domain.query.JobLogQuery;
-import com.han.job.domain.entity.SysJobLog;
+import com.han.job.domain.po.SysJobLogPo;
 import com.han.job.domain.vo.JobLogVO;
 import com.han.job.mapper.SysJobLogMapper;
-import com.han.job.service.SysJobLogService;
+import com.han.job.service.ISysJobLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -21,33 +21,33 @@ import java.util.Arrays;
  */
 @Service
 @RequiredArgsConstructor
-public class SysJobLogServiceImpl implements SysJobLogService {
+public class SysJobLogServiceImpl implements ISysJobLogService {
 
     private final SysJobLogMapper jobLogMapper;
-    private final SysJobLogConvert jobLogConvert;
+    private final SysJobLogConverter jobLogConvert;
 
     @Override
     public PageResult<JobLogVO> listJobLog(JobLogQuery query) {
-        Page<SysJobLog> page = new Page<>(query.getPageNum(), query.getPageSize());
-        LambdaQueryWrapper<SysJobLog> wrapper = new LambdaQueryWrapper<>();
+        Page<SysJobLogPo> page = new Page<>(query.getPageNum(), query.getPageSize());
+        LambdaQueryWrapper<SysJobLogPo> wrapper = new LambdaQueryWrapper<>();
         
-        SysJobLog base = query.getBase();
+        SysJobLogPo base = query.getBase();
         if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobLog::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobLog::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJobLog::getStatus, base.getStatus());
+            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobLogPo::getJobName, base.getJobName())
+                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobLogPo::getJobGroup, base.getJobGroup())
+                    .eq(StringUtils.hasText(base.getStatus()), SysJobLogPo::getStatus, base.getStatus());
         }
-        wrapper.ge(query.getBeginTime() != null, SysJobLog::getStartTime, query.getBeginTime())
-                .le(query.getEndTime() != null, SysJobLog::getStopTime, query.getEndTime())
-                .orderByDesc(SysJobLog::getCreateTime);
+        wrapper.ge(query.getBeginTime() != null, SysJobLogPo::getStartTime, query.getBeginTime())
+                .le(query.getEndTime() != null, SysJobLogPo::getStopTime, query.getEndTime())
+                .orderByDesc(SysJobLogPo::getCreateTime);
         
-        Page<SysJobLog> result = jobLogMapper.selectPage(page, wrapper);
+        Page<SysJobLogPo> result = jobLogMapper.selectPage(page, wrapper);
         return PageHelper.build(result, jobLogConvert::toVO);
     }
 
     @Override
     public JobLogVO getJobLogById(Long jobLogId) {
-        SysJobLog log = jobLogMapper.selectById(jobLogId);
+        SysJobLogPo log = jobLogMapper.selectById(jobLogId);
         return log != null ? jobLogConvert.toVO(log) : null;
     }
 

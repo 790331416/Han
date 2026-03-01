@@ -19,9 +19,10 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vue(),
       AutoImport({
-        imports: ['vue', 'vue-router', 'pinia'],
+        imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
         resolvers: [ElementPlusResolver()],
-        dts: 'src/types/auto-imports.d.ts'
+        dts: 'src/types/auto-imports.d.ts',
+        vueTemplate: true
       }),
       Components({
         resolvers: [ElementPlusResolver()],
@@ -37,29 +38,30 @@ export default defineConfig(({ mode }) => {
       port: Number(env.VITE_PORT) || 80,
       open: true,
       proxy: {
-        '/auth': {
-          target: 'http://localhost:8080',
-          changeOrigin: true
+        '/dev-api/auth': {
+          target: 'http://localhost:9200',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
         },
-        '/system': {
-          target: 'http://localhost:8080',
-          changeOrigin: true
+        '/dev-api/system': {
+          target: 'http://localhost:9201',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
         },
-        '/tenant': {
-          target: 'http://localhost:8080',
-          changeOrigin: true
+        '/dev-api/tenant': {
+          target: 'http://localhost:9202',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
         },
-        '/gen': {
-          target: 'http://localhost:8080',
-          changeOrigin: true
+        '/dev-api/job': {
+          target: 'http://localhost:9204',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
         },
-        '/job': {
+        '/dev-api': {
           target: 'http://localhost:8080',
-          changeOrigin: true
-        },
-        '/file': {
-          target: 'http://localhost:8080',
-          changeOrigin: true
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
         }
       }
     },

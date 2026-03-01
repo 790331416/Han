@@ -50,7 +50,7 @@ export function getMenuTree() {
 }
 
 export function getMenu(id: number) {
-  return get<Menu>(`/system/menu/${id}`)
+  return get<Menu>(`/system/menu/info/${id}`)
 }
 
 export function addMenu(data: MenuForm) {

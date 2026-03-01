@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * 系统服务HTTP接口（@HttpExchange声明式客户端）
  */
-@HttpExchange("/system")
+@HttpExchange("/inner/system")
 public interface SystemServiceClient {
 
     /**

@@ -30,10 +30,6 @@
             <artifactId>han-common-doc</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.han</groupId>
-            <artifactId>han-common-datasource</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
@@ -55,10 +51,10 @@
             <groupId>com.han</groupId>
             <artifactId>han-common-mybatis</artifactId>
         </dependency>
-        <!-- MySQL -->
+        <!-- PostgreSQL -->
         <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
         </dependency>
         <!-- Redis (用于分布式锁) -->
         <dependency>

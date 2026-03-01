@@ -4,7 +4,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.job.domain.query.JobLogQuery;
 import com.han.job.domain.vo.JobLogVO;
-import com.han.job.service.SysJobLogService;
+import com.han.job.service.ISysJobLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class SysJobLogController {
 
-    private final SysJobLogService jobLogService;
+    private final ISysJobLogService jobLogService;
 
     /**
      * 分页查询任务日志
@@ -37,7 +37,7 @@ public class SysJobLogController {
     /**
      * 删除日志
      */
-    @DeleteMapping("/{jobLogIds}")
+    @PostMapping("/remove/{jobLogIds}")
     public R<Void> remove(@PathVariable Long[] jobLogIds) {
         jobLogService.deleteJobLogByIds(jobLogIds);
         return R.ok();
@@ -46,7 +46,7 @@ public class SysJobLogController {
     /**
      * 清空日志
      */
-    @DeleteMapping("/clean")
+    @PostMapping("/clean")
     public R<Void> clean() {
         jobLogService.cleanJobLog();
         return R.ok();

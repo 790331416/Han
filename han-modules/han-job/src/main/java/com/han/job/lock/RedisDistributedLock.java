@@ -6,8 +6,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Redis 分布式锁
@@ -37,10 +37,10 @@ public class RedisDistributedLock {
      * @param unit 时间单位
      * @return true-获取成功，false-获取失败
      */
-    public boolean tryLock(String lockKey, String lockValue, long timeout, TimeUnit unit) {
+    public boolean tryLock(String lockKey, String lockValue, Duration timeout) {
         try {
             Boolean result = redisTemplate.opsForValue()
-                    .setIfAbsent(lockKey, lockValue, timeout, unit);
+                    .setIfAbsent(lockKey, lockValue, timeout);
             
             boolean locked = Boolean.TRUE.equals(result);
             
@@ -92,9 +92,9 @@ public class RedisDistributedLock {
      * @param unit 时间单位
      * @return true-延长成功，false-延长失败
      */
-    public boolean renewLock(String lockKey, long timeout, TimeUnit unit) {
+    public boolean renewLock(String lockKey, Duration timeout) {
         try {
-            Boolean result = redisTemplate.expire(lockKey, timeout, unit);
+            Boolean result = redisTemplate.expire(lockKey, timeout);
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
             log.error("延长锁过期时间失败: key={}", lockKey, e);

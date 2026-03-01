@@ -81,6 +81,11 @@
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
         </el-form-item>
+        <el-form-item label="菜单权限">
+          <div style="border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px; width: 100%; max-height: 300px; overflow-y: auto;">
+            <el-tree ref="menuTreeRef" :data="menuTreeData" show-checkbox node-key="id" :props="{ label: 'menuName', children: 'children' }" :default-checked-keys="checkedMenuIds" check-strictly />
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -94,7 +99,9 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { listRole, getRole, addRole, updateRole, deleteRole, changeRoleStatus, type Role, type RoleForm } from '@/api/system/role'
+import { listRole, getRole, addRole, updateRole, deleteRole, changeRoleStatus, getRoleMenuIds, type Role, type RoleForm } from '@/api/system/role'
+import { getMenuTree, type Menu } from '@/api/system/menu'
+import type { ElTree } from 'element-plus'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -104,6 +111,9 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
+const menuTreeRef = ref<InstanceType<typeof ElTree>>()
+const menuTreeData = ref<Menu[]>([])
+const checkedMenuIds = ref<number[]>([])
 
 const queryParams = reactive({ roleName: '', roleKey: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
@@ -135,9 +145,11 @@ function resetQuery() {
   handleQuery()
 }
 
-function handleAdd() {
+async function handleAdd() {
   resetForm()
+  checkedMenuIds.value = []
   dialogTitle.value = '新增角色'
+  await loadMenuTree()
   dialogVisible.value = true
 }
 
@@ -148,8 +160,18 @@ async function handleEdit(row: Role) {
     const res = await getRole(row.id)
     const data = (res as any).data
     Object.assign(form, { id: data.id, roleName: data.roleName, roleKey: data.roleKey, roleSort: data.roleSort, status: data.status, remark: data.remark })
+    const menuRes = await getRoleMenuIds(row.id)
+    checkedMenuIds.value = (menuRes as any).data || []
   } catch { /* ignore */ }
+  await loadMenuTree()
   dialogVisible.value = true
+}
+
+async function loadMenuTree() {
+  try {
+    const res = await getMenuTree()
+    menuTreeData.value = (res as any).data || []
+  } catch { /* ignore */ }
 }
 
 async function handleDelete(row: Role) {
@@ -175,11 +197,13 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
+    const menuIds = menuTreeRef.value?.getCheckedKeys(false) as number[] || []
+    const submitData = { ...form, menuIds }
     if (form.id) {
-      await updateRole(form)
+      await updateRole(submitData)
       ElMessage.success('修改成功')
     } else {
-      await addRole(form)
+      await addRole(submitData)
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false

@@ -29,13 +29,15 @@ const appStore = useAppStore()
   display: flex;
   height: 100vh;
   width: 100%;
+  background: #f9fafb;
 }
 
 .sidebar-container {
-  width: 210px;
+  width: 240px;
   height: 100%;
-  background: #304156;
-  transition: width 0.28s;
+  background: #ffffff;
+  border-right: 1px solid #f3f4f6;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
 }
 
@@ -48,26 +50,28 @@ const appStore = useAppStore()
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 .app-main {
   flex: 1;
   overflow: auto;
-  background: #f5f7fa;
+  background: #f9fafb;
+  padding: 0;
 }
 
 .fade-transform-enter-active,
 .fade-transform-leave-active {
-  transition: all 0.3s;
+  transition: all 0.2s ease;
 }
 
 .fade-transform-enter-from {
   opacity: 0;
-  transform: translateX(-30px);
+  transform: translateY(8px);
 }
 
 .fade-transform-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateY(-8px);
 }
 </style>

@@ -1,7 +1,7 @@
 package com.han.tenant.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.han.tenant.domain.entity.Tenant;
+import com.han.tenant.domain.po.TenantPo;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -27,7 +27,7 @@ public class TenantDTO implements Serializable {
      * 组合Tenant实体（自动展开所有字段）
      */
     @JsonUnwrapped
-    private Tenant base;
+    private TenantPo base;
 
     // ==================== 扩展字段 ====================
 
@@ -49,7 +49,7 @@ public class TenantDTO implements Serializable {
 
     public void setTenantId(Long tenantId) {
         if (base == null) {
-            base = new Tenant();
+            base = new TenantPo();
         }
         base.setId(tenantId);
     }

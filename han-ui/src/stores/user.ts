@@ -6,6 +6,7 @@ import type { LoginDTO, UserInfo } from '@/types'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(getToken() || '')
+  const _userId = ref<number | null>(null)
   const userInfo = ref<UserInfo | null>(null)
   const tenantId = ref<number | null>(null)
   const roles = ref<string[]>([])
@@ -20,6 +21,7 @@ export const useUserStore = defineStore('user', () => {
   async function login(loginForm: LoginDTO) {
     const res = await loginApi(loginForm)
     token.value = res.data.accessToken
+    _userId.value = res.data.userInfo?.userId ?? null
     setToken(res.data.accessToken)
     setRefreshToken(res.data.refreshToken)
     return res
@@ -69,13 +71,13 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    token, userInfo, tenantId, roles, permissions,
+    token, _userId, userInfo, tenantId, roles, permissions,
     isLogin, userId, username, nickname, avatar,
     login, getInfo, logout, resetToken, hasPermission, hasRole
   }
 }, {
   persist: {
     key: 'HAN-user',
-    pick: ['token', 'tenantId']
+    pick: ['token', 'tenantId', '_userId']
   }
 })

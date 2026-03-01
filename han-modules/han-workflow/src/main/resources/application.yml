@@ -1,46 +1,23 @@
 ﻿server:
-  port: 9205
+  port: 9203
 
 spring:
+  config:
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-workflow.yml"
   application:
     name: han-workflow
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/han_flowable?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true
-    username: root
-    password: root
-
-# Flowable配置
-flowable:
-  # 关闭异步执行器(开发环境)
-  async-executor-activate: false
-  # 数据库表更新策略: true-自动创建/更新表
-  database-schema-update: true
-  # 历史记录级别: none/activity/audit/full
-  history-level: audit
-  # 关闭定时任务(使用XXL-JOB)
-  async:
-    executor:
-      enabled: false
-  # 流程定义缓存
-  process-definition-cache-limit: 128
-  # ID生成器使用UUID
-  id-generator: uuid
-
-# Nacos配置
-spring.cloud:
-  nacos:
-    discovery:
-      server-addr: localhost:8848
-      namespace: han
-    config:
-      server-addr: localhost:8848
-      namespace: han
-      file-extension: yml
-
-# MyBatis-Plus配置
-mybatis-plus:
-  mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: com.han.workflow.domain.entity
-  configuration:
-    map-underscore-to-camel-case: true
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+        file-extension: yml

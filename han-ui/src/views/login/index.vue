@@ -134,59 +134,96 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #f9fafb;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -20%;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #dbeafe 0%, transparent 70%);
+    pointer-events: none;
+  }
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -30%;
+    left: -10%;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ede9fe 0%, transparent 70%);
+    pointer-events: none;
+  }
 }
 
 .login-form {
-  width: 400px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  width: 420px;
+  padding: 48px 40px 40px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.06);
+  position: relative;
+  z-index: 1;
 }
 
 .title {
   text-align: center;
-  color: #333;
-  margin-bottom: 10px;
-  font-size: 28px;
+  color: #111827;
+  margin-bottom: 6px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
 .subtitle {
   text-align: center;
-  color: #999;
-  margin-bottom: 30px;
+  color: #9ca3af;
+  margin-bottom: 36px;
   font-size: 14px;
+  font-weight: 400;
 }
 
 .captcha-row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   
-  .el-input {
-    flex: 1;
-  }
+  .el-input { flex: 1; }
   
   .captcha-img {
     width: 120px;
     height: 40px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    transition: border-color 0.15s ease;
+    &:hover { border-color: #d1d5db; }
   }
 }
 
 .login-btn {
   width: 100%;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
 }
 
 .footer {
   position: fixed;
-  bottom: 20px;
+  bottom: 24px;
   left: 0;
   right: 0;
   text-align: center;
-  color: rgba(255, 255, 255, 0.7);
+  color: #9ca3af;
   font-size: 12px;
+  z-index: 1;
 }
 </style>

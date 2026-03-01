@@ -1,8 +1,8 @@
 package com.han.job.executor;
 
 import com.han.job.context.TraceContext;
-import com.han.job.domain.entity.SysJob;
-import com.han.job.domain.entity.SysJobLog;
+import com.han.job.domain.po.SysJobPo;
+import com.han.job.domain.po.SysJobLogPo;
 import com.han.job.mapper.SysJobLogMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.JobExecutionContext;
@@ -38,14 +38,14 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
 
     @Override
     public void execute(JobExecutionContext context) {
-        SysJob job = (SysJob) context.getMergedJobDataMap().get("JOB_PROPERTIES");
+        SysJobPo job = (SysJobPo) context.getMergedJobDataMap().get("JOB_PROPERTIES");
         
         // JobFlow 特性：生成 TraceId 并设置到 MDC
         String traceId = TraceContext.generateTraceId();
         TraceContext.setTraceId(traceId);
         TraceContext.setJobId(job.getJobId());
         
-        SysJobLog jobLog = new SysJobLog();
+        SysJobLogPo jobLog = new SysJobLogPo();
         jobLog.setJobName(job.getJobName());
         jobLog.setJobGroup(job.getJobGroup());
         jobLog.setInvokeTarget(job.getInvokeTarget());
@@ -78,12 +78,12 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
     /**
      * 执行任务(子类实现)
      */
-    protected abstract void doExecute(JobExecutionContext context, SysJob job) throws Exception;
+    protected abstract void doExecute(JobExecutionContext context, SysJobPo job) throws Exception;
 
     /**
      * 调用目标方法
      */
-    protected void invokeMethod(SysJob job) throws Exception {
+    protected void invokeMethod(SysJobPo job) throws Exception {
         String invokeTarget = job.getInvokeTarget();
         
         // 解析Bean名称和方法名
@@ -121,7 +121,7 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
         }
     }
 
-    private void saveJobLog(SysJobLog jobLog) {
+    private void saveJobLog(SysJobLogPo jobLog) {
         try {
             if (jobLogMapper != null) {
                 jobLogMapper.insert(jobLog);

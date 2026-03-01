@@ -39,6 +39,9 @@ replay_pid*
 # Metadata
 .META-INF/
 META-INF/
+!**/src/main/resources/META-INF/
+!**/src/main/resources/META-INF/spring/
+!**/src/main/resources/META-INF/spring/*.imports
 
 # Cache files
 *.cache
@@ -201,6 +204,8 @@ mtimes
 *.indd
 *.cdr
 *.svg
+!han-ui/src/assets/**/*.svg
+!han-ui/src/assets/icons/**/*.svg
 *.pdf
 *.rtf
 *.doc
@@ -421,4 +426,11 @@ hs_err_pid*
 replay_pid*
 
 # Target folder for Maven builds
-**/target/
+**/target/test-results.txt
+compile-output.txt
+job-log.txt
+pg-log.txt
+system-log.txt
+test-api.ps1
+MaxKB-2/
+nacos/

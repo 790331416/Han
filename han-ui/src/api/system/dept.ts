@@ -38,7 +38,7 @@ export function getDeptTree() {
 }
 
 export function getDept(id: number) {
-  return get<Dept>(`/system/dept/${id}`)
+  return get<Dept>(`/system/dept/info/${id}`)
 }
 
 export function addDept(data: DeptForm) {

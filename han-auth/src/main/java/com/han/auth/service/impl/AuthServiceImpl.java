@@ -4,7 +4,7 @@ import com.han.api.system.SystemServiceClient;
 import com.han.api.system.domain.UserVO;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
-import com.han.auth.service.AuthService;
+import com.han.auth.service.IAuthService;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
 import com.han.common.core.domain.R;
@@ -30,7 +30,7 @@ import java.util.Set;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class AuthServiceImpl implements AuthService {
+public class AuthServiceImpl implements IAuthService {
 
     private final StringRedisTemplate redisTemplate;
     private final SystemServiceClient systemServiceClient;

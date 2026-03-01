@@ -30,7 +30,7 @@
       </template>
 
       <el-table v-loading="loading" :data="dictList">
-        <el-table-column label="字典ID" prop="dictId" width="80" align="center" />
+        <el-table-column label="字典ID" prop="id" width="80" align="center" />
         <el-table-column label="字典名称" prop="dictName" width="200" />
         <el-table-column label="字典类型" width="250">
           <template #default="{ row }">
@@ -71,7 +71,7 @@
           <el-input v-model="form.dictName" placeholder="请输入字典名称" />
         </el-form-item>
         <el-form-item label="字典类型" prop="dictType">
-          <el-input v-model="form.dictType" placeholder="请输入字典类型" :disabled="!!form.dictId" />
+          <el-input v-model="form.dictType" placeholder="请输入字典类型" :disabled="!!form.id" />
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
@@ -109,7 +109,7 @@ const formRef = ref<FormInstance>()
 
 const queryParams = reactive({ dictName: '', dictType: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
-const form = reactive<DictTypeForm>({ dictName: '', dictType: '', status: 0, remark: '' })
+const form = reactive<DictTypeForm>({ id: undefined, dictName: '', dictType: '', status: 0, remark: '' })
 
 const rules: FormRules = {
   dictName: [{ required: true, message: '请输入字典名称', trigger: 'blur' }],
@@ -147,9 +147,9 @@ async function handleEdit(row: DictType) {
   resetForm()
   dialogTitle.value = '编辑字典类型'
   try {
-    const res = await getDictType(row.dictId)
+    const res = await getDictType(row.id)
     const data = (res as any).data
-    Object.assign(form, { dictId: data.dictId, dictName: data.dictName, dictType: data.dictType, status: data.status, remark: data.remark })
+    Object.assign(form, { id: data.id, dictName: data.dictName, dictType: data.dictType, status: data.status, remark: data.remark })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -157,7 +157,7 @@ async function handleEdit(row: DictType) {
 async function handleDelete(row: DictType) {
   try {
     await ElMessageBox.confirm(`确认删除字典类型"${row.dictName}"？`, '提示', { type: 'warning' })
-    await deleteDictType(row.dictId)
+    await deleteDictType(row.id)
     ElMessage.success('删除成功')
     getList()
   } catch { /* cancel */ }
@@ -172,7 +172,7 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    if (form.dictId) {
+    if (form.id) {
       await updateDictType(form)
       ElMessage.success('修改成功')
     } else {
@@ -187,7 +187,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.dictId = undefined; form.dictName = ''; form.dictType = ''; form.status = 0; form.remark = ''
+  form.id = undefined; form.dictName = ''; form.dictType = ''; form.status = 0; form.remark = ''
 }
 </script>
 

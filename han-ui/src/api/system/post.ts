@@ -2,7 +2,7 @@ import { get, post } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 export interface Post {
-  postId: number
+  id: number
   postCode: string
   postName: string
   postSort: number
@@ -18,7 +18,7 @@ export interface PostQuery extends PageQuery {
 }
 
 export interface PostForm {
-  postId?: number
+  id?: number
   postCode: string
   postName: string
   postSort?: number

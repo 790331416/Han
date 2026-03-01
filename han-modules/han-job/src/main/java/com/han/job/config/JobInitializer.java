@@ -1,6 +1,6 @@
 package com.han.job.config;
 
-import com.han.job.domain.entity.SysJob;
+import com.han.job.domain.po.SysJobPo;
 import com.han.job.mapper.SysJobMapper;
 import com.han.job.util.QuartzJobUtils;
 import lombok.RequiredArgsConstructor;
@@ -33,9 +33,9 @@ public class JobInitializer implements CommandLineRunner {
             scheduler.clear();
             
             // 查询所有任务
-            List<SysJob> jobs = jobMapper.selectList(null);
+            List<SysJobPo> jobs = jobMapper.selectList(null);
             
-            for (SysJob job : jobs) {
+            for (SysJobPo job : jobs) {
                 try {
                     QuartzJobUtils.createScheduleJob(scheduler, job);
                     log.info("初始化任务成功: {} ({})", job.getJobName(), job.getJobGroup());

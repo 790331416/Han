@@ -153,7 +153,7 @@ public class ASysUserController extends BSysUserController {
     }
     
     @Override
-    @PutMapping("/edit")
+    @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority(@Auth.SYS_USER_EDIT)")
     @OperLog(title = "用户管理", businessType = BusinessType.UPDATE)
     public R<Void> edit(@RequestBody SysUserDto dto) {
@@ -161,7 +161,7 @@ public class ASysUserController extends BSysUserController {
     }
     
     @Override
-    @DeleteMapping("/batch")
+    @PostMapping("/remove")
     @PreAuthorize("@ss.hasAuthority(@Auth.SYS_USER_DELETE)")
     @OperLog(title = "用户管理", businessType = BusinessType.DELETE)
     public R<Void> batchRemove(@RequestBody List<Long> ids) {
@@ -535,8 +535,7 @@ public class RequestContext {
 // 在 BaseController 发布事件
 public abstract class BaseController<Q, D, S> {
     
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
+    private final ApplicationEventPublisher eventPublisher;
     
     public R<Void> batchRemove(List<Long> ids) {
         int result = baseService.deleteByIds(ids);
@@ -552,10 +551,10 @@ public abstract class BaseController<Q, D, S> {
 
 // 其他模块监听事件
 @Component
+@RequiredArgsConstructor
 public class UserDeleteListener {
     
-    @Autowired
-    private ISysRoleService roleService;
+    private final ISysRoleService roleService;
     
     @EventListener
     @Async  // 支持异步处理
@@ -573,8 +572,7 @@ public class UserDeleteListener {
 ```java
 public abstract class BaseController<Q, D, S> {
     
-    @Autowired
-    private MeterRegistry meterRegistry;
+    private final MeterRegistry meterRegistry;
     
     public R<PageResult<D>> list(Q query) {
         Timer.Sample sample = Timer.start(meterRegistry);

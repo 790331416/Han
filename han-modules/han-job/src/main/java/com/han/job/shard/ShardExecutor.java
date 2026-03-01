@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import java.util.function.Consumer;
 
 /**
@@ -34,7 +34,7 @@ public class ShardExecutor {
         log.info("准备执行分片任务: {}", shardRange);
 
         // 尝试获取分布式锁
-        boolean locked = distributedLock.tryLock(lockKey, lockValue, lockTimeout, TimeUnit.SECONDS);
+        boolean locked = distributedLock.tryLock(lockKey, lockValue, Duration.ofSeconds(lockTimeout));
 
         if (!locked) {
             log.warn("分片任务已被其他实例锁定，跳过执行: {}", shardRange);
@@ -68,6 +68,6 @@ public class ShardExecutor {
      * 执行分片任务（默认锁超时60秒）
      */
     public void executeWithLock(ShardRange shardRange, Consumer<ShardRange> processor) {
-        executeWithLock(shardRange, processor, 60);
+        executeWithLock(shardRange, processor, 60L);
     }
 }

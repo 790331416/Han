@@ -2,57 +2,22 @@
   port: 9204
 
 spring:
+  config:
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-job.yml"
   application:
     name: han-job
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/han?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai
-    username: root
-    password: root
-
-  # Quartz 配置
-  quartz:
-    # 数据库存储模式(支持集群)
-    job-store-type: jdbc
-    # 调度器名称
-    scheduler-name: hanScheduler
-    # 等待正在运行的任务完成
-    wait-for-jobs-to-complete-on-shutdown: true
-    # 覆盖已有任务
-    overwrite-existing-jobs: true
-    properties:
-      org:
-        quartz:
-          scheduler:
-            instanceName: hanScheduler
-            instanceId: AUTO
-          jobStore:
-            class: org.springframework.scheduling.quartz.LocalDataSourceJobStore
-            driverDelegateClass: org.quartz.impl.jdbcjobstore.StdJDBCDelegate
-            tablePrefix: QRTZ_
-            isClustered: true
-            clusterCheckinInterval: 10000
-            useProperties: false
-          threadPool:
-            class: org.quartz.simpl.SimpleThreadPool
-            threadCount: 10
-            threadPriority: 5
-            threadsInheritContextClassLoaderOfInitializingThread: true
-
-# Nacos配置
-spring.cloud:
-  nacos:
-    discovery:
-      server-addr: localhost:8848
-      namespace: han
-    config:
-      server-addr: localhost:8848
-      namespace: han
-      file-extension: yml
-
-# MyBatis-Plus配置
-mybatis-plus:
-  mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: com.han.job.domain.entity
-  configuration:
-    map-underscore-to-camel-case: true
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+        file-extension: yml

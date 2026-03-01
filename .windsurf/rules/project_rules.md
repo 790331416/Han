@@ -1,9 +1,30 @@
+---
+trigger: always_on
+---
 
 # Han Cloud 项目规则文档
 
 ## 文档说明
 
 本文档是 Han Cloud 企业级多租户微服务平台的**强制性规则文档**，所有开发、构建、部署、测试工作必须严格遵守。
+
+> **✅ 重构进度（2026-03-01）**
+> 
+> **后端**（已全部落地）：
+> - ✅ 包名：`domain/entity` + `convert` → `domain/po` + `converter`
+> - ✅ 实体命名：`XxxPo` 后缀已统一
+> - ✅ Service 命名：`IXxxService` 前缀已统一
+> - ✅ Controller：han-system 已采用 AIB 三层架构
+> - ✅ HTTP 方法：仅使用 GET/POST
+> 
+> **前端**（2026-03-01 升级）：
+> - ✅ 包管理器：npm → pnpm 10.x
+> - ✅ 引入 VueUse 14.x（组合式工具库）
+> - ✅ 引入 UnoCSS 66.x（原子化 CSS）
+> - ✅ UI 主题：现代极简白（Notion/Linear 风格）
+> - ✅ 前端规则文档：`frontend-rules.md`
+> 
+> 新代码必须严格遵守以下规范。
 
 ---
 
@@ -16,6 +37,7 @@
   - [4. API 接口规范](#4-api-接口规范)
   - [5. 安全规范](#5-安全规范)
   - [6. 数据传输规范](#6-数据传输规范)
+  - [7. 数据删除与级联规范](#7-数据删除与级联规范)
 - [第二部分：构建部署规则](#第二部分构建部署规则)
   - [1. 环境准备规则](#1-环境准备规则)
   - [2. Maven 构建规则](#2-maven-构建规则)
@@ -41,11 +63,11 @@
 | **JDK** | 21 | Java 运行环境 | **强制**，不得使用其他版本 |
 | **Maven** | 3.9+ | 构建工具 | 推荐版本，最低 3.8+ |
 | **Spring Boot** | 4.0.2 | 微服务框架 | **锁定版本** |
-| **Spring Cloud** | 2025.0.1 | 微服务治理 | **锁定版本** |
-| **Spring Cloud Alibaba** | 2025.0.0.0 | 服务注册/配置 | **锁定版本** |
+| **Spring Cloud** | 2025.1.0 | 微服务治理 | **锁定版本** |
+| **Spring Cloud Alibaba** | 2025.1.0.0 | 服务注册/配置 | **锁定版本** |
 | **PostgreSQL** | 18.1 | 主数据库 | **锁定版本** |
 | **Redis** | 7 | 缓存/分布式锁 | **锁定版本** |
-| **Nacos** | 3.1+ | 注册/配置中心 | **最低版本** |
+| **Nacos** | 2.3+ | 注册/配置中心 | **最低版本** |
 
 ### 1.2 JSON 处理 - Jackson（唯一标准）
 
@@ -578,6 +600,139 @@ public R<PageResult<SysUserDto>> list(SysUserQuery query) {
 
 ---
 
+## 7. 数据删除与级联规范
+
+### 7.1 混合删除策略（强制）
+
+项目采用**混合删除策略**：业务主表使用逻辑删除，日志表和关联表使用物理删除。
+
+#### 7.1.1 逻辑删除（业务主表）
+
+继承 `BaseEntity` 的业务实体自动拥有逻辑删除能力：
+
+| 表类型 | 删除方式 | 实体继承 | 说明 |
+|--------|---------|---------|------|
+| `sys_user` | 逻辑删除 | `BizEntity` | 用户可恢复、可审计 |
+| `sys_role` | 逻辑删除 | `BizEntity` | 角色可恢复 |
+| `sys_menu` | 逻辑删除 | `BizEntity` | 菜单可恢复 |
+| `sys_dept` | 逻辑删除 | `BizEntity` | 部门可恢复 |
+| `sys_tenant` | 逻辑删除 | `BizEntity` | 租户可恢复 |
+| `sys_job` | 逻辑删除 | `BizEntity` | 任务定义可恢复 |
+| `open_app` | 逻辑删除 | `BizEntity` | 应用可恢复 |
+
+**实现方式**：
+
+```java
+// BaseEntity 中已统一定义
+@TableLogic
+private Integer delFlag;  // 0=存在，1=删除
+```
+
+```yaml
+# MyBatis-Plus 全局配置
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: delFlag
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+```
+
+#### 7.1.2 物理删除（日志表、关联表）
+
+以下表**不继承** `BaseEntity`，使用物理删除：
+
+| 表类型 | 删除方式 | 原因 |
+|--------|---------|------|
+| `sys_job_log` | 物理删除 | 日志数据量大，无需恢复 |
+| `sys_user_role` | 物理删除 | 关联表，随主表级联处理 |
+| `sys_role_menu` | 物理删除 | 关联表，随主表级联处理 |
+| `sys_login_log` | 物理删除 | 日志数据，定期清理 |
+| `sys_oper_log` | 物理删除 | 操作日志，定期归档 |
+
+**实现方式**：实体类直接继承 `Serializable`，不继承 `BaseEntity`，不包含 `delFlag` 字段。
+
+```java
+// 日志实体示例 - 不继承 BaseEntity，无逻辑删除
+@Data
+@TableName("sys_job_log")
+public class SysJobLog implements Serializable {
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private String jobName;
+    // ... 无 delFlag 字段
+}
+```
+
+#### 7.1.3 唯一约束处理
+
+逻辑删除的表如有唯一约束，**必须将 `del_flag` 加入联合唯一索引**，避免删除后的记录阻碍新记录插入：
+
+```sql
+-- ❌ 错误：逻辑删除后无法再创建同名用户
+CREATE UNIQUE INDEX uk_username ON sys_user(username);
+
+-- ✅ 正确：加入 del_flag，已删除记录不影响新记录
+CREATE UNIQUE INDEX uk_username ON sys_user(username) WHERE del_flag = 0;
+```
+
+> PostgreSQL 支持部分索引（`WHERE` 条件索引），这是最佳实践。
+
+### 7.2 级联删除规范（强制）
+
+#### 7.2.1 级联原则
+
+| 原则 | 说明 |
+|------|------|
+| **主表逻辑删除时，关联表物理删除** | 删除用户时，同时物理删除 `sys_user_role` 中的关联记录 |
+| **禁止数据库外键级联** | 不使用 `ON DELETE CASCADE`，由 Service 层代码控制级联 |
+| **级联操作必须在事务中** | 使用 `@Transactional` 保证原子性 |
+| **级联前校验引用关系** | 删除角色前检查是否有用户关联 |
+
+#### 7.2.2 级联删除代码模板
+
+```java
+@Override
+@Transactional(rollbackFor = Exception.class)
+public void deleteUser(Long userId) {
+    // 1. 校验：是否允许删除
+    if (userId == 1L) {
+        throw new BusinessException("不允许删除超级管理员");
+    }
+
+    // 2. 级联：物理删除关联表记录
+    userRoleMapper.delete(
+        new LambdaQueryWrapper<SysUserRole>()
+            .eq(SysUserRole::getUserId, userId)
+    );
+
+    // 3. 主表：逻辑删除
+    baseMapper.deleteById(userId);  // MyBatis-Plus 自动执行 UPDATE SET del_flag=1
+}
+```
+
+#### 7.2.3 常见级联关系表
+
+| 主表 | 关联表 | 删除主表时的级联操作 |
+|------|--------|-------------------|
+| `sys_user` | `sys_user_role` | 物理删除用户的所有角色关联 |
+| `sys_role` | `sys_user_role`、`sys_role_menu` | 先检查是否有用户使用该角色，有则拒绝；无则物理删除角色菜单关联 |
+| `sys_menu` | `sys_role_menu` | 先检查是否有子菜单，有则拒绝；无则物理删除角色菜单关联 |
+| `sys_dept` | `sys_user`（dept_id） | 先检查部门下是否有用户，有则拒绝删除 |
+| `sys_tenant` | 所有带 `tenant_id` 的表 | **禁止直接删除**，仅允许停用（status=1） |
+
+#### 7.2.4 禁止事项
+
+| 禁止项 | 原因 | 正确做法 |
+|--------|------|----------|
+| ❌ 数据库 `ON DELETE CASCADE` | 不可控、难调试 | ✅ Service 层代码级联 |
+| ❌ 删除主表不处理关联表 | 产生脏数据 | ✅ 事务中先删关联再删主表 |
+| ❌ 关联表使用逻辑删除 | 浪费空间、复杂化查询 | ✅ 关联表物理删除 |
+| ❌ 不校验就删除 | 可能破坏数据完整性 | ✅ 删除前检查引用关系 |
+| ❌ 逻辑删除租户 | 租户数据影响范围过大 | ✅ 仅停用，不删除 |
+
+---
+
 # 第二部分：构建部署规则
 
 ## 1. 环境准备规则
@@ -591,7 +746,7 @@ public R<PageResult<SysUserDto>> list(SysUserQuery query) {
 | Docker | 20.10+ | https://www.docker.com/ | 容器化部署 |
 | PostgreSQL | 18.1 | https://www.postgresql.org/ | 数据库 |
 | Redis | 7 | https://redis.io/ | 缓存 |
-| Nacos | 3.1+ | https://nacos.io/ | 服务注册/配置 |
+| Nacos | 2.3+ | https://nacos.io/ | 服务注册/配置 |
 
 ### 1.2 推荐工具
 
@@ -657,8 +812,8 @@ mvn clean package
 <properties>
     <java.version>21</java.version>
     <spring-boot.version>4.0.2</spring-boot.version>
-    <spring-cloud.version>2025.0.1</spring-cloud.version>
-    <mybatis-plus.version>3.5.9</mybatis-plus.version>
+    <spring-cloud.version>2025.1.0</spring-cloud.version>
+    <mybatis-plus.version>3.5.16</mybatis-plus.version>
 </properties>
 ```
 
@@ -706,7 +861,7 @@ docker-compose -f docker-compose-small.yml up -d
 
 #### 访问地址
 
-- **Nacos**: http://localhost:8848/nacos (han/han@2026)
+- **Nacos**: http://localhost:8848/nacos (nacos/nacos)
 - **网关**: http://localhost:8080
 
 ### 3.3 中型部署（推荐团队）
@@ -762,8 +917,9 @@ volumes:
 
 ```yaml
 environment:
-  SPRING_PROFILES_ACTIVE: docker
   NACOS_SERVER_ADDR: nacos:8848
+  DB_HOST: postgres
+  REDIS_HOST: redis
 ```
 
 ### 3.5 Dockerfile 规范
@@ -771,7 +927,7 @@ environment:
 #### 3.5.1 基础镜像规范
 
 ```dockerfile
-FROM openjdk:21-jdk-slim
+FROM registry.cn-hangzhou.aliyuncs.com/xzy0112/eclipse-temurin:21-jre-alpine
 LABEL maintainer="Han Team <support@han.com>"
 ```
 

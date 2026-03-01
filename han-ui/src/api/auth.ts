@@ -35,7 +35,7 @@ export function logout() {
 
 // 获取用户信息
 export function getUserInfo() {
-  return get<UserInfo>('/system/user/info')
+  return get<UserInfo>('/system/user/current')
 }
 
 // 获取路由菜单

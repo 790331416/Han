@@ -1,4 +1,7 @@
-﻿# Han Cloud 项目规则与开发规范
+﻿---
+trigger: always_on
+---
+# Han Cloud 项目规则与开发规范
 
 ## 强制版本约束
 
@@ -26,6 +29,18 @@
 - redisson: 4.2.0
 - transmittable-thread-local: 2.14.5
 - micrometer-tracing-bridge-otel: 由 Spring Boot BOM 管理
+
+### 前端技术栈（han-ui）
+- Vue: 3.5.x
+- Vite: 6.x
+- TypeScript: 5.7.x
+- Element Plus: 2.9.x
+- UnoCSS: 66.x（原子化 CSS，替代手写 SCSS）
+- VueUse: 14.x（组合式工具库）
+- Pinia: 2.3.x（状态管理）
+- Axios: 1.7.x（HTTP 客户端）
+- **pnpm**: 10.x（包管理器，**禁止 npm/yarn**）
+- UI 主题：现代极简白（Notion/Linear 风格，蓝色主色 `#2563eb`）
 
 ---
 
@@ -200,7 +215,7 @@ user.setUsername("admin");
 ```
 
 ### IDE 编译冲突
-IDE 会覆盖 `target/classes`，导致 MapStruct `*ConvertImpl` 包含错误桩代码。
+IDE 会覆盖 `target/classes`，导致 MapStruct `*ConverterImpl` 包含错误桩代码。
 **解决方案**：Docker 构建前将 JAR 拷到临时目录。
 
 ---

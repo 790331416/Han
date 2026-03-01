@@ -1,6 +1,6 @@
 package com.han.job.util;
 
-import com.han.job.domain.entity.SysJob;
+import com.han.job.domain.po.SysJobPo;
 import com.han.job.executor.QuartzDisallowConcurrentExecution;
 import com.han.job.executor.QuartzJobExecution;
 import org.quartz.*;
@@ -13,21 +13,21 @@ public class QuartzJobUtils {
     /**
      * 获取任务Key
      */
-    public static JobKey getJobKey(SysJob job) {
+    public static JobKey getJobKey(SysJobPo job) {
         return JobKey.jobKey(String.valueOf(job.getJobId()), job.getJobGroup());
     }
 
     /**
      * 获取触发器Key
      */
-    public static TriggerKey getTriggerKey(SysJob job) {
+    public static TriggerKey getTriggerKey(SysJobPo job) {
         return TriggerKey.triggerKey(String.valueOf(job.getJobId()), job.getJobGroup());
     }
 
     /**
      * 创建定时任务
      */
-    public static void createScheduleJob(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void createScheduleJob(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         // 选择Job类(是否允许并发)
         Class<? extends Job> jobClass = "0".equals(job.getConcurrent()) 
                 ? QuartzJobExecution.class 
@@ -67,7 +67,7 @@ public class QuartzJobUtils {
     /**
      * 更新定时任务
      */
-    public static void updateScheduleJob(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void updateScheduleJob(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         TriggerKey triggerKey = getTriggerKey(job);
         
         // 构建Cron触发器
@@ -101,28 +101,28 @@ public class QuartzJobUtils {
     /**
      * 删除定时任务
      */
-    public static void deleteScheduleJob(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void deleteScheduleJob(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         scheduler.deleteJob(getJobKey(job));
     }
 
     /**
      * 暂停任务
      */
-    public static void pauseJob(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void pauseJob(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         scheduler.pauseJob(getJobKey(job));
     }
 
     /**
      * 恢复任务
      */
-    public static void resumeJob(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void resumeJob(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         scheduler.resumeJob(getJobKey(job));
     }
 
     /**
      * 立即执行任务
      */
-    public static void runJobNow(Scheduler scheduler, SysJob job) throws SchedulerException {
+    public static void runJobNow(Scheduler scheduler, SysJobPo job) throws SchedulerException {
         JobDataMap dataMap = new JobDataMap();
         dataMap.put("JOB_PROPERTIES", job);
         scheduler.triggerJob(getJobKey(job), dataMap);

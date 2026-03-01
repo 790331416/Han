@@ -66,6 +66,15 @@ public final class FileUploadUtils {
         return UUID.randomUUID().toString() + "." + extension;
     }
 
+    /**
+     * 提取文件名（生成唯一文件名）
+     */
+    public static String extractFilename(MultipartFile file) {
+        String originalFilename = file.getOriginalFilename();
+        String extension = originalFilename != null ? getFileExtension(originalFilename) : "";
+        return UUID.randomUUID().toString() + (extension.isEmpty() ? "" : "." + extension);
+    }
+
     public static boolean isImage(String filename) {
         String extension = getFileExtension(filename);
         List<String> imageExtensions = Arrays.asList("jpg", "jpeg", "png", "gif");

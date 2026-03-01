@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Bean;
 public class StorageAutoConfiguration {
 
     @Bean
-    @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs")
+    @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs", matchIfMissing = true)
     @ConditionalOnMissingBean
     public StorageProvider rustFSStorageProvider(StorageProperties properties) {
         return new RustFSStorageProvider(properties.getRustfs());

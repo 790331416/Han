@@ -194,13 +194,11 @@ han Cloud 融合了 **JobFlow** 设计理念，将任务调度能力深度集成
 
 ```java
 @Component("orderSyncTask")
+@RequiredArgsConstructor
 public class OrderSyncTaskHandler {
     
-    @Autowired
-    private ShardStrategy shardStrategy;
-    
-    @Autowired
-    private ShardExecutor shardExecutor;
+    private final ShardStrategy shardStrategy;
+    private final ShardExecutor shardExecutor;
     
     /**
      * 订单同步任务（支持分片）

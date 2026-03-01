@@ -1,6 +1,6 @@
 package com.han.job.executor;
 
-import com.han.job.domain.entity.SysJob;
+import com.han.job.domain.po.SysJobPo;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 
@@ -11,7 +11,7 @@ import org.quartz.JobExecutionContext;
 public class QuartzDisallowConcurrentExecution extends AbstractQuartzJob {
 
     @Override
-    protected void doExecute(JobExecutionContext context, SysJob job) throws Exception {
+    protected void doExecute(JobExecutionContext context, SysJobPo job) throws Exception {
         invokeMethod(job);
     }
 }

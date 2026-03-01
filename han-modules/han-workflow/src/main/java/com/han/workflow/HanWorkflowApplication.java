@@ -7,7 +7,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 /**
  * 工作流服务启动类
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"com.han", "org.springframework.boot.autoconfigure.kafka"})
 @EnableDiscoveryClient
 public class HanWorkflowApplication {
 

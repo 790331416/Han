@@ -1,9 +1,8 @@
 <template>
   <div class="sidebar">
     <div class="logo">
-      <img src="@/assets/logo.svg" alt="logo" class="logo-img" v-if="appStore.sidebar.opened" />
+      <div class="logo-icon">H</div>
       <span class="logo-text" v-if="appStore.sidebar.opened">HAN Cloud</span>
-      <span class="logo-text-small" v-else>XM</span>
     </div>
     
     <el-scrollbar>
@@ -12,15 +11,14 @@
         :collapse="!appStore.sidebar.opened"
         :unique-opened="true"
         :collapse-transition="false"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
+        background-color="transparent"
+        text-color="#6b7280"
+        active-text-color="#2563eb"
         mode="vertical"
         router
       >
         <template v-for="route in routes" :key="route.path">
           <template v-if="!route.meta?.hidden">
-            <!-- 无子菜单或只有一个可见子菜单：显示为单级菜单 -->
             <el-menu-item
               v-if="visibleChildren(route).length <= 1"
               :index="resolvePath(route.path, visibleChildren(route)[0]?.path)"
@@ -29,7 +27,6 @@
               <template #title>{{ menuMeta(route).title }}</template>
             </el-menu-item>
             
-            <!-- 多级菜单 -->
             <el-sub-menu v-else :index="route.path">
               <template #title>
                 <el-icon v-if="route.meta?.icon"><component :is="route.meta.icon" /></el-icon>
@@ -90,32 +87,69 @@ function resolvePath(parentPath: string, childPath?: string) {
 }
 
 .logo {
-  height: 50px;
+  height: 56px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: #2b3a4a;
+  padding: 0 16px;
+  gap: 12px;
+  border-bottom: 1px solid #f3f4f6;
   
-  .logo-img {
+  .logo-icon {
     width: 32px;
     height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
   }
   
   .logo-text {
-    color: #fff;
-    font-size: 16px;
-    font-weight: bold;
-  }
-  
-  .logo-text-small {
-    color: #fff;
-    font-size: 18px;
-    font-weight: bold;
+    color: #111827;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
   }
 }
 
-.el-menu {
-  border-right: none;
+:deep(.el-menu) {
+  border-right: none !important;
+  padding: 8px;
+  
+  .el-menu-item,
+  .el-sub-menu__title {
+    height: 40px;
+    line-height: 40px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    
+    &:hover {
+      background-color: #f3f4f6 !important;
+      color: #111827 !important;
+    }
+  }
+  
+  .el-menu-item.is-active {
+    background-color: #eff6ff !important;
+    color: #2563eb !important;
+    font-weight: 600;
+  }
+  
+  .el-sub-menu .el-menu-item {
+    padding-left: 48px !important;
+    font-weight: 400;
+  }
+  
+  .el-icon {
+    font-size: 18px;
+  }
 }
 </style>

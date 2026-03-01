@@ -1,7 +1,7 @@
 package com.han.job.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.han.job.domain.entity.SysJob;
+import com.han.job.domain.po.SysJobPo;
 import lombok.Data;
 
 import java.io.Serial;
@@ -19,7 +19,7 @@ public class JobDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @JsonUnwrapped
-    private SysJob base;
+    private SysJobPo base;
 
     // ==================== 核心业务字段便捷访问 ====================
 
@@ -29,7 +29,7 @@ public class JobDTO implements Serializable {
 
     public void setJobId(Long jobId) {
         if (base == null) {
-            base = new SysJob();
+            base = new SysJobPo();
         }
         base.setJobId(jobId);
     }

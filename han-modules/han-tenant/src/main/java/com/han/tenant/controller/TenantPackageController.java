@@ -5,7 +5,7 @@ import com.han.common.core.domain.R;
 import com.han.common.security.annotation.RequiresPermission;
 import com.han.tenant.domain.dto.TenantPackageDTO;
 import com.han.tenant.domain.vo.TenantPackageVO;
-import com.han.tenant.service.TenantPackageService;
+import com.han.tenant.service.ITenantPackageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +21,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TenantPackageController {
 
-    private final TenantPackageService tenantPackageService;
+    private final ITenantPackageService tenantPackageService;
 
     /**
      * 查询套餐列表

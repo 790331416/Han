@@ -2,7 +2,7 @@ package com.han.open.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.han.open.domain.entity.OpenApp;
+import com.han.open.domain.po.OpenAppPo;
 import lombok.Data;
 
 import java.io.Serial;
@@ -21,7 +21,7 @@ public class OpenAppDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @JsonUnwrapped
-    private OpenApp base;
+    private OpenAppPo base;
 
     // ==================== 扩展字段 ====================
 
@@ -49,7 +49,7 @@ public class OpenAppDTO implements Serializable {
 
     public void setAppId(Long appId) {
         if (base == null) {
-            base = new OpenApp();
+            base = new OpenAppPo();
         }
         base.setId(appId);
     }

@@ -6,7 +6,7 @@ import com.han.open.domain.dto.OAuth2AuthorizeDTO;
 import com.han.open.domain.dto.OAuth2TokenDTO;
 import com.han.open.domain.vo.OAuth2TokenVO;
 import com.han.open.domain.vo.OAuth2UserInfoVO;
-import com.han.open.service.OAuth2Service;
+import com.han.open.service.IOAuth2Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class OAuth2Controller {
 
-    private final OAuth2Service oauth2Service;
+    private final IOAuth2Service oauth2Service;
 
     /**
      * 授权端点 - 获取授权码

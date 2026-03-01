@@ -2,59 +2,22 @@
   port: 9200
 
 spring:
-  threads:
-    virtual:
-      enabled: true
-  mvc:
-    problemdetails:
-      enabled: true
   config:
-    import: "optional:nacos:han-auth.yml"
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-auth.yml"
   application:
     name: han-auth
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: han
+        namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: han
+        namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:han@2026}
-      database: 0
-
-# 认证配置
-han:
-  auth:
-    clients:
-      pc:
-        token-expire: 30m
-        refresh-expire: 7d
-        max-online: 1
-      app:
-        token-expire: 7d
-        refresh-expire: 30d
-        max-online: 3
-      wechat_mp:
-        token-expire: 30d
-        refresh-expire: 90d
-        max-online: 0
-      wechat_oa:
-        token-expire: 7d
-        refresh-expire: 30d
-        max-online: 0
-
-# 日志配置
-logging:
-  level:
-    com.han: debug

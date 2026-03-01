@@ -6,7 +6,7 @@ import type { R } from '@/types'
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_BASE_API || 'http://localhost:8080',
+  baseURL: import.meta.env.VITE_APP_BASE_API || '',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json;charset=utf-8'
@@ -22,6 +22,10 @@ service.interceptors.request.use(
     const userStore = useUserStore()
     if (userStore.token) {
       config.headers['Authorization'] = `Bearer ${userStore.token}`
+    }
+    // 用户ID（本地开发绕过网关时需要手动注入，生产环境由网关注入）
+    if (userStore._userId) {
+      config.headers['X-User-Id'] = String(userStore._userId)
     }
     // 租户ID
     if (userStore.tenantId) {
@@ -129,6 +133,10 @@ export function get<T = any>(url: string, params?: any, config?: AxiosRequestCon
 
 export function post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<R<T>> {
   return request<T>({ url, method: 'POST', data, ...config })
+}
+
+export function postParams<T = any>(url: string, params?: any, config?: AxiosRequestConfig): Promise<R<T>> {
+  return request<T>({ url, method: 'POST', params, ...config })
 }
 
 export function put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<R<T>> {

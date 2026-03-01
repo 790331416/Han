@@ -5,7 +5,7 @@ import com.han.common.core.domain.R;
 import com.han.common.security.annotation.RequiresPermission;
 import com.han.workflow.domain.dto.ProcessDefinitionDTO;
 import com.han.workflow.domain.vo.ProcessDefinitionVO;
-import com.han.workflow.service.ProcessDefinitionService;
+import com.han.workflow.service.IProcessDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +24,7 @@ import java.io.OutputStream;
 @RequiredArgsConstructor
 public class ProcessDefinitionController {
 
-    private final ProcessDefinitionService processDefinitionService;
+    private final IProcessDefinitionService processDefinitionService;
 
     /**
      * 查询流程定义列表

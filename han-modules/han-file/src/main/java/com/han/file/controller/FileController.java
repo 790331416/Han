@@ -4,7 +4,7 @@ import com.han.api.file.domain.FileDTO;
 import com.han.common.core.domain.R;
 import com.han.common.core.util.FileUploadUtils;
 import com.han.starter.storage.StorageProvider;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -18,10 +18,10 @@ import java.io.IOException;
  */
 @RestController
 @RequestMapping("/file")
+@RequiredArgsConstructor
 public class FileController {
 
-    @Autowired
-    private StorageProvider storageProvider;
+    private final StorageProvider storageProvider;
 
     /**
      * 文件上传

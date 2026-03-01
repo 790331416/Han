@@ -30,7 +30,7 @@
       </template>
 
       <el-table v-loading="loading" :data="postList">
-        <el-table-column label="岗位ID" prop="postId" width="80" align="center" />
+        <el-table-column label="岗位ID" prop="id" width="80" align="center" />
         <el-table-column label="岗位编码" prop="postCode" width="150" />
         <el-table-column label="岗位名称" prop="postName" width="200" />
         <el-table-column label="排序" prop="postSort" width="80" align="center" />
@@ -107,7 +107,7 @@ const formRef = ref<FormInstance>()
 
 const queryParams = reactive({ postCode: '', postName: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
-const form = reactive<PostForm>({ postName: '', postCode: '', postSort: 0, status: 0, remark: '' })
+const form = reactive<PostForm>({ id: undefined, postName: '', postCode: '', postSort: 0, status: 0, remark: '' })
 
 const rules: FormRules = {
   postName: [{ required: true, message: '请输入岗位名称', trigger: 'blur' }],
@@ -145,9 +145,9 @@ async function handleEdit(row: Post) {
   resetForm()
   dialogTitle.value = '编辑岗位'
   try {
-    const res = await getPost(row.postId)
+    const res = await getPost(row.id)
     const data = (res as any).data
-    Object.assign(form, { postId: data.postId, postName: data.postName, postCode: data.postCode, postSort: data.postSort, status: data.status, remark: data.remark })
+    Object.assign(form, { id: data.id, postName: data.postName, postCode: data.postCode, postSort: data.postSort, status: data.status, remark: data.remark })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -155,7 +155,7 @@ async function handleEdit(row: Post) {
 async function handleDelete(row: Post) {
   try {
     await ElMessageBox.confirm(`确认删除岗位"${row.postName}"？`, '提示', { type: 'warning' })
-    await deletePost(row.postId)
+    await deletePost(row.id)
     ElMessage.success('删除成功')
     getList()
   } catch { /* cancel */ }
@@ -166,7 +166,7 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    if (form.postId) {
+    if (form.id) {
       await updatePost(form)
       ElMessage.success('修改成功')
     } else {
@@ -181,7 +181,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.postId = undefined; form.postName = ''; form.postCode = ''; form.postSort = 0; form.status = 0; form.remark = ''
+  form.id = undefined; form.postName = ''; form.postCode = ''; form.postSort = 0; form.status = 0; form.remark = ''
 }
 </script>
 

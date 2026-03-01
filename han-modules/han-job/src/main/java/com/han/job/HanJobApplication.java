@@ -7,7 +7,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 /**
  * 定时任务服务启动类
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.han")
 @EnableDiscoveryClient
 public class HanJobApplication {
 

@@ -133,6 +133,20 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="部门">
+              <el-tree-select v-model="form.deptId" :data="deptTreeData" node-key="id" :props="{ label: 'deptName', children: 'children' }" check-strictly filterable placeholder="请选择部门" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="角色">
+              <el-select v-model="form.roleIds" multiple placeholder="请选择角色" style="width: 100%">
+                <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" :disabled="role.status === 1" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
         </el-form-item>
@@ -152,6 +166,8 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete, Key } from '@element-plus/icons-vue'
 import { listUser, getUser, addUser, updateUser, deleteUser, deleteUsers, changeUserStatus, resetUserPwd } from '@/api/system/user'
+import { listAllRoles, type Role } from '@/api/system/role'
+import { getDeptTree, type Dept } from '@/api/system/dept'
 import { formatDate } from '@/utils/request'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -162,6 +178,8 @@ const total = ref(0)
 const selectedIds = ref<number[]>([])
 const dialogVisible = ref(false)
 const submitLoading = ref(false)
+const roleOptions = ref<Role[]>([])
+const deptTreeData = ref<Dept[]>([])
 
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
@@ -230,15 +248,26 @@ const handleSelectionChange = (selection: User[]) => {
   selectedIds.value = selection.map(item => item.userId)
 }
 
+// 加载角色和部门选项
+async function loadOptions() {
+  try {
+    const [roleRes, deptRes] = await Promise.all([listAllRoles(), getDeptTree()])
+    roleOptions.value = (roleRes as any).data || []
+    deptTreeData.value = (deptRes as any).data || []
+  } catch { /* ignore */ }
+}
+
 // 新增
-const handleAdd = () => {
+const handleAdd = async () => {
   resetForm()
+  await loadOptions()
   dialogVisible.value = true
 }
 
 // 编辑
 const handleEdit = async (row: User) => {
   resetForm()
+  await loadOptions()
   const res = await getUser(row.userId)
   const d = res.data as any
   form.userId = d.userId
@@ -251,7 +280,7 @@ const handleEdit = async (row: User) => {
   form.remark = d.remark ?? ''
   form.deptId = d.deptId
   form.postIds = d.postIds
-  form.roleIds = d.roleIds
+  form.roleIds = d.roleIds || []
   dialogVisible.value = true
 }
 
@@ -266,6 +295,8 @@ const resetForm = () => {
   form.sex = 0
   form.status = 0
   form.remark = ''
+  form.deptId = undefined
+  form.roleIds = []
 }
 
 // 提交

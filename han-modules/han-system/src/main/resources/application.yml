@@ -2,63 +2,22 @@
   port: 9201
 
 spring:
-  threads:
-    virtual:
-      enabled: true
-  mvc:
-    problemdetails:
-      enabled: true
   config:
-    import: "optional:nacos:han-system.yml"
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-system.yml"
   application:
     name: han-system
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: han
+        namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: han
+        namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
-
-  datasource:
-    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/han?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${DB_USER:han}
-    password: ${DB_PASSWORD:han@2026}
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:han@2026}
-      database: 0
-
-# MyBatis-Plus配置
-mybatis-plus:
-  mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: com.han.system.domain.entity
-  configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-  global-config:
-    db-config:
-      id-type: assign_id
-      logic-delete-field: delFlag
-      logic-delete-value: 1
-      logic-not-delete-value: 0
-
-# 缓存配置
-han:
-  cache:
-    type: redis
-
-# 日志配置
-logging:
-  level:
-    com.han: debug

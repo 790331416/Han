@@ -2,10 +2,10 @@ package com.han.workflow.service.impl;
 
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
-import com.han.workflow.convert.ProcessDefinitionConvert;
+import com.han.workflow.converter.ProcessDefinitionConverter;
 import com.han.workflow.domain.dto.ProcessDefinitionDTO;
 import com.han.workflow.domain.vo.ProcessDefinitionVO;
-import com.han.workflow.service.ProcessDefinitionService;
+import com.han.workflow.service.IProcessDefinitionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RepositoryService;
@@ -25,10 +25,10 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProcessDefinitionServiceImpl implements ProcessDefinitionService {
+public class ProcessDefinitionServiceImpl implements IProcessDefinitionService {
 
     private final RepositoryService repositoryService;
-    private final ProcessDefinitionConvert processDefinitionConvert;
+    private final ProcessDefinitionConverter processDefinitionConvert;
 
     @Override
     public PageResult<ProcessDefinitionVO> listProcessDefinition(ProcessDefinitionDTO dto) {

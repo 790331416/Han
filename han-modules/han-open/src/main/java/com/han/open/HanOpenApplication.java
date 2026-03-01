@@ -8,7 +8,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
  * 开放平台服务启动类
  * 提供OAuth2授权服务、SSO单点登录、第三方应用接入
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.han")
 @EnableDiscoveryClient
 public class HanOpenApplication {
 

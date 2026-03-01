@@ -1,0 +1,85 @@
+﻿
+TOKEN: bc9dfab1564541ed9f0910e4f0576098
+============ AUTH ============
+[OK] POST /auth/login
+[OK] GET /auth/captcha
+[OK] POST /auth/refresh
+
+============ SYSTEM USER ============
+[OK] GET /system/user/list
+[OK] GET /system/user/1
+[OK] GET /system/user/info
+[OK] POST /system/user (add)
+[FAIL] POST /system/user/edit => HTTP 400 
+[OK] POST /system/user/resetPwd
+[OK] POST /system/user/changeStatus
+
+============ SYSTEM ROLE ============
+[OK] GET /system/role/list
+[OK] GET /system/role/all
+[OK] GET /system/role/1
+[OK] GET /system/role/menuIds/1
+[OK] POST /system/role (add)
+[OK] POST /system/role/changeStatus
+
+============ SYSTEM MENU ============
+[OK] GET /system/menu/list
+[OK] GET /system/menu/tree
+[OK] GET /system/menu/routers
+[OK] GET /system/menu/1
+[OK] POST /system/menu (add)
+[OK] POST /system/menu/edit
+
+============ SYSTEM DEPT ============
+[OK] GET /system/dept/list
+[OK] GET /system/dept/1
+[OK] POST /system/dept (add)
+[FAIL] POST /system/dept/edit => HTTP 400 
+
+============ SYSTEM POST ============
+[OK] GET /system/post/list
+[OK] GET /system/post/all
+[OK] GET /system/post/1
+[OK] POST /system/post (add)
+
+============ SYSTEM DICT ============
+[OK] GET /system/dict/type/list
+[OK] GET /system/dict/type/all
+[OK] GET /system/dict/type/1
+[OK] POST /system/dict/type (add)
+[OK] GET /system/dict/data/list
+[OK] GET /system/dict/data/type/test_dict
+[OK] POST /system/dict/data (add)
+
+============ SYSTEM NOTICE ============
+[OK] GET /system/notice/list
+[OK] POST /system/notice/add
+
+============ SYSTEM MONITOR ============
+[OK] GET /system/monitor/server
+[OK] GET /system/monitor/cache
+[OK] GET /system/monitor/cache/keys
+
+============ SYSTEM DASHBOARD ============
+[OK] GET /system/dashboard/stats
+
+============ SYSTEM LOG ============
+[OK] GET /system/operlog/list
+[OK] GET /system/loginlog/list
+[OK] GET /system/online/list
+
+============ JOB ============
+[OK] GET /job/list
+[OK] GET /job/handlers
+[OK] GET /job/checkCron
+[OK] POST /job (add)
+
+============ TENANT ============
+[FAIL] GET /tenant/package/list => HTTP 503 
+[FAIL] GET /tenant/package/all => HTTP 503 
+[FAIL] POST /tenant/package (add) => HTTP 503 
+
+============ OPEN ============
+[FAIL] GET /open/app/list => HTTP 503 
+
+============ DONE ============

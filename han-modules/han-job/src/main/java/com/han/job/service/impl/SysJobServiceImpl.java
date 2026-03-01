@@ -4,13 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.mybatis.util.PageHelper;
-import com.han.job.convert.JobConverter;
+import com.han.job.converter.SysJobConverter;
 import com.han.job.domain.dto.JobDTO;
 import com.han.job.domain.query.JobQuery;
-import com.han.job.domain.entity.SysJob;
+import com.han.job.domain.po.SysJobPo;
 import com.han.job.domain.vo.JobVO;
 import com.han.job.mapper.SysJobMapper;
-import com.han.job.service.SysJobService;
+import com.han.job.service.ISysJobService;
 import com.han.job.util.QuartzJobUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,46 +27,46 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SysJobServiceImpl implements SysJobService {
+public class SysJobServiceImpl implements ISysJobService {
 
     private final SysJobMapper jobMapper;
     private final Scheduler scheduler;
-    private final JobConverter jobConverter;
+    private final SysJobConverter jobConverter;
 
     @Override
     public PageResult<JobDTO> listJob(JobQuery query) {
-        Page<SysJob> page = new Page<>(query.getPageNum(), query.getPageSize());
-        LambdaQueryWrapper<SysJob> wrapper = new LambdaQueryWrapper<>();
+        Page<SysJobPo> page = new Page<>(query.getPageNum(), query.getPageSize());
+        LambdaQueryWrapper<SysJobPo> wrapper = new LambdaQueryWrapper<>();
         
-        SysJob base = query.getBase();
+        SysJobPo base = query.getBase();
         if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJob::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJob::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJob::getStatus, base.getStatus())
-                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJob::getInvokeTarget, base.getInvokeTarget());
+            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobPo::getJobName, base.getJobName())
+                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobPo::getJobGroup, base.getJobGroup())
+                    .eq(StringUtils.hasText(base.getStatus()), SysJobPo::getStatus, base.getStatus())
+                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJobPo::getInvokeTarget, base.getInvokeTarget());
         }
-        wrapper.orderByDesc(SysJob::getCreateTime);
+        wrapper.orderByDesc(SysJobPo::getCreateTime);
         
-        Page<SysJob> result = jobMapper.selectPage(page, wrapper);
+        Page<SysJobPo> result = jobMapper.selectPage(page, wrapper);
         return PageHelper.build(result, jobConverter::toDto);
     }
 
     @Override
     public List<JobVO> listAllJob() {
-        List<SysJob> jobs = jobMapper.selectList(null);
+        List<SysJobPo> jobs = jobMapper.selectList(null);
         return jobConverter.toVoList(jobs);
     }
 
     @Override
     public JobDTO getJobById(Long jobId) {
-        SysJob job = jobMapper.selectById(jobId);
+        SysJobPo job = jobMapper.selectById(jobId);
         return job != null ? jobConverter.toDto(job) : null;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createJob(JobDTO dto) throws SchedulerException {
-        SysJob job = jobConverter.toEntity(dto);
+        SysJobPo job = jobConverter.toPo(dto);
         jobMapper.insert(job);
         
         // 添加到Quartz调度器
@@ -77,13 +77,13 @@ public class SysJobServiceImpl implements SysJobService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateJob(JobDTO dto) throws SchedulerException {
-        SysJob job = jobMapper.selectById(dto.getBase() != null ? dto.getBase().getJobId() : null);
+        SysJobPo job = jobMapper.selectById(dto.getBase() != null ? dto.getBase().getJobId() : null);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
         
         // 使用MapStruct转换并更新
-        SysJob updated = jobConverter.toEntity(dto);
+        SysJobPo updated = jobConverter.toPo(dto);
         job.setJobName(updated.getJobName());
         job.setJobGroup(updated.getJobGroup());
         job.setInvokeTarget(updated.getInvokeTarget());
@@ -102,7 +102,7 @@ public class SysJobServiceImpl implements SysJobService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteJob(Long jobId) throws SchedulerException {
-        SysJob job = jobMapper.selectById(jobId);
+        SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             return;
         }
@@ -139,15 +139,15 @@ public class SysJobServiceImpl implements SysJobService {
     
     @Override
     public List<JobDTO> selectList(JobQuery query) {
-        LambdaQueryWrapper<SysJob> wrapper = new LambdaQueryWrapper<>();
-        SysJob base = query.getBase();
+        LambdaQueryWrapper<SysJobPo> wrapper = new LambdaQueryWrapper<>();
+        SysJobPo base = query.getBase();
         if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJob::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJob::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJob::getStatus, base.getStatus())
-                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJob::getInvokeTarget, base.getInvokeTarget());
+            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobPo::getJobName, base.getJobName())
+                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobPo::getJobGroup, base.getJobGroup())
+                    .eq(StringUtils.hasText(base.getStatus()), SysJobPo::getStatus, base.getStatus())
+                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJobPo::getInvokeTarget, base.getInvokeTarget());
         }
-        List<SysJob> jobs = jobMapper.selectList(wrapper);
+        List<SysJobPo> jobs = jobMapper.selectList(wrapper);
         return jobConverter.toDtoList(jobs);
     }
     
@@ -158,7 +158,7 @@ public class SysJobServiceImpl implements SysJobService {
     
     @Override
     public List<JobDTO> selectByIds(List<Long> ids) {
-        List<SysJob> jobs = jobMapper.selectBatchIds(ids);
+        List<SysJobPo> jobs = jobMapper.selectBatchIds(ids);
         return jobConverter.toDtoList(jobs);
     }
     
@@ -194,7 +194,7 @@ public class SysJobServiceImpl implements SysJobService {
 
     @Override
     public void pauseJob(Long jobId) throws SchedulerException {
-        SysJob job = jobMapper.selectById(jobId);
+        SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
@@ -207,7 +207,7 @@ public class SysJobServiceImpl implements SysJobService {
 
     @Override
     public void resumeJob(Long jobId) throws SchedulerException {
-        SysJob job = jobMapper.selectById(jobId);
+        SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
@@ -220,7 +220,7 @@ public class SysJobServiceImpl implements SysJobService {
 
     @Override
     public void runJob(Long jobId) throws SchedulerException {
-        SysJob job = jobMapper.selectById(jobId);
+        SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
@@ -243,7 +243,7 @@ public class SysJobServiceImpl implements SysJobService {
         return CronExpression.isValidExpression(cronExpression);
     }
 
-    private JobVO convertToVO(SysJob job) {
+    private JobVO convertToVO(SysJobPo job) {
         JobVO vo = jobConverter.toVo(job);
         
         // 获取下次执行时间

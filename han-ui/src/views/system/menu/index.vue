@@ -29,7 +29,7 @@
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="menuList" row-key="id" :default-expand-all="isExpand" :tree-props="{ children: 'children' }">
+      <el-table v-loading="loading" :data="menuList" row-key="id" :default-expand-all="isExpand" :key="tableKey" :tree-props="{ children: 'children' }">
         <el-table-column label="菜单名称" prop="menuName" width="220" />
         <el-table-column label="图标" width="80" align="center">
           <template #default="{ row }">
@@ -138,6 +138,7 @@ import IconSelect from '@/components/IconSelect/index.vue'
 const loading = ref(false)
 const submitLoading = ref(false)
 const isExpand = ref(true)
+const tableKey = ref(0)
 const menuList = ref<Menu[]>([])
 const menuOptions = ref<Menu[]>([])
 const dialogVisible = ref(false)
@@ -155,18 +156,35 @@ const rules: FormRules = {
 
 onMounted(() => { getList() })
 
+function buildTree(list: Menu[]): Menu[] {
+  const map = new Map<number, Menu>()
+  const roots: Menu[] = []
+  list.forEach(item => map.set(item.id, { ...item, children: [] }))
+  map.forEach(item => {
+    const parent = map.get(item.parentId)
+    if (parent) {
+      parent.children!.push(item)
+    } else {
+      roots.push(item)
+    }
+  })
+  return roots
+}
+
 async function getList() {
   loading.value = true
   try {
     const res = await listMenu(queryParams)
-    menuList.value = (res as any).data || []
-    menuOptions.value = [{ id: 0, parentId: -1, menuName: '主目录', menuType: 'M', sort: 0, visible: 0, status: 0, isFrame: 1, isCache: 0, children: menuList.value } as Menu]
+    const flat: Menu[] = (res as any).data || []
+    const tree = buildTree(flat)
+    menuList.value = tree
+    menuOptions.value = [{ id: 0, parentId: -1, menuName: '主目录', menuType: 'M', sort: 0, visible: 0, status: 0, isFrame: 1, isCache: 0, children: tree } as Menu]
   } catch { /* 接口不可用 */ } finally {
     loading.value = false
   }
 }
 
-function toggleExpand() { isExpand.value = !isExpand.value; getList() }
+function toggleExpand() { isExpand.value = !isExpand.value; tableKey.value++ }
 
 function handleAdd(parentId?: number) {
   resetForm()
@@ -189,10 +207,13 @@ async function handleEdit(row: Menu) {
 async function handleDelete(row: Menu) {
   try {
     await ElMessageBox.confirm(`确认删除菜单"${row.menuName}"？`, '提示', { type: 'warning' })
-    await deleteMenu(row.id)
-    ElMessage.success('删除成功')
-    getList()
-  } catch { /* cancel */ }
+  } catch {
+    return
+  }
+  await deleteMenu(row.id)
+  ElMessage.success('删除成功')
+  await getList()
+  tableKey.value++
 }
 
 async function submitForm() {
@@ -208,7 +229,8 @@ async function submitForm() {
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
-    getList()
+    await getList()
+    tableKey.value++
   } finally {
     submitLoading.value = false
   }

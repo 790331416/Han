@@ -4,7 +4,7 @@ import type { PageResult, PageQuery } from '@/types'
 // ==================== 字典类型 ====================
 
 export interface DictType {
-  dictId: number
+  id: number
   dictName: string
   dictType: string
   status: number
@@ -19,7 +19,7 @@ export interface DictTypeQuery extends PageQuery {
 }
 
 export interface DictTypeForm {
-  dictId?: number
+  id?: number
   dictName: string
   dictType: string
   status?: number
@@ -53,7 +53,7 @@ export function deleteDictType(id: number) {
 // ==================== 字典数据 ====================
 
 export interface DictData {
-  dictCode: number
+  id: number
   dictSort: number
   dictLabel: string
   dictValue: string
@@ -73,7 +73,7 @@ export interface DictDataQuery extends PageQuery {
 }
 
 export interface DictDataForm {
-  dictCode?: number
+  id?: number
   dictSort?: number
   dictLabel: string
   dictValue: string

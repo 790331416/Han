@@ -31,7 +31,7 @@
         </dependency>
         <dependency>
             <groupId>com.han</groupId>
-            <artifactId>han-common-datasource</artifactId>
+            <artifactId>han-common-mybatis</artifactId>
         </dependency>
         <dependency>
             <groupId>com.han</groupId>
@@ -66,10 +66,16 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
-        <!-- MySQL -->
+        <!-- PostgreSQL -->
         <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <!-- Spring Core (includes spring-jcl commons-logging bridge) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
         </dependency>
     </dependencies>
 

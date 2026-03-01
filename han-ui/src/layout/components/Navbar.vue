@@ -79,27 +79,32 @@ const handleLogout = async () => {
 
 <style lang="scss" scoped>
 .navbar {
-  height: 50px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 15px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  padding: 0 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .left-menu {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
 }
 
 .hamburger {
-  font-size: 20px;
+  font-size: 18px;
+  color: #6b7280;
   cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
   
   &:hover {
-    color: #409eff;
+    color: #2563eb;
+    background: #f3f4f6;
   }
 }
 
@@ -111,12 +116,33 @@ const handleLogout = async () => {
 .avatar-wrapper {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+  
+  &:hover {
+    background: #f3f4f6;
+  }
   
   .username {
     font-size: 14px;
-    color: #333;
+    font-weight: 500;
+    color: #374151;
+  }
+}
+
+:deep(.el-breadcrumb) {
+  .el-breadcrumb__item {
+    .el-breadcrumb__inner {
+      color: #6b7280;
+      font-weight: 400;
+    }
+    &:last-child .el-breadcrumb__inner {
+      color: #111827;
+      font-weight: 500;
+    }
   }
 }
 </style>

@@ -7,7 +7,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 /**
  * 租户管理服务启动类
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.han")
 @EnableDiscoveryClient
 public class HanTenantApplication {
 

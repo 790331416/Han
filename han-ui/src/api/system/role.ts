@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, postParams } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 export interface Role {
@@ -43,7 +43,7 @@ export function listAllRoles() {
 }
 
 export function getRole(id: number) {
-  return get<Role>(`/system/role/${id}`)
+  return get<Role>(`/system/role/info/${id}`)
 }
 
 export function addRole(data: RoleForm) {
@@ -58,8 +58,8 @@ export function deleteRole(id: number) {
   return post<void>(`/system/role/remove/${id}`)
 }
 
-export function changeRoleStatus(id: number, status: number) {
-  return post<void>('/system/role/changeStatus', { id, status })
+export function changeRoleStatus(roleId: number, status: number) {
+  return postParams<void>('/system/role/changeStatus', { roleId, status })
 }
 
 export function getRoleMenuIds(roleId: number) {

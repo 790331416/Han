@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, postParams } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 // 用户类型
@@ -49,7 +49,7 @@ export function listUser(query: UserQuery) {
 
 // 获取用户详情
 export function getUser(userId: number) {
-  return get<User>(`/system/user/${userId}`)
+  return get<User>(`/system/user/info/${userId}`)
 }
 
 // 新增用户
@@ -74,12 +74,12 @@ export function deleteUsers(userIds: number[]) {
 
 // 重置密码
 export function resetUserPwd(userId: number, password: string) {
-  return post<void>('/system/user/resetPwd', { userId, password })
+  return postParams<void>('/system/user/resetPwd', { userId, password })
 }
 
 // 修改用户状态
 export function changeUserStatus(userId: number, status: number) {
-  return post<void>('/system/user/changeStatus', { userId, status })
+  return postParams<void>('/system/user/changeStatus', { userId, status })
 }
 
 // ==================== 个人中心 ====================
