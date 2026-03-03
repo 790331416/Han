@@ -24,5 +24,5 @@ public class JobLogVO implements Serializable {
     private String exceptionInfo;
     private LocalDateTime startTime;
     private LocalDateTime stopTime;
-    private Long costTime;
+    private long costTime;
 }

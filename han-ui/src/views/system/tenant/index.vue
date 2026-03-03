@@ -9,7 +9,8 @@
           <el-input v-model="queryParams.contactName" placeholder="请输入" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
@@ -74,13 +75,20 @@
           <el-input v-model="form.tenantName" placeholder="请输入租户名称" />
         </el-form-item>
         <el-form-item label="联系人" prop="contactName">
-          <el-input v-model="form.contactName" placeholder="请输入联系人" />
+          <el-select v-model="selectedUserId" filterable clearable placeholder="请选择联系人" style="width: 100%" @change="fillContact">
+            <el-option v-for="u in userList" :key="u.userId" :label="u.nickname" :value="u.userId" />
+          </el-select>
         </el-form-item>
         <el-form-item label="联系电话" prop="contactPhone">
           <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
         </el-form-item>
         <el-form-item label="联系邮箱" prop="contactEmail">
           <el-input v-model="form.contactEmail" placeholder="请输入联系邮箱" />
+        </el-form-item>
+        <el-form-item label="租户套餐" prop="packageId">
+          <el-select v-model="form.packageId" placeholder="请选择套餐" clearable style="width: 100%">
+            <el-option v-for="pkg in packageList" :key="pkg.packageId" :label="pkg.packageName" :value="pkg.packageId" />
+          </el-select>
         </el-form-item>
         <el-form-item label="用户数限制" prop="userLimit">
           <el-input-number v-model="form.userLimit" :min="-1" placeholder="-1为不限制" />
@@ -114,6 +122,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { listTenant, getTenant, addTenant, updateTenant, deleteTenant, changeTenantStatus, type Tenant, type TenantForm } from '@/api/system/tenant'
+import { listAllPackage, type TenantPackage } from '@/api/system/tenantPackage'
+import { listSimpleUser } from '@/api/system/user'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -122,8 +132,11 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
+const userList = ref<{ userId: string | number; nickname: string; phone: string; email: string }[]>([])
+const selectedUserId = ref<string | number | undefined>(undefined)
+const packageList = ref<TenantPackage[]>([])
 
-const queryParams = reactive({ tenantName: '', contactName: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
+const queryParams = reactive({ tenantName: '', contactName: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
 const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '' })
 
@@ -131,15 +144,48 @@ const rules: FormRules = {
   tenantName: [{ required: true, message: '请输入租户名称', trigger: 'blur' }]
 }
 
-onMounted(() => { getList() })
+onMounted(() => {
+  getList()
+  loadUserList()
+  loadPackageList()
+})
+
+async function loadUserList() {
+  try {
+    const res = await listSimpleUser()
+    userList.value = ((res as any).data || []).map((u: any) => ({ userId: u.userId, nickname: u.nickname, phone: u.phone || '', email: u.email || '' }))
+  } catch { /* ignore */ }
+}
+
+async function loadPackageList() {
+  try {
+    const res = await listAllPackage()
+    packageList.value = (res as any).data || []
+  } catch { /* ignore */ }
+}
+
+function fillContact(userId: string | number | undefined) {
+  if (!userId) return
+  const user = userList.value.find(u => String(u.userId) === String(userId))
+  if (user) {
+    form.contactName = user.nickname
+    form.contactPhone = user.phone
+    form.contactEmail = user.email
+  }
+}
 
 async function getList() {
   loading.value = true
   try {
     const res = await listTenant(queryParams)
     const data = (res as any).data
-    tenantList.value = data?.records || data?.rows || []
-    total.value = data?.total || 0
+    if (Array.isArray(data)) {
+      tenantList.value = data
+      total.value = data.length
+    } else {
+      tenantList.value = data?.records || data?.rows || []
+      total.value = data?.total || 0
+    }
   } catch { /* 接口不可用 */ } finally {
     loading.value = false
   }
@@ -148,30 +194,39 @@ async function getList() {
 function handleQuery() { queryParams.pageNum = 1; getList() }
 
 function resetQuery() {
-  queryParams.tenantName = ''; queryParams.contactName = ''; queryParams.status = undefined
+  queryParams.tenantName = ''; queryParams.contactName = ''; queryParams.status = ''
   handleQuery()
 }
 
-function handleAdd() {
+async function handleAdd() {
   resetForm()
+  selectedUserId.value = undefined
   dialogTitle.value = '新增租户'
   dialogVisible.value = true
+  await loadUserList()
 }
 
 async function handleEdit(row: Tenant) {
   resetForm()
+  selectedUserId.value = undefined
   dialogTitle.value = '编辑租户'
+  await loadUserList()
   try {
     const res = await getTenant(row.tenantId)
     const d = (res as any).data
-    Object.assign(form, { tenantId: d.tenantId, tenantName: d.tenantName, contactName: d.contactName, contactPhone: d.contactPhone, contactEmail: d.contactEmail, userLimit: d.userLimit, expireTime: d.expireTime, domain: d.domain, status: d.status, remark: d.remark })
+    Object.assign(form, { tenantId: d.tenantId, id: d.id, tenantName: d.tenantName, contactName: d.contactName, contactPhone: d.contactPhone, contactEmail: d.contactEmail, packageId: d.packageId, userLimit: d.userLimit, expireTime: d.expireTime, domain: d.domain, status: d.status, remark: d.remark })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
 
 async function handleDelete(row: Tenant) {
   try {
-    await ElMessageBox.confirm(`确认删除租户"${row.tenantName}"？`, '提示', { type: 'warning' })
+    const { value } = await ElMessageBox.prompt(
+      `此操作将永久删除租户「${row.tenantName}」及其所有数据（用户、角色、部门、岗位），请输入租户名称确认：`,
+      '危险操作',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'error', inputPattern: new RegExp(`^${row.tenantName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), inputErrorMessage: '租户名称不匹配', confirmButtonClass: 'el-button--danger' }
+    )
+    if (value !== row.tenantName) return
     await deleteTenant(row.tenantId)
     ElMessage.success('删除成功')
     getList()
@@ -207,7 +262,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''
+  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.packageId = undefined; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''
 }
 </script>
 

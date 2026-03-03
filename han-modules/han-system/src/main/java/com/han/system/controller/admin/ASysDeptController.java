@@ -1,6 +1,7 @@
 package com.han.system.controller.admin;
 
 import com.han.common.core.domain.R;
+import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.system.domain.dto.SysDeptDto;
 import com.han.system.domain.po.SysDeptPo;
@@ -44,6 +45,7 @@ public class ASysDeptController {
 
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:dept:add')")
+    @OperLog(module = "部门管理", type = OperLog.OperType.INSERT)
     public R<Void> add(@Valid @RequestBody SysDeptDto dto) {
         deptService.insertDept(dto);
         return R.ok();
@@ -51,6 +53,7 @@ public class ASysDeptController {
 
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:dept:edit')")
+    @OperLog(module = "部门管理", type = OperLog.OperType.UPDATE)
     public R<Void> edit(@Valid @RequestBody SysDeptDto dto) {
         deptService.updateDept(dto);
         return R.ok();
@@ -58,6 +61,7 @@ public class ASysDeptController {
 
     @PostMapping("/remove/{deptId}")
     @PreAuthorize("@ss.hasAuthority('system:dept:remove')")
+    @OperLog(module = "部门管理", type = OperLog.OperType.DELETE)
     public R<Void> remove(@PathVariable Long deptId) {
         deptService.deleteDeptById(deptId);
         return R.ok();

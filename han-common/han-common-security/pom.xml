@@ -34,6 +34,12 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Redis (Token -> LoginUser 加载) -->
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-common-redis</artifactId>
+        </dependency>
+
         <!-- TransmittableThreadLocal (线程池上下文传递) -->
         <dependency>
             <groupId>com.alibaba</groupId>

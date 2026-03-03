@@ -2,18 +2,16 @@ import { get, post } from '@/utils/request'
 import type { PageResult } from '@/types'
 
 export interface OperLog {
-  id: number
-  tenantId: number
-  title: string
-  businessType: number
-  method: string
+  id: string | number
+  tenantId: string | number
+  module: string
+  operType: number
   requestMethod: string
-  operatorType: number
   operName: string
+  operUserId: string | number
   deptName: string
   operUrl: string
   operIp: string
-  operLocation: string
   operParam: string
   jsonResult: string
   status: number
@@ -23,17 +21,17 @@ export interface OperLog {
 }
 
 // 查询操作日志列表
-export function listOperLog(query: { pageNum: number; pageSize: number; title?: string; businessType?: number; status?: number; operName?: string }) {
+export function listOperLog(query: { pageNum: number; pageSize: number; module?: string; operType?: number; status?: number; operName?: string }) {
   return get<PageResult<OperLog>>('/system/operlog/list', query)
 }
 
 // 查询操作日志详情
-export function getOperLog(id: number) {
+export function getOperLog(id: string | number) {
   return get<OperLog>(`/system/operlog/${id}`)
 }
 
 // 删除操作日志
-export function deleteOperLog(ids: number[]) {
+export function deleteOperLog(ids: (string | number)[]) {
   return post<void>('/system/operlog/remove', ids)
 }
 

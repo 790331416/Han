@@ -9,7 +9,8 @@
           <el-input v-model="queryParams.roleKey" placeholder="请输入" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
@@ -40,9 +41,10 @@
           </template>
         </el-table-column>
         <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)" :disabled="row.id === 1">编辑</el-button>
+            <el-button type="primary" link :icon="User" @click="handleAuthUser(row)" :disabled="row.id === 1">分配用户</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)" :disabled="row.id === 1">删除</el-button>
           </template>
         </el-table-column>
@@ -61,7 +63,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="750px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="form.roleName" placeholder="请输入角色名称" />
@@ -82,8 +84,8 @@
           <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
         </el-form-item>
         <el-form-item label="菜单权限">
-          <div style="border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px; width: 100%; max-height: 300px; overflow-y: auto;">
-            <el-tree ref="menuTreeRef" :data="menuTreeData" show-checkbox node-key="id" :props="{ label: 'menuName', children: 'children' }" :default-checked-keys="checkedMenuIds" check-strictly />
+          <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; width: 100%; max-height: 450px; overflow-y: auto;">
+            <el-tree ref="menuTreeRef" :data="menuTreeData" show-checkbox node-key="id" :props="{ label: 'menuName', children: 'children' }" :default-checked-keys="checkedMenuIds" />
           </div>
         </el-form-item>
       </el-form>
@@ -97,12 +99,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { listRole, getRole, addRole, updateRole, deleteRole, changeRoleStatus, getRoleMenuIds, type Role, type RoleForm } from '@/api/system/role'
 import { getMenuTree, type Menu } from '@/api/system/menu'
 import type { ElTree } from 'element-plus'
 
+const router = useRouter()
 const loading = ref(false)
 const submitLoading = ref(false)
 const roleList = ref<Role[]>([])
@@ -113,11 +117,11 @@ const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 const menuTreeRef = ref<InstanceType<typeof ElTree>>()
 const menuTreeData = ref<Menu[]>([])
-const checkedMenuIds = ref<number[]>([])
+const checkedMenuIds = ref<(string | number)[]>([])
 
-const queryParams = reactive({ roleName: '', roleKey: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
+const queryParams = reactive({ roleName: '', roleKey: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
-const form = reactive<RoleForm>({ roleName: '', roleKey: '', roleSort: 0, status: 0, remark: '' })
+const form = reactive<RoleForm>({ roleId: undefined, roleName: '', roleKey: '', roleSort: 0, status: 0, remark: '' })
 
 const rules: FormRules = {
   roleName: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
@@ -156,14 +160,15 @@ async function handleAdd() {
 async function handleEdit(row: Role) {
   resetForm()
   dialogTitle.value = '编辑角色'
+  await loadMenuTree()
   try {
     const res = await getRole(row.id)
     const data = (res as any).data
-    Object.assign(form, { id: data.id, roleName: data.roleName, roleKey: data.roleKey, roleSort: data.roleSort, status: data.status, remark: data.remark })
+    Object.assign(form, { roleId: data.id, roleName: data.roleName, roleKey: data.roleKey, roleSort: data.roleSort, status: data.status, remark: data.remark })
     const menuRes = await getRoleMenuIds(row.id)
-    checkedMenuIds.value = (menuRes as any).data || []
+    const allMenuIds: (string | number)[] = (menuRes as any).data || []
+    checkedMenuIds.value = filterLeafIds(allMenuIds, menuTreeData.value)
   } catch { /* ignore */ }
-  await loadMenuTree()
   dialogVisible.value = true
 }
 
@@ -197,9 +202,11 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const menuIds = menuTreeRef.value?.getCheckedKeys(false) as number[] || []
+    const checked = menuTreeRef.value?.getCheckedKeys(false) as (string | number)[] || []
+    const halfChecked = menuTreeRef.value?.getHalfCheckedKeys() as (string | number)[] || []
+    const menuIds = [...checked, ...halfChecked]
     const submitData = { ...form, menuIds }
-    if (form.id) {
+    if (form.roleId) {
       await updateRole(submitData)
       ElMessage.success('修改成功')
     } else {
@@ -214,7 +221,25 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.id = undefined; form.roleName = ''; form.roleKey = ''; form.roleSort = 0; form.status = 0; form.remark = ''
+  form.roleId = undefined; form.roleName = ''; form.roleKey = ''; form.roleSort = 0; form.status = 0; form.remark = ''
+}
+
+function filterLeafIds(ids: (string | number)[], tree: Menu[]): (string | number)[] {
+  const parentIds = new Set<string>()
+  function collectParents(nodes: Menu[]) {
+    for (const node of nodes) {
+      if (node.children && node.children.length > 0) {
+        parentIds.add(String(node.id))
+        collectParents(node.children)
+      }
+    }
+  }
+  collectParents(tree)
+  return ids.filter(id => !parentIds.has(String(id)))
+}
+
+function handleAuthUser(row: Role) {
+  router.push({ path: '/system/role/authUser', query: { roleId: row.id } })
 }
 </script>
 

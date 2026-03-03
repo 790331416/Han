@@ -2,10 +2,10 @@ import { get, post } from '@/utils/request'
 
 export interface OnlineUser {
   tokenKey: string
-  userId: number
+  userId: string | number
   username: string
   nickname: string
-  deptId: number
+  deptId: string | number
   loginIp: string
   loginTime: number
 }

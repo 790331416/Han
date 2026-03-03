@@ -14,6 +14,13 @@
     </div>
     
     <div class="right-menu">
+      <!-- 租户切换 -->
+      <div class="tenant-switcher" @click="openTenantDialog" v-if="userStore.tenantName">
+        <el-icon><OfficeBuilding /></el-icon>
+        <span class="tenant-name">{{ userStore.tenantName || '默认租户' }}</span>
+        <el-icon><ArrowDown /></el-icon>
+      </div>
+
       <el-dropdown trigger="click">
         <div class="avatar-wrapper">
           <el-avatar :size="32" :src="userStore.avatar || defaultAvatar" />
@@ -35,16 +42,35 @@
         </template>
       </el-dropdown>
     </div>
+
+    <!-- 租户切换弹窗 -->
+    <el-dialog v-model="tenantDialogVisible" title="切换租户" width="400px" destroy-on-close>
+      <div v-loading="tenantLoading">
+        <el-radio-group v-model="selectedTenantId" class="tenant-radio-group">
+          <el-radio v-for="t in tenantList" :key="t.tenantId" :value="t.tenantId" :disabled="t.status !== 0" class="tenant-radio-item">
+            {{ t.tenantName }}
+            <el-tag v-if="t.current" type="primary" size="small" class="ml-2">当前</el-tag>
+            <el-tag v-if="t.status !== 0" type="danger" size="small" class="ml-2">停用</el-tag>
+          </el-radio>
+        </el-radio-group>
+        <el-empty v-if="!tenantLoading && tenantList.length === 0" description="暂无可切换的租户" />
+      </div>
+      <template #footer>
+        <el-button @click="tenantDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="switchLoading" :disabled="!selectedTenantId" @click="handleSwitchTenant">确认切换</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { Fold, Expand, ArrowDown, HomeFilled, User, SwitchButton } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Fold, Expand, ArrowDown, HomeFilled, User, SwitchButton, OfficeBuilding } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+import { getMyTenants, switchTenant, type TenantSimple } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -63,6 +89,51 @@ const toggleSidebar = () => {
 
 const handleProfile = () => {
   router.push('/profile')
+}
+
+// ==================== 租户切换 ====================
+const tenantDialogVisible = ref(false)
+const tenantLoading = ref(false)
+const switchLoading = ref(false)
+const tenantList = ref<TenantSimple[]>([])
+const selectedTenantId = ref<number>()
+
+const openTenantDialog = async () => {
+  tenantDialogVisible.value = true
+  tenantLoading.value = true
+  selectedTenantId.value = undefined
+  try {
+    const res = await getMyTenants()
+    tenantList.value = (res as any).data || []
+    const current = tenantList.value.find(t => t.current)
+    if (current) selectedTenantId.value = current.tenantId
+  } catch { tenantList.value = [] } finally {
+    tenantLoading.value = false
+  }
+}
+
+const handleSwitchTenant = async () => {
+  if (!selectedTenantId.value) return
+  const current = tenantList.value.find(t => t.current)
+  if (current && current.tenantId === selectedTenantId.value) {
+    tenantDialogVisible.value = false
+    return
+  }
+  switchLoading.value = true
+  try {
+    const res = await switchTenant(selectedTenantId.value)
+    const data = (res as any).data
+    if (data?.accessToken) {
+      // 更新 token 并刷新页面
+      localStorage.setItem('token', data.accessToken)
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      tenantDialogVisible.value = false
+      ElMessage.success('租户切换成功，正在刷新...')
+      setTimeout(() => window.location.reload(), 500)
+    }
+  } catch { /* error handled by request interceptor */ } finally {
+    switchLoading.value = false
+  }
 }
 
 const handleLogout = async () => {
@@ -111,6 +182,46 @@ const handleLogout = async () => {
 .right-menu {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+
+.tenant-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #374151;
+  font-size: 13px;
+  transition: all 0.15s ease;
+  border: 1px solid #e5e7eb;
+
+  &:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+    color: #2563eb;
+  }
+
+  .tenant-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+}
+
+.tenant-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.tenant-radio-item {
+  height: auto;
+  padding: 8px 0;
 }
 
 .avatar-wrapper {

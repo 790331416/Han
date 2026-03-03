@@ -9,7 +9,7 @@ import lombok.Builder;
 public record LoginVO(
         String accessToken,
         String refreshToken,
-        Long expiresIn,
+        long expiresIn,
         UserInfoVO userInfo
 ) {
     /**

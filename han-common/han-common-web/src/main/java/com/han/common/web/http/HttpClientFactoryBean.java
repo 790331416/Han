@@ -1,9 +1,10 @@
 package com.han.common.web.http;
 
 import org.springframework.beans.factory.FactoryBean;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.http.client.support.HttpRequestWrapper;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.support.RestClientAdapter;
@@ -21,16 +22,20 @@ import java.net.URI;
  *
  * @param <T> 客户端接口类型
  */
-public class HttpClientFactoryBean<T> implements FactoryBean<T> {
+public class HttpClientFactoryBean<T> implements FactoryBean<T>, ApplicationContextAware {
 
     private Class<T> clientInterface;
     private String serviceName;
+    private ApplicationContext applicationContext;
 
-    @Autowired
-    private LoadBalancerClient loadBalancerClient;
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
+    }
 
     @Override
     public T getObject() {
+        LoadBalancerClient loadBalancerClient = applicationContext.getBean(LoadBalancerClient.class);
         RestClient restClient = RestClient.builder()
                 .baseUrl("http://" + serviceName)
                 .requestInterceptor((request, body, execution) -> {

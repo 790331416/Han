@@ -1,6 +1,7 @@
 package com.han.system.controller.admin;
 
 import com.han.common.core.domain.R;
+import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.context.SecurityContextHolder;
@@ -53,6 +54,7 @@ public class ASysMenuController {
 
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:menu:add')")
+    @OperLog(module = "菜单管理", type = OperLog.OperType.INSERT)
     public R<Void> add(@RequestBody SysMenuPo menu) {
         menuService.insertMenu(menu);
         return R.ok();
@@ -60,6 +62,7 @@ public class ASysMenuController {
 
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:menu:edit')")
+    @OperLog(module = "菜单管理", type = OperLog.OperType.UPDATE)
     public R<Void> edit(@RequestBody SysMenuPo menu) {
         menuService.updateMenu(menu);
         return R.ok();
@@ -67,6 +70,7 @@ public class ASysMenuController {
 
     @PostMapping("/remove/{menuId}")
     @PreAuthorize("@ss.hasAuthority('system:menu:remove')")
+    @OperLog(module = "菜单管理", type = OperLog.OperType.DELETE)
     public R<Void> remove(@PathVariable Long menuId) {
         menuService.deleteMenuById(menuId);
         return R.ok();

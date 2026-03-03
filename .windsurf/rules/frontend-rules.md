@@ -149,8 +149,28 @@ export function updateUser(data: UserForm) {
 }
 
 // 删除
-export function deleteUser(userId: number) {
+export function deleteUser(userId: string | number) {
   return post<void>(`/system/user/remove/${userId}`)
+}
+```
+
+### ID 类型规范
+后端雪花 ID（19 位 Long）会序列化为 JSON String，前端必须遵守：
+- 所有 ID 字段类型声明为 `string | number`
+- API 函数参数中 ID 使用 `string | number`
+- URL 拼接直接用模板字符串 `` `/path/${id}` ``
+- **禁止**对 ID 做数学运算（如 `id + 1`）
+
+```typescript
+// 正确
+export interface User {
+  userId: string | number
+  deptId: string | number
+}
+
+// 错误
+export interface User {
+  userId: number   // 雪花ID超过JS安全整数会丢失精度
 }
 ```
 
@@ -202,3 +222,5 @@ export function deleteUser(userId: number) {
 6. **禁止** 使用 `any` 类型（除临时接口调试外）
 7. **禁止** 硬编码 API 地址（必须通过 env 变量）
 8. **禁止** 在组件中直接使用 `axios`（必须通过 `@/utils/request` 封装）
+9. **禁止** 将后端返回的 ID 声明为 `number` 类型（必须 `string | number`，雪花 ID 超出 JS 安全整数范围）
+10. **禁止** 对 ID 做数学运算或比较大小（如 `id + 1`、`id > 100`）

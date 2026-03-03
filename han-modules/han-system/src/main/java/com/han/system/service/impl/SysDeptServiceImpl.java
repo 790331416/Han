@@ -32,7 +32,7 @@ public class SysDeptServiceImpl implements ISysDeptService {
 
     @Override
     public List<SysDeptPo> selectDeptList(SysDeptQuery query) {
-        return deptMapper.selectList(buildQueryWrapper(query));
+        return deptMapper.selectDeptListWithLeader(query.getDeptName(), query.getStatus());
     }
 
     @Override

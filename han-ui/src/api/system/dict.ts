@@ -4,7 +4,7 @@ import type { PageResult, PageQuery } from '@/types'
 // ==================== 字典类型 ====================
 
 export interface DictType {
-  id: number
+  id: string | number
   dictName: string
   dictType: string
   status: number
@@ -19,7 +19,7 @@ export interface DictTypeQuery extends PageQuery {
 }
 
 export interface DictTypeForm {
-  id?: number
+  id?: string | number
   dictName: string
   dictType: string
   status?: number
@@ -34,7 +34,7 @@ export function listAllDictTypes() {
   return get<DictType[]>('/system/dict/type/all')
 }
 
-export function getDictType(id: number) {
+export function getDictType(id: string | number) {
   return get<DictType>(`/system/dict/type/${id}`)
 }
 
@@ -46,14 +46,14 @@ export function updateDictType(data: DictTypeForm) {
   return post<void>('/system/dict/type/edit', data)
 }
 
-export function deleteDictType(id: number) {
+export function deleteDictType(id: string | number) {
   return post<void>(`/system/dict/type/remove/${id}`)
 }
 
 // ==================== 字典数据 ====================
 
 export interface DictData {
-  id: number
+  id: string | number
   dictSort: number
   dictLabel: string
   dictValue: string
@@ -73,7 +73,7 @@ export interface DictDataQuery extends PageQuery {
 }
 
 export interface DictDataForm {
-  id?: number
+  id?: string | number
   dictSort?: number
   dictLabel: string
   dictValue: string
@@ -93,7 +93,7 @@ export function listDictDataByType(dictType: string) {
   return get<DictData[]>(`/system/dict/data/type/${dictType}`)
 }
 
-export function getDictData(id: number) {
+export function getDictData(id: string | number) {
   return get<DictData>(`/system/dict/data/${id}`)
 }
 
@@ -105,6 +105,6 @@ export function updateDictData(data: DictDataForm) {
   return post<void>('/system/dict/data/edit', data)
 }
 
-export function deleteDictData(id: number) {
+export function deleteDictData(id: string | number) {
   return post<void>(`/system/dict/data/remove/${id}`)
 }

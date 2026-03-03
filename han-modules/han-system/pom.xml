@@ -20,6 +20,11 @@
 
         <dependency>
             <groupId>com.han</groupId>
+            <artifactId>han-api-tenant</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.han</groupId>
             <artifactId>han-common-security</artifactId>
         </dependency>
 
@@ -79,6 +84,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- EasyExcel（用户导入导出） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+        </dependency>
+
+        <!-- Redis（在线用户管理需要，通过 han-common-redis 封装组件引入） -->
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-common-redis</artifactId>
         </dependency>
     </dependencies>
 

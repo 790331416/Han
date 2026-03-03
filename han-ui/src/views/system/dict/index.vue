@@ -9,7 +9,8 @@
           <el-input v-model="queryParams.dictType" placeholder="请输入" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
@@ -107,7 +108,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive({ dictName: '', dictType: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
+const queryParams = reactive({ dictName: '', dictType: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
 const form = reactive<DictTypeForm>({ id: undefined, dictName: '', dictType: '', status: 0, remark: '' })
 

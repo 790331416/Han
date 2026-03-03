@@ -2,7 +2,7 @@ import { get, post } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 export interface Config {
-  id: number
+  id: string | number
   configName: string
   configKey: string
   configValue: string
@@ -18,7 +18,7 @@ export interface ConfigQuery extends PageQuery {
 }
 
 export interface ConfigForm {
-  id?: number
+  id?: string | number
   configName: string
   configKey: string
   configValue: string
@@ -30,7 +30,7 @@ export function listConfig(query: ConfigQuery) {
   return get<PageResult<Config>>('/system/config/list', query)
 }
 
-export function getConfig(id: number) {
+export function getConfig(id: string | number) {
   return get<Config>(`/system/config/${id}`)
 }
 
@@ -46,6 +46,6 @@ export function updateConfig(data: ConfigForm) {
   return post<void>('/system/config/edit', data)
 }
 
-export function deleteConfig(id: number) {
+export function deleteConfig(id: string | number) {
   return post<void>(`/system/config/remove/${id}`)
 }

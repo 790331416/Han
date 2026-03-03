@@ -1,6 +1,7 @@
 package com.han.tenant.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.han.common.mybatis.domain.entity.BizEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -37,6 +38,7 @@ public class TenantPo extends BizEntity {
     private Integer accountLimit;
 
     /** 过期时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime expireTime;
 
     /** 隔离类型(logical逻辑隔离/physical物理隔离/hybrid混合) */

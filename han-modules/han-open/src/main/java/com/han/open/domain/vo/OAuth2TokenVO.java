@@ -31,7 +31,7 @@ public class OAuth2TokenVO implements Serializable {
      * 有效期(秒)
      */
     @JsonProperty("expires_in")
-    private Long expiresIn;
+    private long expiresIn;
 
     /**
      * 刷新令牌

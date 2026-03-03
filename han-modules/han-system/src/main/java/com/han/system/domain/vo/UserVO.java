@@ -61,4 +61,7 @@ public class UserVO {
 
     /** 岗位ID列表 */
     private Set<Long> postIds;
+
+    /** 岗位名称列表 */
+    private Set<String> postNames;
 }

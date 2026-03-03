@@ -1,68 +1,68 @@
 package com.han.system.controller.admin;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
+import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.system.controller.base.BSysPostController;
+import com.han.system.domain.dto.SysPostDto;
 import com.han.system.domain.po.SysPostPo;
-import com.han.system.mapper.SysPostMapper;
-import lombok.RequiredArgsConstructor;
+import com.han.system.domain.query.SysPostQuery;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 岗位管理 - A层（管理端控制器）
+ */
 @AdminAuth
 @RestController("adminSysPostController")
 @RequestMapping("/system/post")
-@RequiredArgsConstructor
-public class ASysPostController {
+public class ASysPostController extends BSysPostController {
 
-    private final SysPostMapper postMapper;
-
+    @Override
     @GetMapping("/list")
     @PreAuthorize("@ss.hasAuthority('system:post:list')")
-    public R<PageResult<SysPostPo>> list(
-            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
-            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
-            @RequestParam(value = "postName", required = false) String postName) {
-        LambdaQueryWrapper<SysPostPo> wrapper = new LambdaQueryWrapper<SysPostPo>()
-                .like(postName != null && !postName.isEmpty(), SysPostPo::getPostName, postName)
-                .orderByAsc(SysPostPo::getPostSort);
-        Page<SysPostPo> page = postMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
-        return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
+    public R<PageResult<SysPostPo>> list(SysPostQuery query) {
+        return super.list(query);
     }
 
+    @Override
     @GetMapping("/all")
     public R<List<SysPostPo>> listAll() {
-        return R.ok(postMapper.selectList(new LambdaQueryWrapper<SysPostPo>().eq(SysPostPo::getStatus, 0).orderByAsc(SysPostPo::getPostSort)));
+        return super.listAll();
     }
 
+    @Override
     @GetMapping("/{postId}")
     @PreAuthorize("@ss.hasAuthority('system:post:query')")
     public R<SysPostPo> getInfo(@PathVariable Long postId) {
-        return R.ok(postMapper.selectById(postId));
+        return super.getInfo(postId);
     }
 
+    @Override
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:post:add')")
-    public R<Void> add(@RequestBody SysPostPo post) {
-        postMapper.insert(post);
-        return R.ok();
+    @OperLog(module = "岗位管理", type = OperLog.OperType.INSERT)
+    public R<Void> add(@Valid @RequestBody SysPostDto dto) {
+        return super.add(dto);
     }
 
+    @Override
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:post:edit')")
-    public R<Void> edit(@RequestBody SysPostPo post) {
-        postMapper.updateById(post);
-        return R.ok();
+    @OperLog(module = "岗位管理", type = OperLog.OperType.UPDATE)
+    public R<Void> edit(@Valid @RequestBody SysPostDto dto) {
+        return super.edit(dto);
     }
 
+    @Override
     @PostMapping("/remove/{postId}")
     @PreAuthorize("@ss.hasAuthority('system:post:remove')")
+    @OperLog(module = "岗位管理", type = OperLog.OperType.DELETE)
     public R<Void> remove(@PathVariable Long postId) {
-        postMapper.deleteById(postId);
-        return R.ok();
+        return super.remove(postId);
     }
 }

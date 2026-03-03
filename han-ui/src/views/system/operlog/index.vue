@@ -3,14 +3,15 @@
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
-        <el-form-item label="系统模块" prop="title">
-          <el-input v-model="queryParams.title" placeholder="请输入模块名称" clearable @keyup.enter="handleQuery" />
+        <el-form-item label="系统模块" prop="module">
+          <el-input v-model="queryParams.module" placeholder="请输入模块名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="操作人员" prop="operName">
           <el-input v-model="queryParams.operName" placeholder="请输入操作人员" clearable @keyup.enter="handleQuery" />
         </el-form-item>
-        <el-form-item label="操作类型" prop="businessType">
-          <el-select v-model="queryParams.businessType" placeholder="请选择" clearable>
+        <el-form-item label="操作类型" prop="operType">
+          <el-select v-model="queryParams.operType">
+            <el-option label="全部" value="" />
             <el-option label="其他" :value="0" />
             <el-option label="新增" :value="1" />
             <el-option label="修改" :value="2" />
@@ -21,7 +22,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="操作状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="成功" :value="0" />
             <el-option label="失败" :value="1" />
           </el-select>
@@ -48,10 +50,10 @@
       <el-table v-loading="loading" :data="logList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="日志ID" prop="id" width="80" />
-        <el-table-column label="系统模块" prop="title" width="120" />
+        <el-table-column label="系统模块" prop="module" width="120" />
         <el-table-column label="操作类型" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="getBusinessTypeTag(row.businessType)">{{ getBusinessTypeText(row.businessType) }}</el-tag>
+            <el-tag :type="getBusinessTypeTag(row.operType)">{{ getBusinessTypeText(row.operType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作人员" prop="operName" width="120" />
@@ -86,14 +88,13 @@
     <!-- 详情对话框 -->
     <el-dialog v-model="detailVisible" title="操作日志详情" width="700px" destroy-on-close>
       <el-descriptions :column="2" border>
-        <el-descriptions-item label="模块标题">{{ detailData.title }}</el-descriptions-item>
+        <el-descriptions-item label="系统模块">{{ detailData.module }}</el-descriptions-item>
         <el-descriptions-item label="操作类型">
-          <el-tag :type="getBusinessTypeTag(detailData.businessType)">{{ getBusinessTypeText(detailData.businessType) }}</el-tag>
+          <el-tag :type="getBusinessTypeTag(detailData.operType)">{{ getBusinessTypeText(detailData.operType) }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="操作人员">{{ detailData.operName }}</el-descriptions-item>
         <el-descriptions-item label="请求方式">{{ detailData.requestMethod }}</el-descriptions-item>
         <el-descriptions-item label="请求地址" :span="2">{{ detailData.operUrl }}</el-descriptions-item>
-        <el-descriptions-item label="方法名称" :span="2">{{ detailData.method }}</el-descriptions-item>
         <el-descriptions-item label="操作IP">{{ detailData.operIp }}</el-descriptions-item>
         <el-descriptions-item label="操作状态">
           <el-tag :type="detailData.status === 0 ? 'success' : 'danger'">{{ detailData.status === 0 ? '成功' : '失败' }}</el-tag>
@@ -125,7 +126,7 @@ import type { FormInstance } from 'element-plus'
 const loading = ref(false)
 const logList = ref<OperLog[]>([])
 const total = ref(0)
-const selectedIds = ref<number[]>([])
+const selectedIds = ref<(string | number)[]>([])
 const detailVisible = ref(false)
 const detailData = ref<OperLog>({} as OperLog)
 
@@ -134,10 +135,10 @@ const queryFormRef = ref<FormInstance>()
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
-  title: undefined as string | undefined,
+  module: undefined as string | undefined,
   operName: undefined as string | undefined,
-  businessType: undefined as number | undefined,
-  status: undefined as number | undefined
+  operType: '' as any,
+  status: '' as any
 })
 
 const businessTypeMap: Record<number, string> = {

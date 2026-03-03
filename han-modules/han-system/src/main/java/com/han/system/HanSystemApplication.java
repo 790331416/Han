@@ -1,5 +1,6 @@
 package com.han.system;
 
+import com.han.common.web.http.EnableHttpClients;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -10,6 +11,7 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
  */
 @SpringBootApplication(scanBasePackages = "com.han")
 @EnableDiscoveryClient
+@EnableHttpClients
 @MapperScan("com.han.system.mapper")
 public class HanSystemApplication {
 

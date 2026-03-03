@@ -132,7 +132,7 @@ const router = useRouter()
 const loading = ref(false)
 const logList = ref<JobLog[]>([])
 const total = ref(0)
-const selectedIds = ref<number[]>([])
+const selectedIds = ref<(string | number)[]>([])
 const detailVisible = ref(false)
 const dateRange = ref<string[]>([])
 

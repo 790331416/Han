@@ -47,3 +47,22 @@ export function getRouters() {
 export function getCaptcha() {
   return get<{ uuid: string; img: string }>('/auth/captcha')
 }
+
+// ==================== 租户切换 ====================
+
+export interface TenantSimple {
+  tenantId: string | number
+  tenantName: string
+  status: number
+  current: boolean
+}
+
+// 查询当前用户在所有租户的账号列表
+export function getMyTenants() {
+  return get<TenantSimple[]>('/auth/myTenants')
+}
+
+// 切换租户
+export function switchTenant(tenantId: string | number) {
+  return post<LoginVO>(`/auth/switchTenant?tenantId=${tenantId}`)
+}

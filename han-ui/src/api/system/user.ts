@@ -3,9 +3,9 @@ import type { PageResult, PageQuery } from '@/types'
 
 // 用户类型
 export interface User {
-  userId: number
-  tenantId: number
-  deptId: number
+  userId: string | number
+  tenantId: string | number
+  deptId: string | number
   deptName?: string
   username: string
   nickname: string
@@ -15,8 +15,8 @@ export interface User {
   status: number
   avatar: string
   createTime: string
-  roleIds?: number[]
-  postIds?: number[]
+  roleIds?: (string | number)[]
+  postIds?: (string | number)[]
 }
 
 export interface UserQuery extends PageQuery {
@@ -24,12 +24,12 @@ export interface UserQuery extends PageQuery {
   nickname?: string
   phone?: string
   status?: number
-  deptId?: number
+  deptId?: string | number
 }
 
 export interface UserForm {
-  userId?: number
-  deptId?: number
+  userId?: string | number
+  deptId?: string | number
   username: string
   nickname: string
   password?: string
@@ -37,8 +37,8 @@ export interface UserForm {
   email?: string
   sex?: number
   status?: number
-  roleIds?: number[]
-  postIds?: number[]
+  roleIds?: (string | number)[]
+  postIds?: (string | number)[]
   remark?: string
 }
 
@@ -48,7 +48,7 @@ export function listUser(query: UserQuery) {
 }
 
 // 获取用户详情
-export function getUser(userId: number) {
+export function getUser(userId: string | number) {
   return get<User>(`/system/user/info/${userId}`)
 }
 
@@ -63,23 +63,36 @@ export function updateUser(data: UserForm) {
 }
 
 // 删除用户
-export function deleteUser(userId: number) {
+export function deleteUser(userId: string | number) {
   return post<void>(`/system/user/remove/${userId}`)
 }
 
 // 批量删除用户
-export function deleteUsers(userIds: number[]) {
+export function deleteUsers(userIds: (string | number)[]) {
   return post<void>('/system/user/remove', userIds)
 }
 
 // 重置密码
-export function resetUserPwd(userId: number, password: string) {
+export function resetUserPwd(userId: string | number, password: string) {
   return postParams<void>('/system/user/resetPwd', { userId, password })
 }
 
 // 修改用户状态
-export function changeUserStatus(userId: number, status: number) {
+export function changeUserStatus(userId: string | number, status: number) {
   return postParams<void>('/system/user/changeStatus', { userId, status })
+}
+
+// ==================== 简单用户列表（下拉选择） ====================
+
+export interface SimpleUser {
+  userId: string | number
+  nickname: string
+  phone?: string
+  email?: string
+}
+
+export function listSimpleUser() {
+  return get<SimpleUser[]>('/system/user/simple-list')
 }
 
 // ==================== 个人中心 ====================
@@ -102,4 +115,24 @@ export function updateUserPassword(data: { oldPassword: string; newPassword: str
 // 更新头像
 export function updateUserAvatar(data: { avatar: string }) {
   return post<void>('/system/user/profile/avatar', data)
+}
+
+// ==================== 导入导出 ====================
+
+// 导出用户
+export function exportUser(query: UserQuery) {
+  return get<Blob>('/system/user/export', query, { responseType: 'blob' })
+}
+
+// 下载导入模板
+export function importTemplate() {
+  return get<Blob>('/system/user/importTemplate', {}, { responseType: 'blob' })
+}
+
+// 导入用户
+export function importUser(file: File, updateSupport: boolean = false) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('updateSupport', String(updateSupport))
+  return post<string>('/system/user/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }

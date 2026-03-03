@@ -2,12 +2,12 @@ import { get, post } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 export interface Tenant {
-  tenantId: number
+  tenantId: string | number
   tenantName: string
   contactName?: string
   contactPhone?: string
   contactEmail?: string
-  packageId?: number
+  packageId?: string | number
   packageName?: string
   userLimit?: number
   userCount?: number
@@ -26,12 +26,12 @@ export interface TenantQuery extends PageQuery {
 }
 
 export interface TenantForm {
-  tenantId?: number
+  tenantId?: string | number
   tenantName: string
   contactName?: string
   contactPhone?: string
   contactEmail?: string
-  packageId?: number
+  packageId?: string | number
   userLimit?: number
   expireTime?: string
   isolationType?: string
@@ -44,7 +44,7 @@ export function listTenant(query: TenantQuery) {
   return get<PageResult<Tenant>>('/tenant/list', query)
 }
 
-export function getTenant(id: number) {
+export function getTenant(id: string | number) {
   return get<Tenant>(`/tenant/${id}`)
 }
 
@@ -56,10 +56,10 @@ export function updateTenant(data: TenantForm) {
   return post<void>('/tenant/edit', data)
 }
 
-export function deleteTenant(id: number) {
+export function deleteTenant(id: string | number) {
   return post<void>(`/tenant/remove/${id}`)
 }
 
-export function changeTenantStatus(tenantId: number, status: number) {
-  return post<void>('/tenant/changeStatus', { tenantId, base: { status } })
+export function changeTenantStatus(tenantId: string | number, status: number) {
+  return post<void>(`/tenant/changeStatus?tenantId=${tenantId}&status=${status}`)
 }

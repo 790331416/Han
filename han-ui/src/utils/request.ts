@@ -31,6 +31,16 @@ service.interceptors.request.use(
     if (userStore.tenantId) {
       config.headers['X-Tenant-Id'] = userStore.tenantId
     }
+    // 清理空参数（支持搜索表单"全部"选项用空字符串表示）
+    if (config.params) {
+      const cleanParams: Record<string, any> = {}
+      for (const [key, value] of Object.entries(config.params)) {
+        if (value !== '' && value !== null && value !== undefined) {
+          cleanParams[key] = value
+        }
+      }
+      config.params = cleanParams
+    }
     return config
   },
   (error) => {

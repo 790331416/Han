@@ -6,14 +6,15 @@
           <el-input v-model="queryParams.menuName" placeholder="请输入" clearable @keyup.enter="getList" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="getList">搜索</el-button>
-          <el-button :icon="Refresh" @click="queryParams.menuName = ''; queryParams.status = undefined; getList()">重置</el-button>
+          <el-button :icon="Refresh" @click="queryParams.menuName = ''; queryParams.status = ''; getList()">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -145,7 +146,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive({ menuName: '', status: undefined as number | undefined })
+const queryParams = reactive({ menuName: '', status: '' as any })
 
 const form = reactive<MenuForm>({ parentId: 0, menuName: '', menuType: 'M', path: '', component: '', perms: '', icon: '', sort: 0, visible: 0, status: 0, isFrame: 1, isCache: 0 })
 

@@ -3,6 +3,7 @@ package com.han.system.service;
 import com.han.common.core.domain.PageResult;
 import com.han.system.domain.dto.SysRoleDto;
 import com.han.system.domain.po.SysRolePo;
+import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.query.SysRoleQuery;
 
 import java.util.List;
@@ -76,4 +77,24 @@ public interface ISysRoleService {
      * 校验角色权限字符唯一
      */
     boolean checkRoleKeyUnique(String roleKey, Long roleId);
+
+    /**
+     * 查询角色已分配的用户列表（分页）
+     */
+    PageResult<SysUserPo> selectAllocatedUsers(Long roleId, String username, String phone, Integer pageNum, Integer pageSize);
+
+    /**
+     * 查询角色未分配的用户列表（分页）
+     */
+    PageResult<SysUserPo> selectUnallocatedUsers(Long roleId, String username, String phone, Integer pageNum, Integer pageSize);
+
+    /**
+     * 批量授权用户
+     */
+    void authUsers(Long roleId, List<Long> userIds);
+
+    /**
+     * 批量取消授权用户
+     */
+    void cancelAuthUsers(Long roleId, List<Long> userIds);
 }

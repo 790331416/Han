@@ -113,6 +113,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { title: '角色管理', icon: 'UserFilled', permission: 'system:role:list' }
       },
       {
+        path: 'role/authUser',
+        name: 'AuthUser',
+        component: () => import('@/views/system/role/authUser.vue'),
+        meta: { title: '分配用户', hidden: true, activeMenu: '/system/role' }
+      },
+      {
         path: 'menu',
         name: 'Menu',
         component: () => import('@/views/system/menu/index.vue'),

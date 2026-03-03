@@ -30,8 +30,8 @@ public class SysDeptDto {
     /** 显示顺序 */
     private Integer sort;
 
-    /** 负责人 */
-    private String leader;
+    /** 负责人用户ID */
+    private Long leaderId;
 
     /** 联系电话 */
     @Size(max = 11, message = "联系电话长度不能超过11个字符")

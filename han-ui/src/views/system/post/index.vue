@@ -9,7 +9,8 @@
           <el-input v-model="queryParams.postName" placeholder="请输入" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
@@ -105,9 +106,9 @@ const dialogTitle = ref('')
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive({ postCode: '', postName: '', status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
+const queryParams = reactive({ postCode: '', postName: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
-const form = reactive<PostForm>({ id: undefined, postName: '', postCode: '', postSort: 0, status: 0, remark: '' })
+const form = reactive<PostForm>({ postId: undefined, postName: '', postCode: '', postSort: 0, status: 0, remark: '' })
 
 const rules: FormRules = {
   postName: [{ required: true, message: '请输入岗位名称', trigger: 'blur' }],
@@ -147,7 +148,7 @@ async function handleEdit(row: Post) {
   try {
     const res = await getPost(row.id)
     const data = (res as any).data
-    Object.assign(form, { id: data.id, postName: data.postName, postCode: data.postCode, postSort: data.postSort, status: data.status, remark: data.remark })
+    Object.assign(form, { postId: data.id, postName: data.postName, postCode: data.postCode, postSort: data.postSort, status: data.status, remark: data.remark })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -166,7 +167,7 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    if (form.id) {
+    if (form.postId) {
       await updatePost(form)
       ElMessage.success('修改成功')
     } else {
@@ -181,7 +182,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.id = undefined; form.postName = ''; form.postCode = ''; form.postSort = 0; form.status = 0; form.remark = ''
+  form.postId = undefined; form.postName = ''; form.postCode = ''; form.postSort = 0; form.status = 0; form.remark = ''
 }
 </script>
 

@@ -1,0 +1,2 @@
+com.han.common.web.config.JacksonAutoConfiguration
+com.han.common.web.http.HttpClientAutoConfiguration

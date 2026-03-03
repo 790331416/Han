@@ -1,6 +1,8 @@
 package com.han.auth.service.impl;
 
 import com.han.api.system.SystemServiceClient;
+import com.han.api.tenant.TenantServiceClient;
+import com.han.api.system.domain.LoginLogDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
@@ -34,6 +36,7 @@ public class AuthServiceImpl implements IAuthService {
 
     private final StringRedisTemplate redisTemplate;
     private final SystemServiceClient systemServiceClient;
+    private final TenantServiceClient tenantServiceClient;
 
     /** Token 有效期配置 */
     private static final Duration PC_TOKEN_EXPIRE = Duration.ofMinutes(30);
@@ -52,8 +55,13 @@ public class AuthServiceImpl implements IAuthService {
             validateCaptcha(dto.getCode(), dto.getUuid());
         }
 
-        // 2. 查询用户信息
-        R<UserVO> userResult = systemServiceClient.getUserByUsername(dto.getUsername());
+        // 2. 查询用户信息（支持按租户ID过滤）
+        R<UserVO> userResult;
+        if (dto.getTenantId() != null) {
+            userResult = systemServiceClient.getUserByUsername(dto.getUsername(), dto.getTenantId());
+        } else {
+            userResult = systemServiceClient.getUserByUsername(dto.getUsername());
+        }
         if (userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
             recordLoginFail(dto.getUsername(), "用户不存在");
             throw new BusinessException("用户名或密码错误");
@@ -73,26 +81,41 @@ public class AuthServiceImpl implements IAuthService {
             throw new BusinessException("用户名或密码错误");
         }
 
-        // 5. 查询用户权限
+        // 5. 校验租户有效性（非平台租户需要检查停用/过期）
+        if (user.getTenantId() != null && user.getTenantId() != 1L) {
+            try {
+                R<Boolean> validResult = tenantServiceClient.checkTenantValid(user.getTenantId());
+                if (validResult.getData() == null || !validResult.getData()) {
+                    recordLoginFail(dto.getUsername(), "租户已停用或已过期");
+                    throw new BusinessException("租户已停用或已过期，请联系管理员");
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("校验租户有效性失败，跳过校验: tenantId={}", user.getTenantId(), e);
+            }
+        }
+
+        // 6. 查询用户权限
         R<Set<String>> permsResult = systemServiceClient.getPermissionsByUserId(user.getUserId());
         Set<String> permissions = permsResult.getData();
 
-        // 6. 构建登录用户信息
+        // 7. 构建登录用户信息
         LoginUser loginUser = buildLoginUser(user, dto.getClientType(), permissions);
 
-        // 7. 生成Token
+        // 8. 生成Token
         String accessToken = generateToken();
         String refreshToken = generateToken();
 
-        // 8. 计算过期时间
+        // 9. 计算过期时间
         Duration tokenExpire = getTokenExpire(dto.getClientType());
         Duration refreshExpire = getRefreshExpire(dto.getClientType());
         loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
 
-        // 9. 处理多端登录限制
+        // 10. 处理多端登录限制
         handleMultiLogin(user.getUserId(), dto.getClientType());
 
-        // 10. 缓存Token和用户信息
+        // 11. 缓存Token和用户信息
         String tokenKey = CacheConstants.TOKEN_KEY + accessToken;
         String refreshKey = CacheConstants.REFRESH_TOKEN_KEY + refreshToken;
         String userKey = CacheConstants.LOGIN_USER_KEY + user.getUserId() + ":" + dto.getClientType().getCode();
@@ -101,10 +124,10 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(refreshKey, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, accessToken, tokenExpire);
 
-        // 11. 记录登录成功日志
+        // 12. 记录登录成功日志
         recordLoginSuccess(user.getUserId(), dto.getUsername(), dto.getClientType());
 
-        // 12. 返回登录结果
+        // 13. 返回登录结果
         return buildLoginVO(accessToken, refreshToken, tokenExpire, user.getUserId(),
                 user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
     }
@@ -290,8 +313,22 @@ public class AuthServiceImpl implements IAuthService {
      */
     private void recordLoginFail(String username, String message) {
         log.warn("用户[{}]登录失败: {}", username, message);
-        // TODO: 记录到登录日志表
-        // TODO: 实现登录失败次数限制
+        try {
+            String userAgent = getUserAgent();
+            String clientIp = getClientIp();
+            LoginLogDTO dto = LoginLogDTO.builder()
+                    .username(username)
+                    .status(1)
+                    .message(message)
+                    .ipAddr(clientIp)
+                    .loginLocation(resolveLocation(clientIp))
+                    .browser(parseBrowser(userAgent))
+                    .os(parseOs(userAgent))
+                    .build();
+            systemServiceClient.recordLoginLog(dto);
+        } catch (Exception e) {
+            log.error("记录登录失败日志异常", e);
+        }
     }
 
     /**
@@ -299,7 +336,93 @@ public class AuthServiceImpl implements IAuthService {
      */
     private void recordLoginSuccess(Long userId, String username, ClientType clientType) {
         log.info("用户[{}]登录成功, 客户端类型: {}", username, clientType.getCode());
-        // TODO: 记录到登录日志表
-        // TODO: 更新用户最后登录时间和IP
+        try {
+            String userAgent = getUserAgent();
+            String clientIp = getClientIp();
+            LoginLogDTO dto = LoginLogDTO.builder()
+                    .username(username)
+                    .status(0)
+                    .message("登录成功")
+                    .clientType(clientType.getCode())
+                    .ipAddr(clientIp)
+                    .loginLocation(resolveLocation(clientIp))
+                    .browser(parseBrowser(userAgent))
+                    .os(parseOs(userAgent))
+                    .build();
+            systemServiceClient.recordLoginLog(dto);
+        } catch (Exception e) {
+            log.error("记录登录成功日志异常", e);
+        }
+    }
+
+    /**
+     * 获取当前请求的客户端IP
+     */
+    private String getClientIp() {
+        try {
+            var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes instanceof org.springframework.web.context.request.ServletRequestAttributes sra) {
+                var request = sra.getRequest();
+                String ip = request.getHeader("X-Forwarded-For");
+                if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+                    ip = request.getHeader("X-Real-IP");
+                }
+                if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+                    ip = request.getRemoteAddr();
+                }
+                if (ip != null && ip.contains(",")) {
+                    ip = ip.substring(0, ip.indexOf(",")).trim();
+                }
+                return ip;
+            }
+        } catch (Exception e) {
+            log.debug("获取客户端IP失败", e);
+        }
+        return "unknown";
+    }
+
+    private String getUserAgent() {
+        try {
+            var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes instanceof org.springframework.web.context.request.ServletRequestAttributes sra) {
+                return sra.getRequest().getHeader("User-Agent");
+            }
+        } catch (Exception e) {
+            log.debug("获取User-Agent失败", e);
+        }
+        return null;
+    }
+
+    private String parseBrowser(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) return "unknown";
+        String ua = userAgent.toLowerCase();
+        if (ua.contains("edg")) return "Edge";
+        if (ua.contains("chrome") && !ua.contains("edg")) return "Chrome";
+        if (ua.contains("firefox")) return "Firefox";
+        if (ua.contains("safari") && !ua.contains("chrome")) return "Safari";
+        if (ua.contains("opera") || ua.contains("opr")) return "Opera";
+        if (ua.contains("msie") || ua.contains("trident")) return "IE";
+        return "unknown";
+    }
+
+    private String resolveLocation(String ip) {
+        if (ip == null || ip.isBlank()) return "未知";
+        if ("127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || ip.startsWith("0:")) return "内网IP";
+        if (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("172.")) return "内网IP";
+        return ip;
+    }
+
+    private String parseOs(String userAgent) {
+        if (userAgent == null || userAgent.isBlank()) return "unknown";
+        if (userAgent.contains("Windows NT 10")) return "Windows 10";
+        if (userAgent.contains("Windows NT 11")) return "Windows 11";
+        if (userAgent.contains("Windows NT 6.3")) return "Windows 8.1";
+        if (userAgent.contains("Windows NT 6.1")) return "Windows 7";
+        if (userAgent.contains("Windows")) return "Windows";
+        if (userAgent.contains("Mac OS X")) return "macOS";
+        if (userAgent.contains("Linux") && userAgent.contains("Android")) return "Android";
+        if (userAgent.contains("Linux")) return "Linux";
+        if (userAgent.contains("iPhone") || userAgent.contains("iPad")) return "iOS";
+        return "unknown";
     }
 }

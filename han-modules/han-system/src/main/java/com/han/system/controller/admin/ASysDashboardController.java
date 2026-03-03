@@ -1,7 +1,9 @@
 package com.han.system.controller.admin;
 
 import com.han.common.core.domain.R;
+import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.mapper.SysDeptMapper;
 import com.han.system.mapper.SysPostMapper;
 import com.han.system.mapper.SysUserMapper;
@@ -26,9 +28,15 @@ public class ASysDashboardController {
     @GetMapping("/stats")
     public R<Map<String, Object>> stats() {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("userCount", userMapper.selectCount(null));
-        data.put("deptCount", deptMapper.selectCount(null));
-        data.put("postCount", postMapper.selectCount(null));
+        if (SecurityContextHolder.isAdmin()) {
+            data.put("userCount", TenantHelper.ignore(() -> userMapper.selectCount(null)));
+            data.put("deptCount", TenantHelper.ignore(() -> deptMapper.selectCount(null)));
+            data.put("postCount", TenantHelper.ignore(() -> postMapper.selectCount(null)));
+        } else {
+            data.put("userCount", userMapper.selectCount(null));
+            data.put("deptCount", deptMapper.selectCount(null));
+            data.put("postCount", postMapper.selectCount(null));
+        }
         data.put("onlineCount", 1);
         return R.ok(data);
     }

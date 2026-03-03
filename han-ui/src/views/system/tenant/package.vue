@@ -7,7 +7,8 @@
           <el-input v-model="queryParams.packageName" placeholder="请输入套餐名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
@@ -88,16 +89,18 @@
     </el-dialog>
 
     <!-- 菜单分配对话框 -->
-    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="500px" destroy-on-close>
-      <el-tree
-        ref="menuTreeRef"
-        :data="menuTree"
-        :props="{ label: 'menuName', children: 'children' }"
-        show-checkbox
-        node-key="id"
-        :default-checked-keys="checkedMenuIds"
-        :default-expand-all="true"
-      />
+    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="700px" destroy-on-close>
+      <div style="max-height: 500px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
+        <el-tree
+          ref="menuTreeRef"
+          :data="menuTree"
+          :props="{ label: 'menuName', children: 'children' }"
+          show-checkbox
+          node-key="id"
+          :default-checked-keys="checkedMenuIds"
+          :default-expand-all="true"
+        />
+      </div>
       <template #footer>
         <el-button @click="menuDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="menuLoading" @click="handleMenuSubmit">确定</el-button>
@@ -127,8 +130,8 @@ const menuDialogVisible = ref(false)
 const submitLoading = ref(false)
 const menuLoading = ref(false)
 const menuTree = ref<any[]>([])
-const checkedMenuIds = ref<number[]>([])
-const currentPackageId = ref<number>(0)
+const checkedMenuIds = ref<(string | number)[]>([])
+const currentPackageId = ref<string | number>(0)
 
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
@@ -138,7 +141,7 @@ const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
   packageName: undefined as string | undefined,
-  status: undefined as number | undefined
+  status: '' as any
 })
 
 const form = reactive<TenantPackageForm>({
@@ -248,7 +251,8 @@ const handleMenus = async (row: TenantPackage) => {
       getPackageMenus(row.packageId)
     ])
     menuTree.value = menuRes.data || []
-    checkedMenuIds.value = checkedRes.data || []
+    const allIds: (string | number)[] = checkedRes.data || []
+    checkedMenuIds.value = filterLeafIds(allIds, menuTree.value)
     menuDialogVisible.value = true
   } catch {
     ElMessage.error('获取菜单数据失败')
@@ -258,8 +262,8 @@ const handleMenus = async (row: TenantPackage) => {
 const handleMenuSubmit = async () => {
   menuLoading.value = true
   try {
-    const checkedKeys = menuTreeRef.value?.getCheckedKeys(false) as number[] || []
-    const halfCheckedKeys = menuTreeRef.value?.getHalfCheckedKeys() as number[] || []
+    const checkedKeys = menuTreeRef.value?.getCheckedKeys(false) as (string | number)[] || []
+    const halfCheckedKeys = menuTreeRef.value?.getHalfCheckedKeys() as (string | number)[] || []
     const allKeys = [...checkedKeys, ...halfCheckedKeys]
     await updatePackageMenus(currentPackageId.value, allKeys)
     ElMessage.success('菜单分配成功')
@@ -267,6 +271,20 @@ const handleMenuSubmit = async () => {
   } finally {
     menuLoading.value = false
   }
+}
+
+function filterLeafIds(ids: (string | number)[], tree: any[]): (string | number)[] {
+  const parentIds = new Set<string>()
+  function collectParents(nodes: any[]) {
+    for (const node of nodes) {
+      if (node.children && node.children.length > 0) {
+        parentIds.add(String(node.id))
+        collectParents(node.children)
+      }
+    }
+  }
+  collectParents(tree)
+  return ids.filter(id => !parentIds.has(String(id)))
 }
 
 onMounted(() => {

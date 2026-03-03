@@ -2,8 +2,8 @@ import { get, post } from '@/utils/request'
 import type { PageResult } from '@/types'
 
 export interface Notice {
-  id: number
-  tenantId: number
+  id: string | number
+  tenantId: string | number
   noticeTitle: string
   noticeType: string
   noticeContent: string
@@ -14,7 +14,7 @@ export interface Notice {
 }
 
 export interface NoticeForm {
-  id?: number
+  id?: string | number
   noticeTitle: string
   noticeType: string
   noticeContent: string
@@ -28,7 +28,7 @@ export function listNotice(query: { pageNum: number; pageSize: number; noticeTit
 }
 
 // 查询通知公告详情
-export function getNotice(id: number) {
+export function getNotice(id: string | number) {
   return get<Notice>(`/system/notice/${id}`)
 }
 
@@ -43,11 +43,11 @@ export function updateNotice(data: NoticeForm) {
 }
 
 // 删除通知公告
-export function deleteNotice(id: number) {
+export function deleteNotice(id: string | number) {
   return post<void>(`/system/notice/remove/${id}`)
 }
 
 // 批量删除通知公告
-export function deleteNotices(ids: number[]) {
+export function deleteNotices(ids: (string | number)[]) {
   return post<void>('/system/notice/remove', ids)
 }

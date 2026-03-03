@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
-import com.han.common.core.util.XuStrUtil;
+import com.han.common.core.util.HanStrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -59,7 +59,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
         // 获取Token
         String token = getToken(request);
-        if (XuStrUtil.isBlank(token)) {
+        if (HanStrUtil.isBlank(token)) {
             return unauthorized(exchange, "未携带Token");
         }
 
@@ -88,7 +88,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     private String getToken(ServerHttpRequest request) {
         String token = request.getHeaders().getFirst(Constants.AUTHORIZATION_HEADER);
-        if (XuStrUtil.isNotBlank(token) && token.startsWith(Constants.TOKEN_PREFIX)) {
+        if (HanStrUtil.isNotBlank(token) && token.startsWith(Constants.TOKEN_PREFIX)) {
             return token.substring(Constants.TOKEN_PREFIX.length());
         }
         return token;

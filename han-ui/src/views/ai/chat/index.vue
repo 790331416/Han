@@ -173,8 +173,8 @@ const inputMessage = ref('')
 const sending = ref(false)
 const streaming = ref(false)
 const streamContent = ref('')
-const selectedModelId = ref<number>()
-const currentConversationId = ref<number>()
+const selectedModelId = ref<string | number>()
+const currentConversationId = ref<string | number>()
 const currentConversation = ref<AiConversation>()
 const conversationList = ref<AiConversation[]>([])
 const messages = ref<AiChatMessage[]>([])
@@ -182,7 +182,7 @@ const modelList = ref<AiModel[]>([])
 const abortController = ref<AbortController | null>(null)
 const editingTitle = ref(false)
 const editTitleValue = ref('')
-const editingMessageId = ref<number | null>(null)
+const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
 
 onMounted(async () => {
@@ -230,7 +230,7 @@ function handleNewChat() {
   inputMessage.value = ''
 }
 
-async function handleDeleteConversation(id: number) {
+async function handleDeleteConversation(id: string | number) {
   try {
     await ElMessageBox.confirm('确认删除该对话？', '提示', { type: 'warning' })
     await deleteConversation(id)

@@ -4,7 +4,7 @@ import type { PageResult, PageQuery } from '@/types'
 // ===================== AI模型 =====================
 
 export interface AiModel {
-  modelId: number
+  modelId: string | number
   modelName: string
   modelType: string
   provider: string
@@ -29,7 +29,7 @@ export function listAiModel(query: AiModelQuery) {
   return get<PageResult<AiModel>>('/ai/model/list', query)
 }
 
-export function getAiModel(modelId: number) {
+export function getAiModel(modelId: string | number) {
   return get<AiModel>(`/ai/model/${modelId}`)
 }
 
@@ -41,11 +41,11 @@ export function updateAiModel(data: AiModel) {
   return post<void>('/ai/model/edit', data)
 }
 
-export function deleteAiModel(modelId: number) {
+export function deleteAiModel(modelId: string | number) {
   return post<void>(`/ai/model/remove/${modelId}`)
 }
 
-export function testAiModel(modelId: number) {
+export function testAiModel(modelId: string | number) {
   return post<string>(`/ai/model/test/${modelId}`)
 }
 
@@ -56,11 +56,11 @@ export function listAllModels(modelType?: string) {
 // ===================== 知识库 =====================
 
 export interface KnowledgeBase {
-  kbId: number
+  kbId: string | number
   kbName: string
   description?: string
   kbType: string
-  embeddingModelId?: number
+  embeddingModelId?: string | number
   documentCount: number
   paragraphCount: number
   charCount: number
@@ -78,7 +78,7 @@ export function listKnowledgeBase(query: KnowledgeBaseQuery) {
   return get<PageResult<KnowledgeBase>>('/ai/kb/list', query)
 }
 
-export function getKnowledgeBase(kbId: number) {
+export function getKnowledgeBase(kbId: string | number) {
   return get<KnowledgeBase>(`/ai/kb/${kbId}`)
 }
 
@@ -90,7 +90,7 @@ export function updateKnowledgeBase(data: Partial<KnowledgeBase>) {
   return post<void>('/ai/kb/edit', data)
 }
 
-export function deleteKnowledgeBase(kbId: number) {
+export function deleteKnowledgeBase(kbId: string | number) {
   return post<void>(`/ai/kb/remove/${kbId}`)
 }
 
@@ -101,8 +101,8 @@ export function listAllKnowledgeBases() {
 // ===================== 知识库文档 =====================
 
 export interface KbDocument {
-  docId: number
-  kbId: number
+  docId: string | number
+  kbId: string | number
   docName: string
   docType: string
   filePath?: string
@@ -115,11 +115,11 @@ export interface KbDocument {
   createTime?: string
 }
 
-export function listKbDocument(kbId: number, query: PageQuery & { docName?: string; indexStatus?: string }) {
+export function listKbDocument(kbId: string | number, query: PageQuery & { docName?: string; indexStatus?: string }) {
   return get<PageResult<KbDocument>>(`/ai/kb/${kbId}/document/list`, query)
 }
 
-export function uploadKbDocument(kbId: number, file: File) {
+export function uploadKbDocument(kbId: string | number, file: File) {
   const formData = new FormData()
   formData.append('file', file)
   return post<void>(`/ai/kb/${kbId}/document/upload`, formData, {
@@ -127,18 +127,18 @@ export function uploadKbDocument(kbId: number, file: File) {
   })
 }
 
-export function reindexKbDocument(docId: number) {
+export function reindexKbDocument(docId: string | number) {
   return post<void>(`/ai/kb/document/reindex/${docId}`)
 }
 
-export function deleteKbDocument(docId: number) {
+export function deleteKbDocument(docId: string | number) {
   return post<void>(`/ai/kb/document/remove/${docId}`)
 }
 
 // ===================== MCP服务 =====================
 
 export interface McpServer {
-  mcpId: number
+  mcpId: string | number
   serverName: string
   description?: string
   transportType: string
@@ -161,7 +161,7 @@ export function listMcpServer(query: McpServerQuery) {
   return get<PageResult<McpServer>>('/ai/mcp/list', query)
 }
 
-export function getMcpServer(mcpId: number) {
+export function getMcpServer(mcpId: string | number) {
   return get<McpServer>(`/ai/mcp/${mcpId}`)
 }
 
@@ -173,11 +173,11 @@ export function updateMcpServer(data: Partial<McpServer>) {
   return post<void>('/ai/mcp/edit', data)
 }
 
-export function deleteMcpServer(mcpId: number) {
+export function deleteMcpServer(mcpId: string | number) {
   return post<void>(`/ai/mcp/remove/${mcpId}`)
 }
 
-export function refreshMcpTools(mcpId: number) {
+export function refreshMcpTools(mcpId: string | number) {
   return post<string>(`/ai/mcp/refresh/${mcpId}`)
 }
 
@@ -188,11 +188,11 @@ export function listAllMcpServers() {
 // ===================== AI智能体 =====================
 
 export interface AiAgent {
-  agentId: number
+  agentId: string | number
   agentName: string
   description?: string
   avatar?: string
-  modelId?: number
+  modelId?: string | number
   knowledgeBaseIds?: string
   mcpServerIds?: string
   systemPrompt?: string
@@ -213,7 +213,7 @@ export function listAiAgent(query: AiAgentQuery) {
   return get<PageResult<AiAgent>>('/ai/agent/list', query)
 }
 
-export function getAiAgent(agentId: number) {
+export function getAiAgent(agentId: string | number) {
   return get<AiAgent>(`/ai/agent/${agentId}`)
 }
 
@@ -225,30 +225,30 @@ export function updateAiAgent(data: Partial<AiAgent>) {
   return post<void>('/ai/agent/edit', data)
 }
 
-export function deleteAiAgent(agentId: number) {
+export function deleteAiAgent(agentId: string | number) {
   return post<void>(`/ai/agent/remove/${agentId}`)
 }
 
-export function publishAiAgent(agentId: number) {
+export function publishAiAgent(agentId: string | number) {
   return post<void>(`/ai/agent/publish/${agentId}`)
 }
 
-export function unpublishAiAgent(agentId: number) {
+export function unpublishAiAgent(agentId: string | number) {
   return post<void>(`/ai/agent/unpublish/${agentId}`)
 }
 
-export function chatWithAgent(agentId: number, message: string, conversationId?: string) {
+export function chatWithAgent(agentId: string | number, message: string, conversationId?: string) {
   return post<string>(`/ai/agent/chat/${agentId}`, { message, conversationId })
 }
 
 // ===================== AI工作流 =====================
 
 export interface AiWorkflow {
-  workflowId: number
+  workflowId: string | number
   workflowName: string
   description?: string
   workflowType: string
-  modelId?: number
+  modelId?: string | number
   knowledgeBaseIds?: string
   mcpServerIds?: string
   systemPrompt?: string
@@ -269,7 +269,7 @@ export function listAiWorkflow(query: AiWorkflowQuery) {
   return get<PageResult<AiWorkflow>>('/ai/workflow/list', query)
 }
 
-export function getAiWorkflow(workflowId: number) {
+export function getAiWorkflow(workflowId: string | number) {
   return get<AiWorkflow>(`/ai/workflow/${workflowId}`)
 }
 
@@ -281,38 +281,38 @@ export function updateAiWorkflow(data: Partial<AiWorkflow>) {
   return post<void>('/ai/workflow/edit', data)
 }
 
-export function deleteAiWorkflow(workflowId: number) {
+export function deleteAiWorkflow(workflowId: string | number) {
   return post<void>(`/ai/workflow/remove/${workflowId}`)
 }
 
-export function publishAiWorkflow(workflowId: number) {
+export function publishAiWorkflow(workflowId: string | number) {
   return post<void>(`/ai/workflow/publish/${workflowId}`)
 }
 
-export function unpublishAiWorkflow(workflowId: number) {
+export function unpublishAiWorkflow(workflowId: string | number) {
   return post<void>(`/ai/workflow/unpublish/${workflowId}`)
 }
 
-export function chatWithWorkflow(workflowId: number, message: string, conversationId?: string) {
+export function chatWithWorkflow(workflowId: string | number, message: string, conversationId?: string) {
   return post<string>(`/ai/workflow/chat/${workflowId}`, { message, conversationId })
 }
 
 // ===================== AI对话 =====================
 
 export interface AiConversation {
-  conversationId: number
+  conversationId: string | number
   title: string
-  workflowId?: number
-  modelId?: number
-  userId: number
+  workflowId?: string | number
+  modelId?: string | number
+  userId: string | number
   messageCount: number
   createTime?: string
   updateTime?: string
 }
 
 export interface AiChatMessage {
-  messageId: number
-  conversationId: number
+  messageId: string | number
+  conversationId: string | number
   role: string
   content: string
   tokenCount?: number
@@ -321,9 +321,9 @@ export interface AiChatMessage {
 }
 
 export interface ChatRequest {
-  conversationId?: number
-  workflowId?: number
-  modelId?: number
+  conversationId?: string | number
+  workflowId?: string | number
+  modelId?: string | number
   message: string
 }
 
@@ -335,27 +335,27 @@ export function listConversations(query: PageQuery) {
   return get<PageResult<AiConversation>>('/ai/chat/conversations', query)
 }
 
-export function listChatMessages(conversationId: number) {
+export function listChatMessages(conversationId: string | number) {
   return get<AiChatMessage[]>(`/ai/chat/messages/${conversationId}`)
 }
 
-export function deleteConversation(conversationId: number) {
+export function deleteConversation(conversationId: string | number) {
   return post<void>(`/ai/chat/conversations/remove/${conversationId}`)
 }
 
-export function clearConversationMessages(conversationId: number) {
+export function clearConversationMessages(conversationId: string | number) {
   return post<void>(`/ai/chat/conversations/clear/${conversationId}`)
 }
 
-export function renameConversation(conversationId: number, title: string) {
+export function renameConversation(conversationId: string | number, title: string) {
   return post<void>(`/ai/chat/conversations/rename/${conversationId}`, { title })
 }
 
 // ===================== Prompt模板 =====================
 
 export interface AiPromptTemplate {
-  templateId?: number
-  tenantId?: number
+  templateId?: string | number
+  tenantId?: string | number
   templateName: string
   category: string
   content: string
@@ -371,7 +371,7 @@ export function listPromptTemplate(params: any) {
   return get<PageResult<AiPromptTemplate>>('/ai/prompt/list', params)
 }
 
-export function getPromptTemplate(templateId: number) {
+export function getPromptTemplate(templateId: string | number) {
   return get<AiPromptTemplate>(`/ai/prompt/${templateId}`)
 }
 
@@ -383,7 +383,7 @@ export function editPromptTemplate(data: AiPromptTemplate) {
   return post<void>('/ai/prompt/edit', data)
 }
 
-export function removePromptTemplate(templateId: number) {
+export function removePromptTemplate(templateId: string | number) {
   return post<void>(`/ai/prompt/remove/${templateId}`)
 }
 
@@ -391,7 +391,7 @@ export function listAllPromptTemplate() {
   return get<AiPromptTemplate[]>('/ai/prompt/all')
 }
 
-export function renderPromptTemplate(templateId: number, variables: Record<string, string>) {
+export function renderPromptTemplate(templateId: string | number, variables: Record<string, string>) {
   return post<string>(`/ai/prompt/render/${templateId}`, variables)
 }
 
@@ -411,7 +411,7 @@ export function tokenStatsByDay(startTime: string, endTime: string) {
 
 // ===================== 知识库命中测试 =====================
 
-export function hitTestKnowledgeBase(kbId: number, query: string) {
+export function hitTestKnowledgeBase(kbId: string | number, query: string) {
   return post<any[]>(`/ai/kb/hit-test/${kbId}`, { query })
 }
 

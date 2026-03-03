@@ -3,7 +3,7 @@ import type { PageResult, PageQuery } from '@/types'
 
 // 定时任务类型
 export interface Job {
-  jobId: number
+  jobId: string | number
   jobName: string
   jobGroup: string
   invokeTarget: string
@@ -26,7 +26,7 @@ export interface JobQuery extends PageQuery {
 
 // 任务表单
 export interface JobForm {
-  jobId?: number
+  jobId?: string | number
   jobName: string
   jobGroup: string
   invokeTarget: string
@@ -39,7 +39,7 @@ export interface JobForm {
 
 // 任务日志类型
 export interface JobLog {
-  jobLogId: number
+  jobLogId: string | number
   jobName: string
   jobGroup: string
   invokeTarget: string
@@ -103,7 +103,7 @@ export function listJob(query: JobQuery) {
 }
 
 // 获取任务详情
-export function getJob(jobId: number) {
+export function getJob(jobId: string | number) {
   return get<Job>(`/job/${jobId}`)
 }
 
@@ -118,22 +118,22 @@ export function updateJob(data: JobForm) {
 }
 
 // 删除任务
-export function deleteJob(jobId: number) {
+export function deleteJob(jobId: string | number) {
   return post<void>(`/job/remove/${jobId}`)
 }
 
 // 批量删除任务
-export function deleteJobs(jobIds: number[]) {
+export function deleteJobs(jobIds: (string | number)[]) {
   return post<void>('/job/remove', jobIds)
 }
 
 // 修改任务状态
-export function changeJobStatus(jobId: number, status: string) {
+export function changeJobStatus(jobId: string | number, status: string) {
   return post<void>('/job/changeStatus', { jobId, status })
 }
 
 // 立即执行任务
-export function runJob(jobId: number) {
+export function runJob(jobId: string | number) {
   return post<void>(`/job/run/${jobId}`)
 }
 
@@ -150,17 +150,17 @@ export function listJobLog(query: JobLogQuery) {
 }
 
 // 获取日志详情
-export function getJobLog(jobLogId: number) {
+export function getJobLog(jobLogId: string | number) {
   return get<JobLog>(`/job/log/${jobLogId}`)
 }
 
 // 删除日志
-export function deleteJobLog(jobLogId: number) {
+export function deleteJobLog(jobLogId: string | number) {
   return post<void>(`/job/log/remove/${jobLogId}`)
 }
 
 // 批量删除日志
-export function deleteJobLogs(jobLogIds: number[]) {
+export function deleteJobLogs(jobLogIds: (string | number)[]) {
   return post<void>('/job/log/remove', jobLogIds)
 }
 

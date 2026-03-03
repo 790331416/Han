@@ -4,7 +4,9 @@ import com.han.api.system.domain.DeptVO;
 import com.han.api.system.domain.RoleVO;
 import com.han.api.system.domain.UserVO;
 import com.han.common.core.domain.R;
+import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.annotation.InnerAuth;
+import com.han.system.converter.SysUserApiConverter;
 import com.han.system.converter.SysUserConverter;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.mapper.SysUserMapper;
@@ -30,6 +32,7 @@ public class ISysUserController {
     private final ISysUserService sysUserService;
     private final SysUserMapper sysUserMapper;
     private final SysUserConverter sysUserConverter;
+    private final SysUserApiConverter sysUserApiConverter;
 
     /**
      * 根据用户ID获取用户信息
@@ -45,13 +48,21 @@ public class ISysUserController {
 
     /**
      * 根据用户名获取用户信息（登录流程核心接口）
+     * <p>
+     * 登录时 SecurityContext 尚无 tenantId，因此使用 TenantHelper.ignore 跳过自动拦截器，手动控制租户条件。
      */
     @GetMapping("/user/info/{username}")
-    public R<UserVO> getUserByUsername(@PathVariable("username") String username) {
-        SysUserPo po = sysUserMapper.selectOne(
-                new LambdaQueryWrapper<SysUserPo>()
-                        .eq(SysUserPo::getUsername, username)
-                        .last("LIMIT 1"));
+    public R<UserVO> getUserByUsername(@PathVariable("username") String username,
+                                      @RequestParam(value = "tenantId", required = false) Long tenantId) {
+        SysUserPo po = TenantHelper.ignore(() -> {
+            LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                    .eq(SysUserPo::getUsername, username);
+            if (tenantId != null) {
+                wrapper.eq(SysUserPo::getTenantId, tenantId);
+            }
+            wrapper.last("LIMIT 1");
+            return sysUserMapper.selectOne(wrapper);
+        });
         if (po == null) {
             return R.fail("用户不存在");
         }
@@ -91,22 +102,46 @@ public class ISysUserController {
     }
 
     /**
-     * SysUserPo 转 API UserVO
+     * 统计租户下用户数量
+     */
+    @GetMapping("/user/count")
+    public R<Integer> countUsersByTenantId(@RequestParam("tenantId") Long tenantId) {
+        long count = TenantHelper.ignore(() ->
+                sysUserMapper.selectCount(
+                        new LambdaQueryWrapper<SysUserPo>()
+                                .eq(SysUserPo::getTenantId, tenantId)
+                )
+        );
+        return R.ok((int) count);
+    }
+
+    /**
+     * 跨租户查询用户名在所有租户的账号（租户切换使用）
+     */
+    @GetMapping("/user/tenants")
+    public R<List<java.util.Map<String, Object>>> getUserTenants(@RequestParam("username") String username) {
+        List<java.util.Map<String, Object>> result = TenantHelper.ignore(() -> {
+            List<SysUserPo> users = sysUserMapper.selectList(
+                    new LambdaQueryWrapper<SysUserPo>()
+                            .eq(SysUserPo::getUsername, username)
+                            .select(SysUserPo::getId, SysUserPo::getTenantId, SysUserPo::getStatus)
+            );
+            return users.stream().map(u -> {
+                java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                map.put("userId", u.getId());
+                map.put("tenantId", u.getTenantId());
+                map.put("status", u.getStatus());
+                return map;
+            }).toList();
+        });
+        return R.ok(result);
+    }
+
+    /**
+     * SysUserPo 转 API UserVO（使用 MapStruct + 手动补充权限字段）
      */
     private UserVO toApiUserVO(SysUserPo po) {
-        UserVO vo = new UserVO();
-        vo.setUserId(po.getId());
-        vo.setDeptId(po.getDeptId());
-        vo.setUsername(po.getUsername());
-        vo.setNickname(po.getNickname());
-        vo.setPassword(po.getPassword());
-        vo.setAvatar(po.getAvatar());
-        vo.setPhone(po.getPhone());
-        vo.setEmail(po.getEmail());
-        vo.setSex(po.getSex());
-        vo.setStatus(po.getStatus());
-        vo.setLoginIp(po.getLoginIp());
-        vo.setLoginTime(po.getLoginTime());
+        UserVO vo = sysUserApiConverter.toApiUserVO(po);
         if (po.isAdmin()) {
             vo.setPermissions(Set.of("*:*:*"));
             vo.setRoleKeys(Set.of("admin"));

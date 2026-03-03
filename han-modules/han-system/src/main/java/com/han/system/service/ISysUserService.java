@@ -2,7 +2,9 @@ package com.han.system.service;
 
 import com.han.common.core.domain.PageResult;
 import com.han.common.web.service.IBaseService;
+import com.han.system.domain.dto.ProfileDto;
 import com.han.system.domain.dto.SysUserDto;
+import com.han.system.domain.vo.UserImportVo;
 import com.han.system.domain.query.SysUserQuery;
 import com.han.system.domain.vo.UserVO;
 
@@ -44,4 +46,34 @@ public interface ISysUserService extends IBaseService<SysUserQuery, SysUserDto> 
      * 获取用户角色Key列表
      */
     Set<String> selectRoleKeysByUserId(Long userId);
+
+    /**
+     * 修改个人信息（仅允许修改昵称/手机/邮箱/性别）
+     */
+    void updateProfile(Long userId, ProfileDto dto);
+
+    /**
+     * 修改密码（校验旧密码）
+     */
+    void updatePassword(Long userId, String oldPwd, String newPwd);
+
+    /**
+     * 修改头像
+     */
+    void updateAvatar(Long userId, String avatarUrl);
+
+    /**
+     * 批量导入用户
+     *
+     * @param list          导入数据列表
+     * @param updateSupport 是否覆盖已存在用户
+     * @return 导入结果描述
+     */
+    String importUsers(java.util.List<UserImportVo> list, boolean updateSupport);
+
+    /**
+     * 查询简单用户列表（下拉选择用）
+     * 返回当前租户下正常状态用户的 userId/nickname/phone/email
+     */
+    java.util.List<java.util.Map<String, Object>> selectSimpleUserList();
 }

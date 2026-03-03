@@ -4,6 +4,20 @@
       <h3 class="title">HAN Cloud</h3>
       <p class="subtitle">企业级多租户微服务平台</p>
       
+      <el-form-item prop="tenantId">
+        <el-select
+          v-model="loginForm.tenantId"
+          placeholder="请选择租户"
+          size="large"
+          style="width: 100%"
+          filterable
+          :loading="tenantLoading"
+        >
+          <template #prefix><el-icon><OfficeBuilding /></el-icon></template>
+          <el-option v-for="t in tenantList" :key="t.tenantId" :label="t.tenantName" :value="t.tenantId" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item prop="username">
         <el-input
           v-model="loginForm.username"
@@ -65,9 +79,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Key } from '@element-plus/icons-vue'
+import { User, Lock, Key, OfficeBuilding } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { getCaptcha } from '@/api/auth'
+import { getCaptcha, type TenantSimple } from '@/api/auth'
+import { get } from '@/utils/request'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
@@ -80,7 +95,11 @@ const captchaEnabled = ref(true)
 const captchaImg = ref('')
 const rememberMe = ref(false)
 
+const tenantLoading = ref(false)
+const tenantList = ref<TenantSimple[]>([])
+
 const loginForm = reactive({
+  tenantId: undefined as string | number | undefined,
   username: 'admin',
   password: 'admin123',
   code: '',
@@ -123,8 +142,22 @@ const handleLogin = async () => {
   }
 }
 
+const loadTenantList = async () => {
+  tenantLoading.value = true
+  try {
+    const res = await get<TenantSimple[]>('/tenant/all')
+    tenantList.value = (res as any).data || []
+    if (tenantList.value.length === 1) {
+      loginForm.tenantId = tenantList.value[0].tenantId
+    }
+  } catch { /* tenant list not available */ } finally {
+    tenantLoading.value = false
+  }
+}
+
 onMounted(() => {
   getCaptchaImg()
+  loadTenantList()
 })
 </script>
 

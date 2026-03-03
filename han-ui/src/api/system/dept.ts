@@ -1,10 +1,11 @@
 import { get, post } from '@/utils/request'
 
 export interface Dept {
-  id: number
-  parentId: number
+  id: string | number
+  parentId: string | number
   deptName: string
-  leader?: string
+  leaderId?: string | number
+  leaderName?: string
   phone?: string
   email?: string
   sort: number
@@ -19,10 +20,10 @@ export interface DeptQuery {
 }
 
 export interface DeptForm {
-  id?: number
-  parentId: number
+  deptId?: string | number
+  parentId: string | number
   deptName: string
-  leader?: string
+  leaderId?: string | number
   phone?: string
   email?: string
   sort?: number
@@ -33,11 +34,11 @@ export function listDept(query?: DeptQuery) {
   return get<Dept[]>('/system/dept/list', query)
 }
 
-export function getDeptTree() {
-  return get<Dept[]>('/system/dept/tree')
+export function getDeptTree(query?: DeptQuery) {
+  return get<Dept[]>('/system/dept/tree', query)
 }
 
-export function getDept(id: number) {
+export function getDept(id: string | number) {
   return get<Dept>(`/system/dept/info/${id}`)
 }
 
@@ -49,6 +50,6 @@ export function updateDept(data: DeptForm) {
   return post<void>('/system/dept/edit', data)
 }
 
-export function deleteDept(id: number) {
+export function deleteDept(id: string | number) {
   return post<void>(`/system/dept/remove/${id}`)
 }

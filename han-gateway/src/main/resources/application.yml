@@ -19,3 +19,37 @@ spring:
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
+    gateway:
+      routes:
+        - id: han-auth
+          uri: lb://han-auth
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=1
+        - id: han-system
+          uri: lb://han-system
+          predicates:
+            - Path=/system/**
+          filters:
+            - StripPrefix=1
+        - id: han-job
+          uri: lb://han-job
+          predicates:
+            - Path=/job/**
+          filters:
+            - StripPrefix=1
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:han@2026}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms

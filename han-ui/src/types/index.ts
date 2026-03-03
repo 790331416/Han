@@ -23,9 +23,9 @@ export interface PageQuery {
 
 // 登录用户信息
 export interface UserInfo {
-  userId: number
-  tenantId: number
-  deptId: number
+  userId: string | number
+  tenantId: string | number
+  deptId: string | number
   username: string
   nickname: string
   avatar: string
@@ -41,7 +41,7 @@ export interface LoginDTO {
   password: string
   code?: string
   uuid?: string
-  tenantId?: number
+  tenantId?: string | number
 }
 
 // 登录响应
@@ -50,7 +50,7 @@ export interface LoginVO {
   refreshToken: string
   expiresIn: number
   userInfo: {
-    userId: number
+    userId: string | number
     username: string
     nickname: string
     avatar: string
@@ -60,8 +60,8 @@ export interface LoginVO {
 
 // 路由菜单
 export interface RouteMenu {
-  id: number
-  parentId: number
+  id: string | number
+  parentId: string | number
   menuName: string
   menuType: string
   path: string

@@ -34,8 +34,11 @@ public interface TenantConverter {
     TenantPo toPo(TenantDTO dto);
 
     /**
-     * 更新实体
+     * 更新实体（从解包后的 base PO 复制字段到已有 PO）
      */
     @Mapping(target = "id", ignore = true)
-    void updatePo(TenantDTO dto, @MappingTarget TenantPo po);
+    @Mapping(target = "delFlag", ignore = true)
+    @Mapping(target = "createBy", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    void updateFromBase(TenantPo source, @MappingTarget TenantPo target);
 }

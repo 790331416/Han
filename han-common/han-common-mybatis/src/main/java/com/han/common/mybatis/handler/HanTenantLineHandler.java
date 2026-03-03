@@ -30,8 +30,13 @@ public class HanTenantLineHandler implements TenantLineHandler {
             "sys_menu",
             "sys_tenant",
             "sys_tenant_package",
+            "sys_tenant_package_menu",
             "sys_oper_log",
-            "sys_login_log"
+            "sys_login_log",
+            "sys_user_role",
+            "sys_user_post",
+            "sys_role_menu",
+            "sys_role_dept"
     );
 
     @Override

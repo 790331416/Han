@@ -52,12 +52,32 @@
 import { computed } from 'vue'
 import { useRoute, type RouteRecordRaw } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useUserStore } from '@/stores/user'
 import { constantRoutes } from '@/router'
 
 const route = useRoute()
 const appStore = useAppStore()
+const userStore = useUserStore()
 
-const routes = computed(() => constantRoutes.filter(r => r.path !== '/login' && r.path !== '/404'))
+function hasPermission(route: RouteRecordRaw): boolean {
+  if (!route.meta?.permission) return true
+  return userStore.hasPermission(route.meta.permission as string)
+}
+
+function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
+  return routes.filter(r => {
+    if (r.path === '/login' || r.path === '/404') return false
+    if (!hasPermission(r) && !r.children?.some(c => hasPermission(c))) return false
+    return true
+  }).map(r => {
+    if (r.children) {
+      return { ...r, children: r.children.filter(c => hasPermission(c)) }
+    }
+    return r
+  })
+}
+
+const routes = computed(() => filterRoutes(constantRoutes))
 const activeMenu = computed(() => route.path)
 
 function visibleChildren(route: RouteRecordRaw) {

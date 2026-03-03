@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.mybatis.helper.TenantHelper;
+import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.TenantInitDto;
 import com.han.tenant.converter.TenantConverter;
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.po.TenantPackagePo;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 租户服务实现
@@ -33,6 +36,7 @@ public class TenantServiceImpl implements ITenantService {
     private final TenantMapper tenantMapper;
     private final TenantPackageMapper packageMapper;
     private final TenantConverter tenantConverter;
+    private final SystemServiceClient systemServiceClient;
 
     @Override
     public List<TenantDTO> selectListScope(TenantQuery query) {
@@ -107,8 +111,33 @@ public class TenantServiceImpl implements ITenantService {
 
         log.info("创建租户成功: tenantId={}, tenantName={}", po.getId(), po.getTenantName());
 
-        // TODO: 通过 @HttpExchange 调用 han-system 创建租户管理员用户、默认角色、默认部门
-        // systemServiceClient.createTenantAdmin(po.getId(), dto.getAdminUsername(), dto.getAdminPassword());
+        // 调用 han-system 初始化租户基础数据（管理员用户、默认角色、默认部门）
+        try {
+            TenantInitDto initDTO = TenantInitDto.builder()
+                    .tenantId(po.getId())
+                    .tenantName(po.getTenantName())
+                    .adminUsername(dto.getAdminUsername())
+                    .adminPassword(dto.getAdminPassword())
+                    .build();
+
+            // 如果有套餐，获取套餐菜单ID传递给初始化接口
+            if (po.getPackageId() != null) {
+                TenantPackagePo pkg = packageMapper.selectById(po.getPackageId());
+                if (pkg != null && pkg.getMenuIds() != null && !pkg.getMenuIds().isBlank()) {
+                    try {
+                        Set<Long> menuIds = new java.util.HashSet<>(com.han.common.core.util.XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
+                        initDTO.setMenuIds(menuIds);
+                    } catch (Exception ex) {
+                        log.warn("解析套餐菜单ID失败: packageId={}", po.getPackageId(), ex);
+                    }
+                }
+            }
+            systemServiceClient.initTenantData(initDTO);
+            log.info("租户[{}]基础数据初始化请求已发送", po.getId());
+        } catch (Exception e) {
+            log.error("租户[{}]基础数据初始化失败", po.getId(), e);
+            throw new BusinessException("租户创建成功但初始化失败: " + e.getMessage());
+        }
 
         return 1;
     }
@@ -126,7 +155,7 @@ public class TenantServiceImpl implements ITenantService {
             throw new BusinessException("租户不存在");
         }
 
-        tenantConverter.updatePo(dto, existing);
+        tenantConverter.updateFromBase(dto.getBase(), existing);
         TenantHelper.ignore(() -> tenantMapper.updateById(existing));
         return 1;
     }
@@ -193,8 +222,15 @@ public class TenantServiceImpl implements ITenantService {
         tenant.setPackageId(packageId);
         TenantHelper.ignore(() -> tenantMapper.updateById(tenant));
 
-        // TODO: 通过 @HttpExchange 调用 han-system 同步租户角色的菜单权限
-        // systemServiceClient.syncRoleMenus(tenantId, packageId);
+        // 获取套餐菜单ID并同步到租户角色
+        if (pkg.getMenuIds() != null && !pkg.getMenuIds().isBlank()) {
+            try {
+                java.util.Set<Long> menuIds = new java.util.HashSet<>(com.han.common.core.util.XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
+                systemServiceClient.syncRoleMenusByTenantId(tenantId, menuIds);
+            } catch (Exception ex) {
+                log.warn("同步租户[{}]角色菜单失败", tenantId, ex);
+            }
+        }
 
         log.info("租户套餐同步完成: tenantId={}, packageId={}", tenantId, packageId);
     }
@@ -211,8 +247,13 @@ public class TenantServiceImpl implements ITenantService {
 
     @Override
     public int countTenantUsers(Long tenantId) {
-        // TODO: 通过 @HttpExchange 调用 han-system 查询租户下用户数
-        return 0;
+        try {
+            com.han.common.core.domain.R<Integer> result = systemServiceClient.countUsersByTenantId(tenantId);
+            return result.getData() != null ? result.getData() : 0;
+        } catch (Exception e) {
+            log.warn("查询租户[{}]用户数失败，返回0", tenantId, e);
+            return 0;
+        }
     }
 
     @Override
@@ -226,6 +267,32 @@ public class TenantServiceImpl implements ITenantService {
         }
         int currentCount = countTenantUsers(tenantId);
         return currentCount < tenant.getUserLimit();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteTenant(Long tenantId) {
+        if (tenantId == null || tenantId == 1L) {
+            throw new BusinessException("平台租户不允许删除");
+        }
+
+        TenantPo tenant = TenantHelper.ignore(() -> tenantMapper.selectById(tenantId));
+        if (tenant == null) {
+            throw new BusinessException("租户不存在");
+        }
+
+        // 1. 调用 han-system Inner 接口清理租户业务数据（用户/角色/部门/岗位及关联表）
+        try {
+            systemServiceClient.cleanupTenantData(tenantId);
+        } catch (Exception e) {
+            log.error("清理租户[{}]业务数据失败", tenantId, e);
+            throw new BusinessException("清理租户业务数据失败: " + e.getMessage());
+        }
+
+        // 2. 逻辑删除租户本体
+        TenantHelper.ignore(() -> tenantMapper.deleteById(tenantId));
+
+        log.info("租户安全删除完成: tenantId={}, tenantName={}", tenantId, tenant.getTenantName());
     }
 
     // ==================== 私有方法 ====================

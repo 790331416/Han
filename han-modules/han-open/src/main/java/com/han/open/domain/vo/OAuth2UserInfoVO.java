@@ -67,5 +67,5 @@ public class OAuth2UserInfoVO implements Serializable {
      * 更新时间
      */
     @JsonProperty("updated_at")
-    private Long updatedAt;
+    private long updatedAt;
 }

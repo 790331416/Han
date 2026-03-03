@@ -2,18 +2,16 @@ import { get, post } from '@/utils/request'
 import type { PageResult } from '@/types'
 
 export interface LoginLog {
-  id: number
-  tenantId: number
-  userId: number
+  id: string | number
+  tenantId: string | number
   username: string
   clientType: string
-  deviceId: string
-  ipaddr: string
+  ipAddr: string
   loginLocation: string
   browser: string
   os: string
   status: number
-  msg: string
+  message: string
   loginTime: string
 }
 
@@ -23,7 +21,7 @@ export function listLoginLog(query: { pageNum: number; pageSize: number; usernam
 }
 
 // 删除登录日志
-export function deleteLoginLog(ids: number[]) {
+export function deleteLoginLog(ids: (string | number)[]) {
   return post<void>('/system/loginlog/remove', ids)
 }
 

@@ -9,7 +9,8 @@
           <el-input v-model="queryParams.configKey" placeholder="请输入" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="系统内置" prop="configType">
-          <el-select v-model="queryParams.configType" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.configType">
+            <el-option label="全部" value="" />
             <el-option label="是" value="Y" />
             <el-option label="否" value="N" />
           </el-select>

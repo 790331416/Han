@@ -7,13 +7,15 @@
           <el-input v-model="queryParams.noticeTitle" placeholder="请输入公告标题" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="公告类型" prop="noticeType">
-          <el-select v-model="queryParams.noticeType" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.noticeType">
+            <el-option label="全部" value="" />
             <el-option label="通知" value="1" />
             <el-option label="公告" value="2" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="关闭" :value="1" />
           </el-select>
@@ -94,7 +96,10 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="内容" prop="noticeContent">
-          <el-input v-model="form.noticeContent" type="textarea" :rows="8" placeholder="请输入公告内容" />
+          <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%">
+            <Toolbar :editor="editorRef" :defaultConfig="toolbarConfig" style="border-bottom: 1px solid #e5e7eb" />
+            <Editor v-model="form.noticeContent" :defaultConfig="editorConfig" style="height: 300px; overflow-y: hidden" @onCreated="handleEditorCreated" />
+          </div>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="请输入备注" />
@@ -119,7 +124,7 @@
         <el-descriptions-item label="创建者">{{ detailData.createName }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ detailData.createTime }}</el-descriptions-item>
         <el-descriptions-item label="内容" :span="2">
-          <div class="notice-content">{{ detailData.noticeContent }}</div>
+          <div class="notice-content" v-html="detailData.noticeContent"></div>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2" v-if="detailData.remark">{{ detailData.remark }}</el-descriptions-item>
       </el-descriptions>
@@ -128,9 +133,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete, View } from '@element-plus/icons-vue'
+import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import type { IDomEditor } from '@wangeditor/editor'
+import '@wangeditor/editor/dist/css/style.css'
 import { listNotice, getNotice, addNotice, updateNotice, deleteNotice, deleteNotices } from '@/api/system/notice'
 import type { Notice, NoticeForm } from '@/api/system/notice'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -138,7 +146,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 const loading = ref(false)
 const noticeList = ref<Notice[]>([])
 const total = ref(0)
-const selectedIds = ref<number[]>([])
+const selectedIds = ref<(string | number)[]>([])
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
 const submitLoading = ref(false)
@@ -146,13 +154,18 @@ const detailData = ref<Notice>({} as Notice)
 
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
+const editorRef = shallowRef<IDomEditor>()
+const toolbarConfig = {}
+const editorConfig = { placeholder: '请输入公告内容...' }
+const handleEditorCreated = (editor: IDomEditor) => { editorRef.value = editor }
+onBeforeUnmount(() => { editorRef.value?.destroy() })
 
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
   noticeTitle: undefined as string | undefined,
-  noticeType: undefined as string | undefined,
-  status: undefined as number | undefined
+  noticeType: '' as any,
+  status: '' as any
 })
 
 const form = reactive<NoticeForm>({

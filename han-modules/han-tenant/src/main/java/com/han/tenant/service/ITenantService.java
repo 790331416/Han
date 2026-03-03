@@ -46,4 +46,9 @@ public interface ITenantService extends IBaseService<TenantQuery, TenantDTO> {
      * 检查租户用户数是否超限
      */
     boolean checkUserLimit(Long tenantId);
+
+    /**
+     * 安全删除租户（逻辑删除 + 级联清理）
+     */
+    void deleteTenant(Long tenantId);
 }

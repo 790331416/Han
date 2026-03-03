@@ -6,11 +6,12 @@
         <el-form-item label="用户名" prop="username">
           <el-input v-model="queryParams.username" placeholder="请输入用户名" clearable @keyup.enter="handleQuery" />
         </el-form-item>
-        <el-form-item label="登录IP" prop="ipaddr">
-          <el-input v-model="queryParams.ipaddr" placeholder="请输入登录IP" clearable @keyup.enter="handleQuery" />
+        <el-form-item label="登录IP" prop="ipAddr">
+          <el-input v-model="queryParams.ipAddr" placeholder="请输入登录IP" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="登录状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="成功" :value="0" />
             <el-option label="失败" :value="1" />
           </el-select>
@@ -38,7 +39,7 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="日志ID" prop="id" width="80" />
         <el-table-column label="用户名" prop="username" width="120" />
-        <el-table-column label="登录IP" prop="ipaddr" width="140" />
+        <el-table-column label="登录IP" prop="ipAddr" width="140" />
         <el-table-column label="登录地点" prop="loginLocation" width="150" />
         <el-table-column label="浏览器" prop="browser" width="120" />
         <el-table-column label="操作系统" prop="os" width="120" />
@@ -47,7 +48,7 @@
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '成功' : '失败' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="提示消息" prop="msg" width="200" show-overflow-tooltip />
+        <el-table-column label="提示消息" prop="message" width="200" show-overflow-tooltip />
         <el-table-column label="登录时间" prop="loginTime" width="180" />
       </el-table>
 
@@ -77,7 +78,7 @@ import type { FormInstance } from 'element-plus'
 const loading = ref(false)
 const logList = ref<LoginLog[]>([])
 const total = ref(0)
-const selectedIds = ref<number[]>([])
+const selectedIds = ref<(string | number)[]>([])
 
 const queryFormRef = ref<FormInstance>()
 
@@ -85,8 +86,8 @@ const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
   username: undefined as string | undefined,
-  status: undefined as number | undefined,
-  ipaddr: undefined as string | undefined
+  status: '' as any,
+  ipAddr: undefined as string | undefined
 })
 
 const getList = async () => {

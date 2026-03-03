@@ -7,11 +7,13 @@ import com.han.common.core.exception.BusinessException;
 import com.han.system.domain.dto.SysRoleDto;
 import com.han.system.domain.po.SysRoleMenuPo;
 import com.han.system.domain.po.SysRolePo;
+import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserRolePo;
 import com.han.system.domain.query.SysRoleQuery;
 import com.han.system.converter.SysRoleConverter;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysRoleMenuMapper;
+import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysRoleService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 角色服务实现
@@ -32,6 +33,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
     private final SysRoleMapper roleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
+    private final SysUserMapper userMapper;
     private final SysRoleConverter roleConverter;
 
     @Override
@@ -179,6 +181,80 @@ public class SysRoleServiceImpl implements ISysRoleService {
             wrapper.ne(SysRolePo::getId, roleId);
         }
         return roleMapper.selectCount(wrapper) == 0;
+    }
+
+    @Override
+    public PageResult<SysUserPo> selectAllocatedUsers(Long roleId, String username, String phone, Integer pageNum, Integer pageSize) {
+        // 查出该角色已关联的用户ID
+        List<SysUserRolePo> userRoles = userRoleMapper.selectList(
+                new LambdaQueryWrapper<SysUserRolePo>().eq(SysUserRolePo::getRoleId, roleId)
+        );
+        if (userRoles.isEmpty()) {
+            return new PageResult<>(List.of(), 0L);
+        }
+        List<Long> userIds = userRoles.stream().map(SysUserRolePo::getUserId).toList();
+
+        LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                .in(SysUserPo::getId, userIds)
+                .like(username != null && !username.isEmpty(), SysUserPo::getUsername, username)
+                .like(phone != null && !phone.isEmpty(), SysUserPo::getPhone, phone);
+
+        Page<SysUserPo> page = userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        return new PageResult<>(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    public PageResult<SysUserPo> selectUnallocatedUsers(Long roleId, String username, String phone, Integer pageNum, Integer pageSize) {
+        // 查出该角色已关联的用户ID
+        List<SysUserRolePo> userRoles = userRoleMapper.selectList(
+                new LambdaQueryWrapper<SysUserRolePo>().eq(SysUserRolePo::getRoleId, roleId)
+        );
+        List<Long> allocatedUserIds = userRoles.stream().map(SysUserRolePo::getUserId).toList();
+
+        LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getStatus, 0)
+                .like(username != null && !username.isEmpty(), SysUserPo::getUsername, username)
+                .like(phone != null && !phone.isEmpty(), SysUserPo::getPhone, phone);
+        if (!allocatedUserIds.isEmpty()) {
+            wrapper.notIn(SysUserPo::getId, allocatedUserIds);
+        }
+
+        Page<SysUserPo> page = userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        return new PageResult<>(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void authUsers(Long roleId, List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        checkRoleAllowed(roleId);
+        for (Long userId : userIds) {
+            // 防重复
+            Long count = userRoleMapper.selectCount(
+                    new LambdaQueryWrapper<SysUserRolePo>()
+                            .eq(SysUserRolePo::getRoleId, roleId)
+                            .eq(SysUserRolePo::getUserId, userId)
+            );
+            if (count == 0) {
+                userRoleMapper.insert(new SysUserRolePo(userId, roleId));
+            }
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelAuthUsers(Long roleId, List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        checkRoleAllowed(roleId);
+        userRoleMapper.delete(
+                new LambdaQueryWrapper<SysUserRolePo>()
+                        .eq(SysUserRolePo::getRoleId, roleId)
+                        .in(SysUserRolePo::getUserId, userIds)
+        );
     }
 
     // ==================== 私有方法 ====================

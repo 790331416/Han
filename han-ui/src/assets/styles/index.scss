@@ -81,6 +81,7 @@ a {
 .search-form {
   margin-bottom: 16px;
   .el-form-item { margin-bottom: 12px; }
+  .el-select { width: auto; min-width: 80px; }
 }
 
 // 分页
@@ -189,6 +190,6 @@ a {
 .el-pagination {
   .el-pager li {
     border-radius: 6px;
-    &.is-active { background-color: #2563eb; }
+    &.is-active { background-color: #2563eb; color: #fff !important; }
   }
 }

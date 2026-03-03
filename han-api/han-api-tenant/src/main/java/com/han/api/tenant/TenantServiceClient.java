@@ -23,4 +23,10 @@ public interface TenantServiceClient {
      */
     @GetExchange("/check/{tenantId}")
     R<Boolean> checkTenantValid(@PathVariable("tenantId") Long tenantId);
+
+    /**
+     * 检查租户用户数是否超限
+     */
+    @GetExchange("/checkUserLimit/{tenantId}")
+    R<Boolean> checkUserLimit(@PathVariable("tenantId") Long tenantId);
 }

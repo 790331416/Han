@@ -1,8 +1,8 @@
 import { get, post } from '@/utils/request'
 
 export interface Menu {
-  id: number
-  parentId: number
+  id: string | number
+  parentId: string | number
   menuName: string
   menuType: string
   path?: string
@@ -25,8 +25,8 @@ export interface MenuQuery {
 }
 
 export interface MenuForm {
-  id?: number
-  parentId: number
+  id?: string | number
+  parentId: string | number
   menuName: string
   menuType: string
   path?: string
@@ -49,7 +49,7 @@ export function getMenuTree() {
   return get<Menu[]>('/system/menu/tree')
 }
 
-export function getMenu(id: number) {
+export function getMenu(id: string | number) {
   return get<Menu>(`/system/menu/info/${id}`)
 }
 
@@ -61,6 +61,6 @@ export function updateMenu(data: MenuForm) {
   return post<void>('/system/menu/edit', data)
 }
 
-export function deleteMenu(id: number) {
+export function deleteMenu(id: string | number) {
   return post<void>(`/system/menu/remove/${id}`)
 }

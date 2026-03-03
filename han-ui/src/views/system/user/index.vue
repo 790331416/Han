@@ -1,5 +1,26 @@
 <template>
   <div class="app-container">
+    <el-row :gutter="16">
+      <!-- 左侧部门树 -->
+      <el-col :span="4">
+        <el-card shadow="never" class="dept-tree-card">
+          <template #header><span class="font-medium text-gray-800">部门</span></template>
+          <el-input v-model="deptFilterText" placeholder="搜索部门" clearable class="mb-3" />
+          <el-tree
+            ref="deptTreeRef"
+            :data="deptTreeData"
+            :props="{ label: 'deptName', children: 'children' }"
+            node-key="id"
+            default-expand-all
+            highlight-current
+            :filter-node-method="filterDeptNode"
+            @node-click="handleDeptNodeClick"
+          />
+        </el-card>
+      </el-col>
+
+      <!-- 右侧内容 -->
+      <el-col :span="20">
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
@@ -10,9 +31,15 @@
           <el-input v-model="queryParams.phone" placeholder="请输入手机号" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="isAdmin" label="租户" prop="tenantId">
+          <el-select v-model="queryParams.tenantId" placeholder="全部租户" clearable style="width: 180px" @change="handleQuery">
+            <el-option v-for="t in tenantOptions" :key="t.tenantId" :label="t.tenantName" :value="t.tenantId" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -30,6 +57,16 @@
           <div class="table-operations">
             <el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
             <el-button type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
+            <el-dropdown trigger="click" class="ml-3">
+              <el-button type="primary" plain :icon="Download">导入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleImport">导入用户</el-dropdown-item>
+                  <el-dropdown-item @click="handleDownloadTemplate">下载模板</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-button type="warning" plain :icon="Upload" @click="handleExport">导出</el-button>
           </div>
         </div>
       </template>
@@ -80,6 +117,9 @@
       </div>
     </el-card>
 
+      </el-col>
+    </el-row>
+
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
@@ -126,10 +166,10 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
-              <el-radio-group v-model="form.status">
-                <el-radio :value="0">正常</el-radio>
-                <el-radio :value="1">停用</el-radio>
-              </el-radio-group>
+              <el-select v-model="form.status" placeholder="请选择" style="width: 100%">
+                <el-option label="正常" :value="0" />
+                <el-option label="停用" :value="1" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -162,34 +202,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus, Edit, Delete, Key } from '@element-plus/icons-vue'
-import { listUser, getUser, addUser, updateUser, deleteUser, deleteUsers, changeUserStatus, resetUserPwd } from '@/api/system/user'
+import { Search, Refresh, Plus, Edit, Delete, Key, Download, Upload, ArrowDown } from '@element-plus/icons-vue'
+import { listUser, getUser, addUser, updateUser, deleteUser, deleteUsers, changeUserStatus, resetUserPwd, exportUser, importTemplate, importUser } from '@/api/system/user'
 import { listAllRoles, type Role } from '@/api/system/role'
 import { getDeptTree, type Dept } from '@/api/system/dept'
+import { listTenant, type Tenant } from '@/api/system/tenant'
+import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
 
+const userStore = useUserStore()
+const isAdmin = computed(() => userStore.roles.includes('admin'))
+const tenantOptions = ref<Tenant[]>([])
+
 const loading = ref(false)
 const userList = ref<User[]>([])
 const total = ref(0)
-const selectedIds = ref<number[]>([])
+const selectedIds = ref<(string | number)[]>([])
 const dialogVisible = ref(false)
 const submitLoading = ref(false)
 const roleOptions = ref<Role[]>([])
 const deptTreeData = ref<Dept[]>([])
+const deptFilterText = ref('')
+const deptTreeRef = ref<any>()
 
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive<UserQuery>({
+const queryParams = reactive<UserQuery & { deptId?: number; tenantId?: string | number }>({
   pageNum: 1,
   pageSize: 10,
   username: undefined,
   phone: undefined,
-  status: undefined
+  status: '' as any,
+  deptId: undefined,
+  tenantId: undefined
 })
 
 const form = reactive<UserForm>({
@@ -240,12 +290,37 @@ const handleQuery = () => {
 // 重置
 const resetQuery = () => {
   queryFormRef.value?.resetFields()
+  queryParams.deptId = undefined
+  deptTreeRef.value?.setCurrentKey(null)
   handleQuery()
 }
 
 // 多选
 const handleSelectionChange = (selection: User[]) => {
   selectedIds.value = selection.map(item => item.userId)
+}
+
+// ==================== 部门树筛选 ====================
+
+watch(deptFilterText, (val) => {
+  deptTreeRef.value?.filter(val)
+})
+
+const filterDeptNode = (value: string, data: any) => {
+  if (!value) return true
+  return data.deptName?.includes(value)
+}
+
+const handleDeptNodeClick = (data: any) => {
+  queryParams.deptId = data.id
+  handleQuery()
+}
+
+async function loadDeptTree() {
+  try {
+    const res = await getDeptTree()
+    deptTreeData.value = (res as any).data || []
+  } catch { /* ignore */ }
 }
 
 // 加载角色和部门选项
@@ -360,8 +435,58 @@ const handleResetPwd = async (row: User) => {
   ElMessage.success('重置成功')
 }
 
-onMounted(() => {
+// ==================== 导入导出 ====================
+
+const downloadBlob = (data: any, filename: string) => {
+  const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+const handleExport = async () => {
+  try {
+    const res = await exportUser(queryParams)
+    downloadBlob((res as any).data, '用户数据.xlsx')
+    ElMessage.success('导出成功')
+  } catch { ElMessage.error('导出失败') }
+}
+
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await importTemplate()
+    downloadBlob((res as any).data, '用户导入模板.xlsx')
+  } catch { ElMessage.error('下载模板失败') }
+}
+
+const handleImport = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls'
+  input.onchange = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file) return
+    try {
+      const res = await importUser(file, false)
+      ElMessage.success((res as any).data || '导入完成')
+      getList()
+    } catch { ElMessage.error('导入失败') }
+  }
+  input.click()
+}
+
+onMounted(async () => {
   getList()
+  loadDeptTree()
+  if (isAdmin.value) {
+    try {
+      const res = await listTenant({ pageNum: 1, pageSize: 200 })
+      const data = (res as any).data
+      tenantOptions.value = Array.isArray(data) ? data : (data?.rows || [])
+    } catch { /* ignore */ }
+  }
 })
 </script>
 
@@ -374,5 +499,13 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.dept-tree-card {
+  min-height: calc(100vh - 120px);
+
+  :deep(.el-card__body) {
+    padding: 12px;
+  }
 }
 </style>

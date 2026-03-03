@@ -2,9 +2,9 @@ import { get, post } from '@/utils/request'
 import type { PageResult } from '@/types'
 
 export interface TenantPackage {
-  packageId: number
+  packageId: string | number
   packageName: string
-  menuIds: number[]
+  menuIds: (string | number)[]
   tenantCount: number
   status: number
   createTime: string
@@ -12,9 +12,9 @@ export interface TenantPackage {
 }
 
 export interface TenantPackageForm {
-  packageId?: number
+  packageId?: string | number
   packageName: string
-  menuIds?: number[]
+  menuIds?: (string | number)[]
   status: number
   remark?: string
 }
@@ -30,7 +30,7 @@ export function listAllPackage() {
 }
 
 // 获取套餐详情
-export function getTenantPackage(packageId: number) {
+export function getTenantPackage(packageId: string | number) {
   return get<TenantPackage>(`/tenant/package/${packageId}`)
 }
 
@@ -45,21 +45,21 @@ export function updateTenantPackage(data: TenantPackageForm) {
 }
 
 // 删除套餐
-export function deleteTenantPackage(packageId: number) {
+export function deleteTenantPackage(packageId: string | number) {
   return post<void>(`/tenant/package/remove/${packageId}`)
 }
 
 // 修改套餐状态
-export function changeTenantPackageStatus(packageId: number, status: number) {
+export function changeTenantPackageStatus(packageId: string | number, status: number) {
   return post<void>('/tenant/package/changeStatus', null, { params: { packageId, status } })
 }
 
 // 获取套餐菜单
-export function getPackageMenus(packageId: number) {
-  return get<number[]>(`/tenant/package/menus/${packageId}`)
+export function getPackageMenus(packageId: string | number) {
+  return get<(string | number)[]>(`/tenant/package/menus/${packageId}`)
 }
 
 // 更新套餐菜单
-export function updatePackageMenus(packageId: number, menuIds: number[]) {
+export function updatePackageMenus(packageId: string | number, menuIds: (string | number)[]) {
   return post<void>(`/tenant/package/menus/${packageId}`, menuIds)
 }

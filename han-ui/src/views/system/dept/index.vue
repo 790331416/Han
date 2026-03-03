@@ -6,14 +6,15 @@
           <el-input v-model="queryParams.deptName" placeholder="请输入" clearable @keyup.enter="getList" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable style="width: 120px">
+          <el-select v-model="queryParams.status">
+            <el-option label="全部" value="" />
             <el-option label="正常" :value="0" />
             <el-option label="停用" :value="1" />
           </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="getList">搜索</el-button>
-          <el-button :icon="Refresh" @click="queryParams.deptName = ''; queryParams.status = undefined; getList()">重置</el-button>
+          <el-button :icon="Refresh" @click="queryParams.deptName = ''; queryParams.status = ''; getList()">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -31,7 +32,9 @@
 
       <el-table v-loading="loading" :data="deptList" row-key="id" :default-expand-all="isExpand" :tree-props="{ children: 'children' }">
         <el-table-column label="部门名称" prop="deptName" min-width="200" />
-        <el-table-column label="负责人" prop="leader" width="120" />
+        <el-table-column label="负责人" prop="leaderName" width="120">
+          <template #default="{ row }">{{ row.leaderName || '—' }}</template>
+        </el-table-column>
         <el-table-column label="联系电话" prop="phone" width="150" />
         <el-table-column label="排序" prop="sort" width="70" align="center" />
         <el-table-column label="状态" width="80" align="center">
@@ -62,7 +65,10 @@
           <el-input v-model="form.deptName" placeholder="请输入部门名称" />
         </el-form-item>
         <el-form-item label="负责人">
-          <el-input v-model="form.leader" placeholder="请输入负责人" />
+          <el-select v-model="form.leaderId" filterable clearable placeholder="搜索选择负责人"
+            style="width: 100%" @change="onLeaderChange">
+            <el-option v-for="u in userList" :key="String(u.userId)" :label="u.nickname" :value="u.userId" />
+          </el-select>
         </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="form.phone" placeholder="请输入联系电话" />
@@ -92,35 +98,64 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { listDept, getDept, addDept, updateDept, deleteDept, type Dept, type DeptForm } from '@/api/system/dept'
+import { getDeptTree, getDept, addDept, updateDept, deleteDept, type Dept, type DeptForm } from '@/api/system/dept'
+import { listSimpleUser, type SimpleUser } from '@/api/system/user'
 
 const loading = ref(false)
 const submitLoading = ref(false)
 const isExpand = ref(true)
 const deptList = ref<Dept[]>([])
 const deptOptions = ref<Dept[]>([])
+const userList = ref<SimpleUser[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive({ deptName: '', status: undefined as number | undefined })
+const queryParams = reactive({ deptName: '', status: '' as any })
 
-const form = reactive<DeptForm>({ parentId: 0, deptName: '', leader: '', phone: '', email: '', sort: 0, status: 0 })
+const form = reactive<DeptForm>({ deptId: undefined, parentId: 0, deptName: '', leaderId: undefined, phone: '', email: '', sort: 0, status: 0 })
 
 const rules: FormRules = {
   deptName: [{ required: true, message: '请输入部门名称', trigger: 'blur' }]
 }
 
-onMounted(() => { getList() })
+onMounted(() => {
+  getList()
+  loadUserList()
+})
 
 async function getList() {
   loading.value = true
   try {
-    const res = await listDept(queryParams)
+    const res = await getDeptTree(queryParams)
     deptList.value = (res as any).data || []
     deptOptions.value = [{ id: 0, parentId: -1, deptName: '顶级部门', sort: 0, status: 0, children: deptList.value } as Dept]
   } catch { /* 接口不可用 */ } finally {
     loading.value = false
+  }
+}
+
+async function loadUserList() {
+  try {
+    const res = await listSimpleUser()
+    userList.value = (res as any).data || []
+  } catch { /* ignore */ }
+}
+
+function onLeaderChange(userId: string | number | undefined) {
+  if (!userId) {
+    form.phone = ''
+    form.email = ''
+    return
+  }
+  fillLeaderContact(userId)
+}
+
+function fillLeaderContact(leaderId: string | number) {
+  const user = userList.value.find(u => String(u.userId) === String(leaderId))
+  if (user) {
+    form.phone = user.phone || ''
+    form.email = user.email || ''
   }
 }
 
@@ -139,7 +174,20 @@ async function handleEdit(row: Dept) {
   try {
     const res = await getDept(row.id)
     const d = (res as any).data
-    Object.assign(form, { id: d.id, parentId: d.parentId, deptName: d.deptName, leader: d.leader, phone: d.phone, email: d.email, sort: d.sort, status: d.status })
+    Object.assign(form, {
+      deptId: d.id,
+      parentId: Number(d.parentId) || 0,
+      deptName: d.deptName,
+      leaderId: d.leaderId || undefined,
+      phone: d.phone,
+      email: d.email,
+      sort: d.sort,
+      status: d.status
+    })
+    // 回显负责人的最新联系方式
+    if (d.leaderId) {
+      fillLeaderContact(d.leaderId)
+    }
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -158,7 +206,7 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    if (form.id) {
+    if (form.deptId) {
       await updateDept(form)
       ElMessage.success('修改成功')
     } else {
@@ -173,7 +221,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.id = undefined; form.parentId = 0; form.deptName = ''; form.leader = ''; form.phone = ''; form.email = ''; form.sort = 0; form.status = 0
+  form.deptId = undefined; form.parentId = 0; form.deptName = ''; form.leaderId = undefined; form.phone = ''; form.email = ''; form.sort = 0; form.status = 0
 }
 </script>
 

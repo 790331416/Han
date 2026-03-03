@@ -10,7 +10,7 @@
       <!-- 租户选择 -->
       <el-form :inline="true" class="mb-16">
         <el-form-item label="选择租户">
-          <el-select v-model="selectedTenantId" placeholder="请选择租户" filterable @change="loadQuota">
+          <el-select v-model="selectedTenantId" placeholder="请选择租户" filterable @change="loadQuota" style="width: 280px;">
             <el-option v-for="t in tenantList" :key="t.tenantId" :label="t.tenantName" :value="t.tenantId" />
           </el-select>
         </el-form-item>
@@ -94,7 +94,7 @@
               <span class="form-tip">-1 表示不限制，按重置周期计</span>
             </el-form-item>
             <el-form-item label="重置周期">
-              <el-select v-model="editForm.resetCycle">
+              <el-select v-model="editForm.resetCycle" placeholder="请选择重置周期" style="width: 200px;">
                 <el-option label="每月" value="monthly" />
                 <el-option label="每年" value="yearly" />
                 <el-option label="不重置" value="never" />
