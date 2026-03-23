@@ -66,7 +66,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.agentId ? '编辑智能体' : '创建智能体'" width="800px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.agentId ? '编辑智能体' : '创建智能体'" width="70%" class="dialog-xl" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -121,7 +121,7 @@
     </el-dialog>
 
     <!-- 对话测试 -->
-    <el-dialog v-model="chatVisible" :title="`对话测试 - ${currentAgent?.agentName || ''}`" width="700px" destroy-on-close>
+    <el-dialog v-model="chatVisible" :title="`对话测试 - ${currentAgent?.agentName || ''}`" width="65%" class="dialog-lg" destroy-on-close>
       <div class="chat-container">
         <div class="chat-messages" ref="chatMessagesRef">
           <div v-if="currentAgent?.prologue" class="chat-message assistant">

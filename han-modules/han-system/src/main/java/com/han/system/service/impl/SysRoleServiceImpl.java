@@ -277,7 +277,13 @@ public class SysRoleServiceImpl implements ISysRoleService {
             throw new BusinessException("角色权限字符[" + dto.getRoleKey() + "]已存在");
         }
         if ("admin".equals(dto.getRoleKey()) || "tenantAdmin".equals(dto.getRoleKey())) {
-            throw new BusinessException("不允许使用保留的角色标识符[" + dto.getRoleKey() + "]");
+            if (dto.getRoleId() == null) {
+                throw new BusinessException("不允许使用保留的角色标识符[" + dto.getRoleKey() + "]");
+            }
+            SysRolePo existing = roleMapper.selectById(dto.getRoleId());
+            if (existing == null || !dto.getRoleKey().equals(existing.getRoleKey())) {
+                throw new BusinessException("不允许使用保留的角色标识符[" + dto.getRoleKey() + "]");
+            }
         }
     }
 

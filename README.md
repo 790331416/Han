@@ -93,11 +93,23 @@ han-cloud/
 
 根据您的使用场景，选择合适的部署规模：
 
-| 规模 | 适用场景 | 硬件要求 | 中间件组合 | 部署文件 |
-|------|----------|----------|-----------|----------|
-| **小型（极简版）** | 个人开发/学习/演示 | 2核4GB | PostgreSQL + Redis + Nacos + RustFS | `docker-compose-small.yml` |
-| **中型（标准版）** | 小团队/测试环境 | 4核8GB | + RabbitMQ | `docker-compose.yml` |
-| **大型（企业版）** | 生产环境/大规模 | 8核16GB+ | + Kafka + Elasticsearch | Kubernetes 部署 |
+| 规模 | 适用场景 | 硬件要求 | 默认中间件/服务 | 部署文件 |
+|------|----------|----------|-------------------|----------|
+| **小型（核心链路）** | 本地开发/功能验证/演示 | 2核4GB | PostgreSQL + Redis + Nacos + gateway/auth/system/job | `docker-compose-small.yml` |
+| **中型（标准联调）** | 小团队/测试环境 | 4核8GB | `small` + RustFS + RabbitMQ + tenant/workflow/open/file | `docker-compose.yml` |
+| **大型（完整能力）** | 完整业务联调/生产预演 | 8核16GB+ | `medium` + ai；Kafka/Elasticsearch/观测组件建议外挂 | `docker-compose-full.yml` |
+
+### 部署能力矩阵
+
+| Tier | 核心模块 | 扩展模块 | 典型能力 |
+|------|----------|----------|----------|
+| `small` | gateway、auth、system、job | - | 用户中心、公告通知、参数配置、基础监控 |
+| `medium` | `small` 全部能力 | tenant、workflow、open、file、RustFS、RabbitMQ | 多租户、工作流、开放平台、文件服务 |
+| `full` | `medium` 全部能力 | ai、MCP、Prompt、Agent、Chat、Token | AI 与增强能力；Kafka/Elasticsearch/观测组件按环境外挂 |
+
+统一通过环境变量 `HAN_DEPLOY_TIER=small|medium|full` 控制后端运行时层级，通过 `HAN_INNER_AUTH_SECRET` 控制服务间内部鉴权密钥。前端会优先读取后端运行时能力接口 `/system/runtime/capabilities`，在登录页和侧边栏按真实部署层级降级展示。
+
+更详细的矩阵说明见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 ### 小型部署（推荐入门）
 
@@ -116,14 +128,13 @@ docker-compose -f docker-compose-small.yml ps
 
 # 4. 访问服务
 # Nacos: http://localhost:8848/nacos (han/han@2026)
-# 网关:  http://localhost:8080
+# 网关:  http://localhost:9090
 ```
 
 **包含服务**:
 - ✅ PostgreSQL (数据库)
 - ✅ Redis (缓存 + 分布式锁)
 - ✅ Nacos (服务注册 + 配置中心)
-- ✅ RustFS (对象存储)
 - ✅ Gateway (网关)
 - ✅ Auth (认证服务)
 - ✅ System (系统管理)
@@ -142,12 +153,13 @@ docker-compose ps
 ```
 
 **额外包含**:
+- ✅ RustFS (对象存储)
 - ✅ RabbitMQ (异步消息队列)
 - ✅ Tenant (租户管理)
 - ✅ Workflow (工作流)
 - ✅ Open (开放平台)
-- ✅ Gen (代码生成)
 - ✅ File (文件服务)
+- ⚠️ Gen (代码生成器，当前建议按需单独启用)
 
 ### 大型部署（生产环境）
 
@@ -156,10 +168,10 @@ docker-compose ps
 详见 [Kubernetes 部署指南](docs/k8s-deployment.md)
 
 **额外包含**:
-- ✅ Kafka (大数据流处理)
-- ✅ Elasticsearch (日志聚合 + 全文搜索)
-- ✅ Prometheus + Grafana (监控)
-- ✅ ELK Stack (日志分析)
+- ✅ AI (AI 模块)
+- ⚠️ Kafka (大数据流处理，建议外挂)
+- ⚠️ Elasticsearch (日志聚合 + 全文搜索，建议外挂)
+- ⚠️ Prometheus + Grafana / ELK (建议外挂)
 
 ---
 
@@ -168,6 +180,9 @@ docker-compose ps
 | 文档 | 说明 | 位置 |
 |------|------|------|
 | **README.md** | 项目介绍与快速开始 | 根目录 |
+| [能力矩阵](docs/capability-matrix.md) | 三档部署能力与默认服务矩阵 | docs/ |
+| [部署指南](docs/deployment-guide.md) | 三档 compose、环境变量与验证步骤 | docs/ |
+| [测试计划](docs/test-plan.md) | 三档部署与核心链路冒烟计划 | docs/ |
 | [AIB架构完整实施指南](doc/AIB架构完整实施指南.md) | A/I/B 三层架构生产就绪完整方案 | doc/ |
 | [项目开发文档](doc/项目开发文档.md) | 详细的开发文档与快速上手指南 | doc/ |
 | [项目对接文档](doc/项目对接文档.md) | 开放平台接入与OAuth2授权指南 | doc/ |
@@ -359,8 +374,8 @@ docker-compose -f docker-compose-dev.yml up -d
 | Workflow | 9203 | 工作流 |
 | Job | 9204 | 任务调度 |
 | Open | 9205 | 开放平台 |
-| Gen | 9206 | 代码生成 |
 | File | 9207 | 文件服务 |
+| AI | 9208 | AI 服务 |
 
 ---
 
@@ -401,3 +416,64 @@ docker-compose -f docker-compose-dev.yml up -d
 ---
 
 **开始使用 han Cloud，构建您的企业级微服务应用！** 🚀
+
+## 会话累计摘要
+
+### 2026-03-23 文档对齐与三档部署兼容整改
+
+- 本轮主要目标：把仓库实现继续向文档承诺靠拢，先完成三档部署基线、运行时能力收口、安全边界加固、中文规则配置落地，并为后续系统闭环整改打基础。
+- 已完成关键任务：修正 Maven 工作区构建配置，新增运行时能力接口并让前端读取部署层级与模块开关，对齐 `small / medium / full` 三档 compose 与文档能力矩阵，补齐内部调用签名与校验链路，网关剥离伪造内部头，登录失败锁改为 `tenantId + username` 维度，数据权限处理器改为返回真实部门范围，补齐 `job` 控制器权限注解，补齐 `open` 模块 OAuth2 和 SSO 端点的权限豁免与兼容路由，扩展网关开放平台白名单与路由兼容，新增牛马助手中文规则配置文档。
+- 关键决策与解决方案：统一使用 `han.deploy.tier` 作为后端能力开关，运行时能力接口作为前端菜单与能力判断的数据源；开放平台同时兼容 `/oauth2`、`/sso` 与 `/open/oauth2`、`/open/sso` 路径，避免破坏现有入口；公开 OAuth2 和 SSO 端点采用 `@PermissionExempt` 配合网关白名单，已登录能力继续由下游 `HeaderAuthenticationFilter` 从 `Authorization` 头恢复登录态；本地编译阶段显式清空系统 `MAVEN_OPTS` 中的错误仓库覆盖项，保证工作区仓库配置生效。
+- 使用技术栈/工具：Spring Boot 4、Spring Cloud Gateway、Spring Security、MyBatis-Plus、Vue 3、TypeScript、Maven、PowerShell、`apply_patch`、`rg`。
+- 修改文件：`settings.xml`
+- 修改文件：`settings.workspace.xml`
+- 修改文件：`README.md`
+- 修改文件：`docker-compose-small.yml`
+- 修改文件：`docker-compose.yml`
+- 修改文件：`docker-compose-full.yml`
+- 修改文件：`docs/capability-matrix.md`
+- 修改文件：`docs/deployment-guide.md`
+- 修改文件：`docs/test-plan.md`
+- 修改文件：`docs/niuma-assistant-rules.zh-cn.md`
+- 修改文件：`doc/optimization-analysis.md`
+- 修改文件：`han-common/han-common-core/pom.xml`
+- 修改文件：`han-common/han-common-core/src/main/java/com/han/common/core/constant/Constants.java`
+- 修改文件：`han-common/han-common-core/src/main/java/com/han/common/core/util/InnerAuthSignUtil.java`
+- 修改文件：`han-common/han-common-mybatis/src/main/java/com/han/common/mybatis/handler/HanDataPermissionHandler.java`
+- 修改文件：`han-common/han-common-security/src/main/java/com/han/common/security/config/SecurityWebMvcConfigurer.java`
+- 修改文件：`han-common/han-common-security/src/main/java/com/han/common/security/interceptor/InnerAuthInterceptor.java`
+- 修改文件：`han-gateway/src/main/java/com/han/gateway/filter/AuthFilter.java`
+- 修改文件：`han-gateway/src/main/resources/application.yml`
+- 修改文件：`han-gateway/src/main/resources/application-docker.yml`
+- 修改文件：`han-api/han-api-system/src/main/java/com/han/api/system/SystemServiceClient.java`
+- 修改文件：`han-auth/src/main/java/com/han/auth/service/impl/AuthServiceImpl.java`
+- 修改文件：`han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java`
+- 修改文件：`han-modules/han-job/src/main/java/com/han/job/controller/SysJobLogController.java`
+- 修改文件：`han-modules/han-job/src/main/java/com/han/job/controller/JobFlowMonitorController.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/OAuth2Controller.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/SsoController.java`
+- 修改文件：`han-modules/han-open/src/main/resources/application-docker.yml`
+- 修改文件：`han-modules/han-system/src/main/java/com/han/system/controller/RuntimeCapabilityController.java`
+- 修改文件：`han-ui/src/api/system/runtime.ts`
+- 修改文件：`han-ui/src/layout/components/Sidebar.vue`
+- 修改文件：`han-ui/src/router/index.ts`
+- 修改文件：`han-ui/src/stores/app.ts`
+- 修改文件：`han-ui/src/stores/user.ts`
+
+### 2026-03-23 95 服务器部署验证
+
+- 本轮主要目标：接入 `10.18.35.95` 远程测试环境，按既定 Docker 部署流程验证现有 `xzy0112` 镜像是否能跑通 Han Cloud 的中型部署链路，并记录镜像与文档实现差异。
+- 已完成关键任务：在本机 Codex 配置中新增 `local95` MCP 服务器并确认会话可连接；远程确认 `95` 服务器存在 `/root/han-cloud` 与 `/opt/han/docker` 两套部署目录；识别服务器已缓存 `registry.cn-hangzhou.aliyuncs.com/xzy0112` 系列镜像；使用 `/opt/han/docker/docker-compose.yml` 成功拉起 `postgres`、`redis`、`nacos`、`rustfs`、`gateway`、`auth`、`system`、`tenant`、`job`、`open` 容器；定位并确认 `han-ui` 之前重启的直接原因是上游 `gateway` 未启动；验证 `auth/captcha` 可用并通过 Redis 读取验证码完成 `admin/admin123` 登录；验证 `/system/user/current`、`/system/menu/routers` 正常返回；验证 `/system/runtime/capabilities` 与 `/open/app/list` 在当前远程镜像中仍为 404。
+- 关键决策与解决方案：远程验证阶段优先复用服务器现有 `xzy0112` 镜像，不额外拉取其他镜像；由于服务器未安装 `git`，本轮采用现有部署目录直接启动进行镜像级验证；登录闭环采用“网关取验证码 + Redis 取验证码值 + 登录接口”方式验证，避免前端视觉识别误差；将当前环境判定为“基础链路可启动，但镜像版本落后于本地整改代码”的状态，后续若要验证最新整改内容，需要把最新镜像重新推送或把最新代码同步到 `95` 服务器后重新构建部署。
+- 使用技术栈/工具：MCP SSH、Docker Compose、Nginx、Spring Boot、Nacos、Redis、PostgreSQL、PowerShell、`apply_patch`、`curl`。
+- 修改文件：`README.md`
+- 修改文件：`C:\Users\79033\.codex\config.toml`
+
+### 2026-03-23 95 服务器 Git 工作流接入
+
+- 本轮主要目标：在 `10.18.35.95` 服务器补齐 Git 能力，建立“本地 push、服务器 pull、再做 Docker 部署验证”的固定流程，并把该流程写入仓库文档。
+- 已完成关键任务：确认 `95` 服务器为 `CentOS 7`，使用 `yum` 安装 `git` 并验证版本；确认本地仓库 `origin` 为 `https://gitee.com/xzy0112/Han.git`，当前分支为 `master`；验证 `95` 服务器可执行 `git ls-remote` 读取 Gitee 仓库；在 `95` 服务器创建代码目录 `/opt/han/source/Han` 并完成仓库克隆；验证服务器侧 `git pull --ff-only origin master` 可正常执行；新增 95 服务器部署流程文档，固化“先装 git，再 push/pull，再 Docker 验证”的步骤。
+- 关键决策与解决方案：后续固定使用 `95` 服务器代码目录 `/opt/han/source/Han`，部署目录 `/opt/han/docker`；镜像优先复用 `xzy0112` 仓库和服务器本地缓存镜像，不额外搜索其他镜像源；对于当前本地大量未提交混合改动，不直接盲目推送，后续按明确发布范围提交再推送，避免把未确认改动一起发到远端。
+- 使用技术栈/工具：MCP SSH、Git、Yum、Docker Compose、PowerShell、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/server-95-deploy-flow.md`

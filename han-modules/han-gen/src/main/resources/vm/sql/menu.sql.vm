@@ -1,0 +1,5 @@
+-- ${tableComment} 菜单 SQL
+-- 请根据实际菜单ID调整 parent_id
+
+INSERT INTO sys_menu (menu_name, parent_id, order_num, path, component, menu_type, perms, icon, status)
+VALUES ('${tableComment}管理', 0, 1, '${businessName}', '${moduleName}/${businessName}/index', 'C', '${moduleName}:${businessName}:list', 'list', 0);

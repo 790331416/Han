@@ -31,18 +31,17 @@
       </template>
 
       <el-table v-loading="loading" :data="configList">
-        <el-table-column label="参数ID" prop="id" width="80" align="center" />
-        <el-table-column label="参数名称" prop="configName" width="200" show-overflow-tooltip />
-        <el-table-column label="参数键名" prop="configKey" width="220" show-overflow-tooltip />
+        <el-table-column label="参数名称" prop="configName" min-width="200" show-overflow-tooltip />
+        <el-table-column label="参数键名" prop="configKey" min-width="220" show-overflow-tooltip />
         <el-table-column label="参数键值" prop="configValue" min-width="200" show-overflow-tooltip />
         <el-table-column label="系统内置" prop="configType" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.configType === 'Y' ? 'danger' : 'info'">{{ row.configType === 'Y' ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" width="150" show-overflow-tooltip />
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="备注" prop="remark" min-width="150" show-overflow-tooltip />
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
@@ -63,7 +62,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="550px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="50%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="参数名称" prop="configName">
           <el-input v-model="form.configName" placeholder="请输入参数名称" />

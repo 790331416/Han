@@ -31,17 +31,16 @@
       </template>
 
       <el-table v-loading="loading" :data="roleList">
-        <el-table-column label="角色ID" prop="id" width="80" />
-        <el-table-column label="角色名称" prop="roleName" width="150" />
-        <el-table-column label="权限字符" prop="roleKey" width="150" />
+        <el-table-column label="角色名称" prop="roleName" min-width="150" show-overflow-tooltip />
+        <el-table-column label="权限字符" prop="roleKey" min-width="150" show-overflow-tooltip />
         <el-table-column label="排序" prop="roleSort" width="80" align="center" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" :disabled="row.id === 1" />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)" :disabled="row.id === 1">编辑</el-button>
             <el-button type="primary" link :icon="User" @click="handleAuthUser(row)" :disabled="row.id === 1">分配用户</el-button>
@@ -63,7 +62,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="750px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="65%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="form.roleName" placeholder="请输入角色名称" />

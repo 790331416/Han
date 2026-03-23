@@ -1,5 +1,7 @@
 package com.han.system.domain.vo;
 
+import com.han.common.web.sensitive.Sensitive;
+import com.han.common.web.sensitive.SensitiveType;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -33,9 +35,11 @@ public class UserVO {
     private String avatar;
 
     /** 手机号 */
+    @Sensitive(SensitiveType.PHONE)
     private String phone;
 
     /** 邮箱 */
+    @Sensitive(SensitiveType.EMAIL)
     private String email;
 
     /** 性别 */

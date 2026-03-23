@@ -1,0 +1,30 @@
+package ${packageName}.domain.po;
+
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.han.common.mybatis.domain.entity.BizEntity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+#foreach($type in $importTypes)
+import ${type};
+#end
+
+/**
+ * ${tableComment} 持久化对象
+ *
+ * @author ${author}
+ * @date ${date}
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("${tableName}")
+public class ${className}Po extends BizEntity {
+#foreach($column in $columns)
+#if($column.javaField != 'id' && $column.javaField != 'createBy' && $column.javaField != 'createTime' && $column.javaField != 'updateBy' && $column.javaField != 'updateTime' && $column.javaField != 'delFlag' && $column.javaField != 'tenantId')
+
+#if($column.columnComment)
+    /** ${column.columnComment} */
+#end
+    private ${column.javaType} ${column.javaField};
+#end
+#end
+}

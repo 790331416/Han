@@ -34,9 +34,8 @@
       </template>
 
       <el-table v-loading="loading" :data="dataList">
-        <el-table-column label="字典编码" prop="dictCode" width="90" align="center" />
-        <el-table-column label="字典标签" prop="dictLabel" width="200" />
-        <el-table-column label="字典键值" prop="dictValue" width="150" />
+        <el-table-column label="字典标签" prop="dictLabel" min-width="200" show-overflow-tooltip />
+        <el-table-column label="字典键值" prop="dictValue" min-width="150" show-overflow-tooltip />
         <el-table-column label="排序" prop="dictSort" width="80" align="center" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
@@ -44,8 +43,8 @@
           </template>
         </el-table-column>
         <el-table-column label="备注" prop="remark" min-width="150" show-overflow-tooltip />
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
@@ -66,7 +65,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" class="dialog-sm" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="字典类型">
           <el-input :model-value="dictTypeCode" disabled />
@@ -167,9 +166,9 @@ async function handleEdit(row: DictData) {
   resetForm()
   dialogTitle.value = '编辑字典数据'
   try {
-    const res = await getDictData(row.dictCode)
+    const res = await getDictData(row.id)
     const d = (res as any).data
-    Object.assign(form, { dictCode: d.dictCode, dictLabel: d.dictLabel, dictValue: d.dictValue, dictType: d.dictType, dictSort: d.dictSort, listClass: d.listClass || '', cssClass: d.cssClass, isDefault: d.isDefault, status: d.status, remark: d.remark })
+    Object.assign(form, { id: d.id, dictLabel: d.dictLabel, dictValue: d.dictValue, dictType: d.dictType, dictSort: d.dictSort, listClass: d.listClass || '', cssClass: d.cssClass, isDefault: d.isDefault, status: d.status, remark: d.remark })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -177,7 +176,7 @@ async function handleEdit(row: DictData) {
 async function handleDelete(row: DictData) {
   try {
     await ElMessageBox.confirm(`确认删除字典数据"${row.dictLabel}"？`, '提示', { type: 'warning' })
-    await deleteDictData(row.dictCode)
+    await deleteDictData(row.id)
     ElMessage.success('删除成功')
     getList()
   } catch { /* cancel */ }
@@ -192,7 +191,7 @@ async function submitForm() {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    if (form.dictCode) {
+    if (form.id) {
       await updateDictData(form)
       ElMessage.success('修改成功')
     } else {
@@ -207,7 +206,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.dictCode = undefined; form.dictLabel = ''; form.dictValue = ''; form.dictType = dictTypeCode.value; form.dictSort = 0; form.listClass = ''; form.status = 0; form.remark = ''
+  form.id = undefined; form.dictLabel = ''; form.dictValue = ''; form.dictType = dictTypeCode.value; form.dictSort = 0; form.listClass = ''; form.status = 0; form.remark = ''
 }
 </script>
 

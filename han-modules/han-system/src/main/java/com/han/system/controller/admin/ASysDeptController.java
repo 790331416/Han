@@ -3,6 +3,7 @@ package com.han.system.controller.admin;
 import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.domain.dto.SysDeptDto;
 import com.han.system.domain.po.SysDeptPo;
 import com.han.system.domain.query.SysDeptQuery;
@@ -43,6 +44,7 @@ public class ASysDeptController {
         return R.ok(deptService.selectDeptById(deptId));
     }
 
+    @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:dept:add')")
     @OperLog(module = "部门管理", type = OperLog.OperType.INSERT)
@@ -51,6 +53,7 @@ public class ASysDeptController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:dept:edit')")
     @OperLog(module = "部门管理", type = OperLog.OperType.UPDATE)
@@ -59,6 +62,7 @@ public class ASysDeptController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/remove/{deptId}")
     @PreAuthorize("@ss.hasAuthority('system:dept:remove')")
     @OperLog(module = "部门管理", type = OperLog.OperType.DELETE)

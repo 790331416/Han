@@ -26,14 +26,14 @@
       <el-table v-loading="loading" :data="taskList">
         <el-table-column label="任务名称" prop="taskName" min-width="150" show-overflow-tooltip />
         <el-table-column label="所属流程" prop="processDefinitionName" min-width="150" show-overflow-tooltip />
-        <el-table-column label="业务标识" prop="businessKey" width="150" show-overflow-tooltip>
+        <el-table-column label="业务标识" prop="businessKey" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.businessKey || '-' }}</template>
         </el-table-column>
-        <el-table-column label="办理人" prop="assigneeName" width="100" align="center">
+        <el-table-column label="办理人" prop="assigneeName" min-width="100">
           <template #default="{ row }">{{ row.assigneeName || row.assignee || '-' }}</template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="完成时间" prop="endTime" width="180">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="完成时间" prop="endTime" min-width="180">
           <template #default="{ row }">{{ row.endTime || '-' }}</template>
         </el-table-column>
         <el-table-column label="耗时" width="100" align="center">

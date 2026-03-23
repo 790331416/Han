@@ -1,9 +1,20 @@
 package com.han.common.core.util;
 
 import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.security.spec.MGF1ParameterSpec;
+import javax.crypto.Cipher;
+import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PSource;
 
 /**
  * 安全工具类
@@ -119,5 +130,73 @@ public final class HanSecureUtil {
             }
         }
         return hasUpper && hasLower && hasDigit && hasSpecial;
+    }
+
+    // ==================== RSA 加解密 ====================
+
+    private static final String RSA_ALGORITHM = "RSA";
+    private static final String RSA_CIPHER = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
+    private static final OAEPParameterSpec OAEP_PARAMS = new OAEPParameterSpec(
+            "SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT);
+
+    /**
+     * 生成 RSA 密钥对（2048位）
+     */
+    public static KeyPair generateRsaKeyPair() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(RSA_ALGORITHM);
+            generator.initialize(2048);
+            return generator.generateKeyPair();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("生成RSA密钥对失败", e);
+        }
+    }
+
+    /**
+     * 获取 Base64 编码的公钥字符串
+     */
+    public static String getPublicKeyBase64(KeyPair keyPair) {
+        return Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+    }
+
+    /**
+     * 获取 Base64 编码的私钥字符串
+     */
+    public static String getPrivateKeyBase64(KeyPair keyPair) {
+        return Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded());
+    }
+
+    /**
+     * RSA 私钥解密（解密前端加密的密码）
+     */
+    public static String rsaDecrypt(String encryptedBase64, String privateKeyBase64) {
+        try {
+            byte[] keyBytes = Base64.getDecoder().decode(privateKeyBase64);
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
+            PrivateKey privateKey = KeyFactory.getInstance(RSA_ALGORITHM).generatePrivate(keySpec);
+            Cipher cipher = Cipher.getInstance(RSA_CIPHER);
+            cipher.init(Cipher.DECRYPT_MODE, privateKey, OAEP_PARAMS);
+            byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encryptedBase64));
+            return new String(decrypted, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException("RSA解密失败", e);
+        }
+    }
+
+    /**
+     * RSA 公钥加密（用于测试）
+     */
+    public static String rsaEncrypt(String plainText, String publicKeyBase64) {
+        try {
+            byte[] keyBytes = Base64.getDecoder().decode(publicKeyBase64);
+            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
+            PublicKey publicKey = KeyFactory.getInstance(RSA_ALGORITHM).generatePublic(keySpec);
+            Cipher cipher = Cipher.getInstance(RSA_CIPHER);
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey, OAEP_PARAMS);
+            byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception e) {
+            throw new RuntimeException("RSA加密失败", e);
+        }
     }
 }

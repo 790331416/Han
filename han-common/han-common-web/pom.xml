@@ -40,6 +40,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- EasyExcel（通用导出，optional：各业务模块按需引入） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Micrometer Tracing（全链路追踪，Spring Boot 4.0 Observation API） -->
         <dependency>
             <groupId>io.micrometer</groupId>

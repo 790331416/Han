@@ -52,8 +52,8 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="部署时间" prop="deploymentTime" width="180" />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="部署时间" prop="deploymentTime" min-width="180" />
+        <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
             <el-button type="primary" link :icon="View" @click="handleViewXml(row)">查看</el-button>
             <el-button v-if="row.suspended" type="success" link :icon="VideoPlay" @click="handleActivate(row)">激活</el-button>
@@ -78,7 +78,7 @@
     </el-card>
 
     <!-- 部署对话框 -->
-    <el-dialog v-model="deployVisible" title="部署流程定义" width="600px" destroy-on-close>
+    <el-dialog v-model="deployVisible" title="部署流程定义" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="deployFormRef" :model="deployForm" :rules="deployRules" label-width="100px">
         <el-form-item label="流程名称" prop="name">
           <el-input v-model="deployForm.name" placeholder="请输入流程名称" />
@@ -110,14 +110,14 @@
     </el-dialog>
 
     <!-- 查看XML对话框 -->
-    <el-dialog v-model="xmlVisible" title="流程定义XML" width="800px">
+    <el-dialog v-model="xmlVisible" title="流程定义XML" width="75%" class="dialog-xl">
       <div class="xml-content">
         <pre><code>{{ xmlContent }}</code></pre>
       </div>
     </el-dialog>
 
     <!-- 流程图对话框 -->
-    <el-dialog v-model="diagramVisible" title="流程图" width="900px">
+    <el-dialog v-model="diagramVisible" title="流程图" width="80%" class="dialog-xl">
       <div class="diagram-content">
         <img v-if="diagramUrl" :src="diagramUrl" alt="流程图" style="max-width: 100%;" />
         <el-empty v-else description="暂无流程图" />

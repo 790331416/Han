@@ -72,6 +72,7 @@ public final class DataOwnerUtil {
 
     /**
      * 校验是否可以分配指定角色
+     * <p>超级管理员和租户管理员可分配同租户下的任意角色，普通用户只能分配自己拥有的角色
      */
     public static void checkRolePermission(Set<Long> roleIds) {
         if (roleIds == null || roleIds.isEmpty()) {
@@ -82,7 +83,7 @@ public final class DataOwnerUtil {
         if (user == null) {
             throw new ForbiddenException("未登录");
         }
-        if (user.isAdmin()) {
+        if (user.isAdmin() || user.hasRole("tenantAdmin")) {
             return;
         }
 

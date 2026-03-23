@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.han.gen.mapper.GenTableMapper">
+
+    <!-- 查询数据库中所有业务表（排除系统表和已导入的表） -->
+    <select id="selectDbTableList" resultType="com.han.gen.domain.DbTableInfo">
+        SELECT
+            c.relname AS table_name,
+            obj_description(c.oid) AS table_comment
+        FROM pg_class c
+        LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind = 'r'
+          AND n.nspname = 'public'
+          AND c.relname NOT LIKE 'pg_%'
+          AND c.relname NOT LIKE 'sql_%'
+          AND c.relname NOT IN (SELECT table_name FROM gen_table)
+        <if test="tableName != null and tableName != ''">
+            AND c.relname LIKE CONCAT('%', #{tableName}, '%')
+        </if>
+        ORDER BY c.relname
+    </select>
+
+    <!-- 查询指定表的列信息（PostgreSQL） -->
+    <select id="selectDbColumnsByTableName" resultType="com.han.gen.domain.DbColumnInfo">
+        SELECT
+            a.attname AS column_name,
+            col_description(a.attrelid, a.attnum) AS column_comment,
+            format_type(a.atttypid, a.atttypmod) AS column_type,
+            CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM pg_constraint con
+                WHERE con.conrelid = a.attrelid AND a.attnum = ANY(con.conkey) AND con.contype = 'p'
+            ) THEN 'PRI' ELSE '' END AS column_key,
+            pg_get_expr(d.adbin, d.adrelid) AS column_default,
+            a.attnum AS ordinal_position
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+        LEFT JOIN pg_class c ON a.attrelid = c.oid
+        LEFT JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE c.relname = #{tableName}
+          AND n.nspname = 'public'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+    </select>
+
+</mapper>

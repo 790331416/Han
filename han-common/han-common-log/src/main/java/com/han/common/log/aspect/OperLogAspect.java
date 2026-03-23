@@ -1,5 +1,6 @@
 package com.han.common.log.aspect;
 
+import com.han.common.core.util.HanIpUtil;
 import com.han.common.core.util.HanJsonUtil;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.log.domain.OperLogEvent;
@@ -96,6 +97,7 @@ public class OperLogAspect {
                             .operUserId(fUserId)
                             .operUrl(fOperUrl)
                             .operIp(fOperIp)
+                            .operLocation(HanIpUtil.getLocation(fOperIp))
                             .requestMethod(fRequestMethod)
                             .operParam(operParam)
                             .jsonResult(jsonResult)

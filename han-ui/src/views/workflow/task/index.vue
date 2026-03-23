@@ -26,19 +26,19 @@
       <el-table v-loading="loading" :data="taskList">
         <el-table-column label="任务名称" prop="taskName" min-width="150" show-overflow-tooltip />
         <el-table-column label="所属流程" prop="processDefinitionName" min-width="150" show-overflow-tooltip />
-        <el-table-column label="业务标识" prop="businessKey" width="150" show-overflow-tooltip>
+        <el-table-column label="业务标识" prop="businessKey" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.businessKey || '-' }}</template>
         </el-table-column>
-        <el-table-column label="办理人" prop="assigneeName" width="100" align="center">
+        <el-table-column label="办理人" prop="assigneeName" min-width="100">
           <template #default="{ row }">{{ row.assigneeName || row.assignee || '-' }}</template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="到期时间" prop="dueDate" width="180">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="到期时间" prop="dueDate" min-width="180">
           <template #default="{ row }">
             <span :class="{ 'text-danger': isOverdue(row.dueDate) }">{{ row.dueDate || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Check" @click="handleComplete(row)">办理</el-button>
             <el-button type="warning" link :icon="Right" @click="handleTransfer(row)">转办</el-button>
@@ -62,7 +62,7 @@
     </el-card>
 
     <!-- 办理对话框 -->
-    <el-dialog v-model="completeVisible" title="办理任务" width="600px" destroy-on-close>
+    <el-dialog v-model="completeVisible" title="办理任务" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="completeFormRef" :model="completeForm" label-width="100px">
         <el-form-item label="任务名称">
           <span>{{ currentTask?.taskName }}</span>
@@ -87,7 +87,7 @@
     </el-dialog>
 
     <!-- 转办对话框 -->
-    <el-dialog v-model="transferVisible" title="转办任务" width="500px" destroy-on-close>
+    <el-dialog v-model="transferVisible" title="转办任务" width="45%" class="dialog-sm" destroy-on-close>
       <el-form label-width="100px">
         <el-form-item label="转办人">
           <el-input v-model="transferUserId" placeholder="请输入转办人用户ID" />
@@ -100,7 +100,7 @@
     </el-dialog>
 
     <!-- 委派对话框 -->
-    <el-dialog v-model="delegateVisible" title="委派任务" width="500px" destroy-on-close>
+    <el-dialog v-model="delegateVisible" title="委派任务" width="45%" class="dialog-sm" destroy-on-close>
       <el-form label-width="100px">
         <el-form-item label="委派人">
           <el-input v-model="delegateUserId" placeholder="请输入委派人用户ID" />

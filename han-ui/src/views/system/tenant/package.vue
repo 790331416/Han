@@ -30,8 +30,7 @@
       </template>
 
       <el-table v-loading="loading" :data="packageList">
-        <el-table-column label="套餐ID" prop="packageId" width="80" />
-        <el-table-column label="套餐名称" prop="packageName" />
+        <el-table-column label="套餐名称" prop="packageName" min-width="200" show-overflow-tooltip />
         <el-table-column label="关联租户数" prop="tenantCount" width="120" align="center" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
@@ -43,8 +42,8 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="primary" link :icon="Menu" @click="handleMenus(row)">菜单</el-button>
@@ -67,7 +66,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" class="dialog-sm" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="套餐名称" prop="packageName">
           <el-input v-model="form.packageName" placeholder="请输入套餐名称" />
@@ -89,7 +88,7 @@
     </el-dialog>
 
     <!-- 菜单分配对话框 -->
-    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="700px" destroy-on-close>
+    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="60%" class="dialog-lg" destroy-on-close>
       <div style="max-height: 500px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
         <el-tree
           ref="menuTreeRef"

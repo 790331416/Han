@@ -1,6 +1,7 @@
 package com.han.common.core.util;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
+import com.han.common.core.exception.BusinessException;
 
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -34,15 +35,36 @@ public final class PasswordUtil {
         return encode(rawPassword);
     }
 
+    /** 密码最小长度 */
+    private static final int MIN_LENGTH = 8;
+    /** 密码最大长度 */
+    private static final int MAX_LENGTH = 20;
+
     /**
-     * 校验密码强度（不满足则抛异常）
+     * 校验密码复杂度（不满足则抛异常）
+     * <p>规则：8~20位，必须包含大写字母、小写字母、数字、特殊字符中的至少3种
      */
     public static void validate(String password) {
-        if (password == null || password.length() < 6) {
-            throw new IllegalArgumentException("密码长度不能少于6位");
+        if (password == null || password.length() < MIN_LENGTH) {
+            throw new BusinessException("密码长度不能少于" + MIN_LENGTH + "位");
         }
-        if (password.length() > 20) {
-            throw new IllegalArgumentException("密码长度不能超过20位");
+        if (password.length() > MAX_LENGTH) {
+            throw new BusinessException("密码长度不能超过" + MAX_LENGTH + "位");
+        }
+        int categories = 0;
+        boolean hasLower = false, hasUpper = false, hasDigit = false, hasSpecial = false;
+        for (char c : password.toCharArray()) {
+            if (Character.isLowerCase(c)) hasLower = true;
+            else if (Character.isUpperCase(c)) hasUpper = true;
+            else if (Character.isDigit(c)) hasDigit = true;
+            else hasSpecial = true;
+        }
+        if (hasLower) categories++;
+        if (hasUpper) categories++;
+        if (hasDigit) categories++;
+        if (hasSpecial) categories++;
+        if (categories < 3) {
+            throw new BusinessException("密码必须包含大写字母、小写字母、数字、特殊字符中的至少3种");
         }
     }
 

@@ -4,10 +4,10 @@ import com.han.common.core.context.SecurityContext;
 import com.han.common.security.domain.LoginUser;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 /**
- * SecurityContext 接口的实现
- * <p>
- * 委托给 SecurityContextHolder（TransmittableThreadLocal）获取当前登录用户信息。
+ * SecurityContext 接口实现
  */
 @Component
 public class SecurityContextAdapter implements SecurityContext {
@@ -31,6 +31,12 @@ public class SecurityContextAdapter implements SecurityContext {
     public String getNickname() {
         LoginUser user = SecurityContextHolder.getLoginUser();
         return user != null ? user.getNickname() : null;
+    }
+
+    @Override
+    public Set<Long> getDataScopeDeptIds() {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        return user != null ? user.getDeptIds() : null;
     }
 
     @Override

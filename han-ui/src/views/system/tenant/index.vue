@@ -31,26 +31,26 @@
       </template>
 
       <el-table v-loading="loading" :data="tenantList">
-        <el-table-column label="租户ID" prop="tenantId" width="80" align="center" />
-        <el-table-column label="租户名称" prop="tenantName" width="180" />
-        <el-table-column label="联系人" prop="contactName" width="120" />
-        <el-table-column label="联系电话" prop="contactPhone" width="140" />
-        <el-table-column label="套餐" prop="packageName" width="120" />
+        <el-table-column label="租户名称" prop="tenantName" min-width="180" show-overflow-tooltip />
+        <el-table-column label="联系人" prop="contactName" min-width="120" show-overflow-tooltip />
+        <el-table-column label="联系电话" prop="contactPhone" min-width="140" />
+        <el-table-column label="套餐" prop="packageName" min-width="120" show-overflow-tooltip />
         <el-table-column label="用户数" width="100" align="center">
           <template #default="{ row }">
             {{ row.userCount || 0 }} / {{ row.userLimit === -1 ? '不限' : row.userLimit }}
           </template>
         </el-table-column>
-        <el-table-column label="过期时间" prop="expireTime" width="180" />
+        <el-table-column label="过期时间" prop="expireTime" min-width="180" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" />
+        <el-table-column label="操作" min-width="260">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="warning" link :icon="Key" @click="handleResetPwd(row)">重置密码</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -69,15 +69,13 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="租户名称" prop="tenantName">
           <el-input v-model="form.tenantName" placeholder="请输入租户名称" />
         </el-form-item>
         <el-form-item label="联系人" prop="contactName">
-          <el-select v-model="selectedUserId" filterable clearable placeholder="请选择联系人" style="width: 100%" @change="fillContact">
-            <el-option v-for="u in userList" :key="u.userId" :label="u.nickname" :value="u.userId" />
-          </el-select>
+          <el-input v-model="form.contactName" placeholder="请输入联系人" />
         </el-form-item>
         <el-form-item label="联系电话" prop="contactPhone">
           <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
@@ -105,6 +103,15 @@
             <el-radio :value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
+        <template v-if="!form.tenantId">
+          <el-divider content-position="left">管理员账号</el-divider>
+          <el-form-item label="管理员用户名" prop="adminUsername">
+            <el-input v-model="form.adminUsername" placeholder="请输入管理员用户名" />
+          </el-form-item>
+          <el-form-item label="管理员密码" prop="adminPassword">
+            <el-input v-model="form.adminPassword" placeholder="默认密码: admin123" show-password />
+          </el-form-item>
+        </template>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
         </el-form-item>
@@ -119,11 +126,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete, Key } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { listTenant, getTenant, addTenant, updateTenant, deleteTenant, changeTenantStatus, type Tenant, type TenantForm } from '@/api/system/tenant'
+import { listTenant, getTenant, addTenant, updateTenant, deleteTenant, changeTenantStatus, getTenantAdminUser, type Tenant, type TenantForm } from '@/api/system/tenant'
 import { listAllPackage, type TenantPackage } from '@/api/system/tenantPackage'
-import { listSimpleUser } from '@/api/system/user'
+import { resetUserPwd } from '@/api/system/user'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -132,46 +139,28 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
-const userList = ref<{ userId: string | number; nickname: string; phone: string; email: string }[]>([])
-const selectedUserId = ref<string | number | undefined>(undefined)
 const packageList = ref<TenantPackage[]>([])
 
 const queryParams = reactive({ tenantName: '', contactName: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
-const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '' })
+const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '', adminUsername: 'admin', adminPassword: 'admin123' })
 
 const rules: FormRules = {
-  tenantName: [{ required: true, message: '请输入租户名称', trigger: 'blur' }]
+  tenantName: [{ required: true, message: '请输入租户名称', trigger: 'blur' }],
+  adminUsername: [{ required: true, message: '请输入管理员用户名', trigger: 'blur' }],
+  adminPassword: [{ required: true, message: '请输入管理员密码', trigger: 'blur' }]
 }
 
 onMounted(() => {
   getList()
-  loadUserList()
   loadPackageList()
 })
-
-async function loadUserList() {
-  try {
-    const res = await listSimpleUser()
-    userList.value = ((res as any).data || []).map((u: any) => ({ userId: u.userId, nickname: u.nickname, phone: u.phone || '', email: u.email || '' }))
-  } catch { /* ignore */ }
-}
 
 async function loadPackageList() {
   try {
     const res = await listAllPackage()
     packageList.value = (res as any).data || []
   } catch { /* ignore */ }
-}
-
-function fillContact(userId: string | number | undefined) {
-  if (!userId) return
-  const user = userList.value.find(u => String(u.userId) === String(userId))
-  if (user) {
-    form.contactName = user.nickname
-    form.contactPhone = user.phone
-    form.contactEmail = user.email
-  }
 }
 
 async function getList() {
@@ -200,17 +189,13 @@ function resetQuery() {
 
 async function handleAdd() {
   resetForm()
-  selectedUserId.value = undefined
   dialogTitle.value = '新增租户'
   dialogVisible.value = true
-  await loadUserList()
 }
 
 async function handleEdit(row: Tenant) {
   resetForm()
-  selectedUserId.value = undefined
   dialogTitle.value = '编辑租户'
-  await loadUserList()
   try {
     const res = await getTenant(row.tenantId)
     const d = (res as any).data
@@ -230,6 +215,25 @@ async function handleDelete(row: Tenant) {
     await deleteTenant(row.tenantId)
     ElMessage.success('删除成功')
     getList()
+  } catch { /* cancel */ }
+}
+
+async function handleResetPwd(row: Tenant) {
+  try {
+    const { value: newPwd } = await ElMessageBox.prompt(
+      `重置租户「${row.tenantName}」管理员密码`,
+      '重置密码',
+      { confirmButtonText: '确定', cancelButtonText: '取消', inputValue: 'admin123', inputPlaceholder: '请输入新密码' }
+    )
+    if (!newPwd) return
+    const adminRes = await getTenantAdminUser(row.tenantId)
+    const adminUserId = (adminRes as any).data
+    if (!adminUserId) {
+      ElMessage.error('未找到该租户的管理员用户')
+      return
+    }
+    await resetUserPwd(adminUserId, newPwd)
+    ElMessage.success('重置密码成功')
   } catch { /* cancel */ }
 }
 
@@ -262,7 +266,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.packageId = undefined; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''
+  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.packageId = undefined; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''; form.adminUsername = 'admin'; form.adminPassword = 'admin123'
 }
 </script>
 

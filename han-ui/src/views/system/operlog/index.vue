@@ -41,6 +41,7 @@
         <div class="card-header">
           <span>操作日志</span>
           <div class="table-operations">
+            <el-button type="warning" :icon="Download" @click="handleExport">导出</el-button>
             <el-button type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
             <el-button type="danger" :icon="Delete" @click="handleClean">清空</el-button>
           </div>
@@ -49,23 +50,23 @@
 
       <el-table v-loading="loading" :data="logList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="日志ID" prop="id" width="80" />
-        <el-table-column label="系统模块" prop="module" width="120" />
+        <el-table-column label="系统模块" prop="module" min-width="130" show-overflow-tooltip />
         <el-table-column label="操作类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getBusinessTypeTag(row.operType)">{{ getBusinessTypeText(row.operType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作人员" prop="operName" width="120" />
-        <el-table-column label="操作IP" prop="operIp" width="140" />
+        <el-table-column label="操作人员" prop="operName" min-width="110" show-overflow-tooltip />
+        <el-table-column label="操作IP" prop="operIp" min-width="140" show-overflow-tooltip />
+        <el-table-column label="归属地" prop="operLocation" min-width="140" show-overflow-tooltip />
         <el-table-column label="操作状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '成功' : '失败' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="耗时(ms)" prop="costTime" width="100" align="center" />
-        <el-table-column label="操作时间" prop="operTime" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作时间" prop="operTime" min-width="180" />
+        <el-table-column label="操作" min-width="80">
           <template #default="{ row }">
             <el-button type="primary" link :icon="View" @click="handleDetail(row)">详情</el-button>
           </template>
@@ -86,7 +87,7 @@
     </el-card>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="操作日志详情" width="700px" destroy-on-close>
+    <el-dialog v-model="detailVisible" title="操作日志详情" width="65%" class="dialog-lg" destroy-on-close>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="系统模块">{{ detailData.module }}</el-descriptions-item>
         <el-descriptions-item label="操作类型">
@@ -96,6 +97,7 @@
         <el-descriptions-item label="请求方式">{{ detailData.requestMethod }}</el-descriptions-item>
         <el-descriptions-item label="请求地址" :span="2">{{ detailData.operUrl }}</el-descriptions-item>
         <el-descriptions-item label="操作IP">{{ detailData.operIp }}</el-descriptions-item>
+        <el-descriptions-item label="归属地">{{ detailData.operLocation || '-' }}</el-descriptions-item>
         <el-descriptions-item label="操作状态">
           <el-tag :type="detailData.status === 0 ? 'success' : 'danger'">{{ detailData.status === 0 ? '成功' : '失败' }}</el-tag>
         </el-descriptions-item>
@@ -118,8 +120,9 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Delete, View } from '@element-plus/icons-vue'
+import { Search, Refresh, Delete, View, Download } from '@element-plus/icons-vue'
 import { listOperLog, deleteOperLog, cleanOperLog } from '@/api/system/operlog'
+import { downloadExcel } from '@/utils/download'
 import type { OperLog } from '@/api/system/operlog'
 import type { FormInstance } from 'element-plus'
 
@@ -187,6 +190,10 @@ const handleBatchDelete = async () => {
   await deleteOperLog(selectedIds.value)
   ElMessage.success('删除成功')
   getList()
+}
+
+const handleExport = () => {
+  downloadExcel('/system/operlog/export', queryParams, '操作日志')
 }
 
 const handleClean = async () => {

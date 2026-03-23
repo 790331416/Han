@@ -66,6 +66,12 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
+        <!-- TOTP (2FA多因素认证) -->
+        <dependency>
+            <groupId>dev.samstevens.totp</groupId>
+            <artifactId>totp</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

@@ -1,12 +1,16 @@
 package com.han.system.controller.inner;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.api.system.domain.TenantInitDto;
 import com.han.common.core.domain.R;
-import com.han.common.core.util.PasswordUtil;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.annotation.InnerAuth;
+import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
+import com.han.system.domain.dto.SysUserDto;
 import com.han.system.domain.po.*;
 import com.han.system.mapper.*;
+import com.han.system.service.ISysUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,10 +31,10 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TenantInitController {
 
+    private final ISysUserService sysUserService;
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
     private final SysDeptMapper deptMapper;
-    private final SysUserRoleMapper userRoleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
 
     @PostMapping("/init")
@@ -39,6 +43,8 @@ public class TenantInitController {
         Long tenantId = dto.getTenantId();
         log.info("开始初始化租户[{}]基础数据", tenantId);
 
+        // Phase 1: 创建部门、角色、菜单权限（直接操作Mapper，跳过租户过滤）
+        final Long[] ids = new Long[2]; // [0]=deptId, [1]=roleId
         TenantHelper.ignore(() -> {
             // 1. 创建默认部门（根部门）
             SysDeptPo dept = new SysDeptPo();
@@ -49,8 +55,8 @@ public class TenantInitController {
             dept.setOrderNum(0);
             dept.setStatus(0);
             deptMapper.insert(dept);
-            Long deptId = dept.getId();
-            log.info("租户[{}]创建默认部门: deptId={}", tenantId, deptId);
+            ids[0] = dept.getId();
+            log.info("租户[{}]创建默认部门: deptId={}", tenantId, ids[0]);
 
             // 2. 创建默认角色（租户管理员）
             SysRolePo role = new SysRolePo();
@@ -61,37 +67,63 @@ public class TenantInitController {
             role.setDataScope("1");
             role.setStatus(0);
             roleMapper.insert(role);
-            Long roleId = role.getId();
-            log.info("租户[{}]创建默认角色: roleId={}", tenantId, roleId);
+            ids[1] = role.getId();
+            log.info("租户[{}]创建默认角色: roleId={}", tenantId, ids[1]);
 
             // 3. 分配套餐菜单给角色
             Set<Long> menuIds = dto.getMenuIds();
             if (menuIds != null && !menuIds.isEmpty()) {
                 for (Long menuId : menuIds) {
-                    roleMenuMapper.insert(new SysRoleMenuPo(roleId, menuId));
+                    roleMenuMapper.insert(new SysRoleMenuPo(ids[1], menuId));
                 }
                 log.info("租户[{}]分配菜单权限: menuCount={}", tenantId, menuIds.size());
             }
-
-            // 4. 创建管理员用户
-            SysUserPo user = new SysUserPo();
-            user.setTenantId(tenantId);
-            user.setDeptId(deptId);
-            user.setUsername(dto.getAdminUsername() != null ? dto.getAdminUsername() : "admin");
-            user.setPassword(PasswordUtil.encode(dto.getAdminPassword() != null ? dto.getAdminPassword() : "admin123"));
-            user.setNickname(dto.getAdminNickname() != null ? dto.getAdminNickname() : "租户管理员");
-            user.setPhone(dto.getAdminPhone());
-            user.setStatus(0);
-            userMapper.insert(user);
-            Long userId = user.getId();
-            log.info("租户[{}]创建管理员用户: userId={}, username={}", tenantId, userId, user.getUsername());
-
-            // 5. 绑定用户-角色
-            userRoleMapper.insert(new SysUserRolePo(userId, roleId));
         });
+
+        // Phase 2: 通过 ISysUserService 创建管理员用户（复用用户管理的校验逻辑）
+        LoginUser tempUser = LoginUser.builder()
+                .userId(1L)
+                .tenantId(tenantId)
+                .username("system-init")
+                .build();
+        SecurityContextHolder.setLoginUser(tempUser);
+        try {
+            SysUserDto userDto = SysUserDto.builder()
+                    .username(dto.getAdminUsername() != null ? dto.getAdminUsername() : "admin")
+                    .password(dto.getAdminPassword() != null ? dto.getAdminPassword() : "admin123")
+                    .nickname(dto.getAdminNickname() != null ? dto.getAdminNickname() : "租户管理员")
+                    .phone(dto.getAdminPhone())
+                    .deptId(ids[0])
+                    .roleIds(Set.of(ids[1]))
+                    .status(0)
+                    .build();
+            sysUserService.insert(userDto);
+            log.info("租户[{}]通过用户服务创建管理员用户: username={}", tenantId, userDto.getUsername());
+        } finally {
+            SecurityContextHolder.clear();
+        }
 
         log.info("租户[{}]基础数据初始化完成", tenantId);
         return R.ok();
+    }
+
+    /**
+     * 查询租户管理员用户ID（供重置密码等操作使用）
+     */
+    @GetMapping("/adminUser")
+    public R<Long> getTenantAdminUserId(@RequestParam("tenantId") Long tenantId) {
+        SysUserPo admin = TenantHelper.ignore(() ->
+                userMapper.selectOne(
+                        new LambdaQueryWrapper<SysUserPo>()
+                                .eq(SysUserPo::getTenantId, tenantId)
+                                .orderByAsc(SysUserPo::getId)
+                                .last("LIMIT 1")
+                )
+        );
+        if (admin == null) {
+            return R.fail("该租户下无用户");
+        }
+        return R.ok(admin.getId());
     }
 
     /**

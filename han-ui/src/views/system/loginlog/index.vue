@@ -37,19 +37,18 @@
 
       <el-table v-loading="loading" :data="logList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="日志ID" prop="id" width="80" />
-        <el-table-column label="用户名" prop="username" width="120" />
-        <el-table-column label="登录IP" prop="ipAddr" width="140" />
-        <el-table-column label="登录地点" prop="loginLocation" width="150" />
-        <el-table-column label="浏览器" prop="browser" width="120" />
-        <el-table-column label="操作系统" prop="os" width="120" />
+        <el-table-column label="用户名" prop="username" min-width="120" show-overflow-tooltip />
+        <el-table-column label="登录IP" prop="ipAddr" min-width="140" show-overflow-tooltip />
+        <el-table-column label="登录地点" prop="loginLocation" min-width="150" show-overflow-tooltip />
+        <el-table-column label="浏览器" prop="browser" min-width="120" show-overflow-tooltip />
+        <el-table-column label="操作系统" prop="os" min-width="120" show-overflow-tooltip />
         <el-table-column label="登录状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '成功' : '失败' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="提示消息" prop="message" width="200" show-overflow-tooltip />
-        <el-table-column label="登录时间" prop="loginTime" width="180" />
+        <el-table-column label="提示消息" prop="message" min-width="200" show-overflow-tooltip />
+        <el-table-column label="登录时间" prop="loginTime" min-width="180" />
       </el-table>
 
       <div class="pagination-container">

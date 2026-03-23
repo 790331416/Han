@@ -27,6 +27,12 @@ import java.time.format.DateTimeFormatter;
 public class JacksonAutoConfiguration {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_TIME_DESERIALIZE_FORMATTER = new java.time.format.DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd")
+            .appendLiteral(' ')
+            .appendPattern("HH:mm:ss")
+            .optionalStart().appendFraction(java.time.temporal.ChronoField.NANO_OF_SECOND, 0, 9, true).optionalEnd()
+            .toFormatter();
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -38,7 +44,7 @@ public class JacksonAutoConfiguration {
             module.addSerializer(Long.class, ToStringSerializer.instance);
             // 统一日期时间格式: yyyy-MM-dd HH:mm:ss
             module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DATE_TIME_FORMATTER));
-            module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DATE_TIME_FORMATTER));
+            module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DATE_TIME_DESERIALIZE_FORMATTER));
             module.addSerializer(LocalDate.class, new LocalDateSerializer(DATE_FORMATTER));
             module.addDeserializer(LocalDate.class, new LocalDateDeserializer(DATE_FORMATTER));
             module.addSerializer(LocalTime.class, new LocalTimeSerializer(TIME_FORMATTER));

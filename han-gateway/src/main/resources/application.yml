@@ -2,43 +2,54 @@
   port: 8080
 
 spring:
-  config:
-    import: "optional:nacos:han-gateway.yml"
   application:
     name: han-gateway
   cloud:
     nacos:
+      config:
+        import-check:
+          enabled: false
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:han}
+        namespace: ${NACOS_NAMESPACE:}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
-      config:
-        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:han}
-        username: ${NACOS_USERNAME:nacos}
-        password: ${NACOS_PASSWORD:han@2026}
-        file-extension: yml
     gateway:
-      routes:
-        - id: han-auth
-          uri: lb://han-auth
-          predicates:
-            - Path=/auth/**
-          filters:
-            - StripPrefix=1
-        - id: han-system
-          uri: lb://han-system
-          predicates:
-            - Path=/system/**
-          filters:
-            - StripPrefix=1
-        - id: han-job
-          uri: lb://han-job
-          predicates:
-            - Path=/job/**
-          filters:
-            - StripPrefix=1
+      server:
+        webflux:
+          routes:
+            - id: han-auth
+              uri: lb://han-auth
+              predicates:
+                - Path=/auth/**
+            - id: han-system
+              uri: lb://han-system
+              predicates:
+                - Path=/system/**
+            - id: han-tenant
+              uri: lb://han-tenant
+              predicates:
+                - Path=/tenant/**
+            - id: han-job
+              uri: lb://han-job
+              predicates:
+                - Path=/job/**
+            - id: han-open
+              uri: lb://han-open
+              predicates:
+                - Path=/open/**,/oauth2/**,/sso/**
+            - id: han-file
+              uri: lb://han-file
+              predicates:
+                - Path=/file/**
+            - id: han-workflow
+              uri: lb://han-workflow
+              predicates:
+                - Path=/workflow/**
+            - id: han-ai
+              uri: lb://han-ai
+              predicates:
+                - Path=/ai/**
 
   data:
     redis:
@@ -53,3 +64,7 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: -1ms
+
+han:
+  deploy:
+    tier: ${HAN_DEPLOY_TIER:medium}

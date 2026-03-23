@@ -106,8 +106,10 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     public int insert(SysUserDto dto) {
         Long tenantId = SecurityContextHolder.getTenantId();
 
-        // 校验租户用户数配额
-        if (tenantId != null && tenantId != 1L) {
+        // 校验租户用户数配额（租户初始化时跳过，避免循环RPC+未提交事务导致死锁）
+        String currentUser = SecurityContextHolder.getUsername();
+        boolean isTenantInit = "system-init".equals(currentUser);
+        if (tenantId != null && tenantId != 1L && !isTenantInit) {
             try {
                 R<Boolean> limitResult = tenantServiceClient.checkUserLimit(tenantId);
                 if (limitResult.getData() != null && !limitResult.getData()) {
@@ -134,6 +136,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
 
         SysUserPo po = sysUserConverter.toPo(dto);
         po.setPassword(PasswordUtil.encrypt(dto.getPassword()));
+        po.setPwdUpdateTime(java.time.LocalDateTime.now());
+        po.setPwdResetFlag(0);
         if (po.getStatus() == null) {
             po.setStatus(0);
         }
@@ -218,6 +222,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         SysUserPo po = new SysUserPo();
         po.setId(userId);
         po.setPassword(PasswordUtil.encrypt(password));
+        po.setPwdUpdateTime(java.time.LocalDateTime.now());
+        po.setPwdResetFlag(1);
         updateById(po);
     }
 
@@ -349,10 +355,13 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         if (!PasswordUtil.matches(oldPwd, user.getPassword())) {
             throw new BusinessException("旧密码错误");
         }
-        if (HanStrUtil.isBlank(newPwd) || newPwd.length() < 6) {
-            throw new BusinessException("新密码长度不能少于6位");
+        PasswordUtil.validate(newPwd);
+        if (PasswordUtil.matches(newPwd, user.getPassword())) {
+            throw new BusinessException("新密码不能与旧密码相同");
         }
         user.setPassword(PasswordUtil.encode(newPwd));
+        user.setPwdUpdateTime(java.time.LocalDateTime.now());
+        user.setPwdResetFlag(0);
         sysUserMapper.updateById(user);
     }
 

@@ -48,6 +48,11 @@ export function getCaptcha() {
   return get<{ uuid: string; img: string }>('/auth/captcha')
 }
 
+// 获取 RSA 公钥（密码加密传输）
+export function getPublicKey() {
+  return get<{ enabled: boolean; publicKey?: string }>('/auth/publicKey')
+}
+
 // ==================== 租户切换 ====================
 
 export interface TenantSimple {
