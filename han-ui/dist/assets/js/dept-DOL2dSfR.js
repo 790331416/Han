@@ -1,0 +1,1 @@
+import{b as s,p as t}from"./index-23AxupUR.js";function r(e){return s("/system/dept/tree",e)}function p(e){return s(`/system/dept/info/${e}`)}function u(e){return t("/system/dept",e)}function d(e){return t("/system/dept/edit",e)}function o(e){return t(`/system/dept/remove/${e}`)}export{p as a,u as b,o as d,r as g,d as u};

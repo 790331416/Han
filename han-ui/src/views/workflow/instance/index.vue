@@ -26,24 +26,23 @@
       </template>
 
       <el-table v-loading="loading" :data="instanceList">
-        <el-table-column label="实例ID" prop="instanceId" width="180" show-overflow-tooltip />
         <el-table-column label="流程名称" prop="processDefinitionName" min-width="150" show-overflow-tooltip />
-        <el-table-column label="流程标识" prop="processDefinitionKey" width="150" show-overflow-tooltip />
-        <el-table-column label="业务标识" prop="businessKey" width="150" show-overflow-tooltip />
-        <el-table-column label="发起人" prop="startUserName" width="100" align="center" />
+        <el-table-column label="流程标识" prop="processDefinitionKey" min-width="150" show-overflow-tooltip />
+        <el-table-column label="业务标识" prop="businessKey" min-width="140" show-overflow-tooltip />
+        <el-table-column label="发起人" prop="startUserName" min-width="100" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="发起时间" prop="startTime" width="180" />
-        <el-table-column label="结束时间" prop="endTime" width="180">
+        <el-table-column label="发起时间" prop="startTime" min-width="180" />
+        <el-table-column label="结束时间" prop="endTime" min-width="180">
           <template #default="{ row }">{{ row.endTime || '-' }}</template>
         </el-table-column>
         <el-table-column label="耗时" width="100" align="center">
           <template #default="{ row }">{{ formatDuration(row.duration) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <template v-if="row.status === 'running'">
               <el-button type="warning" link :icon="VideoPause" @click="handleSuspend(row)">挂起</el-button>

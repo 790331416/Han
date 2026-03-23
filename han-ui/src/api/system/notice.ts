@@ -8,6 +8,8 @@ export interface Notice {
   noticeType: string
   noticeContent: string
   status: number
+  read?: boolean
+  readTime?: string
   createName: string
   createTime: string
   remark: string
@@ -50,4 +52,24 @@ export function deleteNotice(id: string | number) {
 // 批量删除通知公告
 export function deleteNotices(ids: (string | number)[]) {
   return post<void>('/system/notice/remove', ids)
+}
+
+// 获取最新通知（铃铛下拉）
+export function getLatestNotices(limit = 5) {
+  return get<Notice[]>('/system/notice/latest', { limit })
+}
+
+// 获取未读通知数量
+export function getUnreadCount() {
+  return get<number>('/system/notice/unreadCount')
+}
+
+// 标记单条通知已读
+export function markNoticeRead(id: string | number) {
+  return post<void>(`/system/notice/markRead/${id}`)
+}
+
+// 全部标记已读
+export function markAllNoticeRead() {
+  return post<void>('/system/notice/markAllRead')
 }

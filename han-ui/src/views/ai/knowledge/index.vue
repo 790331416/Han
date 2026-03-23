@@ -68,7 +68,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.kbId ? '编辑知识库' : '创建知识库'" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.kbId ? '编辑知识库' : '创建知识库'" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-form-item label="知识库名称" prop="kbName">
           <el-input v-model="form.kbName" placeholder="请输入知识库名称" />
@@ -94,7 +94,7 @@
     </el-dialog>
 
     <!-- 文档管理对话框 -->
-    <el-dialog v-model="docVisible" :title="`文档管理 - ${currentKb?.kbName || ''}`" width="900px" destroy-on-close>
+    <el-dialog v-model="docVisible" :title="`文档管理 - ${currentKb?.kbName || ''}`" width="80%" class="dialog-xl" destroy-on-close>
       <div class="doc-header">
         <el-upload :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html" :on-change="handleFileSelect">
           <el-button type="primary" :icon="Upload">上传文档</el-button>
@@ -116,8 +116,8 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="上传时间" prop="createTime" width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="上传时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="150">
           <template #default="{ row }">
             <el-button type="primary" link @click="handleReindex(row)">重新索引</el-button>
             <el-button type="danger" link @click="handleDeleteDoc(row)">删除</el-button>
@@ -126,7 +126,7 @@
       </el-table>
     </el-dialog>
     <!-- 命中测试对话框 -->
-    <el-dialog v-model="hitTestVisible" :title="`命中测试 - ${hitTestKbName}`" width="800px" destroy-on-close>
+    <el-dialog v-model="hitTestVisible" :title="`命中测试 - ${hitTestKbName}`" width="70%" class="dialog-xl" destroy-on-close>
       <div class="hit-test-input">
         <el-input v-model="hitTestQuery" placeholder="请输入测试查询文本" type="textarea" :rows="3" />
         <el-button type="primary" :loading="hitTestLoading" @click="doHitTest" style="margin-top: 12px;">检索测试</el-button>
@@ -222,7 +222,7 @@ const hitTestLoading = ref(false)
 const hitTestQuery = ref('')
 const hitTestResults = ref<any[]>([])
 const hitTestKbName = ref('')
-const hitTestKbId = ref<number>(0)
+const hitTestKbId = ref<string | number>(0)
 const hitTestSearched = ref(false)
 
 const handleCommand = (cmd: string, kb: KnowledgeBase) => {

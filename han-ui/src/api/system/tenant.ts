@@ -38,6 +38,8 @@ export interface TenantForm {
   domain?: string
   status?: number
   remark?: string
+  adminUsername?: string
+  adminPassword?: string
 }
 
 export function listTenant(query: TenantQuery) {
@@ -62,4 +64,8 @@ export function deleteTenant(id: string | number) {
 
 export function changeTenantStatus(tenantId: string | number, status: number) {
   return post<void>(`/tenant/changeStatus?tenantId=${tenantId}&status=${status}`)
+}
+
+export function getTenantAdminUser(tenantId: string | number) {
+  return get<string | number>(`/tenant/adminUser`, { tenantId })
 }

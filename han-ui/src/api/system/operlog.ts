@@ -12,6 +12,7 @@ export interface OperLog {
   deptName: string
   operUrl: string
   operIp: string
+  operLocation: string
   operParam: string
   jsonResult: string
   status: number

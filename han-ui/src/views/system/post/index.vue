@@ -31,17 +31,16 @@
       </template>
 
       <el-table v-loading="loading" :data="postList">
-        <el-table-column label="岗位ID" prop="id" width="80" align="center" />
-        <el-table-column label="岗位编码" prop="postCode" width="150" />
-        <el-table-column label="岗位名称" prop="postName" width="200" />
+        <el-table-column label="岗位编码" prop="postCode" min-width="150" show-overflow-tooltip />
+        <el-table-column label="岗位名称" prop="postName" min-width="200" show-overflow-tooltip />
         <el-table-column label="排序" prop="postSort" width="80" align="center" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
@@ -62,7 +61,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" class="dialog-sm" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="岗位名称" prop="postName">
           <el-input v-model="form.postName" placeholder="请输入岗位名称" />

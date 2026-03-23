@@ -40,7 +40,6 @@
       <!-- 数据表格 -->
       <el-table v-loading="loading" :data="jobList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="任务ID" prop="jobId" width="80" align="center" />
         <el-table-column label="任务名称" prop="jobName" min-width="150" show-overflow-tooltip />
         <el-table-column label="任务组" prop="jobGroup" width="100" align="center">
           <template #default="{ row }">
@@ -50,7 +49,7 @@
           </template>
         </el-table-column>
         <el-table-column label="调用目标" prop="invokeTarget" min-width="200" show-overflow-tooltip />
-        <el-table-column label="Cron表达式" prop="cronExpression" width="150" />
+        <el-table-column label="Cron表达式" prop="cronExpression" min-width="150" show-overflow-tooltip />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch
@@ -61,8 +60,8 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="下次执行时间" prop="nextFireTime" width="180" />
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="下次执行时间" prop="nextFireTime" min-width="180" />
+        <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="success" link :icon="CaretRight" @click="handleRun(row)">执行</el-button>
@@ -87,7 +86,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="800px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="70%" class="dialog-xl" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -189,7 +188,7 @@
     </el-dialog>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="任务详情" width="700px">
+    <el-dialog v-model="detailVisible" title="任务详情" width="65%" class="dialog-lg">
       <el-descriptions :column="2" border>
         <el-descriptions-item label="任务ID">{{ detailData.jobId }}</el-descriptions-item>
         <el-descriptions-item label="任务名称">{{ detailData.jobName }}</el-descriptions-item>
@@ -210,7 +209,7 @@
     </el-dialog>
 
     <!-- Cron生成器对话框 -->
-    <el-dialog v-model="cronVisible" title="Cron表达式生成器" width="800px">
+    <el-dialog v-model="cronVisible" title="Cron表达式生成器" width="70%" class="dialog-xl">
       <CronBuilder v-model="cronValue" />
       <template #footer>
         <el-button @click="cronVisible = false">取消</el-button>

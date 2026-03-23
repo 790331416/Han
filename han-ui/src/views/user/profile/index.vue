@@ -75,6 +75,25 @@
               </el-form>
             </el-tab-pane>
 
+            <!-- 两步验证 -->
+            <el-tab-pane label="两步验证" name="totp">
+              <div v-if="totpLoading" v-loading="true" style="min-height: 200px" />
+              <div v-else-if="totpEnabled" class="totp-section">
+                <el-result icon="success" title="两步验证已启用" sub-title="您的账号已启用 Authenticator 两步验证保护">
+                  <template #extra>
+                    <el-button type="danger" @click="showUnbindDialog = true">解除绑定</el-button>
+                  </template>
+                </el-result>
+              </div>
+              <div v-else class="totp-section">
+                <el-result icon="info" title="两步验证未启用" sub-title="启用后，登录时需要输入 Authenticator APP 中的验证码">
+                  <template #extra>
+                    <el-button type="primary" @click="handleSetupTotp">立即启用</el-button>
+                  </template>
+                </el-result>
+              </div>
+            </el-tab-pane>
+
             <!-- 修改密码 -->
             <el-tab-pane label="修改密码" name="password">
               <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="80px" style="max-width: 500px;">
@@ -98,8 +117,40 @@
       </el-col>
     </el-row>
 
+    <!-- 2FA 绑定对话框 -->
+    <el-dialog v-model="showSetupDialog" title="绑定两步验证" width="460px" :close-on-click-modal="false" destroy-on-close>
+      <div class="totp-setup">
+        <p class="totp-step">1. 使用 Google Authenticator 或 Microsoft Authenticator 扫描下方二维码</p>
+        <div class="totp-qr">
+          <img v-if="totpSetupData.qrCode" :src="'data:image/png;base64,' + totpSetupData.qrCode" alt="TOTP QR Code" />
+        </div>
+        <p class="totp-step">2. 或手动输入密钥：</p>
+        <el-input :model-value="totpSetupData.secret" readonly class="totp-secret">
+          <template #append>
+            <el-button @click="copySecret">复制</el-button>
+          </template>
+        </el-input>
+        <p class="totp-step">3. 输入 APP 中显示的 6 位验证码确认绑定：</p>
+        <el-input v-model="totpBindCode" placeholder="000000" maxlength="6" size="large" class="totp-code-input" @keyup.enter="handleBindTotp" />
+      </div>
+      <template #footer>
+        <el-button @click="showSetupDialog = false">取消</el-button>
+        <el-button type="primary" :loading="totpBindLoading" @click="handleBindTotp">确认绑定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 2FA 解绑对话框 -->
+    <el-dialog v-model="showUnbindDialog" title="解除两步验证" width="400px" :close-on-click-modal="false" destroy-on-close>
+      <p style="color: #6b7280; margin-bottom: 16px;">解除绑定后，登录将不再需要两步验证码。请输入当前密码确认操作。</p>
+      <el-input v-model="unbindPassword" type="password" placeholder="请输入当前密码" show-password size="large" @keyup.enter="handleUnbindTotp" />
+      <template #footer>
+        <el-button @click="showUnbindDialog = false">取消</el-button>
+        <el-button type="danger" :loading="unbindLoading" @click="handleUnbindTotp">确认解绑</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 修改头像对话框 -->
-    <el-dialog v-model="showAvatarDialog" title="修改头像" width="400px" destroy-on-close>
+    <el-dialog v-model="showAvatarDialog" title="修改头像" width="40%" class="dialog-sm" destroy-on-close>
       <el-form label-width="80px">
         <el-form-item label="头像地址">
           <el-input v-model="avatarUrl" placeholder="请输入头像URL地址" />
@@ -122,13 +173,16 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, Iphone, Message, OfficeBuilding, Calendar } from '@element-plus/icons-vue'
 import { getUserProfile, updateUserProfile, updateUserPassword, updateUserAvatar } from '@/api/system/user'
+import { getTotpStatus, getTotpSetup, bindTotp, unbindTotp } from '@/api/system/totp'
 import { useUserStore } from '@/stores/user'
+import { useRoute } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const userStore = useUserStore()
+const route = useRoute()
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
-const activeTab = ref('info')
+const activeTab = ref(route.query.tab as string || 'info')
 const infoLoading = ref(false)
 const pwdLoading = ref(false)
 const avatarLoading = ref(false)
@@ -140,7 +194,7 @@ const pwdFormRef = ref<FormInstance>()
 
 // 用户信息
 const userInfo = reactive({
-  userId: 0,
+  userId: 0 as string | number,
   username: '',
   nickname: '',
   phone: '',
@@ -292,8 +346,80 @@ const handleUpdateAvatar = async () => {
   }
 }
 
+// ==================== 两步验证 ====================
+const totpLoading = ref(false)
+const totpEnabled = ref(false)
+const showSetupDialog = ref(false)
+const showUnbindDialog = ref(false)
+const totpSetupData = reactive({ secret: '', qrCode: '', otpAuthUrl: '' })
+const totpBindCode = ref('')
+const totpBindLoading = ref(false)
+const unbindPassword = ref('')
+const unbindLoading = ref(false)
+
+const loadTotpStatus = async () => {
+  totpLoading.value = true
+  try {
+    const res = await getTotpStatus()
+    totpEnabled.value = (res.data as any)?.enabled === true
+  } catch { /* ignore */ } finally {
+    totpLoading.value = false
+  }
+}
+
+const handleSetupTotp = async () => {
+  try {
+    const res = await getTotpSetup()
+    const data = res.data as any
+    totpSetupData.secret = data.secret
+    totpSetupData.qrCode = data.qrCode
+    totpSetupData.otpAuthUrl = data.otpAuthUrl
+    totpBindCode.value = ''
+    showSetupDialog.value = true
+  } catch { /* error handled by interceptor */ }
+}
+
+const handleBindTotp = async () => {
+  if (!totpBindCode.value || totpBindCode.value.length !== 6) {
+    ElMessage.warning('请输入6位验证码')
+    return
+  }
+  totpBindLoading.value = true
+  try {
+    await bindTotp(totpSetupData.secret, totpBindCode.value)
+    ElMessage.success('两步验证绑定成功')
+    showSetupDialog.value = false
+    totpEnabled.value = true
+  } catch { /* error handled */ } finally {
+    totpBindLoading.value = false
+  }
+}
+
+const copySecret = () => {
+  navigator.clipboard.writeText(totpSetupData.secret)
+  ElMessage.success('密钥已复制')
+}
+
+const handleUnbindTotp = async () => {
+  if (!unbindPassword.value) {
+    ElMessage.warning('请输入当前密码')
+    return
+  }
+  unbindLoading.value = true
+  try {
+    await unbindTotp(unbindPassword.value)
+    ElMessage.success('两步验证已解除')
+    showUnbindDialog.value = false
+    unbindPassword.value = ''
+    totpEnabled.value = false
+  } catch { /* error handled */ } finally {
+    unbindLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadProfile()
+  loadTotpStatus()
 })
 </script>
 
@@ -323,7 +449,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       padding: 12px 0;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f3f4f6;
       font-size: 14px;
 
       &:last-child {
@@ -331,18 +457,18 @@ onMounted(() => {
       }
 
       .el-icon {
-        color: #409eff;
+        color: #2563eb;
         margin-right: 8px;
         font-size: 16px;
       }
 
       .label {
-        color: #606266;
+        color: #6b7280;
         width: 70px;
       }
 
       .value {
-        color: #333;
+        color: #111827;
         flex: 1;
       }
     }
@@ -357,8 +483,53 @@ onMounted(() => {
   padding-left: 80px;
 
   .label {
-    color: #606266;
+    color: #6b7280;
     font-size: 14px;
+  }
+}
+
+.totp-section {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.totp-setup {
+  .totp-step {
+    color: #374151;
+    font-size: 14px;
+    margin: 16px 0 8px;
+    font-weight: 500;
+
+    &:first-child { margin-top: 0; }
+  }
+
+  .totp-qr {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0;
+
+    img {
+      width: 200px;
+      height: 200px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+  }
+
+  .totp-secret {
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  .totp-code-input {
+    :deep(.el-input__inner) {
+      text-align: center;
+      font-size: 22px;
+      letter-spacing: 6px;
+      font-weight: 600;
+    }
   }
 }
 </style>

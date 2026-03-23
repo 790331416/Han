@@ -54,7 +54,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
             <el-button type="success" link @click="handleRefresh(row)">刷新工具</el-button>
             <el-button type="info" link @click="handleViewTools(row)">查看工具</el-button>
@@ -72,7 +72,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.mcpId ? '编辑MCP服务' : '新增MCP服务'" width="700px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.mcpId ? '编辑MCP服务' : '新增MCP服务'" width="65%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-form-item label="服务名称" prop="serverName">
           <el-input v-model="form.serverName" placeholder="请输入服务名称" />
@@ -117,7 +117,7 @@
     </el-dialog>
 
     <!-- 查看工具对话框 -->
-    <el-dialog v-model="toolsVisible" title="MCP工具列表" width="700px">
+    <el-dialog v-model="toolsVisible" title="MCP工具列表" width="65%" class="dialog-lg">
       <el-table :data="toolsList" v-if="toolsList.length > 0">
         <el-table-column label="工具名称" prop="name" width="200" />
         <el-table-column label="描述" prop="description" min-width="300" show-overflow-tooltip />

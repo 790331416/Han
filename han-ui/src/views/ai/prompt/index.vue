@@ -41,7 +41,7 @@
           </template>
         </el-table-column>
         <el-table-column label="模板内容" prop="content" min-width="250" show-overflow-tooltip />
-        <el-table-column label="变量" width="150" show-overflow-tooltip>
+        <el-table-column label="变量" min-width="130" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.variables">{{ row.variables }}</span>
             <span v-else class="text-muted">无</span>
@@ -61,8 +61,8 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="info" link @click="handlePreview(row)">预览</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -79,7 +79,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.templateId ? '编辑模板' : '新增模板'" width="700px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.templateId ? '编辑模板' : '新增模板'" width="65%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="模板名称" prop="templateName">
           <el-input v-model="form.templateName" placeholder="请输入模板名称" />
@@ -112,7 +112,7 @@
     </el-dialog>
 
     <!-- 预览对话框 -->
-    <el-dialog v-model="previewVisible" title="模板预览" width="600px">
+    <el-dialog v-model="previewVisible" title="模板预览" width="55%" class="dialog-md">
       <el-descriptions :column="1" border>
         <el-descriptions-item label="模板名称">{{ previewData.templateName }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ getCategoryLabel(previewData.category) }}</el-descriptions-item>

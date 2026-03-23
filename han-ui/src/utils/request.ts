@@ -4,6 +4,13 @@ import { useUserStore } from '@/stores/user'
 import router from '@/router'
 import type { R } from '@/types'
 
+/** 扩展 AxiosRequestConfig，支持静默错误（不弹全局提示） */
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    silentError?: boolean
+  }
+}
+
 // 创建axios实例
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_API || '',
@@ -27,8 +34,9 @@ service.interceptors.request.use(
     if (userStore._userId) {
       config.headers['X-User-Id'] = String(userStore._userId)
     }
-    // 租户ID
-    if (userStore.tenantId) {
+    // 租户ID（登录相关接口不发送，避免旧租户上下文影响平台管理员登录）
+    const isAuthRequest = config.url?.startsWith('/auth/') || config.url?.startsWith('/tenant/')
+    if (userStore.tenantId && !isAuthRequest) {
       config.headers['X-Tenant-Id'] = userStore.tenantId
     }
     // 清理空参数（支持搜索表单"全部"选项用空字符串表示）
@@ -69,7 +77,9 @@ service.interceptors.response.use(
     
     // 业务错误
     if (res.code !== 200) {
-      ElMessage.error(res.msg || '请求失败')
+      if (!response.config.silentError) {
+        ElMessage.error(res.msg || '请求失败')
+      }
       
       // 401: Token过期
       if (res.code === 401 && !isReloginShowing) {
@@ -127,7 +137,9 @@ service.interceptors.response.use(
       message = '网络错误'
     }
     
-    ElMessage.error(message)
+    if (!error.config?.silentError) {
+      ElMessage.error(message)
+    }
     return Promise.reject(error)
   }
 )

@@ -49,6 +49,8 @@ export interface LoginVO {
   accessToken: string
   refreshToken: string
   expiresIn: number
+  forceChangePassword: boolean
+  requireTotp: boolean
   userInfo: {
     userId: string | number
     username: string
@@ -72,4 +74,11 @@ export interface RouteMenu {
   visible: number
   status: number
   children?: RouteMenu[]
+}
+
+export interface RuntimeCapability {
+  tier: 'small' | 'medium' | 'full'
+  enabledModules: string[]
+  optionalServices: Record<string, boolean>
+  featureFlags: Record<string, boolean>
 }

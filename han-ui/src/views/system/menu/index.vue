@@ -31,7 +31,7 @@
       </template>
 
       <el-table v-loading="loading" :data="menuList" row-key="id" :default-expand-all="isExpand" :key="tableKey" :tree-props="{ children: 'children' }">
-        <el-table-column label="菜单名称" prop="menuName" width="220" />
+        <el-table-column label="菜单名称" prop="menuName" min-width="220" />
         <el-table-column label="图标" width="80" align="center">
           <template #default="{ row }">
             <el-icon v-if="row.icon && row.icon !== '#'"><component :is="row.icon" /></el-icon>
@@ -52,7 +52,7 @@
             <el-tag :type="row.status === 0 ? 'success' : 'danger'" size="small">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" min-width="220">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Plus" @click="handleAdd(row.id)" v-if="row.menuType !== 'F'">新增</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -63,7 +63,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="60%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="24">
@@ -158,7 +158,7 @@ const rules: FormRules = {
 onMounted(() => { getList() })
 
 function buildTree(list: Menu[]): Menu[] {
-  const map = new Map<number, Menu>()
+  const map = new Map<string | number, Menu>()
   const roots: Menu[] = []
   list.forEach(item => map.set(item.id, { ...item, children: [] }))
   map.forEach(item => {

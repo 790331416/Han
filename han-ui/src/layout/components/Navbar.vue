@@ -14,28 +14,57 @@
     </div>
     
     <div class="right-menu">
+      <!-- 暗色模式 -->
+      <el-tooltip :content="isDark ? '浅色模式' : '暗色模式'" placement="bottom">
+        <el-icon class="nav-icon" @click="toggleDark()">
+          <Moon v-if="!isDark" />
+          <Sunny v-else />
+        </el-icon>
+      </el-tooltip>
+
+      <!-- 全屏切换 -->
+      <el-tooltip :content="isFullscreen ? '退出全屏' : '全屏'" placement="bottom">
+        <el-icon class="nav-icon" :class="{ 'is-fullscreen': isFullscreen }" @click="toggle">
+          <FullScreen />
+        </el-icon>
+      </el-tooltip>
+
+      <!-- 语言切换 -->
+      <el-dropdown trigger="click" @command="handleLocaleChange">
+        <el-icon class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></el-icon>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="zh-CN" :disabled="currentLocale === 'zh-CN'">简体中文</el-dropdown-item>
+            <el-dropdown-item command="en-US" :disabled="currentLocale === 'en-US'">English</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
+      <!-- 消息通知 -->
+      <NotifyBell />
+
       <!-- 租户切换 -->
-      <div class="tenant-switcher" @click="openTenantDialog" v-if="userStore.tenantName">
+      <div class="tenant-switcher" data-testid="tenant-switcher" @click="openTenantDialog" v-if="userStore.tenantName">
         <el-icon><OfficeBuilding /></el-icon>
         <span class="tenant-name">{{ userStore.tenantName || '默认租户' }}</span>
         <el-icon><ArrowDown /></el-icon>
       </div>
 
       <el-dropdown trigger="click">
-        <div class="avatar-wrapper">
+        <div class="avatar-wrapper" data-testid="navbar-user-menu">
           <el-avatar :size="32" :src="userStore.avatar || defaultAvatar" />
           <span class="username">{{ userStore.nickname || userStore.username }}</span>
           <el-icon><ArrowDown /></el-icon>
         </div>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="router.push('/')">
+            <el-dropdown-item data-testid="navbar-home" @click="router.push('/')">
               <el-icon><HomeFilled /></el-icon>首页
             </el-dropdown-item>
-            <el-dropdown-item @click="handleProfile">
+            <el-dropdown-item data-testid="navbar-profile" @click="handleProfile">
               <el-icon><User /></el-icon>个人中心
             </el-dropdown-item>
-            <el-dropdown-item divided @click="handleLogout">
+            <el-dropdown-item divided data-testid="navbar-logout" @click="handleLogout">
               <el-icon><SwitchButton /></el-icon>退出登录
             </el-dropdown-item>
           </el-dropdown-menu>
@@ -67,10 +96,14 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Fold, Expand, ArrowDown, HomeFilled, User, SwitchButton, OfficeBuilding } from '@element-plus/icons-vue'
+import { Fold, Expand, ArrowDown, HomeFilled, User, SwitchButton, OfficeBuilding, FullScreen, Moon, Sunny } from '@element-plus/icons-vue'
+import { useFullscreen, useDark, useToggle } from '@vueuse/core'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+import NotifyBell from './NotifyBell.vue'
 import { getMyTenants, switchTenant, type TenantSimple } from '@/api/auth'
+import { setToken, setRefreshToken } from '@/utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -78,6 +111,17 @@ const appStore = useAppStore()
 const userStore = useUserStore()
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+const { isFullscreen, toggle } = useFullscreen()
+const isDark = useDark({ storageKey: 'han-dark-mode' })
+const toggleDark = useToggle(isDark)
+const { locale } = useI18n()
+const currentLocale = computed(() => locale.value)
+
+const handleLocaleChange = (lang: string) => {
+  locale.value = lang
+  localStorage.setItem('han-locale', lang)
+  window.location.reload()
+}
 
 const breadcrumbs = computed(() => {
   return route.matched.filter(item => item.meta?.title)
@@ -96,7 +140,7 @@ const tenantDialogVisible = ref(false)
 const tenantLoading = ref(false)
 const switchLoading = ref(false)
 const tenantList = ref<TenantSimple[]>([])
-const selectedTenantId = ref<number>()
+const selectedTenantId = ref<string | number>()
 
 const openTenantDialog = async () => {
   tenantDialogVisible.value = true
@@ -125,8 +169,8 @@ const handleSwitchTenant = async () => {
     const data = (res as any).data
     if (data?.accessToken) {
       // 更新 token 并刷新页面
-      localStorage.setItem('token', data.accessToken)
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
+      setToken(data.accessToken)
+      if (data.refreshToken) setRefreshToken(data.refreshToken)
       tenantDialogVisible.value = false
       ElMessage.success('租户切换成功，正在刷新...')
       setTimeout(() => window.location.reload(), 500)
@@ -159,6 +203,11 @@ const handleLogout = async () => {
   border-bottom: 1px solid #f3f4f6;
 }
 
+html.dark .navbar {
+  background: #111827;
+  border-bottom-color: #1f2937;
+}
+
 .left-menu {
   display: flex;
   align-items: center;
@@ -183,6 +232,24 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.nav-icon {
+  font-size: 32px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: #2563eb;
+    background: #f3f4f6;
+  }
+
+  &.is-fullscreen {
+    color: #2563eb;
+  }
 }
 
 .tenant-switcher {
@@ -242,6 +309,14 @@ const handleLogout = async () => {
     font-weight: 500;
     color: #374151;
   }
+}
+
+html.dark {
+  .hamburger { color: #9ca3af; &:hover { color: #3b82f6; background: #1f2937; } }
+  .nav-icon { color: #9ca3af; &:hover { color: #3b82f6; background: #1f2937; } &.is-fullscreen { color: #3b82f6; } }
+  .avatar-wrapper { &:hover { background: #1f2937; } .username { color: #e5e7eb; } }
+  .tenant-switcher { color: #e5e7eb; border-color: #374151; &:hover { background: #172554; border-color: #3b82f6; color: #3b82f6; } }
+  :deep(.el-breadcrumb) { .el-breadcrumb__item .el-breadcrumb__inner { color: #9ca3af; } .el-breadcrumb__item:last-child .el-breadcrumb__inner { color: #f9fafb; } }
 }
 
 :deep(.el-breadcrumb) {
