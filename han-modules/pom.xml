@@ -21,6 +21,7 @@
         <module>han-file</module>
         <module>han-workflow</module>
         <module>han-open</module>
+        <module>han-ai</module>
     </modules>
 
     <build>

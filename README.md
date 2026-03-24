@@ -660,3 +660,28 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`docs/tier-validation-report-20260324.md`
 - 修改文件：`han-modules/han-workflow/src/main/resources/application-docker.yml`
 - 修改文件：`han-ui/tests/e2e/specs/runtime-sidebar.spec.ts`
+
+### 2026-03-24 AI 模块一期骨架与基础接口落地
+
+- 本轮主要目标：收口 `full` 档当前最大的真实阻塞，补齐仓库中缺失的 `han-ai` 后端模块骨架，并先落地文档与前端已接入的第一阶段基础接口：`AI 模型`、`知识库`、`MCP`、`Prompt 模板`、`Token 统计`。
+- 已完成关键任务：确认仓库中原本不存在 [han-modules/han-ai](D:/code/Han/han-modules/han-ai) 模块，但网关路由、`docker-compose-full.yml`、运行时能力接口和前端 AI 菜单均已假定其存在；在 [han-modules/pom.xml](D:/code/Han/han-modules/pom.xml) 中注册 `han-ai` 子模块；新增 [han-ai/pom.xml](D:/code/Han/han-modules/han-ai/pom.xml)、[HanAiApplication.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/HanAiApplication.java)、[application.yml](D:/code/Han/han-modules/han-ai/src/main/resources/application.yml)、[application-docker.yml](D:/code/Han/han-modules/han-ai/src/main/resources/application-docker.yml) 和 [Dockerfile](D:/code/Han/han-modules/han-ai/Dockerfile)，让 `han-ai` 服务具备独立编译与 Docker 运行能力；补齐 `AI 模型 / 知识库 / 文档 / 段落 / MCP / Prompt` 对应的 PO、Query、Mapper、Service 与 Controller；实现 `/ai/model/*`、`/ai/kb/*`、`/ai/mcp/*`、`/ai/prompt/*`、`/ai/token/stats/*` 基础接口；知识库链路支持文档上传、落盘、段落切分、重建索引、命中测试和失败原因回显；新增 [AiAnalyticsMapper.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/mapper/AiAnalyticsMapper.java) 以支撑模型、用户、按日三种 Token 统计；补齐 [sql/han_ai.sql](D:/code/Han/sql/han_ai.sql) 中缺失的 `ai_prompt_template` 表和内置 Prompt 种子数据；本地执行 `mvn -gs settings.workspace.xml -Dmaven.repo.local=.m2/repository -pl han-modules/han-ai -am -DskipTests compile`，`2026-03-24` 编译通过。
+- 关键决策与解决方案：不删改任何既有页面与路由，只把缺失的后端模块补出来；AI 表结构不强行套用通用 `BizEntity/TenantEntity`，而是按现有 `ai_*` 表的字段和主键单独建 PO，避免因为 `create_by/update_by` 字段类型不一致导致持久化扭曲；第一阶段不去伪造复杂的 `agent/workflow/chat/stream` 能力，而是先把文档与前端已明确依赖的基础接口做成真实可运行最小闭环；知识库命中测试先采用文本检索与段落索引，不虚报向量检索已完备；`pdf/docx` 目前允许上传并明确返回“暂未自动解析”的失败状态，不静默吞掉异常。
+- 使用技术栈/工具：Spring Boot 4、Spring MVC、Spring Security、MyBatis-Plus、PostgreSQL、Maven、Docker、PowerShell、`rg`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-modules/pom.xml`
+- 修改文件：`sql/han_ai.sql`
+- 修改文件：`han-modules/han-ai/pom.xml`
+- 修改文件：`han-modules/han-ai/Dockerfile`
+- 修改文件：`han-modules/han-ai/src/main/resources/application.yml`
+- 修改文件：`han-modules/han-ai/src/main/resources/application-docker.yml`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/HanAiApplication.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/controller/AiModelController.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/controller/AiKnowledgeBaseController.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/controller/AiMcpController.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/controller/AiPromptController.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/controller/AiTokenStatsController.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiKnowledgeBaseServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiMcpServerServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiPromptTemplateServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiTokenStatsServiceImpl.java`

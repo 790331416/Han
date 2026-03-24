@@ -138,6 +138,31 @@ COMMENT ON TABLE ai_mcp_server IS 'MCP服务器配置表';
 COMMENT ON COLUMN ai_mcp_server.transport_type IS '传输类型: stdio/sse/streamable_http';
 
 -- ----------------------------
+-- Prompt模板表
+-- ----------------------------
+DROP TABLE IF EXISTS ai_prompt_template;
+CREATE TABLE ai_prompt_template (
+    template_id     BIGSERIAL       PRIMARY KEY,
+    tenant_id       BIGINT          DEFAULT 0,
+    template_name   VARCHAR(200)    NOT NULL,
+    category        VARCHAR(30)     NOT NULL DEFAULT 'system',
+    content         TEXT            NOT NULL,
+    variables       TEXT            DEFAULT '[]',
+    description     VARCHAR(1000)   DEFAULT '',
+    built_in        INTEGER         DEFAULT 0,
+    status          CHAR(1)         DEFAULT '0',
+    create_by       VARCHAR(64)     DEFAULT '',
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       VARCHAR(64)     DEFAULT '',
+    update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE ai_prompt_template IS 'Prompt模板表';
+COMMENT ON COLUMN ai_prompt_template.category IS '模板分类: system/user/assistant';
+COMMENT ON COLUMN ai_prompt_template.variables IS '模板变量JSON数组';
+COMMENT ON COLUMN ai_prompt_template.built_in IS '是否内置(1是 0否)';
+
+-- ----------------------------
 -- AI工作流表
 -- ----------------------------
 DROP TABLE IF EXISTS ai_workflow;
@@ -264,3 +289,8 @@ INSERT INTO ai_model (model_name, model_type, provider, model_code, base_url, ap
 ('智谱 GLM-4', 'LLM', 'zhipu', 'glm-4', 'https://open.bigmodel.cn/api/paas/v4', '', 4096, 0.70, '1', '智谱AI GLM-4，需配置API Key'),
 ('OpenAI GPT-4o', 'LLM', 'openai', 'gpt-4o', 'https://api.openai.com/v1', '', 4096, 0.70, '1', 'OpenAI GPT-4o，需配置API Key'),
 ('Ollama 本地模型', 'LLM', 'ollama', 'llama3', 'http://localhost:11434/v1', '', 4096, 0.70, '1', 'Ollama本地部署模型');
+
+INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status, create_by, update_by) VALUES
+(0, '通用系统助手', 'system', '你是 Han Cloud 的企业 AI 助手，请基于上下文提供准确、简洁、可执行的回答。', '[]', '系统提示词基线模板', 1, '0', 'system', 'system'),
+(0, '需求澄清模板', 'user', '请结合以下背景补齐需求细节：{{background}}。输出需要包含目标、约束、验收标准。', '["background"]', '用于业务需求澄清', 1, '0', 'system', 'system'),
+(0, '结果总结模板', 'assistant', '请将以下内容整理为摘要、关键结论和后续建议：{{content}}', '["content"]', '用于生成结构化总结', 1, '0', 'system', 'system');

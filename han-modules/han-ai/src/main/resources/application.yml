@@ -1,0 +1,23 @@
+server:
+  port: 9208
+
+spring:
+  config:
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-ai.yml"
+  application:
+    name: han-ai
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+        file-extension: yml
