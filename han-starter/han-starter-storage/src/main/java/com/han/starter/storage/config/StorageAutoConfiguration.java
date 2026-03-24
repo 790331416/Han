@@ -18,14 +18,22 @@ public class StorageAutoConfiguration {
     @Bean
     @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs", matchIfMissing = true)
     @ConditionalOnMissingBean
-    public StorageProvider rustFSStorageProvider(StorageProperties properties,
-                                                 Environment environment,
-                                                 ObjectProvider<SecurityContext> securityContextProvider) {
-        StorageRuntimeConfig fallbackConfig = StorageRuntimeConfig.fromProperties(properties.getRustfs());
+    public StorageConfigRepository storageConfigRepository(Environment environment,
+                                                           ObjectProvider<SecurityContext> securityContextProvider) {
         StorageDatabaseProperties databaseProperties = StorageDatabaseProperties.fromEnvironment(environment);
-        StorageConfigRepository configRepository = databaseProperties.isConfigured()
-                ? new JdbcStorageConfigRepository(databaseProperties, securityContextProvider.getIfAvailable())
-                : null;
+        if (!databaseProperties.isConfigured()) {
+            return null;
+        }
+        return new JdbcStorageConfigRepository(databaseProperties, securityContextProvider.getIfAvailable());
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs", matchIfMissing = true)
+    @ConditionalOnMissingBean
+    public StorageProvider rustFSStorageProvider(StorageProperties properties,
+                                                 ObjectProvider<StorageConfigRepository> configRepositoryProvider) {
+        StorageRuntimeConfig fallbackConfig = StorageRuntimeConfig.fromProperties(properties.getRustfs());
+        StorageConfigRepository configRepository = configRepositoryProvider.getIfAvailable();
         return new DynamicStorageProvider(fallbackConfig, configRepository);
     }
 }

@@ -18,9 +18,16 @@ import java.util.Optional;
 public class JdbcStorageConfigRepository implements StorageConfigRepository {
 
     private static final String SELECT_COLUMNS = """
-            SELECT config_key, endpoint, access_key, secret_key, bucket_name, prefix, region, is_https
+            SELECT oss_config_id, config_key, endpoint, access_key, secret_key, bucket_name, prefix, region, is_https
               FROM sys_oss_config
              WHERE status = '0'
+            """;
+
+    private static final String SELECT_BY_ID = """
+            SELECT oss_config_id, config_key, endpoint, access_key, secret_key, bucket_name, prefix, region, is_https
+              FROM sys_oss_config
+             WHERE oss_config_id = ?
+             LIMIT 1
             """;
 
     private final StorageDatabaseProperties databaseProperties;
@@ -32,7 +39,7 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
     }
 
     @Override
-    public Optional<StorageRuntimeConfig> findActiveConfig() {
+    public Optional<StorageConfigRecord> findActiveRecord() {
         if (!databaseProperties.isConfigured()) {
             return Optional.empty();
         }
@@ -45,7 +52,7 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
                         tenantId
                 );
                 if (tenantConfig.isPresent()) {
-                    return tenantConfig;
+                    return tenantConfig.map(this::toRecord);
                 }
             }
 
@@ -53,14 +60,31 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
                     SELECT_COLUMNS + " AND tenant_id IS NULL ORDER BY update_time DESC NULLS LAST, create_time DESC NULLS LAST LIMIT 1"
             );
             if (globalConfig.isPresent()) {
-                return globalConfig;
+                return globalConfig.map(this::toRecord);
             }
 
             return queryFirst(
                     SELECT_COLUMNS + " ORDER BY update_time DESC NULLS LAST, create_time DESC NULLS LAST LIMIT 1"
-            );
+            ).map(this::toRecord);
         } catch (SQLException ex) {
             log.debug("Skipping database-backed storage config lookup: {}", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<StorageConfigRecord> findRecord(String locator) {
+        if (!databaseProperties.isConfigured()) {
+            return Optional.empty();
+        }
+        Long ossConfigId = StorageConfigRecord.parseDatabaseId(locator);
+        if (ossConfigId == null) {
+            return Optional.empty();
+        }
+        try {
+            return queryFirst(SELECT_BY_ID, ossConfigId).map(this::toRecord);
+        } catch (SQLException ex) {
+            log.debug("Skipping locator-based storage config lookup: {}", ex.getMessage());
             return Optional.empty();
         }
     }
@@ -80,6 +104,7 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
                     return Optional.empty();
                 }
                 return Optional.of(new StorageRuntimeConfig(
+                        resultSet.getLong("oss_config_id"),
                         resultSet.getString("config_key"),
                         resultSet.getString("endpoint"),
                         resultSet.getString("access_key"),
@@ -91,6 +116,14 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
                 ));
             }
         }
+    }
+
+    private StorageConfigRecord toRecord(StorageRuntimeConfig runtimeConfig) {
+        Long ossConfigId = runtimeConfig.getOssConfigId();
+        if (ossConfigId == null) {
+            throw new IllegalStateException("Database-backed storage config requires ossConfigId");
+        }
+        return StorageConfigRecord.fromDatabase(ossConfigId, runtimeConfig);
     }
 
     private String normalizePrefix(String prefix) {

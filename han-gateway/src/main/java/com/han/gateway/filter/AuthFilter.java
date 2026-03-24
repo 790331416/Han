@@ -12,16 +12,18 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * 认证过滤器（WebFlux 响应式）
+ * 认证过滤器
  */
 @Slf4j
 @Component
@@ -30,56 +32,96 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** 白名单路径 */
     private static final List<String> WHITE_LIST = List.of(
-        "/auth/login",
-        "/auth/app/login",
-        "/auth/wechat/mp/login",
-        "/auth/wechat/oa/login",
-        "/auth/refresh",
-        "/auth/logout",
-        "/auth/register",
-        "/auth/captcha",
-        "/doc.html",
-        "/swagger-resources",
-        "/v3/api-docs"
+            "/auth/login",
+            "/auth/app/login",
+            "/auth/wechat/mp/login",
+            "/auth/wechat/oa/login",
+            "/auth/refresh",
+            "/auth/logout",
+            "/auth/register",
+            "/auth/captcha",
+            "/auth/publicKey",
+            "/auth/social/",
+            "/tenant/all",
+            "/tenant/listAllValid",
+            "/tenant/domain/",
+            "/oauth2/authorize",
+            "/oauth2/token",
+            "/oauth2/revoke",
+            "/oauth2/introspect",
+            "/oauth2/userinfo",
+            "/oauth2/.well-known/",
+            "/open/oauth2/authorize",
+            "/open/oauth2/token",
+            "/open/oauth2/revoke",
+            "/open/oauth2/introspect",
+            "/open/oauth2/userinfo",
+            "/open/oauth2/.well-known/",
+            "/sso/login",
+            "/sso/logout",
+            "/sso/check",
+            "/sso/validate",
+            "/open/sso/login",
+            "/open/sso/logout",
+            "/open/sso/check",
+            "/open/sso/validate",
+            "/system/runtime/capabilities",
+            "/file/public/",
+            "/doc.html",
+            "/swagger-resources",
+            "/v3/api-docs"
     );
 
     private final ReactiveStringRedisTemplate redisTemplate;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        ServerHttpRequest request = exchange.getRequest();
-        String path = request.getURI().getPath();
+        ServerHttpRequest sanitizedRequest = stripSpoofedHeaders(exchange.getRequest());
+        String path = sanitizedRequest.getURI().getPath();
 
-        // 白名单放行
         if (isWhitelist(path)) {
-            return chain.filter(exchange);
+            return chain.filter(exchange.mutate().request(sanitizedRequest).build());
         }
 
-        // 获取Token
-        String token = getToken(request);
+        String token = getToken(sanitizedRequest);
         if (HanStrUtil.isBlank(token)) {
-            return unauthorized(exchange, "未携带Token");
+            return unauthorized(exchange, "未携带 Token");
         }
 
-        // 验证Token并提取用户信息传到下游
         String cacheKey = CacheConstants.TOKEN_KEY + token;
         return redisTemplate.opsForValue().get(cacheKey)
-            .flatMap(userJson -> {
-                ServerHttpRequest.Builder reqBuilder = request.mutate()
-                    .header(Constants.AUTHORIZATION_HEADER, token);
-                try {
-                    JsonNode node = MAPPER.readTree(userJson);
-                    if (node.has("userId")) reqBuilder.header("X-User-Id", node.get("userId").asText());
-                    if (node.has("username")) reqBuilder.header("X-User-Name", node.get("username").asText());
-                    if (node.has("tenantId") && !node.get("tenantId").isNull()) reqBuilder.header(Constants.TENANT_ID_HEADER, node.get("tenantId").asText());
-                } catch (Exception e) {
-                    log.warn("解析用户信息失败", e);
-                }
-                return chain.filter(exchange.mutate().request(reqBuilder.build()).build());
-            })
-            .switchIfEmpty(unauthorized(exchange, "Token无效或已过期"));
+                .flatMap(userJson -> {
+                    ServerHttpRequest.Builder reqBuilder = sanitizedRequest.mutate();
+                    reqBuilder.headers(headers -> headers.set(Constants.AUTHORIZATION_HEADER, Constants.TOKEN_PREFIX + token));
+                    try {
+                        JsonNode node = MAPPER.readTree(userJson);
+                        if (node.has("userId")) {
+                            reqBuilder.headers(headers -> headers.set(Constants.USER_ID_HEADER, node.get("userId").asText()));
+                        }
+                        if (node.has("username")) {
+                            reqBuilder.headers(headers -> headers.set(Constants.USERNAME_HEADER, node.get("username").asText()));
+                        }
+                        if (node.has("tenantId") && !node.get("tenantId").isNull()) {
+                            reqBuilder.headers(headers -> headers.set(Constants.TENANT_ID_HEADER, node.get("tenantId").asText()));
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析用户信息失败", e);
+                    }
+                    return chain.filter(exchange.mutate().request(reqBuilder.build()).build());
+                })
+                .switchIfEmpty(unauthorized(exchange, "Token 无效或已过期"));
+    }
+
+    private ServerHttpRequest stripSpoofedHeaders(ServerHttpRequest request) {
+        return request.mutate().headers(headers -> {
+            headers.remove(Constants.USER_ID_HEADER);
+            headers.remove(Constants.USERNAME_HEADER);
+            headers.remove(Constants.TENANT_ID_HEADER);
+            headers.remove(Constants.INNER_AUTH_CLIENT_HEADER);
+            headers.remove(Constants.INNER_AUTH_TIMESTAMP_HEADER);
+            headers.remove(Constants.INNER_AUTH_SIGNATURE_HEADER);
+        }).build();
     }
 
     private boolean isWhitelist(String path) {
@@ -91,7 +133,25 @@ public class AuthFilter implements GlobalFilter, Ordered {
         if (HanStrUtil.isNotBlank(token) && token.startsWith(Constants.TOKEN_PREFIX)) {
             return token.substring(Constants.TOKEN_PREFIX.length());
         }
+        if (HanStrUtil.isBlank(token) && isSseTokenRequest(request)) {
+            token = request.getQueryParams().getFirst("token");
+        }
         return token;
+    }
+
+    /**
+     * 兼容浏览器 EventSource 无法自定义 Authorization 头的场景。
+     *
+     * <p>仅对 SSE 请求开放 token 查询参数透传，避免放宽普通接口认证边界。
+     */
+    private boolean isSseTokenRequest(ServerHttpRequest request) {
+        String path = request.getURI().getPath();
+        if (!path.endsWith("/sse")) {
+            return false;
+        }
+        List<MediaType> acceptTypes = request.getHeaders().getAccept();
+        return acceptTypes.isEmpty()
+                || acceptTypes.stream().anyMatch(type -> MediaType.TEXT_EVENT_STREAM.isCompatibleWith(type));
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String message) {
@@ -99,7 +159,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().add("Content-Type", "application/json;charset=UTF-8");
         String body = "{\"code\":401,\"msg\":\"" + message + "\"}";
-        return response.writeWith(Mono.just(response.bufferFactory().wrap(body.getBytes())));
+        return response.writeWith(Mono.just(response.bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8))));
     }
 
     @Override

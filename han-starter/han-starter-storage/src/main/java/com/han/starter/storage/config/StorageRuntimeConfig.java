@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
  */
 public final class StorageRuntimeConfig {
 
+    private final Long ossConfigId;
     private final String configKey;
     private final String endpoint;
     private final String accessKey;
@@ -16,8 +17,9 @@ public final class StorageRuntimeConfig {
     private final String region;
     private final String isHttps;
 
-    public StorageRuntimeConfig(String configKey, String endpoint, String accessKey, String secretKey,
+    public StorageRuntimeConfig(Long ossConfigId, String configKey, String endpoint, String accessKey, String secretKey,
                                 String bucketName, String prefix, String region, String isHttps) {
+        this.ossConfigId = ossConfigId;
         this.configKey = configKey;
         this.endpoint = endpoint;
         this.accessKey = accessKey;
@@ -30,6 +32,7 @@ public final class StorageRuntimeConfig {
 
     public static StorageRuntimeConfig fromProperties(StorageProperties.RustFS properties) {
         return new StorageRuntimeConfig(
+                null,
                 "rustfs",
                 properties.getEndpoint(),
                 properties.getAccessKey(),
@@ -43,6 +46,10 @@ public final class StorageRuntimeConfig {
 
     public String getConfigKey() {
         return configKey;
+    }
+
+    public Long getOssConfigId() {
+        return ossConfigId;
     }
 
     public String getEndpoint() {
