@@ -4,14 +4,26 @@
 spring:
   application:
     name: han-file
-  
   cloud:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
-      config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
-        file-extension: yml
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:han@2026}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
 
 # 存储配置
 han:
@@ -22,3 +34,17 @@ han:
       accessKey: ${RUSTFS_ACCESS_KEY:hanadmin}
       secretKey: ${RUSTFS_SECRET_KEY:han@2026}
       bucket: han
+
+logging:
+  level:
+    root: INFO
+    com.han: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
