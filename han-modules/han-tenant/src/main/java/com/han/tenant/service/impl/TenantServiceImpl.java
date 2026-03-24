@@ -2,11 +2,14 @@ package com.han.tenant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.han.common.core.domain.PageResult;
-import com.han.common.core.exception.BusinessException;
-import com.han.common.mybatis.helper.TenantHelper;
-import com.han.api.system.SystemServiceClient;
+import com.han.api.system.SystemClient;
 import com.han.api.system.domain.TenantInitDto;
+import com.han.common.core.domain.PageResult;
+import com.han.common.core.domain.R;
+import com.han.common.core.exception.BusinessException;
+import com.han.common.core.util.XuJsonUtil;
+import com.han.common.mybatis.helper.TenantHelper;
+import com.han.common.mybatis.util.PageHelper;
 import com.han.tenant.converter.TenantConverter;
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.po.TenantPackagePo;
@@ -22,21 +25,44 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
- * 租户服务实现
+ * 租户服务实现。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TenantServiceImpl implements ITenantService {
 
+    private static final int STATUS_ENABLED = 0;
+    private static final int DEFAULT_USER_LIMIT = -1;
+    private static final int DEFAULT_ACCOUNT_LIMIT = -1;
+    private static final String DEFAULT_ISOLATION_TYPE = "logical";
+    private static final long PLATFORM_TENANT_ID = 1L;
+
     private final TenantMapper tenantMapper;
     private final TenantPackageMapper packageMapper;
     private final TenantConverter tenantConverter;
-    private final SystemServiceClient systemServiceClient;
+    private final SystemClient systemClient;
+
+    @Override
+    public PageResult<TenantDTO> selectPage(TenantQuery query) {
+        TenantQuery safeQuery = query != null ? query : new TenantQuery();
+        int pageNum = normalizePageNum(safeQuery.getPageNum());
+        int pageSize = normalizePageSize(safeQuery.getPageSize());
+        Page<TenantPo> page = TenantHelper.ignore(() ->
+                tenantMapper.selectPage(new Page<>(pageNum, pageSize), buildQueryWrapper(safeQuery))
+        );
+        Map<Long, String> packageNameMap = loadPackageNameMap(page.getRecords());
+        Map<Long, Integer> userCountMap = loadUserCountMap(page.getRecords());
+        return PageHelper.build(page, po -> enrichTenantDto(po, packageNameMap, userCountMap));
+    }
 
     @Override
     public List<TenantDTO> selectListScope(TenantQuery query) {
@@ -45,73 +71,41 @@ public class TenantServiceImpl implements ITenantService {
 
     @Override
     public List<TenantDTO> selectList(TenantQuery query) {
-        // 租户表本身不走租户过滤
-        List<TenantPo> list = TenantHelper.ignore(() ->
-                tenantMapper.selectList(buildQueryWrapper(query))
-        );
-        return list.stream().map(po -> {
-            TenantDTO dto = new TenantDTO();
-            dto.setBase(po);
-            return dto;
-        }).toList();
+        List<TenantPo> list = TenantHelper.ignore(() -> tenantMapper.selectList(buildQueryWrapper(query)));
+        Map<Long, String> packageNameMap = loadPackageNameMap(list);
+        Map<Long, Integer> userCountMap = loadUserCountMap(list);
+        return list.stream()
+                .map(po -> enrichTenantDto(po, packageNameMap, userCountMap))
+                .toList();
     }
 
     @Override
     public TenantDTO selectById(Long id) {
         TenantPo po = TenantHelper.ignore(() -> tenantMapper.selectById(id));
-        if (po == null) {
-            return null;
-        }
-        TenantDTO dto = new TenantDTO();
-        dto.setBase(po);
-        return dto;
+        List<TenantPo> singleTenant = wrapSingle(po);
+        return enrichTenantDto(po, loadPackageNameMap(singleTenant), loadUserCountMap(singleTenant));
     }
 
     @Override
     public List<TenantDTO> selectByIds(List<Long> ids) {
         List<TenantPo> list = TenantHelper.ignore(() -> tenantMapper.selectByIds(ids));
-        return list.stream().map(po -> {
-            TenantDTO dto = new TenantDTO();
-            dto.setBase(po);
-            return dto;
-        }).toList();
+        Map<Long, String> packageNameMap = loadPackageNameMap(list);
+        Map<Long, Integer> userCountMap = loadUserCountMap(list);
+        return list.stream()
+                .map(po -> enrichTenantDto(po, packageNameMap, userCountMap))
+                .toList();
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insert(TenantDTO dto) {
-        TenantPo po = dto.getBase();
-        if (po == null) {
-            throw new BusinessException("租户信息不能为空");
-        }
+        TenantPo po = requireTenantBody(dto);
+        TenantPackagePo pkg = requireEnabledPackage(po.getPackageId());
+        applyTenantDefaults(po);
 
-        // 校验套餐
-        if (po.getPackageId() != null) {
-            TenantPackagePo pkg = packageMapper.selectById(po.getPackageId());
-            if (pkg == null) {
-                throw new BusinessException("租户套餐不存在");
-            }
-        }
-
-        if (po.getStatus() == null) {
-            po.setStatus(0);
-        }
-        if (po.getUserLimit() == null) {
-            po.setUserLimit(-1);
-        }
-        if (po.getAccountLimit() == null) {
-            po.setAccountLimit(-1);
-        }
-        if (po.getIsolationType() == null) {
-            po.setIsolationType("logical");
-        }
-
-        // 租户表不走租户过滤
         TenantHelper.ignore(() -> tenantMapper.insert(po));
-
         log.info("创建租户成功: tenantId={}, tenantName={}", po.getId(), po.getTenantName());
 
-        // 调用 han-system 初始化租户基础数据（管理员用户、默认角色、默认部门）
         try {
             TenantInitDto initDTO = TenantInitDto.builder()
                     .tenantId(po.getId())
@@ -119,20 +113,8 @@ public class TenantServiceImpl implements ITenantService {
                     .adminUsername(dto.getAdminUsername())
                     .adminPassword(dto.getAdminPassword())
                     .build();
-
-            // 如果有套餐，获取套餐菜单ID传递给初始化接口
-            if (po.getPackageId() != null) {
-                TenantPackagePo pkg = packageMapper.selectById(po.getPackageId());
-                if (pkg != null && pkg.getMenuIds() != null && !pkg.getMenuIds().isBlank()) {
-                    try {
-                        Set<Long> menuIds = new java.util.HashSet<>(com.han.common.core.util.XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
-                        initDTO.setMenuIds(menuIds);
-                    } catch (Exception ex) {
-                        log.warn("解析套餐菜单ID失败: packageId={}", po.getPackageId(), ex);
-                    }
-                }
-            }
-            systemServiceClient.initTenantData(initDTO);
+            initDTO.setMenuIds(parseMenuIds(pkg));
+            systemClient.initTenantData(initDTO);
             log.info("租户[{}]基础数据初始化请求已发送", po.getId());
         } catch (Exception e) {
             log.error("租户[{}]基础数据初始化失败", po.getId(), e);
@@ -145,42 +127,49 @@ public class TenantServiceImpl implements ITenantService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int update(TenantDTO dto) {
-        TenantPo po = dto.getBase();
-        if (po == null || po.getId() == null) {
+        TenantPo source = requireTenantBody(dto);
+        if (source.getId() == null) {
             throw new BusinessException("租户ID不能为空");
         }
 
-        TenantPo existing = TenantHelper.ignore(() -> tenantMapper.selectById(po.getId()));
+        TenantPo existing = TenantHelper.ignore(() -> tenantMapper.selectById(source.getId()));
         if (existing == null) {
             throw new BusinessException("租户不存在");
         }
 
-        tenantConverter.updateFromBase(dto.getBase(), existing);
+        Long previousPackageId = existing.getPackageId();
+        TenantPackagePo nextPackage = requireEnabledPackage(source.getPackageId());
+
+        tenantConverter.updateFromBase(source, existing);
+        applyTenantDefaults(existing);
         TenantHelper.ignore(() -> tenantMapper.updateById(existing));
+
+        if (!Objects.equals(previousPackageId, existing.getPackageId())) {
+            syncTenantRoleMenus(existing.getId(), nextPackage);
+        }
         return 1;
     }
 
     @Override
     public int deleteById(Long id) {
-        throw new BusinessException("租户不允许删除，只能停用");
+        throw new BusinessException("租户不允许直接删除，请走安全删除流程");
     }
 
     @Override
     public int deleteByIds(List<Long> ids) {
-        throw new BusinessException("租户不允许删除，只能停用");
+        throw new BusinessException("租户不允许批量删除，请走安全删除流程");
     }
 
     @Override
     public TenantVO getTenantByDomain(String domain) {
         TenantPo po = TenantHelper.ignore(() ->
-                tenantMapper.selectOne(
-                        new LambdaQueryWrapper<TenantPo>()
-                                .eq(TenantPo::getDomain, domain)
-                                .eq(TenantPo::getStatus, 0)
-                                .last("LIMIT 1")
-                )
+                tenantMapper.selectOne(new LambdaQueryWrapper<TenantPo>()
+                        .eq(TenantPo::getDomain, domain)
+                        .eq(TenantPo::getStatus, STATUS_ENABLED)
+                        .last("LIMIT 1"))
         );
-        return po != null ? tenantConverter.toVO(po) : null;
+        List<TenantPo> singleTenant = wrapSingle(po);
+        return enrichTenantVo(po, loadPackageNameMap(singleTenant), loadUserCountMap(singleTenant));
     }
 
     @Override
@@ -199,13 +188,10 @@ public class TenantServiceImpl implements ITenantService {
         if (po == null) {
             return false;
         }
-        if (po.getStatus() != null && po.getStatus() == 1) {
+        if (po.getStatus() != null && po.getStatus() != STATUS_ENABLED) {
             return false;
         }
-        if (po.getExpireTime() != null && po.getExpireTime().isBefore(LocalDateTime.now())) {
-            return false;
-        }
-        return true;
+        return po.getExpireTime() == null || !po.getExpireTime().isBefore(LocalDateTime.now());
     }
 
     @Override
@@ -214,44 +200,38 @@ public class TenantServiceImpl implements ITenantService {
         if (tenant == null) {
             throw new BusinessException("租户不存在");
         }
-        TenantPackagePo pkg = packageMapper.selectById(packageId);
-        if (pkg == null) {
-            throw new BusinessException("套餐不存在");
-        }
 
+        TenantPackagePo pkg = requireEnabledPackage(packageId);
         tenant.setPackageId(packageId);
         TenantHelper.ignore(() -> tenantMapper.updateById(tenant));
-
-        // 获取套餐菜单ID并同步到租户角色
-        if (pkg.getMenuIds() != null && !pkg.getMenuIds().isBlank()) {
-            try {
-                java.util.Set<Long> menuIds = new java.util.HashSet<>(com.han.common.core.util.XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
-                systemServiceClient.syncRoleMenusByTenantId(tenantId, menuIds);
-            } catch (Exception ex) {
-                log.warn("同步租户[{}]角色菜单失败", tenantId, ex);
-            }
-        }
-
+        syncTenantRoleMenus(tenantId, pkg);
         log.info("租户套餐同步完成: tenantId={}, packageId={}", tenantId, packageId);
     }
 
     @Override
     public List<TenantVO> listAllValidTenants() {
         List<TenantPo> list = TenantHelper.ignore(() ->
-                tenantMapper.selectList(
-                        new LambdaQueryWrapper<TenantPo>().eq(TenantPo::getStatus, 0)
-                )
+                tenantMapper.selectList(new LambdaQueryWrapper<TenantPo>()
+                        .eq(TenantPo::getStatus, STATUS_ENABLED)
+                        .orderByDesc(TenantPo::getCreateTime))
         );
-        return tenantConverter.toVOList(list);
+        Map<Long, String> packageNameMap = loadPackageNameMap(list);
+        Map<Long, Integer> userCountMap = loadUserCountMap(list);
+        return list.stream()
+                .map(po -> enrichTenantVo(po, packageNameMap, userCountMap))
+                .toList();
     }
 
     @Override
     public int countTenantUsers(Long tenantId) {
         try {
-            com.han.common.core.domain.R<Integer> result = systemServiceClient.countUsersByTenantId(tenantId);
-            return result.getData() != null ? result.getData() : 0;
+            R<Integer> result = systemClient.countUsersByTenantId(tenantId);
+            if (result == null || result.getData() == null) {
+                return 0;
+            }
+            return result.getData();
         } catch (Exception e) {
-            log.warn("查询租户[{}]用户数失败，返回0", tenantId, e);
+            log.warn("查询租户[{}]用户数失败，按 0 返回", tenantId, e);
             return 0;
         }
     }
@@ -262,17 +242,16 @@ public class TenantServiceImpl implements ITenantService {
         if (tenant == null) {
             return false;
         }
-        if (tenant.getUserLimit() == null || tenant.getUserLimit() == -1) {
+        if (tenant.getUserLimit() == null || tenant.getUserLimit() == DEFAULT_USER_LIMIT) {
             return true;
         }
-        int currentCount = countTenantUsers(tenantId);
-        return currentCount < tenant.getUserLimit();
+        return countTenantUsers(tenantId) < tenant.getUserLimit();
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteTenant(Long tenantId) {
-        if (tenantId == null || tenantId == 1L) {
+        if (tenantId == null || tenantId == PLATFORM_TENANT_ID) {
             throw new BusinessException("平台租户不允许删除");
         }
 
@@ -281,29 +260,141 @@ public class TenantServiceImpl implements ITenantService {
             throw new BusinessException("租户不存在");
         }
 
-        // 1. 调用 han-system Inner 接口清理租户业务数据（用户/角色/部门/岗位及关联表）
         try {
-            systemServiceClient.cleanupTenantData(tenantId);
+            systemClient.cleanupTenantData(tenantId);
         } catch (Exception e) {
             log.error("清理租户[{}]业务数据失败", tenantId, e);
             throw new BusinessException("清理租户业务数据失败: " + e.getMessage());
         }
 
-        // 2. 逻辑删除租户本体
         TenantHelper.ignore(() -> tenantMapper.deleteById(tenantId));
-
         log.info("租户安全删除完成: tenantId={}, tenantName={}", tenantId, tenant.getTenantName());
     }
 
-    // ==================== 私有方法 ====================
+    private void applyTenantDefaults(TenantPo po) {
+        if (po.getStatus() == null) {
+            po.setStatus(STATUS_ENABLED);
+        }
+        if (po.getUserLimit() == null) {
+            po.setUserLimit(DEFAULT_USER_LIMIT);
+        }
+        if (po.getAccountLimit() == null) {
+            po.setAccountLimit(DEFAULT_ACCOUNT_LIMIT);
+        }
+        if (po.getIsolationType() == null || po.getIsolationType().isBlank()) {
+            po.setIsolationType(DEFAULT_ISOLATION_TYPE);
+        }
+    }
+
+    private TenantPo requireTenantBody(TenantDTO dto) {
+        TenantPo po = dto != null ? dto.getBase() : null;
+        if (po == null) {
+            throw new BusinessException("租户信息不能为空");
+        }
+        return po;
+    }
+
+    private TenantPackagePo requireEnabledPackage(Long packageId) {
+        if (packageId == null) {
+            return null;
+        }
+        TenantPackagePo pkg = packageMapper.selectById(packageId);
+        if (pkg == null) {
+            throw new BusinessException("租户套餐不存在");
+        }
+        if (pkg.getStatus() != null && pkg.getStatus() != STATUS_ENABLED) {
+            throw new BusinessException("租户套餐已停用");
+        }
+        return pkg;
+    }
+
+    private void syncTenantRoleMenus(Long tenantId, TenantPackagePo pkg) {
+        try {
+            systemClient.syncRoleMenusByTenantId(tenantId, parseMenuIds(pkg));
+        } catch (Exception ex) {
+            log.error("同步租户[{}]角色菜单失败", tenantId, ex);
+            throw new BusinessException("同步租户套餐菜单失败: " + ex.getMessage());
+        }
+    }
+
+    private Set<Long> parseMenuIds(TenantPackagePo pkg) {
+        if (pkg == null || pkg.getMenuIds() == null || pkg.getMenuIds().isBlank()) {
+            return Set.of();
+        }
+        try {
+            return new HashSet<>(XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
+        } catch (Exception ex) {
+            log.warn("解析租户套餐菜单失败: packageId={}", pkg.getId(), ex);
+            return Set.of();
+        }
+    }
+
+    private TenantDTO enrichTenantDto(TenantPo po, Map<Long, String> packageNameMap, Map<Long, Integer> userCountMap) {
+        if (po == null) {
+            return null;
+        }
+        TenantDTO dto = new TenantDTO();
+        dto.setBase(po);
+        dto.setPackageName(packageNameMap.get(po.getPackageId()));
+        dto.setUserCount(userCountMap.getOrDefault(po.getId(), 0));
+        return dto;
+    }
+
+    private TenantVO enrichTenantVo(TenantPo po, Map<Long, String> packageNameMap, Map<Long, Integer> userCountMap) {
+        if (po == null) {
+            return null;
+        }
+        TenantVO vo = tenantConverter.toVO(po);
+        vo.setPackageName(packageNameMap.get(po.getPackageId()));
+        vo.setUserCount(userCountMap.getOrDefault(po.getId(), 0));
+        return vo;
+    }
+
+    private Map<Long, String> loadPackageNameMap(List<TenantPo> tenants) {
+        List<Long> packageIds = tenants.stream()
+                .filter(Objects::nonNull)
+                .map(TenantPo::getPackageId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (packageIds.isEmpty()) {
+            return Map.of();
+        }
+        return packageMapper.selectByIds(packageIds).stream()
+                .collect(HashMap::new, (map, pkg) -> map.put(pkg.getId(), pkg.getPackageName()), HashMap::putAll);
+    }
+
+    private Map<Long, Integer> loadUserCountMap(List<TenantPo> tenants) {
+        Map<Long, Integer> result = new HashMap<>();
+        tenants.stream()
+                .filter(Objects::nonNull)
+                .map(TenantPo::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(tenantId -> result.put(tenantId, countTenantUsers(tenantId)));
+        return result;
+    }
+
+    private int normalizePageNum(Integer pageNum) {
+        return pageNum == null || pageNum < 1 ? 1 : pageNum;
+    }
+
+    private int normalizePageSize(Integer pageSize) {
+        return pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+    }
 
     private LambdaQueryWrapper<TenantPo> buildQueryWrapper(TenantQuery query) {
+        TenantQuery safeQuery = query != null ? query : new TenantQuery();
         return new LambdaQueryWrapper<TenantPo>()
-                .like(query.getTenantName() != null && !query.getTenantName().isEmpty(),
-                        TenantPo::getTenantName, query.getTenantName())
-                .like(query.getContactName() != null && !query.getContactName().isEmpty(),
-                        TenantPo::getContactName, query.getContactName())
-                .eq(query.getStatus() != null, TenantPo::getStatus, query.getStatus())
+                .like(safeQuery.getTenantName() != null && !safeQuery.getTenantName().isBlank(),
+                        TenantPo::getTenantName, safeQuery.getTenantName())
+                .like(safeQuery.getContactName() != null && !safeQuery.getContactName().isBlank(),
+                        TenantPo::getContactName, safeQuery.getContactName())
+                .eq(safeQuery.getStatus() != null, TenantPo::getStatus, safeQuery.getStatus())
                 .orderByDesc(TenantPo::getCreateTime);
+    }
+
+    private List<TenantPo> wrapSingle(TenantPo po) {
+        return po == null ? List.of() : List.of(po);
     }
 }

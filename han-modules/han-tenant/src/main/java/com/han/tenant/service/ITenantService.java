@@ -1,5 +1,6 @@
 package com.han.tenant.service;
 
+import com.han.common.core.domain.PageResult;
 import com.han.common.web.service.IBaseService;
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.query.TenantQuery;
@@ -11,6 +12,11 @@ import java.util.List;
  * 租户服务接口
  */
 public interface ITenantService extends IBaseService<TenantQuery, TenantDTO> {
+
+    /**
+     * 分页查询租户列表
+     */
+    PageResult<TenantDTO> selectPage(TenantQuery query);
 
     /**
      * 根据域名查询租户
