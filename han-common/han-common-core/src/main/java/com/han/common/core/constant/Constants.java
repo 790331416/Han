@@ -29,19 +29,34 @@ public interface Constants {
     /** 令牌头 */
     String AUTHORIZATION_HEADER = "Authorization";
 
-    /** 租户ID头 */
+    /** 用户 ID 头 */
+    String USER_ID_HEADER = "X-User-Id";
+
+    /** 用户名头 */
+    String USERNAME_HEADER = "X-User-Name";
+
+    /** 租户 ID 头 */
     String TENANT_ID_HEADER = "X-Tenant-Id";
 
     /** 客户端类型头 */
     String CLIENT_TYPE_HEADER = "X-Client-Type";
 
-    /** 设备ID头 */
+    /** 设备 ID 头 */
     String DEVICE_ID_HEADER = "X-Device-Id";
+
+    /** 内部调用客户端头 */
+    String INNER_AUTH_CLIENT_HEADER = "X-Inner-Client";
+
+    /** 内部调用时间戳头 */
+    String INNER_AUTH_TIMESTAMP_HEADER = "X-Inner-Timestamp";
+
+    /** 内部调用签名头 */
+    String INNER_AUTH_SIGNATURE_HEADER = "X-Inner-Signature";
 
     /** 是否为管理员 */
     Long ADMIN_ID = 1L;
 
-    /** 超级管理员角色Key */
+    /** 超级管理员角色 Key */
     String SUPER_ADMIN_ROLE = "admin";
 
     /** 删除标志：正常 */
