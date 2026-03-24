@@ -1,6 +1,7 @@
 package com.han.open.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.han.open.domain.po.OpenAppPo;
 import lombok.Data;
@@ -43,10 +44,12 @@ public class OpenAppDTO implements Serializable {
 
     // ==================== 核心业务字段便捷访问 ====================
 
+    @JsonProperty("appId")
     public Long getAppId() {
         return base != null ? base.getId() : null;
     }
 
+    @JsonProperty("appId")
     public void setAppId(Long appId) {
         if (base == null) {
             base = new OpenAppPo();
