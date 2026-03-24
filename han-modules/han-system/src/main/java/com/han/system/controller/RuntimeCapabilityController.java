@@ -1,6 +1,5 @@
 package com.han.system.controller;
 
-import com.han.common.core.config.DeployProperties;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.DeployTier;
 import com.han.common.security.annotation.PermissionExempt;
@@ -24,13 +23,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RuntimeCapabilityController {
 
-    private final DeployProperties deployProperties;
     private final Environment environment;
 
     @GetMapping("/capabilities")
     @PermissionExempt("登录前需要读取部署层级与启用能力")
     public R<RuntimeCapabilityVO> capabilities() {
-        DeployTier tier = deployProperties.getTierEnum();
+        DeployTier tier = resolveTier();
         boolean mediumTier = tier.isAtLeast(DeployTier.MEDIUM);
         boolean fullTier = tier.isAtLeast(DeployTier.FULL);
         boolean genEnabled = hasAny("HAN_GEN_ENABLED", "han.gen.enabled");
@@ -78,6 +76,14 @@ public class RuntimeCapabilityController {
                 optionalServices,
                 featureFlags
         ));
+    }
+
+    private DeployTier resolveTier() {
+        String tier = environment.getProperty("han.deploy.tier");
+        if (tier == null || tier.isBlank()) {
+            tier = environment.getProperty("HAN_DEPLOY_TIER", DeployTier.DEFAULT.value());
+        }
+        return DeployTier.from(tier);
     }
 
     private boolean hasAny(String... keys) {
