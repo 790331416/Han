@@ -593,3 +593,13 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/views/system/tenant/quota.vue`
 - 修改文件：`han-ui/tests/e2e/utils/tenant.ts`
 - 修改文件：`han-ui/tests/e2e/specs/tenant-pages.spec.ts`
+
+### 2026-03-24 95 服务器 han-ui 远端部署与 SPA 路由回退修复
+
+- 本轮主要目标：将租户前端回归的最新提交部署到 `95` 服务器的真实 `han-ui` 容器，并完成“远端前端 + 远端后端”的整体验证。
+- 已完成关键任务：将租户前端回归提交 `caf2d4d` 推送后，拉取到 `95` 的 `/opt/han/source/Han-ui-validate-20260323`；发现 `95` 没有宿主机 `node/npm` 且无法直接拉官方 `node` 镜像，因此改用现成的 `registry.cn-hangzhou.aliyuncs.com/xzy0112/nginx:1.29-alpine-slim` 作为临时构建容器，在容器内 `apk add nodejs npm` 后完成 `npm install --legacy-peer-deps` 和 `npm run build`；在 `95` 上重建 `han-ui` 镜像并保留旧镜像与旧容器备份标签；首次远端 Playwright 失败后，定位到问题不是租户页面代码，而是 `han-ui/nginx.conf` 将 `/system/*`、`/tenant/*` 等前端直达路由误代理到网关，导致浏览器刷新时直接拿到后端 `401`；补齐 `nginx.conf` 中基于 `Accept: text/html` 的 SPA 回退逻辑，确保浏览器导航请求返回 `index.html`，接口请求仍按原路代理；继续修正 `han-ui/Dockerfile` 的 `HEALTHCHECK`，将探针目标从 `localhost` 改为 `127.0.0.1`，消除容器实际可用但健康状态持续 `unhealthy` 的假阴性；将修复提交推送后再次在 `95` 重建 `han-ui` 容器；最终通过 `curl -H 'Accept: text/html' http://127.0.0.1:3000/system/tenant` 验证直达租户路由已返回前端页面，并通过本地 Playwright 直连 `95:3000` 与 `95:9090` 跑通租户三页回归，结果 `3 passed`。
+- 关键决策与解决方案：不改前端 API 契约、不引入新的接口前缀，只在 Nginx 层补“导航请求回前端、接口请求走网关”的最小闭环，避免影响现有请求路径；远端部署阶段保留多个 `han-ui-bak-*` 备份容器，同时为旧镜像打 `backup-*` 标签，保证随时可回滚；依赖安装冲突仅在远端构建时使用 `npm install --legacy-peer-deps`，不修改仓库依赖版本；将健康检查目标固定到 `127.0.0.1`，让容器状态与真实服务可用性保持一致；整体验证从“本地最新前端 + 95 后端”升级为“95 前端 + 95 后端”，把真实部署链路补成闭环。
+- 使用技术栈/工具：Nginx、Docker、Alpine、Node.js、npm、Playwright、MCP SSH、PowerShell、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/Dockerfile`
+- 修改文件：`han-ui/nginx.conf`
