@@ -603,3 +603,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`README.md`
 - 修改文件：`han-ui/Dockerfile`
 - 修改文件：`han-ui/nginx.conf`
+
+### 2026-03-24 开放平台编辑契约兼容与 95 远端闭环
+
+- 本轮主要目标：继续推进 `open app` 闭环，修复开放平台编辑接口对 `appId` 契约不兼容的问题，并完成“本地最新代码 + 95 远端前后端”的最终真实回归。
+- 已完成关键任务：定位 `95` 环境 `/open/app/edit` 失败的根因为后端当前仅接受扁平化后的 `id`，不接受前端与文档使用的 `appId`；通过远端直接接口探针确认“仅传 `appId` 失败、仅传 `id` 成功”；在 [OpenAppDTO.java](D:/code/Han/han-modules/han-open/src/main/java/com/han/open/domain/dto/OpenAppDTO.java) 中补齐 `appId` 与 `base.id` 的同步逻辑；在 [app.ts](D:/code/Han/han-ui/src/api/open/app.ts) 中让编辑请求同时携带 `appId` 与 `id`，兼容旧镜像与新镜像；在 [OpenAppController.java](D:/code/Han/han-modules/han-open/src/main/java/com/han/open/controller/OpenAppController.java) 中为编辑接口增加请求体兼容归一化逻辑，显式从 `requestBody` 中回填 `appId/id`，确保服务端原生支持文档契约；将修复先后提交为 `48e75f9`、`fedc0d9`、`4f14463` 并推送到 `codex/han-ui-remote-validate`；在 `95` 的 `/opt/han/source/Han-ui-validate-20260323` 完成源码拉取、`han-open` 容器化 Maven 打包、`han-open` 镜像重建、`han-open` 服务重建，以及 `han-ui` 远端镜像和容器切换；最终验证“仅传 `appId` 的 `/open/app/edit` 返回 `200`”，并通过 Playwright 直连 `95:3000` 与 `95:9090` 跑通 [open-app.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts)，结果 `1 passed`。
+- 关键决策与解决方案：不删除也不弱化任何既有开放平台能力，而是同时做“前端向后兼容 + 后端原生收口”双保险；前端保留现有 `appId` 契约不变，仅额外补发 `id` 兼容老镜像；后端不依赖全局 `ObjectMapper` Bean，改为控制器内使用轻量 `ObjectMapper` 做请求体兼容转换，避免引入新的 Spring Bean 依赖导致服务启动失败；`95` 上 `han-ui` 不是 compose 管理容器，本轮继续采用“旧容器改名保备份，再起新容器”的方式切换，保留回滚能力。
+- 使用技术栈/工具：Spring Boot 4、Spring MVC、Jackson、Vue 3、Playwright、Docker、Maven、MCP SSH、PowerShell、Python、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/OpenAppController.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/domain/dto/OpenAppDTO.java`
+- 修改文件：`han-ui/src/api/open/app.ts`
