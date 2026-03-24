@@ -614,3 +614,38 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/OpenAppController.java`
 - 修改文件：`han-modules/han-open/src/main/java/com/han/open/domain/dto/OpenAppDTO.java`
 - 修改文件：`han-ui/src/api/open/app.ts`
+
+### 2026-03-24 三档部署系统化验收
+
+- 本轮主要目标：按文档口径对 `small / medium / full` 三档部署做一次系统化验收，确认 `95` 服务器上的真实兼容情况，并把通过项、失败项、阻塞项沉淀下来。
+- 已完成关键任务：先检查 [capability-matrix.md](D:/code/Han/docs/capability-matrix.md)、[deployment-guide.md](D:/code/Han/docs/deployment-guide.md)、[server-95-deploy-flow.md](D:/code/Han/docs/server-95-deploy-flow.md) 与三份 Compose 文件；在 `95` 上为 `small` 生成隔离版 Compose，使用独立端口和容器名完成最小链路拉起；定位 `95` 部署目录 `sql/sys_oss_config.sql` 被放成目录，导致 PostgreSQL fresh deploy 初始化失败，并在隔离副本中临时改挂源码文件继续验收；完成 `small` 的能力接口、登录、当前用户、任务列表、任务日志接口回归；确认 [init.sql](D:/code/Han/sql/postgres/init.sql) 本身只建表不灌菜单，导致 `small` fresh deploy 后 `/system/menu/routers` 为空；完成 `medium` 现网环境 API 验收，验证 `/system/runtime/capabilities`、`/auth/login`、`/system/user/current`、`/tenant/list`、`/open/app/list`、`/system/oss/config/list`、`/system/notice/list`；确认 `workflow` 服务未运行且 `/workflow/definition/list` 返回 `503`，但运行时能力仍错误宣称 `workflow` 已启用；确认 `/system/notice/unreadCount` 返回业务码 `500`，错误为 `参数类型错误: noticeId`；本地提权执行 Playwright 直连 `95` 前后端，跑通 `auth-login`、`tenant-pages`、`oss-config`、`open-app`，并复现 `notice-center` 因 `markAllRead/unreadCount` 失败而挂掉，结果为 `7 passed, 1 failed`；确认 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-workflow:latest` 与 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest` 当前都返回 `manifest unknown`，因此 `full` 在 `2026-03-24` 无法真实拉起；新增三档验收报告 [tier-validation-report-20260324.md](D:/code/Han/docs/tier-validation-report-20260324.md)；最后清理了临时 `small` 隔离环境，不影响 `95` 现网 `medium`。
+- 关键决策与解决方案：不改动任何业务能力，不删功能，只做真实验收和问题收口；`small` 采用隔离 Compose 而不是直接复用现网端口，避免冲掉 `95` 上正在使用的 `medium`；`full` 在镜像缺失前提下不做伪验收，而是明确记为发布物阻塞；前端验收继续坚持“远端真实页面 + 远端真实网关”口径，不用 mock；对 `95` 上的 `sys_oss_config.sql` 问题仅做隔离副本修正，不直接动在线部署目录，避免误伤主环境。
+- 使用技术栈/工具：Docker Compose、MCP SSH、PowerShell、Playwright、Python、`curl`、PostgreSQL、Redis、Nacos、Spring Boot 4、Spring Cloud Gateway 5、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/tier-validation-report-20260324.md`
+
+### 2026-03-24 通知中心路由冲突修复与 95 真实回归
+
+- 本轮主要目标：修复 `medium` 验收中通知中心 `/system/notice/unreadCount`、`/system/notice/sse` 被 `/{noticeId}` 动态路由误匹配的问题，并在 `95` 服务器完成真实构建、部署和前端回归。
+- 已完成关键任务：定位 [ASysNoticeController.java](D:/code/Han/han-modules/han-system/src/main/java/com/han/system/controller/admin/ASysNoticeController.java) 中 `@GetMapping("/{noticeId}")` 会吞掉 `unreadCount`、`latest`、`sse` 等固定路径；将详情接口改为仅匹配数字 ID 的 `@GetMapping("/{noticeId:\\d+}")`，保证固定路径优先命中；由于 `95` 上远端源码仓库滞后，额外同步了通知中心依赖的 `SysNoticeReadPo`、`NoticeLatestVo`、`SysNoticeReadMapper`、`SseEmitterService` 以及新版 `SysNoticeMapper` 到 `/opt/han/source/Han-ui-validate-20260323`；在 `95` 上使用容器化 Maven 成功重新打包 `han-system`，并重建 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest` 与 `han-system` 容器；通过网关真实登录拿到 token 后，验证 `/system/notice/unreadCount` 返回 `200` 且数据为数字、`/system/notice/latest?limit=5` 返回 `200` 且数据结构正常、`/system/notice/sse?token=...` 返回 `event:connected` 事件流，不再出现 `noticeId` 参数类型错误；最后提权执行 Playwright，直连 `95:3000` 与 `95:9090` 重新跑通 [notice-center.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts)，结果 `1 passed`。
+- 关键决策与解决方案：不简化通知能力，不移除任何现有端点，仅通过“数字路由约束”收口控制器匹配范围；鉴于 `95` 源码仓库落后于本地代码，本轮采用“最小必要文件同步 + 远端原地重建”的方式完成验证，避免把工作区中其他未确认混合改动一起带上；SSE 验证采用短时长连接只确认握手与首条事件流，既覆盖真实链路，又避免长连接阻塞验收脚本。
+- 使用技术栈/工具：Spring Boot 4、Spring MVC、MyBatis、Docker、Docker Compose、MCP SSH、PowerShell、Maven、Playwright、Redis、`curl`、Python、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-modules/han-system/src/main/java/com/han/system/controller/admin/ASysNoticeController.java`
+
+### 2026-03-24 三档验收收口与运行时能力回归
+
+- 本轮主要目标：继续收口三档系统化验收中的剩余问题，补齐 `small` fresh deploy 的基线菜单初始化验证，修复 `medium` 运行时能力误报，并把前端侧边栏的运行时过滤固化成 Playwright 回归。
+- 已完成关键任务：新增 [init-base-data.sql](D:/code/Han/sql/postgres/init-base-data.sql) 作为 PostgreSQL 基线菜单种子脚本，并更新三份 Compose 文件挂载该脚本；重写 [RuntimeCapabilityController.java](D:/code/Han/han-modules/han-system/src/main/java/com/han/system/controller/RuntimeCapabilityController.java)，改为基于 `DiscoveryClient` 判断真实注册服务，确保 `enabledModules` 和 `featureFlags` 与当前运行态一致；在前端 [index.ts](D:/code/Han/han-ui/src/router/index.ts) 为 `job / workflow / tenant / oss / open / ai` 补充 `module` 与 `feature` 元数据，并在 [Sidebar.vue](D:/code/Han/han-ui/src/layout/components/Sidebar.vue) 中加入按运行时能力过滤菜单的逻辑；本地完成 `han-system` 编译与 `han-ui` 构建通过；将相关变更提交为 `d1714a9` 并推送到 `codex/han-ui-remote-validate`，随后在 `95` 服务器拉取源码、重建 `han-system`，验证 `/system/runtime/capabilities` 现已返回 `workflow=false`、`ai=false` 且不再误报；使用隔离 PostgreSQL 容器挂载 [init.sql](D:/code/Han/sql/postgres/init.sql) 与 [init-base-data.sql](D:/code/Han/sql/postgres/init-base-data.sql) 完成首次初始化验证，确认 `sys_menu=37`、`sys_role_menu(role_id=1)=37`；新增 [runtime-sidebar.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts)，并通过 Playwright 直连 `95` 后端验证中配环境下 `workflow/ai` 菜单隐藏、`job/open/tenant/oss` 菜单保留。
+- 关键决策与解决方案：不简化任何现有能力，只对验收缺口做“基线补齐 + 真实运行态对齐 + 自动化固化”；`small` 的 fresh deploy 问题不直接碰在线库，而是用隔离 PostgreSQL 容器验证初始化脚本，避免影响 `95` 现网；前端菜单过滤继续保留原有 tier 机制，但再叠加后端运行时能力，解决“环境里服务没起来，菜单却还暴露”的契约漂移；三档验收报告 [tier-validation-report-20260324.md](D:/code/Han/docs/tier-validation-report-20260324.md) 已重写为 UTF-8 中文并更新到最新状态。
+- 使用技术栈/工具：Spring Boot 4、Spring Cloud Discovery、Vue 3、Vite、Playwright、Docker、PostgreSQL、MCP SSH、PowerShell、Maven、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/tier-validation-report-20260324.md`
+- 修改文件：`docker-compose-small.yml`
+- 修改文件：`docker-compose.yml`
+- 修改文件：`docker-compose-full.yml`
+- 修改文件：`sql/postgres/init-base-data.sql`
+- 修改文件：`han-modules/han-system/src/main/java/com/han/system/controller/RuntimeCapabilityController.java`
+- 修改文件：`han-ui/src/router/index.ts`
+- 修改文件：`han-ui/src/layout/components/Sidebar.vue`
+- 修改文件：`han-ui/tests/e2e/specs/runtime-sidebar.spec.ts`
