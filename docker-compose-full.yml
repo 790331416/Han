@@ -55,6 +55,7 @@ services:
       - postgres_data:/var/lib/postgresql
       - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/02-ai.sql
+      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/03-oss.sql
     networks:
       - han-network
     healthcheck:
