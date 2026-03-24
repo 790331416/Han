@@ -525,3 +525,20 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/layout/components/Sidebar.vue`
 - 修改文件：`han-ui/src/views/system/oss-config/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/oss-config.spec.ts`
+
+### 2026-03-24 文件公开代理闭环与 95 远端重建验证
+
+- 本轮主要目标：继续收口 `RustFS` 外链匿名访问 `403` 的问题，在不简化现有上传能力的前提下补齐文件公开访问代理，并在 `95` 服务器上完成真实重建与回归验证。
+- 已完成关键任务：在 `han-starter-storage` 中补齐可定位活动配置和指定配置的运行时记录能力，为存储访问代理提供稳定配置来源；在 `han-file` 中新增 `FileStorageAccessService`，将上传与公开访问统一收敛到同一条服务链路；在 [FileController.java](D:/code/Han/han-modules/han-file/src/main/java/com/han/file/controller/FileController.java) 中新增 `GET /file/public/{locator}/{fileName}` 公开代理下载接口，并保持 `/file/upload` 返回结构不变，仅把 `url` 收口为系统可控的公开代理地址；在 [AuthFilter.java](D:/code/Han/han-gateway/src/main/java/com/han/gateway/filter/AuthFilter.java) 中将 `/file/public/` 加入白名单；补齐 [Constants.java](D:/code/Han/han-common/han-common-core/src/main/java/com/han/common/core/constant/Constants.java) 中网关透传所需的请求头常量；将改动提交并推送到 `codex/han-ui-remote-validate`，在 `95` 服务器使用本地 Maven Docker 镜像重建 `han-gateway`、`han-file`，并强制重建两个容器；最终验证 `9200` 登录、`9207/file/upload` 上传、`9207/file/public/...` 匿名访问全部返回 `200`，下载内容与上传内容一致。
+- 关键决策与解决方案：不删除也不弱化现有上传链路，只是在上传返回的公开地址上增加平台内代理，避免直接暴露第三方对象存储匿名策略；代理实现按 `locator -> 配置记录 -> Provider` 的方式选择存储提供者，兼容数据库活动配置与兜底静态配置；远端构建继续复用 `xzy0112` 的 Maven 基础镜像和 `95` 本机 Docker 环境，不引入额外依赖源；同时确认 `95` 上当前重建后的 `gateway:9090` 对 `/auth/**`、`/system/**`、`/file/**` 仍返回网关层 `404`，这已记录为独立残留风险，不把它误记成文件公开代理失败。
+- 使用技术栈/工具：Spring Boot 4、Spring Cloud Gateway、Starter Storage、RustFS、Docker Compose、Maven、MCP SSH、PowerShell、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-common/han-common-core/src/main/java/com/han/common/core/constant/Constants.java`
+- 修改文件：`han-gateway/src/main/java/com/han/gateway/filter/AuthFilter.java`
+- 修改文件：`han-modules/han-file/src/main/java/com/han/file/controller/FileController.java`
+- 修改文件：`han-modules/han-file/src/main/java/com/han/file/service/FileStorageAccessService.java`
+- 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageAutoConfiguration.java`
+- 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageConfigRecord.java`
+- 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageConfigRepository.java`
+- 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageRuntimeConfig.java`
+- 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/JdbcStorageConfigRepository.java`
