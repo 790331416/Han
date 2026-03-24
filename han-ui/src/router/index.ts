@@ -56,7 +56,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Job',
     component: () => import('@/layout/index.vue'),
     redirect: '/job/list',
-    meta: { title: '任务调度', icon: 'Timer', tier: 'medium' },
+    meta: { title: '任务调度', icon: 'Timer', tier: 'small' },
     children: [
       {
         path: 'list',
@@ -77,7 +77,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Workflow',
     component: () => import('@/layout/index.vue'),
     redirect: '/workflow/definition',
-    meta: { title: '工作流', icon: 'Connection', tier: 'full' },
+    meta: { title: '工作流', icon: 'Connection', tier: 'medium' },
     children: [
       {
         path: 'definition',
@@ -224,7 +224,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'oss-config',
         name: 'OssConfig',
         component: () => import('@/views/system/oss-config/index.vue'),
-        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'full' }
+        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium' }
       }
     ]
   },

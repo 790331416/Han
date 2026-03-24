@@ -22,12 +22,13 @@
             <el-menu-item
               v-if="visibleChildren(route).length <= 1"
               :index="resolvePath(route.path, visibleChildren(route)[0]?.path)"
+              :data-testid="menuTestId(route, visibleChildren(route)[0])"
             >
               <el-icon v-if="menuMeta(route).icon"><component :is="menuMeta(route).icon" /></el-icon>
               <template #title>{{ menuMeta(route).title }}</template>
             </el-menu-item>
 
-            <el-sub-menu v-else :index="route.path">
+            <el-sub-menu v-else :index="route.path" :data-testid="menuTestId(route)">
               <template #title>
                 <el-icon v-if="route.meta?.icon"><component :is="route.meta.icon" /></el-icon>
                 <span>{{ route.meta?.title }}</span>
@@ -36,6 +37,7 @@
                 v-for="child in visibleChildren(route)"
                 :key="child.path"
                 :index="resolvePath(route.path, child.path)"
+                :data-testid="menuTestId(route, child)"
               >
                 <el-icon v-if="child.meta?.icon"><component :is="child.meta.icon" /></el-icon>
                 <template #title>{{ child.meta?.title }}</template>
@@ -115,6 +117,12 @@ function resolvePath(parentPath: string, childPath?: string) {
   if (!childPath) return parentPath
   if (parentPath === '/') return '/' + childPath
   return parentPath + '/' + childPath
+}
+
+function menuTestId(route: RouteRecordRaw, child?: RouteRecordRaw) {
+  const target = child ?? route
+  const name = typeof target.name === 'string' ? target.name : resolvePath(route.path, child?.path || target.path)
+  return `sidebar-menu-${name.toLowerCase()}`
 }
 </script>
 
