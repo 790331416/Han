@@ -32,8 +32,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OpenAppController {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final IOpenAppService openAppService;
-    private final ObjectMapper objectMapper;
 
     /**
      * 分页查询应用列表。
@@ -71,7 +72,7 @@ public class OpenAppController {
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('open:app:edit')")
     public R<Void> edit(@RequestBody Map<String, Object> requestBody) {
-        OpenAppDTO dto = objectMapper.convertValue(requestBody, OpenAppDTO.class);
+        OpenAppDTO dto = OBJECT_MAPPER.convertValue(requestBody, OpenAppDTO.class);
         bindCompatibleAppId(dto, requestBody);
         openAppService.update(dto);
         return R.ok();
