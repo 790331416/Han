@@ -5,6 +5,10 @@ import { test, expect } from '../fixtures/test'
  */
 test('sidebar should respect runtime capabilities on medium tier', async ({ authenticatedPage }) => {
   const page = authenticatedPage
+  const capabilityResponse = await page.request.get('/system/runtime/capabilities')
+  const capabilityJson = await capabilityResponse.json()
+  const enabledModules = capabilityJson?.data?.enabledModules ?? []
+  const featureFlags = capabilityJson?.data?.featureFlags ?? {}
 
   await expect(page.getByTestId('sidebar-menu-job')).toBeVisible()
   await expect(page.getByTestId('sidebar-menu-openapp')).toBeVisible()
@@ -18,6 +22,15 @@ test('sidebar should respect runtime capabilities on medium tier', async ({ auth
   await expect(page.getByTestId('sidebar-menu-tenantquota')).toBeVisible()
   await expect(page.getByTestId('sidebar-menu-ossconfig')).toBeVisible()
 
-  await expect(page.getByTestId('sidebar-menu-workflow')).toHaveCount(0)
-  await expect(page.getByTestId('sidebar-menu-ai')).toHaveCount(0)
+  if (enabledModules.includes('workflow') && featureFlags.workflow) {
+    await expect(page.getByTestId('sidebar-menu-workflow')).toBeVisible()
+  } else {
+    await expect(page.getByTestId('sidebar-menu-workflow')).toHaveCount(0)
+  }
+
+  if (enabledModules.includes('ai') && featureFlags.ai) {
+    await expect(page.getByTestId('sidebar-menu-ai')).toBeVisible()
+  } else {
+    await expect(page.getByTestId('sidebar-menu-ai')).toHaveCount(0)
+  }
 })

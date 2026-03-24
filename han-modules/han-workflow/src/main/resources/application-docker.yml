@@ -1,0 +1,62 @@
+# Docker 环境配置 - Workflow 专用（DB + Redis + Nacos）
+server:
+  port: 9203
+
+spring:
+  application:
+    name: han-workflow
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+        file-extension: yml
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USER:han}
+    password: ${DB_PASSWORD:han@2026}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:han@2026}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+flowable:
+  database-schema-update: true
+  async-executor-activate: false
+
+logging:
+  level:
+    root: INFO
+    com.han: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
