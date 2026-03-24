@@ -542,3 +542,24 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageConfigRepository.java`
 - 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/StorageRuntimeConfig.java`
 - 修改文件：`han-starter/han-starter-storage/src/main/java/com/han/starter/storage/config/JdbcStorageConfigRepository.java`
+
+### 2026-03-24 开放平台闭环与网关统一入口恢复
+
+- 本轮主要目标：继续推进 `open` 模块闭环，完成 `open app` 和 `OAuth2` 的真实验收，并修复 `95` 环境 `gateway:9090` 对 `auth/system/open/file` 路由失效的问题，让中配部署重新回到统一网关入口。
+- 已完成关键任务：补齐 `open app` 分页、详情、创建、编辑、删除、重置密钥、状态切换接口，补齐前端所需查询字段与查询条件绑定；将 `OAuth2` 最小可用实现切换为“数据库中的应用配置 + 内存授权码/访问令牌/刷新令牌状态”的可运行方案；修复 `OAuth2Controller` 对 `response_type`、`client_id`、`redirect_uri`、`grant_type` 等下划线参数的显式绑定；修复 `han-open` Docker 配置中 Redis/Nacos 配置失效问题并完成远端重建；在 `95` 环境真实跑通 `open app` CRUD、`authorize -> token -> userinfo -> introspect -> refresh -> revoke` 全链路；定位 `gateway:9090` 统一返回 `404` 的根因为 `Spring Cloud Gateway 5.0.0` 配置前缀升级且旧镜像仍携带错误的通用 `application-docker.yml`；恢复 `han-gateway` 的源码内静态路由配置并在 Docker 配置中补齐 `workflow` 路由；在 `95` 环境重建 `han-gateway` 后，真实验证 `9090/auth/captcha`、`9090/system/runtime/capabilities`、登录后 `9090/open/app/list`、`9090/file/upload`、匿名 `9090/file/public/...` 全部成功。
+- 关键决策与解决方案：开放平台先按“最小可用生产版”收口，不删除任何现有能力，仅把原本空心或占位实现补成真实可运行链路；`OAuth2` 应用合法性、状态、回调地址全部收敛到 `open_app` 表校验，令牌状态先以内存方式托管，保证当前部署能工作；网关路由不再依赖远端遗留的 `Nacos han-gateway.yml` 旧前缀配置，统一以源码内 `application.yml` 和 `application-docker.yml` 为准，并使用 `spring.cloud.gateway.server.webflux.routes` 作为唯一合法前缀；`95` 环境后续部署验收以 `9090` 为唯一入口优先，避免再次出现“服务能直连但网关失效”的假阳性结果。
+- 使用技术栈/工具：Spring Boot 4、Spring Cloud Gateway 5、Spring Security、MyBatis-Plus、Docker Compose、Nacos、Redis、PostgreSQL、MCP SSH、PowerShell、Maven、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/gateway-route-alignment.md`
+- 修改文件：`han-gateway/src/main/resources/application.yml`
+- 修改文件：`han-gateway/src/main/resources/application-docker.yml`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/OpenAppController.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/controller/OAuth2Controller.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/domain/dto/OpenAppStatusUpdateRequest.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/domain/query/OpenAppQuery.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/domain/vo/OpenAppVO.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/mapper/OpenAppMapper.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/service/IOpenAppService.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/service/impl/OpenAppServiceImpl.java`
+- 修改文件：`han-modules/han-open/src/main/java/com/han/open/service/impl/OAuth2ServiceImpl.java`
+- 修改文件：`han-modules/han-open/src/main/resources/application-docker.yml`
