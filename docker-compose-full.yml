@@ -271,22 +271,26 @@ services:
     networks:
       - han-network
 
-    file:
-      image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
-      container_name: han-file
-      environment:
-        <<: [*db-env, *nacos-env]
-        SPRING_PROFILES_ACTIVE: docker
-        HAN_DEPLOY_TIER: full
-        HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
-        RUSTFS_ENDPOINT: http://rustfs:9000
-        RUSTFS_ACCESS_KEY: hanadmin
+  file:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
+    container_name: han-file
+    environment:
+      <<: [*db-env, *redis-env, *nacos-env]
+      SPRING_PROFILES_ACTIVE: docker
+      HAN_DEPLOY_TIER: full
+      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: hanadmin
       RUSTFS_SECRET_KEY: han@2026
       JAVA_OPTS: -Xms256m -Xmx512m
       TZ: Asia/Shanghai
     ports:
       - "9207:9207"
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       rustfs:
