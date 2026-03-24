@@ -649,3 +649,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/router/index.ts`
 - 修改文件：`han-ui/src/layout/components/Sidebar.vue`
 - 修改文件：`han-ui/tests/e2e/specs/runtime-sidebar.spec.ts`
+
+### 2026-03-24 Workflow Docker 运行时闭环与 95 中配验收
+
+- 本轮主要目标：继续推进 `medium` 档 `workflow` 闭环，补齐 Docker 运行时配置，完成 `95` 服务器上的真实部署、接口回归和前端页面联调，并把三档验收报告更新到最新结论。
+- 已完成关键任务：为 [application-docker.yml](D:/code/Han/han-modules/han-workflow/src/main/resources/application-docker.yml) 新增 `DB / Redis / Nacos` 与 `Flowable schema` 的 Docker 运行时配置；将 `workflow` 相关修复提交并推送到 `codex/han-ui-remote-validate`，再在 `95` 服务器源码目录拉取最新分支；在 `95` 上使用容器化 Maven 重新打包 `han-workflow`，并重建 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-workflow:latest` 本地镜像；通过 Docker Compose 强制重建 `han-workflow` 容器，确认容器状态达到 `healthy`，`/actuator/health` 返回 `UP`，且不再错误连接 `localhost:6379`；验证 Flowable 首次建表成功，`act_%` 表数量为 `56`；通过网关真实登录后验证 `/workflow/definition/list?pageNum=1&pageSize=10` 返回 `200` 且数据结构正常；将 [runtime-sidebar.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts) 修正为从真实 `PW_API_URL` 读取运行时能力，并分别完成“本地最新前端 + 95 后端”与“95 前端 + 95 网关”的 Playwright 回归，结果均为 `1 passed`；同步重写 [tier-validation-report-20260324.md](D:/code/Han/docs/tier-validation-report-20260324.md)，将 `medium workflow` 状态更新为已通过，把 `full` 的主要阻塞收敛为 `han-ai:latest` 发布物缺失。
+- 关键决策与解决方案：不删除也不弱化任何现有 `workflow` 能力，只补齐容器运行时环境，确保服务按文档承诺方式启动；前端验证继续坚持真实链路，不用 mock 能力接口，而是让测试脚本直接读取运行时能力后再断言菜单展示；对 `95` 环境采用“源码拉取 -> 容器化打包 -> 本地重建镜像 -> Compose 重启”的固定流程，和你要求的服务器部署流程保持一致；同时保留“后端动态菜单尚未完全覆盖 workflow”这一架构残留，不把它误记成 `workflow` 功能未通过。
+- 使用技术栈/工具：Spring Boot 4、Flowable、Nacos、Redis、PostgreSQL、Docker Compose、Maven、Playwright、MCP SSH、PowerShell、Python、`curl`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/tier-validation-report-20260324.md`
+- 修改文件：`han-modules/han-workflow/src/main/resources/application-docker.yml`
+- 修改文件：`han-ui/tests/e2e/specs/runtime-sidebar.spec.ts`

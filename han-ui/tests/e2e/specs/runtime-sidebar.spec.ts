@@ -1,11 +1,11 @@
-import { test, expect } from '../fixtures/test'
+import { test, expect, e2eRuntime } from '../fixtures/test'
 
 /**
  * 验证中配环境下，侧边栏会按后端运行时能力过滤入口。
  */
 test('sidebar should respect runtime capabilities on medium tier', async ({ authenticatedPage }) => {
   const page = authenticatedPage
-  const capabilityResponse = await page.request.get('/system/runtime/capabilities')
+  const capabilityResponse = await page.request.get(`${e2eRuntime.apiBaseUrl}/system/runtime/capabilities`)
   const capabilityJson = await capabilityResponse.json()
   const enabledModules = capabilityJson?.data?.enabledModules ?? []
   const featureFlags = capabilityJson?.data?.featureFlags ?? {}
