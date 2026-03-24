@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="tenant-quota-page">
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
@@ -10,7 +10,7 @@
       <!-- 租户选择 -->
       <el-form :inline="true" class="mb-16">
         <el-form-item label="选择租户">
-          <el-select v-model="selectedTenantId" placeholder="请选择租户" filterable @change="loadQuota" style="width: 280px;">
+          <el-select v-model="selectedTenantId" placeholder="请选择租户" filterable @change="loadQuota" style="width: 280px;" data-testid="tenant-quota-select">
             <el-option v-for="t in tenantList" :key="t.tenantId" :label="t.tenantName" :value="t.tenantId" />
           </el-select>
         </el-form-item>
@@ -20,8 +20,8 @@
       <div v-if="quota" v-loading="loading">
         <el-row :gutter="20" class="quota-cards">
           <el-col :xs="24" :sm="8">
-            <el-card shadow="hover" class="quota-card">
-              <div class="quota-icon" style="background: #409eff;">👤</div>
+            <el-card shadow="hover" class="quota-card" data-testid="tenant-quota-user-card">
+              <div class="quota-icon" style="background: #409eff;">USR</div>
               <div class="quota-info">
                 <div class="quota-title">用户数量</div>
                 <div class="quota-value">
@@ -38,8 +38,8 @@
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-card shadow="hover" class="quota-card">
-              <div class="quota-icon" style="background: #e6a23c;">💾</div>
+            <el-card shadow="hover" class="quota-card" data-testid="tenant-quota-storage-card">
+              <div class="quota-icon" style="background: #e6a23c;">STO</div>
               <div class="quota-info">
                 <div class="quota-title">存储空间</div>
                 <div class="quota-value">
@@ -56,10 +56,10 @@
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="8">
-            <el-card shadow="hover" class="quota-card">
-              <div class="quota-icon" style="background: #67c23a;">🔗</div>
+            <el-card shadow="hover" class="quota-card" data-testid="tenant-quota-api-card">
+              <div class="quota-icon" style="background: #67c23a;">API</div>
               <div class="quota-info">
-                <div class="quota-title">API调用</div>
+                <div class="quota-title">API 调用</div>
                 <div class="quota-value">
                   <span class="used">{{ quota.apiUsed }}</span>
                   <span class="sep">/</span>
@@ -101,7 +101,7 @@
               </el-select>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :loading="saving" @click="handleSave">保存配额</el-button>
+              <el-button type="primary" :loading="saving" data-testid="tenant-quota-save-button" @click="handleSave">保存配额</el-button>
             </el-form-item>
           </el-form>
         </el-card>
@@ -205,7 +205,7 @@ onMounted(() => loadTenants())
 .quota-icon {
   width: 48px; height: 48px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; flex-shrink: 0;
+  font-size: 14px; font-weight: 700; color: #fff; flex-shrink: 0;
 }
 .quota-info { flex: 1; }
 .quota-title { font-size: 13px; color: #909399; margin-bottom: 4px; }

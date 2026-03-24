@@ -579,3 +579,17 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/ITenantService.java`
 - 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/impl/TenantPackageServiceImpl.java`
 - 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/impl/TenantServiceImpl.java`
+
+### 2026-03-24 租户前端 Playwright 回归补齐
+
+- 本轮主要目标：继续推进 `tenant` 模块闭环，把租户管理、租户套餐、租户配额三页接入稳定的 Playwright 自动化验证，并确保前端源码中的租户页具备可观测测试钩子。
+- 已完成关键任务：为租户管理页补齐 `data-testid`，覆盖页面容器、表格、新增按钮和行级编辑/重置密码/删除按钮，同时修正搜索框占位文案；为租户套餐页补齐页面容器、表格、新增按钮、行级编辑/菜单/删除按钮以及菜单对话框测试钩子；为租户配额页补齐页面容器、租户选择器、三张配额卡片、保存按钮测试钩子，并将配额卡片中的图标文本改成普通 ASCII 缩写以符合仓库输出规范；新增 `han-ui/tests/e2e/utils/tenant.ts`，通过真实后端接口读取租户、套餐、有效租户和配额数据，避免测试写死；新增 `han-ui/tests/e2e/specs/tenant-pages.spec.ts`，覆盖租户列表、租户套餐、租户配额三条真实页面回归；修正 `.gitignore` 中对 `*.spec.ts` 的全局忽略，为 `han-ui/tests/e2e/specs/*.spec.ts` 增加白名单，确保新用例可以被版本管理。
+- 关键决策与解决方案：不改动租户业务逻辑，只补最小测试可观测性和前端文案修正；E2E 全程使用“本地最新 `han-ui` + `95` 真实后端网关”的联调模式，通过 API 先读取真实数据，再到页面做断言，避免因测试数据硬编码导致脆弱回归；租户配额页不再使用装饰性 emoji 图标，改成 `USR/STO/API` 这类标准文本，兼顾规范约束与页面可读性；针对 `.gitignore` 误伤 Playwright 新用例的问题，只对白名单目录解禁，不影响仓库其他 `*.spec.ts` 忽略策略。
+- 使用技术栈/工具：Vue 3、Element Plus、Vite、Playwright、PowerShell、ESLint、`vue-tsc`、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`.gitignore`
+- 修改文件：`han-ui/src/views/system/tenant/index.vue`
+- 修改文件：`han-ui/src/views/system/tenant/package.vue`
+- 修改文件：`han-ui/src/views/system/tenant/quota.vue`
+- 修改文件：`han-ui/tests/e2e/utils/tenant.ts`
+- 修改文件：`han-ui/tests/e2e/specs/tenant-pages.spec.ts`
