@@ -563,3 +563,19 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-modules/han-open/src/main/java/com/han/open/service/impl/OpenAppServiceImpl.java`
 - 修改文件：`han-modules/han-open/src/main/java/com/han/open/service/impl/OAuth2ServiceImpl.java`
 - 修改文件：`han-modules/han-open/src/main/resources/application-docker.yml`
+
+### 2026-03-24 租户模块契约收口与 95 中配回归
+
+- 本轮主要目标：继续推进 `tenant` 模块闭环，把租户列表、租户套餐、全部有效租户和管理员查询等接口收口到文档与前端页面期望的结构，并在 `95` 服务器中配环境完成真实回归。
+- 已完成关键任务：将 `/tenant/list` 从普通数组返回改为标准分页结构，补齐 `pageNum/pageSize/pages/total/rows`；为租户列表、租户详情、全部有效租户补齐 `packageName`、`userCount` 字段，并用 `@JsonIgnoreProperties` 去掉租户实体中无意义的继承 `tenantId` 序列化噪音；修复 `TenantServiceImpl`，补齐套餐名映射、用户数统计、套餐校验、角色菜单同步和安全删除异常边界；补齐租户套餐列表、详情、全部有效套餐中的 `tenantCount` 统计，修复分页元数据缺失问题；为租户套餐删除增加后端保护，拦截“默认套餐删除”和“仍有关联租户的套餐删除”；新增租户专用内部客户端 `SystemClient` 与 `ITenantQueryController`，独立提供 `/inner/system/tenant/adminUser` 能力，避免把其他混合中的 system 改动带入本轮提交；本地完成 `han-system + han-tenant` 联合编译通过；将代码推送到 `codex/han-ui-remote-validate` 后，在 `95` 服务器完成源码拉取、Maven 打包、`han-system` 与 `han-tenant` 镜像重建、Docker Compose 强制重建；最终通过 `9090` 网关真实验证 `/tenant/list`、`/tenant/package/list`、`/tenant/all`、`/tenant/listAllValid`、`/tenant/adminUser`、`/tenant/package/remove/{id}`。
+- 关键决策与解决方案：不删除任何现有功能，只补齐文档承诺的字段、分页结构和保护逻辑；针对 `adminUser` 能力，采用“新增独立 inner controller + 新增独立 HttpExchange 客户端”的方式收口，避免误带 `TenantInitController` 和 `SystemServiceClient` 中尚未完成的混合改动；真实回归全部通过网关和登录态执行，不用假数据绕过鉴权；删除保护同时覆盖“平台默认套餐”与“已被租户占用的套餐”，确保前端拦截之外后端也有兜底。
+- 使用技术栈/工具：Spring Boot 4、MyBatis-Plus、Spring HttpExchange、Docker Compose、Nacos、Redis、PostgreSQL、MCP SSH、PowerShell、Maven、`curl`、Python、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-api/han-api-system/src/main/java/com/han/api/system/SystemClient.java`
+- 修改文件：`han-modules/han-system/src/main/java/com/han/system/controller/inner/ITenantQueryController.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/controller/TenantController.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/domain/dto/TenantDTO.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/domain/po/TenantPo.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/ITenantService.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/impl/TenantPackageServiceImpl.java`
+- 修改文件：`han-modules/han-tenant/src/main/java/com/han/tenant/service/impl/TenantServiceImpl.java`
