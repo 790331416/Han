@@ -37,6 +37,8 @@ public class StorageProperties {
         private String secretKey = "han@2026";
         private String region = "us-east-1";
         private String bucket = "han";
+        private String prefix = "";
+        private String isHttps = "1";
 
         public String getEndpoint() { return endpoint; }
         public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
@@ -48,5 +50,9 @@ public class StorageProperties {
         public void setRegion(String region) { this.region = region; }
         public String getBucket() { return bucket; }
         public void setBucket(String bucket) { this.bucket = bucket; }
+        public String getPrefix() { return prefix; }
+        public void setPrefix(String prefix) { this.prefix = prefix; }
+        public String getIsHttps() { return isHttps; }
+        public void setIsHttps(String isHttps) { this.isHttps = isHttps; }
     }
 }

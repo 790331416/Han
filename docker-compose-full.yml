@@ -1,9 +1,9 @@
 # =============================================
-# Han Cloud 标准部署（中型）
-# 适用: 测试环境 / 小团队生产
-# 硬件: 4核8GB
-# 基础设施: PostgreSQL 18.1 + Redis 8.6.0 + Nacos 3.1.1 + RustFS
-# 服务: gateway, auth, system, tenant, job, open
+# Han Cloud 全量部署（大型）
+# 适用: 生产环境 / 完整功能
+# 硬件: 8核16GB
+# 基础设施: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1 + RustFS
+# 服务: gateway, auth, system, tenant, job, open, workflow, file, ai
 # =============================================
 
 x-db-env: &db-env
@@ -33,9 +33,9 @@ x-rabbitmq-env: &rabbitmq-env
 x-service-env: &service-env
   <<: [*db-env, *redis-env, *nacos-env, *rabbitmq-env]
   SPRING_PROFILES_ACTIVE: docker
-  HAN_DEPLOY_TIER: medium
+  HAN_DEPLOY_TIER: full
   HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
-  JAVA_OPTS: -Xms256m -Xmx256m
+  JAVA_OPTS: -Xms256m -Xmx512m
   TZ: Asia/Shanghai
 
 services:
@@ -88,8 +88,8 @@ services:
       NACOS_AUTH_TOKEN: "aGFuQDIwMjZoYW5AMjAyNmhhbkAyMDI2aGFuQDIwMjZoYW5AMjAyNg=="
       NACOS_AUTH_IDENTITY_KEY: serverIdentity
       NACOS_AUTH_IDENTITY_VALUE: han2026
-      JVM_XMS: 256m
-      JVM_XMX: 256m
+      JVM_XMS: 512m
+      JVM_XMX: 512m
       TZ: Asia/Shanghai
     ports:
       - "8848:8848"
@@ -149,9 +149,9 @@ services:
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
-      HAN_DEPLOY_TIER: medium
+      HAN_DEPLOY_TIER: full
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
-      JAVA_OPTS: -Xms256m -Xmx256m -Dio.netty.transport.noNative=true
+      JAVA_OPTS: -Xms256m -Xmx512m -Dio.netty.transport.noNative=true
       TZ: Asia/Shanghai
     ports:
       - "9090:8080"
@@ -169,12 +169,12 @@ services:
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
-      HAN_DEPLOY_TIER: medium
+      HAN_DEPLOY_TIER: full
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
       SPRING_AUTOCONFIGURE_EXCLUDE: >-
         org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
-      JAVA_OPTS: -Xms256m -Xmx256m
+      JAVA_OPTS: -Xms256m -Xmx512m
       TZ: Asia/Shanghai
     ports:
       - "9200:9200"
@@ -254,29 +254,6 @@ services:
     networks:
       - han-network
 
-    file:
-      image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
-      container_name: han-file
-      environment:
-        <<: [*db-env, *redis-env, *nacos-env]
-        SPRING_PROFILES_ACTIVE: docker
-        HAN_DEPLOY_TIER: medium
-        HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
-        RUSTFS_ENDPOINT: http://rustfs:9000
-        RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
-      JAVA_OPTS: -Xms256m -Xmx256m
-      TZ: Asia/Shanghai
-    ports:
-      - "9207:9207"
-    depends_on:
-      redis:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
-    networks:
-      - han-network
-
   open:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-open:latest
     container_name: han-open
@@ -284,6 +261,46 @@ services:
       <<: *service-env
     ports:
       - "9205:9205"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - han-network
+
+    file:
+      image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
+      container_name: han-file
+      environment:
+        <<: [*db-env, *nacos-env]
+        SPRING_PROFILES_ACTIVE: docker
+        HAN_DEPLOY_TIER: full
+        HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+        RUSTFS_ENDPOINT: http://rustfs:9000
+        RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
+      JAVA_OPTS: -Xms256m -Xmx512m
+      TZ: Asia/Shanghai
+    ports:
+      - "9207:9207"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    networks:
+      - han-network
+
+  ai:
+    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest
+    container_name: han-ai
+    environment:
+      <<: *service-env
+    ports:
+      - "9208:9208"
     depends_on:
       postgres:
         condition: service_healthy
