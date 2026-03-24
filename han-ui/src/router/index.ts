@@ -56,7 +56,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Job',
     component: () => import('@/layout/index.vue'),
     redirect: '/job/list',
-    meta: { title: '任务调度', icon: 'Timer', tier: 'small' },
+    meta: { title: '任务调度', icon: 'Timer', tier: 'small', module: 'job' },
     children: [
       {
         path: 'list',
@@ -77,7 +77,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Workflow',
     component: () => import('@/layout/index.vue'),
     redirect: '/workflow/definition',
-    meta: { title: '工作流', icon: 'Connection', tier: 'medium' },
+    meta: { title: '工作流', icon: 'Connection', tier: 'medium', module: 'workflow', feature: 'workflow' },
     children: [
       {
         path: 'definition',
@@ -164,19 +164,19 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'tenant',
         name: 'Tenant',
         component: () => import('@/views/system/tenant/index.vue'),
-        meta: { title: '租户管理', icon: 'Coin', permission: 'tenant:list', tier: 'medium' }
+        meta: { title: '租户管理', icon: 'Coin', permission: 'tenant:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'tenant-package',
         name: 'TenantPackage',
         component: () => import('@/views/system/tenant/package.vue'),
-        meta: { title: '租户套餐', icon: 'ShoppingBag', permission: 'tenant:package:list', tier: 'medium' }
+        meta: { title: '租户套餐', icon: 'ShoppingBag', permission: 'tenant:package:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'tenant-quota',
         name: 'TenantQuota',
         component: () => import('@/views/system/tenant/quota.vue'),
-        meta: { title: '资源配额', icon: 'PieChart', permission: 'tenant:quota:query', tier: 'medium' }
+        meta: { title: '资源配额', icon: 'PieChart', permission: 'tenant:quota:query', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'config',
@@ -224,7 +224,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'oss-config',
         name: 'OssConfig',
         component: () => import('@/views/system/oss-config/index.vue'),
-        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium' }
+        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium', feature: 'ossConfig' }
       }
     ]
   },
@@ -233,7 +233,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'AI',
     component: () => import('@/layout/index.vue'),
     redirect: '/ai/model',
-    meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full' },
+    meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full', module: 'ai', feature: 'ai' },
     children: [
       {
         path: 'model',
@@ -302,7 +302,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Open',
     component: () => import('@/layout/index.vue'),
     redirect: '/open/app',
-    meta: { title: '开放平台', icon: 'Platform', tier: 'medium' },
+    meta: { title: '开放平台', icon: 'Platform', tier: 'medium', module: 'open', feature: 'openPlatform' },
     children: [
       {
         path: 'app',
