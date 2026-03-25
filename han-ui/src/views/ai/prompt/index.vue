@@ -127,13 +127,13 @@
         <div class="preview-label">变量填写：</div>
         <el-form :inline="true" class="var-form">
           <el-form-item v-for="v in parsedVariables" :key="v" :label="v">
-            <el-input v-model="varValues[v]" :placeholder="'请输入 ' + v" size="small" />
+            <el-input v-model="varValues[v]" :data-testid="`ai-prompt-var-input-${v}`" :placeholder="'请输入 ' + v" size="small" />
           </el-form-item>
         </el-form>
-        <el-button type="primary" size="small" @click="handleRender">渲染</el-button>
+        <el-button type="primary" size="small" data-testid="ai-prompt-render-button" @click="handleRender">渲染</el-button>
         <div v-if="renderedContent" class="rendered-content">
           <div class="preview-label">渲染结果：</div>
-          <div class="preview-text rendered">{{ renderedContent }}</div>
+          <div class="preview-text rendered" data-testid="ai-prompt-rendered-content">{{ renderedContent }}</div>
         </div>
       </div>
       </div>

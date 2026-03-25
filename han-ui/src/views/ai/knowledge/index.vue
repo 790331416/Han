@@ -28,15 +28,15 @@
       <!-- 卡片模式展示 -->
       <el-row :gutter="20" v-loading="loading" data-testid="ai-knowledge-list">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="kb in kbList" :key="kb.kbId" class="kb-col">
-          <el-card shadow="hover" class="kb-card" data-testid="ai-knowledge-card" @click="handleDetail(kb)">
+          <el-card shadow="hover" class="kb-card" data-testid="ai-knowledge-card" :data-kb-id="String(kb.kbId)" :data-kb-name="kb.kbName" @click="handleDetail(kb)">
             <div class="kb-card-header">
               <el-icon :size="32" color="#409eff"><Collection /></el-icon>
               <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, kb)" @click.stop>
-                <el-icon class="kb-more"><MoreFilled /></el-icon>
+                <el-icon class="kb-more" :data-testid="`ai-knowledge-card-actions-${kb.kbId}`"><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                    <el-dropdown-item command="hitTest">命中测试</el-dropdown-item>
+                    <el-dropdown-item command="hitTest" data-testid="ai-knowledge-hit-test-command">命中测试</el-dropdown-item>
                     <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -95,12 +95,13 @@
 
     <!-- 文档管理对话框 -->
     <el-dialog v-model="docVisible" :title="`文档管理 - ${currentKb?.kbName || ''}`" width="80%" class="dialog-xl" destroy-on-close>
+      <div data-testid="ai-knowledge-doc-dialog">
       <div class="doc-header">
-        <el-upload :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html" :on-change="handleFileSelect">
-          <el-button type="primary" :icon="Upload">上传文档</el-button>
+        <el-upload data-testid="ai-knowledge-upload" :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html" :on-change="handleFileSelect">
+          <el-button type="primary" :icon="Upload" data-testid="ai-knowledge-upload-button">上传文档</el-button>
         </el-upload>
       </div>
-      <el-table v-loading="docLoading" :data="docList" style="margin-top: 16px;">
+      <el-table v-loading="docLoading" :data="docList" style="margin-top: 16px;" data-testid="ai-knowledge-doc-table">
         <el-table-column label="文档名称" prop="docName" min-width="200" show-overflow-tooltip />
         <el-table-column label="类型" prop="docType" width="80" align="center">
           <template #default="{ row }"><el-tag size="small">{{ row.docType }}</el-tag></template>
@@ -119,22 +120,23 @@
         <el-table-column label="上传时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="150">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleReindex(row)">重新索引</el-button>
-            <el-button type="danger" link @click="handleDeleteDoc(row)">删除</el-button>
+            <el-button type="primary" link data-testid="ai-knowledge-reindex-button" @click="handleReindex(row)">重新索引</el-button>
+            <el-button type="danger" link data-testid="ai-knowledge-delete-doc-button" @click="handleDeleteDoc(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </el-dialog>
     <!-- 命中测试对话框 -->
     <el-dialog v-model="hitTestVisible" :title="`命中测试 - ${hitTestKbName}`" width="70%" class="dialog-xl" destroy-on-close>
-      <div class="hit-test-input">
-        <el-input v-model="hitTestQuery" placeholder="请输入测试查询文本" type="textarea" :rows="3" />
-        <el-button type="primary" :loading="hitTestLoading" @click="doHitTest" style="margin-top: 12px;">检索测试</el-button>
+      <div class="hit-test-input" data-testid="ai-knowledge-hit-test-dialog">
+        <el-input v-model="hitTestQuery" data-testid="ai-knowledge-hit-test-input" placeholder="请输入测试查询文本" type="textarea" :rows="3" />
+        <el-button type="primary" :loading="hitTestLoading" data-testid="ai-knowledge-hit-test-submit" @click="doHitTest" style="margin-top: 12px;">检索测试</el-button>
       </div>
-      <div v-if="hitTestResults.length > 0" class="hit-test-results">
+      <div v-if="hitTestResults.length > 0" class="hit-test-results" data-testid="ai-knowledge-hit-test-results">
         <div class="hit-test-title">检索到 {{ hitTestResults.length }} 条结果：</div>
         <el-collapse accordion>
-          <el-collapse-item v-for="(item, idx) in hitTestResults" :key="idx" :name="idx">
+          <el-collapse-item v-for="(item, idx) in hitTestResults" :key="idx" :name="idx" data-testid="ai-knowledge-hit-test-result">
             <template #title>
               <div class="hit-item-header">
                 <span class="hit-rank">#{{ idx + 1 }}</span>

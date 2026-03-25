@@ -56,8 +56,8 @@
         </el-table-column>
         <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
-            <el-button type="success" link @click="handleRefresh(row)">刷新工具</el-button>
-            <el-button type="info" link @click="handleViewTools(row)">查看工具</el-button>
+            <el-button type="success" link data-testid="ai-mcp-refresh-button" @click="handleRefresh(row)">刷新工具</el-button>
+            <el-button type="info" link data-testid="ai-mcp-view-tools-button" @click="handleViewTools(row)">查看工具</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -118,11 +118,13 @@
 
     <!-- 查看工具对话框 -->
     <el-dialog v-model="toolsVisible" title="MCP工具列表" width="65%" class="dialog-lg">
-      <el-table :data="toolsList" v-if="toolsList.length > 0">
+      <div data-testid="ai-mcp-tools-dialog">
+      <el-table :data="toolsList" v-if="toolsList.length > 0" data-testid="ai-mcp-tools-table">
         <el-table-column label="工具名称" prop="name" width="200" />
         <el-table-column label="描述" prop="description" min-width="300" show-overflow-tooltip />
       </el-table>
       <el-empty v-else description="暂无工具，请先刷新" />
+      </div>
     </el-dialog>
   </div>
 </template>
