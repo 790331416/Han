@@ -767,3 +767,12 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/views/ai/prompt/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-admin-extended.spec.ts`
 - 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`
+
+### 2026-03-25 AI 内置 Prompt 编辑保护远端收尾验证
+
+- 本轮主要目标：继续推进 `full` 档 AI 模块验收收尾，在不简化任何现有功能的前提下，完成 `Prompt` 内置模板编辑保护的 `95` 远端真实部署验证，并把 AI 验收文档重写为 UTF-8 正常中文。
+- 已完成关键任务：核对 `C:\Users\79033\.codex\skills\playwright\SKILL.md` 与 [full-tier-ai-validation-20260325.md](D:/code/Han/docs/full-tier-ai-validation-20260325.md) 等参考文档；确认 `95` 上 `han-ai` 已运行在提交 `85db33d`，并通过健康检查验证容器 `healthy`；识别并修正 `han-ui` 远端镜像重建只复制旧 `dist` 的问题，改为先用容器化 Node 在 `/opt/han/source/Han-ui-validate-20260323/han-ui` 执行 `npm ci --legacy-peer-deps && npm run build`，再重建并替换 `han-ui` 容器；清理临时 `han-ui-builder` 容器；本地提权执行 Playwright，直连 `95:3000` 与 `95:9090` 跑通 [ai-admin-extended.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts)，结果 `4 passed`，新增覆盖“内置模板禁止编辑”；重写 [full-tier-ai-validation-20260325.md](D:/code/Han/docs/full-tier-ai-validation-20260325.md)，将 AI `full` 档验收结果统一整理为 UTF-8 正常中文，并补入本轮“页面禁编 + 接口拒编”双层保护结论。
+- 关键决策与解决方案：不删减任何 AI 页面、接口和已有回归，只补保护和验证；确认 `han-ui` Dockerfile 仅复制 `dist` 后，采用“容器化前端构建 + 再重建 Nginx 镜像”的方式保证 `95` 上的前端代码真实生效，而不是误把旧产物当成最新验证；内置模板编辑保护坚持双层口径，既验证前端 [index.vue](D:/code/Han/han-ui/src/views/ai/prompt/index.vue) 的禁用态，也验证后端 [AiPromptTemplateServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiPromptTemplateServiceImpl.java) 的拒绝态；遇到本地 Playwright `spawn EPERM` 时，不绕过真实浏览器，按规范改为提权执行，确保结果仍然来自真实浏览器自动化而不是降级替代。
+- 使用技术栈/工具：Vue 3、TypeScript、Playwright、Docker、MCP SSH、PowerShell、Node.js、NPM、Maven、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
