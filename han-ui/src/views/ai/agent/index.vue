@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-agent-page">
     <el-card shadow="never" class="search-form">
       <el-form :inline="true">
         <el-form-item label="智能体名称">
@@ -16,13 +16,15 @@
       <template #header>
         <div class="card-header">
           <span>智能体管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">创建智能体</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-agent-create-button" @click="handleAdd">
+            创建智能体
+          </el-button>
         </div>
       </template>
 
-      <el-row :gutter="20" v-loading="loading">
+      <el-row :gutter="20" v-loading="loading" data-testid="ai-agent-list">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="agent in agentList" :key="agent.agentId" class="agent-col">
-          <el-card shadow="hover" class="agent-card">
+          <el-card shadow="hover" class="agent-card" data-testid="ai-agent-card">
             <div class="agent-card-header">
               <el-avatar :size="40" :src="agent.avatar" style="background: #409eff;">
                 {{ agent.agentName?.charAt(0) }}

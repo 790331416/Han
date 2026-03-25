@@ -41,12 +41,23 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
 
     @Override
     public List<AiModelPo> selectAll(String modelType) {
-        LambdaQueryWrapper<AiModelPo> wrapper = new LambdaQueryWrapper<AiModelPo>()
+        LambdaQueryWrapper<AiModelPo> enabledWrapper = new LambdaQueryWrapper<AiModelPo>()
                 .eq(AiModelPo::getStatus, STATUS_ENABLED)
                 .eq(StringUtils.hasText(modelType), AiModelPo::getModelType, modelType)
                 .orderByAsc(AiModelPo::getModelName);
-        applyTenantScope(wrapper);
-        return aiModelMapper.selectList(wrapper);
+        applyTenantScope(enabledWrapper);
+        List<AiModelPo> enabledModels = aiModelMapper.selectList(enabledWrapper);
+        if (!enabledModels.isEmpty()) {
+            return enabledModels;
+        }
+
+        // Compatibility fallback for historical seed data that contains only disabled defaults.
+        LambdaQueryWrapper<AiModelPo> fallbackWrapper = new LambdaQueryWrapper<AiModelPo>()
+                .eq(StringUtils.hasText(modelType), AiModelPo::getModelType, modelType)
+                .orderByAsc(AiModelPo::getStatus)
+                .orderByAsc(AiModelPo::getModelName);
+        applyTenantScope(fallbackWrapper);
+        return aiModelMapper.selectList(fallbackWrapper);
     }
 
     @Override

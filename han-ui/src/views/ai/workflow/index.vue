@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-workflow-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="工作流名称" prop="workflowName">
@@ -21,13 +21,15 @@
       <template #header>
         <div class="card-header">
           <span>AI工作流管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">创建工作流</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-workflow-create-button" @click="handleAdd">
+            创建工作流
+          </el-button>
         </div>
       </template>
 
-      <el-row :gutter="20" v-loading="loading">
+      <el-row :gutter="20" v-loading="loading" data-testid="ai-workflow-list">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="wf in workflowList" :key="wf.workflowId" class="wf-col">
-          <el-card shadow="hover" class="wf-card">
+          <el-card shadow="hover" class="wf-card" data-testid="ai-workflow-card">
             <div class="wf-card-header">
               <el-icon :size="28" :color="wf.published === '1' ? '#67c23a' : '#909399'"><ChatDotRound /></el-icon>
               <div class="wf-card-actions">

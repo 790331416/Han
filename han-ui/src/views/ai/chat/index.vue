@@ -1,15 +1,24 @@
 <template>
-  <div class="ai-chat-container">
+  <div class="ai-chat-container" data-testid="ai-chat-page">
     <!-- 左侧会话列表 -->
     <div class="chat-sidebar">
       <div class="sidebar-header">
-        <el-button type="primary" :icon="Plus" class="new-chat-btn" @click="handleNewChat">新建对话</el-button>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          class="new-chat-btn"
+          data-testid="ai-chat-new-button"
+          @click="handleNewChat"
+        >
+          新建对话
+        </el-button>
       </div>
-      <div class="conversation-list">
+      <div class="conversation-list" data-testid="ai-chat-conversation-list">
         <div
           v-for="conv in conversationList"
           :key="conv.conversationId"
           :class="['conversation-item', { active: currentConversationId === conv.conversationId }]"
+          data-testid="ai-chat-conversation-item"
           @click="selectConversation(conv)"
         >
           <el-icon><ChatDotRound /></el-icon>
@@ -47,13 +56,19 @@
       </div>
 
       <!-- 消息列表 -->
-      <div class="chat-messages" ref="messagesRef">
+      <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list">
         <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen">
           <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
           <h2>欢迎使用 HAN AI 助手</h2>
           <p>选择一个模型，开始对话吧</p>
         </div>
-        <div v-for="(msg, idx) in messages" :key="msg.messageId || msg.sortOrder" :class="['message-item', msg.role]">
+        <div
+          v-for="(msg, idx) in messages"
+          :key="msg.messageId || msg.sortOrder"
+          :class="['message-item', msg.role]"
+          data-testid="ai-chat-message"
+          :data-role="msg.role"
+        >
           <div class="message-avatar">
             <el-avatar v-if="msg.role === 'user'" :size="36" style="background: #409eff">
               <el-icon><User /></el-icon>
@@ -86,7 +101,7 @@
           </div>
         </div>
         <!-- 流式输出中 -->
-        <div v-if="streaming" class="message-item assistant">
+        <div v-if="streaming" class="message-item assistant" data-testid="ai-chat-streaming">
           <div class="message-avatar">
             <el-avatar :size="36" style="background: #67c23a">
               <el-icon><Monitor /></el-icon>
@@ -111,6 +126,7 @@
         </div>
         <div class="input-wrapper">
           <el-input
+            data-testid="ai-chat-input"
             v-model="inputMessage"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 5 }"
@@ -124,6 +140,7 @@
             :icon="Promotion"
             circle
             class="send-btn"
+            data-testid="ai-chat-send-button"
             :loading="sending"
             :disabled="!inputMessage.trim() || !selectedModelId"
             @click="handleSend"
