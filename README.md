@@ -741,3 +741,16 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/tests/e2e/fixtures/files/ai-knowledge-upload.txt`
 - 修改文件：`han-ui/tests/e2e/specs/ai-admin-deep.spec.ts`
 - 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`
+
+### 2026-03-25 AI 管理页高级生命周期回归补齐
+
+- 本轮主要目标：继续向文档目标靠拢，在不简化任何现有功能的前提下，把 AI 管理页回归继续推进到“多文档生命周期、Prompt 编辑更新、MCP 传输类型差异”这一层。
+- 已完成关键任务：为 [index.vue](D:/code/Han/han-ui/src/views/ai/prompt/index.vue) 补充编辑按钮、模板名称、模板内容、变量列表、提交按钮测试钩子；扩展 [ai-admin.ts](D:/code/Han/han-ui/tests/e2e/utils/ai-admin.ts)，补齐知识库统计字段、Prompt 模板补充字段，以及 MCP `stdio/sse` 差异化创建参数；新增 [ai-knowledge-upload-extra.txt](D:/code/Han/han-ui/tests/e2e/fixtures/files/ai-knowledge-upload-extra.txt) 第二份知识库上传样例；新增 [ai-admin-lifecycle.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts)，覆盖“多文档上传 -> 单文档删除 -> 统计回落”“Prompt 编辑 -> 保存 -> 预览 -> 渲染”“MCP `sse/stdio` 工具元数据差异”三条高级回归；本地执行 `eslint`、`vite build` 通过；本地最新前端连 `95` 真实后端执行新增 Playwright，结果 `3 passed`；将代码提交为 `71d0803` 并推送到 `codex/han-ui-remote-validate`；在 `95` 服务器 `/opt/han/source/Han-ui-validate-20260323` 拉取最新代码、重建 `han-ui` 镜像并替换独立前端容器；最终以远端 `95:3000 + 95:9090` 重跑新增 Playwright，结果 `3 passed`。
+- 关键决策与解决方案：不删减任何页面行为，也不把高级回归退化成只测接口；知识库这条线直接用两份真实文件做生命周期验证，确保页面统计和后端真实状态同步；Prompt 这条线不只测新增和预览，而是把编辑保存后的再次渲染也纳入保护；MCP 这条线明确验证 `sse` 与 `stdio` 刷新后的工具元数据不同，不再只验证“能刷新”；远端验证继续坚持“95 前端 + 95 后端”整链路口径。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Docker、MCP SSH、PowerShell、Node.js、`eslint`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
+- 修改文件：`han-ui/src/views/ai/prompt/index.vue`
+- 修改文件：`han-ui/tests/e2e/fixtures/files/ai-knowledge-upload-extra.txt`
+- 修改文件：`han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts`
+- 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`
