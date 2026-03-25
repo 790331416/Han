@@ -685,3 +685,18 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiMcpServerServiceImpl.java`
 - 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiPromptTemplateServiceImpl.java`
 - 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiTokenStatsServiceImpl.java`
+
+### 2026-03-25 Full 档 AI 二期部署与真实验收收口
+
+- 本轮主要目标：继续推进 `full` 档部署验收，完成 AI 二期能力在 `95` 服务器上的真实部署、真实接口回归和真实前端 Playwright 页面回归，解除三档部署验收中 `full` 的核心阻塞。
+- 已完成关键任务：确认 `95` 上 `han-ai` 与 `han-ui` 容器均为 `healthy`；将 `codex/han-ui-remote-validate` 最新提交 `192b528` 拉取到 `/opt/han/source/Han-ui-validate-20260323`；补齐并执行 `sql/ai_agent.sql` 初始化，完成 `ai_agent` 表落库；在 `95` 上使用容器化 Maven 重新打包 `han-ai`，重建 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest`，并通过 [docker-compose-full.yml](D:/code/Han/docker-compose-full.yml) 强制重建 `ai` 服务；在 `95` 上重新构建 `han-ui` 并以独立容器方式重新挂到 `docker_han-network`；通过真实网关接口验证 `/system/runtime/capabilities`、`/ai/model/all?modelType=LLM`、`/ai/agent/*`、`/ai/workflow/*`、`/ai/chat/*` 均可访问；本地提权执行 Playwright，直连 `95:3000` 与 `95:9090` 跑通 [ai-full.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts)，结果 `2 passed`。
+- 关键决策与解决方案：不删改任何现有 AI 页面和路由，只补齐后端兼容逻辑与测试钩子；针对 `AI 聊天` 页面模型下拉为空的问题，在 [AiModelServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelServiceImpl.java) 中为 `selectAll(modelType)` 增加“启用模型优先，若无启用模型则回退全部模型”的兼容逻辑，避免历史种子数据全部禁用时前端无法发消息；同步将 [han_ai.sql](D:/code/Han/sql/han_ai.sql) 中默认 `DeepSeek Chat` 模型状态改为启用，并对 `95` 现网历史数据执行一次性补丁 `update ai_model set status='0' where model_name='DeepSeek Chat';`；前端验证坚持“真实浏览器 + 真实远端前后端”口径，不使用 mock；单独新增 UTF-8 报告 [full-tier-ai-validation-20260325.md](D:/code/Han/docs/full-tier-ai-validation-20260325.md) 落档本轮 `full` 验收结果。
+- 使用技术栈/工具：Spring Boot 4、MyBatis-Plus、Vue 3、Playwright、Docker、Docker Compose、Maven、PostgreSQL、MCP SSH、PowerShell、Python、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelServiceImpl.java`
+- 修改文件：`sql/han_ai.sql`
+- 修改文件：`han-ui/src/views/ai/agent/index.vue`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
+- 修改文件：`han-ui/src/views/ai/workflow/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
