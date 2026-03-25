@@ -700,3 +700,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/views/ai/chat/index.vue`
 - 修改文件：`han-ui/src/views/ai/workflow/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
+
+### 2026-03-25 AI 对话流式与再生成链路稳定性回归
+
+- 本轮主要目标：继续收口 `AI 对话` 的真实交互链路，在不简化任何现有功能的前提下，修复 `stream / regenerate / edit-regenerate` 在真实远端环境中的稳定性问题，并完成 `95` 服务器前后端一体化回归。
+- 已完成关键任务：梳理 [AiChatController.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/controller/AiChatController.java) 与前端 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 的交互契约，确认 `stream`、`regenerate`、`edit-regenerate` 均已存在；新增 [ai-stream.ts](D:/code/Han/han-ui/src/utils/ai-stream.ts) 提取统一的 SSE 请求与解析逻辑，并兼容 `CRLF` 行结束符；为 AI 对话页补充消息节点与编辑、重新生成、停止生成相关测试钩子；重构前端发送消息与流式消费逻辑，复用统一流式工具，避免重复解析代码；定位 `95` 环境 `edit-regenerate` 失败根因并非后端能力缺失，而是前端对流式返回消息使用了临时 `messageId`，导致后续重新编辑时无法命中数据库中的真实消息；据此在 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 中新增当前会话消息同步逻辑，使流式结束后立即从后端回拉真实消息并刷新本地会话状态；扩展 [ai-full.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts)，新增覆盖“发送消息后重新生成”和“编辑用户消息后重新生成”的真实浏览器回归；将修复分别提交为 `f63eefc` 与 `3c3bc82` 并推送到 `codex/han-ui-remote-validate`；在 `95` 服务器源码目录拉取最新分支、重新构建 `han-ui` 镜像并重建独立前端容器；最终在真实 `95:3000 + 95:9090` 环境下重跑 Playwright，`3 passed`，覆盖 `AI 智能体/工作流页面`、`AI 对话发送消息`、`AI 对话重新生成与编辑后重新生成`。
+- 关键决策与解决方案：不删减任何 AI 聊天能力，不绕开真实业务流程，也不把回归退化成假接口或只测首屏；流式解析层采用公共工具抽取，确保普通发送与再生成走同一套事件处理链；对 `edit-regenerate` 的修复选择“流式完成后主动与后端真实会话状态对齐”，而不是在前端伪造更复杂的 ID 映射，既保留现有交互体验，也避免再次出现临时消息与真实消息脱节；远端验证继续坚持“本地最新测试代码 + 95 最新前端镜像 + 95 真实后端”三层一致，不以单侧通过替代整体通过。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Docker、MCP SSH、PowerShell、Node.js、`eslint`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/utils/ai-stream.ts`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
