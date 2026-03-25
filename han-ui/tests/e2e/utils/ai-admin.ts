@@ -144,7 +144,8 @@ export async function createPromptTemplate(
       category: payload.category || 'user',
       content: payload.content,
       variables: payload.variables || '',
-      description: '',
+      description: payload.description || '',
+      builtIn: payload.builtIn ?? 0,
       status: payload.status || '0'
     }
   })
@@ -179,6 +180,18 @@ export async function deletePromptTemplate(
     headers: buildHeaders(accessToken)
   })
   await ensureSuccess<void>(response)
+}
+
+export async function tryDeletePromptTemplate(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  templateId: string | number
+): Promise<ApiEnvelope<void>> {
+  const response = await request.post(`${apiBaseUrl}/ai/prompt/remove/${templateId}`, {
+    headers: buildHeaders(accessToken)
+  })
+  return (await response.json()) as ApiEnvelope<void>
 }
 
 export async function createMcpServer(

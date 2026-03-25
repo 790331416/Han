@@ -37,7 +37,7 @@
                   <el-dropdown-menu>
                     <el-dropdown-item command="edit">编辑</el-dropdown-item>
                     <el-dropdown-item command="hitTest" data-testid="ai-knowledge-hit-test-command">命中测试</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                    <el-dropdown-item command="delete" data-testid="ai-knowledge-delete-command" divided>删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>

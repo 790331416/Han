@@ -66,7 +66,7 @@
           <template #default="{ row }">
             <el-button type="info" link data-testid="ai-prompt-preview-button" @click="handlePreview(row)">预览</el-button>
             <el-button type="primary" link :icon="Edit" data-testid="ai-prompt-edit-button" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
+            <el-button type="danger" link :icon="Delete" data-testid="ai-prompt-delete-button" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
