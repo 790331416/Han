@@ -205,7 +205,7 @@ async function loadModels() {
 async function loadConversations() {
   try {
     const res = await listConversations({ pageNum: 1, pageSize: 50 })
-    conversationList.value = (res as any).data?.records || []
+    conversationList.value = (res as any).data?.rows || []
   } catch (e) {
     console.error('加载会话列表失败', e)
   }

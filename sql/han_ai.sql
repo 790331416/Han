@@ -163,6 +163,35 @@ COMMENT ON COLUMN ai_prompt_template.variables IS '模板变量JSON数组';
 COMMENT ON COLUMN ai_prompt_template.built_in IS '是否内置(1是 0否)';
 
 -- ----------------------------
+-- AI智能体表
+-- ----------------------------
+DROP TABLE IF EXISTS ai_agent;
+CREATE TABLE ai_agent (
+    agent_id            BIGSERIAL       PRIMARY KEY,
+    agent_name          VARCHAR(100)    NOT NULL,
+    description         VARCHAR(1000)   DEFAULT '',
+    avatar              VARCHAR(500)    DEFAULT '',
+    system_prompt       TEXT            DEFAULT '',
+    prologue            VARCHAR(2000)   DEFAULT '',
+    model_id            BIGINT          DEFAULT NULL,
+    knowledge_base_ids  TEXT            DEFAULT '[]',
+    mcp_server_ids      TEXT            DEFAULT '[]',
+    temperature         NUMERIC(3,2)    DEFAULT 0.70,
+    max_tokens          INTEGER         DEFAULT 2048,
+    published           CHAR(1)         DEFAULT '0',
+    status              CHAR(1)         DEFAULT '0',
+    tenant_id           BIGINT          DEFAULT 0,
+    create_by           VARCHAR(64)     DEFAULT '',
+    create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by           VARCHAR(64)     DEFAULT '',
+    update_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    deleted             INTEGER         DEFAULT 0
+);
+
+COMMENT ON TABLE ai_agent IS 'AI智能体表';
+COMMENT ON COLUMN ai_agent.published IS '是否发布(0未发布 1已发布)';
+
+-- ----------------------------
 -- AI工作流表
 -- ----------------------------
 DROP TABLE IF EXISTS ai_workflow;
