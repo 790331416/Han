@@ -20,6 +20,8 @@ export interface KnowledgeBaseRecord {
   kbType: string
   description?: string
   status?: string
+  documentCount?: number
+  paragraphCount?: number
 }
 
 export interface KbDocumentRecord {
@@ -34,6 +36,10 @@ export interface McpServerRecord {
   mcpId: string | number
   serverName: string
   transportType: string
+  command?: string
+  args?: string
+  envVars?: string
+  url?: string
   tools?: string
   status?: string
 }
@@ -44,6 +50,8 @@ export interface PromptTemplateRecord {
   category: string
   content: string
   variables?: string
+  description?: string
+  builtIn?: number
   status?: string
 }
 
@@ -179,16 +187,17 @@ export async function createMcpServer(
   accessToken: string,
   payload: Partial<McpServerRecord>
 ): Promise<McpServerRecord> {
+  const transportType = payload.transportType || 'sse'
   const response = await request.post(`${apiBaseUrl}/ai/mcp`, {
     headers: buildHeaders(accessToken),
     data: {
       serverName: payload.serverName,
       description: '',
-      transportType: payload.transportType || 'sse',
-      command: '',
-      args: '[]',
-      envVars: '{}',
-      url: 'http://127.0.0.1:65535/sse',
+      transportType,
+      command: transportType === 'stdio' ? (payload.command || 'npx') : '',
+      args: transportType === 'stdio' ? (payload.args || '[]') : '[]',
+      envVars: transportType === 'stdio' ? (payload.envVars || '{}') : '{}',
+      url: transportType === 'stdio' ? '' : (payload.url || 'http://127.0.0.1:65535/sse'),
       status: payload.status || '0'
     }
   })

@@ -1,0 +1,3 @@
+Han AI second upload sample for Playwright lifecycle regression.
+This paragraph exists to verify multiple document upload and delete behavior.
+The second unique phrase is: Playwright second lifecycle document sample.

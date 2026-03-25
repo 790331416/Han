@@ -65,7 +65,7 @@
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="info" link data-testid="ai-prompt-preview-button" @click="handlePreview(row)">预览</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="primary" link :icon="Edit" data-testid="ai-prompt-edit-button" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
           </template>
         </el-table-column>
@@ -82,7 +82,7 @@
     <el-dialog v-model="dialogVisible" :title="form.templateId ? '编辑模板' : '新增模板'" width="65%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" data-testid="ai-prompt-form">
         <el-form-item label="模板名称" prop="templateName">
-          <el-input v-model="form.templateName" placeholder="请输入模板名称" />
+          <el-input v-model="form.templateName" data-testid="ai-prompt-name-input" placeholder="请输入模板名称" />
         </el-form-item>
         <el-form-item label="分类" prop="category">
           <el-select v-model="form.category" placeholder="请选择分类">
@@ -90,10 +90,10 @@
           </el-select>
         </el-form-item>
         <el-form-item label="模板内容" prop="content">
-          <el-input v-model="form.content" type="textarea" :rows="6" placeholder="请输入模板内容，支持 {{变量名}} 占位符" />
+          <el-input v-model="form.content" data-testid="ai-prompt-content-input" type="textarea" :rows="6" placeholder="请输入模板内容，支持 {{变量名}} 占位符" />
         </el-form-item>
         <el-form-item label="变量列表" prop="variables">
-          <el-input v-model="form.variables" placeholder='JSON数组，如 ["name","topic"]（可选）' />
+          <el-input v-model="form.variables" data-testid="ai-prompt-variables-input" placeholder='JSON数组，如 ["name","topic"]（可选）' />
         </el-form-item>
         <el-form-item label="场景说明" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="模板使用场景说明" />
@@ -107,7 +107,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitLoading" data-testid="ai-prompt-submit-button" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
 
