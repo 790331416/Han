@@ -711,3 +711,18 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/utils/ai-stream.ts`
 - 修改文件：`han-ui/src/views/ai/chat/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
+
+### 2026-03-25 AI 对话边界回归与 AI 管理页 Smoke 收口
+
+- 本轮主要目标：继续向文档目标靠拢，在不简化任何现有功能的前提下，补齐 `AI 对话` 的边界自动化回归，覆盖 `stop`、`再次发送`、`刷新恢复当前会话`，并为 `知识库 / MCP / Prompt` 三个 AI 管理页接上稳定的 Playwright smoke；同时完成 `95` 服务器前端真实部署与远端整体验证。
+- 已完成关键任务：在 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 为当前会话和模型选择补充轻量持久化，页面进入时优先恢复上次会话，若无持久化记录则回到最近一条会话；为 `AI 对话` 增加模型下拉测试钩子并优化停止生成后的滚动与状态恢复；为 [知识库页面](D:/code/Han/han-ui/src/views/ai/knowledge/index.vue)、[MCP 页面](D:/code/Han/han-ui/src/views/ai/mcp/index.vue)、[Prompt 页面](D:/code/Han/han-ui/src/views/ai/prompt/index.vue) 补充稳定 `data-testid`；新增 [ai-chat-edge.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts)，覆盖“停止生成后再次发送”和“刷新后恢复当前会话”；新增 [ai-admin-pages.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-admin-pages.spec.ts)，覆盖 `知识库 / MCP / Prompt` 三页的列表加载与创建入口 smoke；本地执行 `eslint`、`npm run build` 均通过；本地最新前端连 `95` 真实后端执行新增 Playwright 回归，结果 `5 passed`；将代码与文档以提交 `05f91b4` 推送到 `codex/han-ui-remote-validate`，随后在 `95` 服务器 `/opt/han/source/Han-ui-validate-20260323` 拉取最新代码、重建 `han-ui` 镜像并替换独立前端容器；最后以远端 `95:3000 + 95:9090` 再跑新增 Playwright 回归，结果仍为 `5 passed`。
+- 关键决策与解决方案：不改变任何已有业务入口，也不删除欢迎页与新建会话能力，只在页面恢复阶段补一层“优先恢复当前、否则回到最近会话”的轻量状态恢复；`stop` 用例不再错误断言空输入状态下发送按钮必须可用，而是聚焦真实用户路径“停止后仍可继续发送下一条消息”；AI 管理页 smoke 不强行注入或篡改业务数据，而是以真实接口 `200`、页面入口可见、创建弹层可打开作为第一层保护网；为消除文档乱码风险，重写了 [full-tier-ai-validation-20260325.md](D:/code/Han/docs/full-tier-ai-validation-20260325.md) 为 UTF-8 正常中文版本，并补入本轮新增边界与 smoke 覆盖。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Docker、MCP SSH、PowerShell、Node.js、`eslint`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
+- 修改文件：`han-ui/src/views/ai/knowledge/index.vue`
+- 修改文件：`han-ui/src/views/ai/mcp/index.vue`
+- 修改文件：`han-ui/src/views/ai/prompt/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-chat-edge.spec.ts`
+- 修改文件：`han-ui/tests/e2e/specs/ai-admin-pages.spec.ts`
