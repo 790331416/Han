@@ -68,6 +68,7 @@
           :class="['message-item', msg.role]"
           data-testid="ai-chat-message"
           :data-role="msg.role"
+          :data-message-id="String(msg.messageId ?? '')"
         >
           <div class="message-avatar">
             <el-avatar v-if="msg.role === 'user'" :size="36" style="background: #409eff">
@@ -81,19 +82,24 @@
             <div class="message-role">{{ msg.role === 'user' ? '我' : 'AI 助手' }}</div>
             <!-- 编辑模式 -->
             <template v-if="editingMessageId === msg.messageId && msg.role === 'user'">
-              <el-input v-model="editMessageContent" type="textarea" :autosize="{ minRows: 2, maxRows: 8 }" />
+              <el-input
+                v-model="editMessageContent"
+                data-testid="ai-chat-edit-input"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 8 }"
+              />
               <div class="edit-actions">
-                <el-button size="small" type="primary" @click="submitEditMessage(msg)">发送</el-button>
+                <el-button size="small" type="primary" data-testid="ai-chat-edit-submit-button" @click="submitEditMessage(msg)">发送</el-button>
                 <el-button size="small" @click="cancelEditMessage">取消</el-button>
               </div>
             </template>
             <template v-else>
               <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
               <div class="message-actions" v-if="!streaming">
-                <el-button v-if="msg.role === 'user'" type="info" link size="small" @click="startEditMessage(msg)">
+                <el-button v-if="msg.role === 'user'" type="info" link size="small" data-testid="ai-chat-edit-button" @click="startEditMessage(msg)">
                   <el-icon><Edit /></el-icon>编辑
                 </el-button>
-                <el-button v-if="msg.role === 'assistant' && idx === messages.length - 1" type="info" link size="small" @click="handleRegenerate">
+                <el-button v-if="msg.role === 'assistant' && idx === messages.length - 1" type="info" link size="small" data-testid="ai-chat-regenerate-button" @click="handleRegenerate">
                   <el-icon><RefreshRight /></el-icon>重新生成
                 </el-button>
               </div>
@@ -120,7 +126,7 @@
       <!-- 输入区域 -->
       <div class="chat-input-area">
         <div v-if="streaming" class="stop-generate">
-          <el-button type="danger" size="small" round @click="handleStopGenerate">
+          <el-button type="danger" size="small" round data-testid="ai-chat-stop-button" @click="handleStopGenerate">
             <el-icon><VideoPause /></el-icon>停止生成
           </el-button>
         </div>
@@ -169,6 +175,7 @@ import {
   type AiModel
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
+import { consumeAiStreamResponse, requestAiStream } from '@/utils/ai-stream'
 
 // marked 配置：启用代码高亮
 marked.setOptions({
@@ -268,7 +275,6 @@ async function handleSend() {
   sending.value = true
   inputMessage.value = ''
 
-  // 添加用户消息到界面
   const userMsg: AiChatMessage = {
     messageId: Date.now(),
     conversationId: currentConversationId.value || 0,
@@ -279,7 +285,6 @@ async function handleSend() {
   messages.value.push(userMsg)
   scrollToBottom()
 
-  // 使用 SSE 流式接口
   streaming.value = true
   streamContent.value = ''
 
@@ -287,67 +292,26 @@ async function handleSend() {
     const userStore = useUserStore()
     const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
     abortController.value = new AbortController()
-    const response = await fetch(`${baseUrl}/ai/chat/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.token}`,
-        ...(userStore.tenantId ? { 'X-Tenant-Id': String(userStore.tenantId) } : {})
-      },
-      body: JSON.stringify({
+    const fullContent = await requestAiStream({
+      baseUrl,
+      path: '/ai/chat/stream',
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
         conversationId: currentConversationId.value || null,
         modelId: selectedModelId.value,
         message: msg
-      }),
-      signal: abortController.value.signal
+      },
+      signal: abortController.value.signal,
+      onDelta: ({ fullContent }) => {
+        streamContent.value = fullContent
+        scrollToBottom()
+      },
+      onError: (message) => {
+        ElMessage.error('AI回复出错: ' + (message || '未知错误'))
+      }
     })
 
-    if (!response.ok) {
-      throw new Error(`请求失败: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-
-    if (!reader) {
-      throw new Error('无法获取响应流')
-    }
-
-    let fullContent = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = decoder.decode(value, { stream: true })
-      // SSE 格式: data:xxx\n\n
-      const lines = chunk.split('\n')
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data:')) continue
-        const jsonStr = trimmed.substring(5).trim()
-        if (!jsonStr) continue
-
-        try {
-          const evt = JSON.parse(jsonStr)
-          if (evt.type === 'delta' && evt.content) {
-            fullContent += evt.content
-            streamContent.value = fullContent
-            scrollToBottom()
-          } else if (evt.type === 'error') {
-            ElMessage.error('AI回复出错: ' + (evt.content || '未知错误'))
-          }
-        } catch {
-          // 非 JSON 片段，可能是纯文本 SSE
-          if (jsonStr !== '[DONE]') {
-            fullContent += jsonStr
-            streamContent.value = fullContent
-            scrollToBottom()
-          }
-        }
-      }
-    }
-
-    // 流结束，将完整内容加入消息列表
     streaming.value = false
     if (fullContent) {
       messages.value.push({
@@ -359,7 +323,6 @@ async function handleSend() {
       })
     }
 
-    // 刷新会话列表（可能是新会话）
     await loadConversations()
     if (!currentConversationId.value && conversationList.value.length > 0) {
       const latest = conversationList.value[0]
@@ -518,42 +481,15 @@ async function saveTitle() {
 
 // ==================== SSE 响应处理 ====================
 async function processSSEResponse(response: Response) {
-  if (!response.ok) {
-    throw new Error(`请求失败: ${response.status}`)
-  }
-  const reader = response.body?.getReader()
-  const decoder = new TextDecoder()
-  if (!reader) throw new Error('无法获取响应流')
-
-  let fullContent = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const chunk = decoder.decode(value, { stream: true })
-    const lines = chunk.split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
-      const jsonStr = trimmed.substring(5).trim()
-      if (!jsonStr) continue
-      try {
-        const evt = JSON.parse(jsonStr)
-        if (evt.type === 'delta' && evt.content) {
-          fullContent += evt.content
-          streamContent.value = fullContent
-          scrollToBottom()
-        } else if (evt.type === 'error') {
-          ElMessage.error('AI回复出错: ' + (evt.content || '未知错误'))
-        }
-      } catch {
-        if (jsonStr !== '[DONE]') {
-          fullContent += jsonStr
-          streamContent.value = fullContent
-          scrollToBottom()
-        }
-      }
+  const fullContent = await consumeAiStreamResponse(response, {
+    onDelta: ({ fullContent }) => {
+      streamContent.value = fullContent
+      scrollToBottom()
+    },
+    onError: (message) => {
+      ElMessage.error('AI回复出错: ' + (message || '未知错误'))
     }
-  }
+  })
 
   streaming.value = false
   if (fullContent) {
