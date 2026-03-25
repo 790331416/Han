@@ -726,3 +726,18 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/views/ai/prompt/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-chat-edge.spec.ts`
 - 修改文件：`han-ui/tests/e2e/specs/ai-admin-pages.spec.ts`
+
+### 2026-03-25 AI 管理页深层交互回归补齐
+
+- 本轮主要目标：继续向文档目标靠拢，在不简化任何现有功能的前提下，把 `知识库 / Prompt / MCP` 从基础 smoke 推进到真实交互回归，形成 `full` 档 AI 管理页更深一层的自动化保护网。
+- 已完成关键任务：为 [index.vue](D:/code/Han/han-ui/src/views/ai/knowledge/index.vue) 补充知识库卡片动作、文档管理、上传、重建索引、命中测试相关测试钩子；为 [index.vue](D:/code/Han/han-ui/src/views/ai/mcp/index.vue) 补充刷新工具、查看工具与工具列表对话框测试钩子；为 [index.vue](D:/code/Han/han-ui/src/views/ai/prompt/index.vue) 补充变量输入、渲染按钮、渲染结果测试钩子；新增 [ai-admin.ts](D:/code/Han/han-ui/tests/e2e/utils/ai-admin.ts) 作为 AI 管理页测试辅助，通过真实接口准备与清理数据；新增 [ai-knowledge-upload.txt](D:/code/Han/han-ui/tests/e2e/fixtures/files/ai-knowledge-upload.txt) 作为知识库上传样例；新增 [ai-admin-deep.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts)，覆盖“上传文档 -> 重新索引 -> 命中测试”“Prompt 变量渲染”“MCP 刷新工具 -> 查看工具列表”三条深层回归；本地执行 `eslint`、`vite build` 通过；本地最新前端连 `95` 真实后端执行 Playwright，结果 `3 passed`；将代码提交为 `3264431` 并推送到 `codex/han-ui-remote-validate`；在 `95` 服务器 `/opt/han/source/Han-ui-validate-20260323` 拉取最新代码、重建 `han-ui` 镜像并替换独立前端容器；最终以远端 `95:3000 + 95:9090` 重跑新增 Playwright 回归，结果 `3 passed`。
+- 关键决策与解决方案：不为了测试方便去删减页面行为，也不把深层回归退化成只测接口；采用“API 稳定铺底 + 页面真实操作验证”的组合方式，既减少脏数据影响，又保留真实前端交互覆盖；知识库测试使用真实上传文件和真实命中测试，不用 mock 文档数据；Prompt 测试直接走真实预览与渲染接口；MCP 测试走真实刷新逻辑和工具列表对话框；远端验证继续坚持“95 前端 + 95 后端”整链路口径，而不是只用本地页面替代部署验证。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Docker、MCP SSH、PowerShell、Node.js、`eslint`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
+- 修改文件：`han-ui/src/views/ai/knowledge/index.vue`
+- 修改文件：`han-ui/src/views/ai/mcp/index.vue`
+- 修改文件：`han-ui/src/views/ai/prompt/index.vue`
+- 修改文件：`han-ui/tests/e2e/fixtures/files/ai-knowledge-upload.txt`
+- 修改文件：`han-ui/tests/e2e/specs/ai-admin-deep.spec.ts`
+- 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`
