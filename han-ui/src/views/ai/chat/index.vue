@@ -235,6 +235,30 @@ async function loadConversations() {
   }
 }
 
+async function reloadCurrentConversationMessages() {
+  if (!currentConversationId.value) {
+    return
+  }
+  try {
+    const res = await listChatMessages(currentConversationId.value)
+    messages.value = (res as any).data || []
+    currentConversation.value = conversationList.value.find((item) => item.conversationId === currentConversationId.value)
+    scrollToBottom()
+  } catch (e) {
+    console.error('刷新当前会话消息失败', e)
+  }
+}
+
+async function syncCurrentConversationState() {
+  await loadConversations()
+  if (!currentConversationId.value && conversationList.value.length > 0) {
+    const latest = conversationList.value[0]
+    currentConversationId.value = latest.conversationId
+    currentConversation.value = latest
+  }
+  await reloadCurrentConversationMessages()
+}
+
 async function selectConversation(conv: AiConversation) {
   currentConversationId.value = conv.conversationId
   currentConversation.value = conv
@@ -323,12 +347,7 @@ async function handleSend() {
       })
     }
 
-    await loadConversations()
-    if (!currentConversationId.value && conversationList.value.length > 0) {
-      const latest = conversationList.value[0]
-      currentConversationId.value = latest.conversationId
-      currentConversation.value = latest
-    }
+    await syncCurrentConversationState()
   } catch (e: any) {
     streaming.value = false
     ElMessage.error('发送失败: ' + (e.message || '未知错误'))
@@ -501,12 +520,7 @@ async function processSSEResponse(response: Response) {
       sortOrder: messages.value.length + 1,
     })
   }
-  await loadConversations()
-  if (!currentConversationId.value && conversationList.value.length > 0) {
-    const latest = conversationList.value[0]
-    currentConversationId.value = latest.conversationId
-    currentConversation.value = latest
-  }
+  await syncCurrentConversationState()
 }
 
 function scrollToBottom() {
