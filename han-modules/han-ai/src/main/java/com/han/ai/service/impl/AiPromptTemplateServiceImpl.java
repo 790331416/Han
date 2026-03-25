@@ -67,6 +67,9 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
             throw new BusinessException("模板ID不能为空");
         }
         AiPromptTemplatePo existing = requireExisting(template.getTemplateId());
+        if (existing.getBuiltIn() != null && existing.getBuiltIn() == 1) {
+            throw new BusinessException("Built-in prompt template cannot be edited");
+        }
         copyEditableFields(template, existing);
         validateForSave(existing, true);
         ensureTemplateNameUnique(existing.getTemplateName(), existing.getTemplateId());

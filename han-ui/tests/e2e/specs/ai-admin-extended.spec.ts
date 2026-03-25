@@ -4,12 +4,12 @@ import { e2eRuntime } from '../fixtures/test'
 import {
   createKnowledgeBase,
   createMcpServer,
-  createPromptTemplate,
   deleteMcpServer,
-  deletePromptTemplate,
+  findBuiltInPromptTemplate,
   findKnowledgeBaseByName,
   findMcpServerByName,
-  tryDeletePromptTemplate
+  tryDeletePromptTemplate,
+  tryEditPromptTemplate
 } from '../utils/ai-admin'
 
 function buildUniqueName(prefix: string): string {
@@ -67,31 +67,46 @@ test('ai knowledge page should delete knowledge base from card actions and clear
 
 test('ai prompt page should keep built-in templates protected from deletion', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const templateName = buildUniqueName('playwright-prompt-built-in')
-  const createdTemplate = await createPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
-    templateName,
-    category: 'system',
-    content: 'Built-in template for protection regression.',
-    variables: '[]',
-    description: 'Playwright built-in prompt protection',
-    builtIn: 1
+  const builtInTemplate = await findBuiltInPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken)
+  expect(builtInTemplate).not.toBeNull()
+
+  const listResponse = waitForGetResponse(page, '/ai/prompt/list')
+  await page.goto('/ai/prompt')
+  await listResponse
+  await page.waitForLoadState('networkidle')
+
+  const row = page.getByTestId('ai-prompt-table').locator('.el-table__row', { hasText: builtInTemplate!.templateName }).first()
+  await expect(row).toBeVisible()
+  await expect(row.getByTestId('ai-prompt-delete-button')).toBeDisabled()
+
+  const deleteResult = await tryDeletePromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, builtInTemplate!.templateId)
+  expect(deleteResult.code).not.toBe(200)
+})
+
+test('ai prompt page should keep built-in templates protected from editing', async ({ authenticatedPage, request, authSession }) => {
+  const page = authenticatedPage
+  const builtInTemplate = await findBuiltInPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken)
+  expect(builtInTemplate).not.toBeNull()
+
+  const listResponse = waitForGetResponse(page, '/ai/prompt/list')
+  await page.goto('/ai/prompt')
+  await listResponse
+  await page.waitForLoadState('networkidle')
+
+  const row = page.getByTestId('ai-prompt-table').locator('.el-table__row', { hasText: builtInTemplate!.templateName }).first()
+  await expect(row).toBeVisible()
+  await expect(row.getByTestId('ai-prompt-edit-button')).toBeDisabled()
+
+  const editResult = await tryEditPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
+    templateId: builtInTemplate!.templateId,
+    templateName: builtInTemplate!.templateName,
+    category: builtInTemplate!.category,
+    content: `${builtInTemplate!.content} edited`,
+    variables: builtInTemplate!.variables || '[]',
+    description: builtInTemplate!.description || '',
+    status: builtInTemplate!.status || '0'
   })
-
-  try {
-    const listResponse = waitForGetResponse(page, '/ai/prompt/list')
-    await page.goto('/ai/prompt')
-    await listResponse
-    await page.waitForLoadState('networkidle')
-
-    const row = page.getByTestId('ai-prompt-table').locator('.el-table__row', { hasText: templateName }).first()
-    await expect(row).toBeVisible()
-    await expect(row.getByTestId('ai-prompt-delete-button')).toBeDisabled()
-
-    const deleteResult = await tryDeletePromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdTemplate.templateId)
-    expect(deleteResult.code).not.toBe(200)
-  } finally {
-    await deletePromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdTemplate.templateId).catch(() => undefined)
-  }
+  expect(editResult.code).not.toBe(200)
 })
 
 test('ai mcp page should support streamable_http tool metadata regression', async ({ authenticatedPage, request, authSession }) => {

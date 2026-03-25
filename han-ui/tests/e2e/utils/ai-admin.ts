@@ -170,6 +170,18 @@ export async function findPromptTemplateByName(
   return result.data?.rows?.find((item) => item.templateName === templateName) || null
 }
 
+export async function findBuiltInPromptTemplate(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string
+): Promise<PromptTemplateRecord | null> {
+  const response = await request.get(`${apiBaseUrl}/ai/prompt/list?pageNum=1&pageSize=100`, {
+    headers: buildHeaders(accessToken)
+  })
+  const result = await ensureSuccess<PageResult<PromptTemplateRecord>>(response)
+  return result.data?.rows?.find((item) => item.builtIn === 1) || null
+}
+
 export async function deletePromptTemplate(
   request: APIRequestContext,
   apiBaseUrl: string,
@@ -190,6 +202,19 @@ export async function tryDeletePromptTemplate(
 ): Promise<ApiEnvelope<void>> {
   const response = await request.post(`${apiBaseUrl}/ai/prompt/remove/${templateId}`, {
     headers: buildHeaders(accessToken)
+  })
+  return (await response.json()) as ApiEnvelope<void>
+}
+
+export async function tryEditPromptTemplate(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  payload: Partial<PromptTemplateRecord> & { templateId: string | number }
+): Promise<ApiEnvelope<void>> {
+  const response = await request.post(`${apiBaseUrl}/ai/prompt/edit`, {
+    headers: buildHeaders(accessToken),
+    data: payload
   })
   return (await response.json()) as ApiEnvelope<void>
 }
