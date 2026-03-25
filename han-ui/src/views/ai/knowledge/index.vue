@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-knowledge-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="知识库名称" prop="kbName">
@@ -21,14 +21,14 @@
       <template #header>
         <div class="card-header">
           <span>知识库管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">创建知识库</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-knowledge-create-button" @click="handleAdd">创建知识库</el-button>
         </div>
       </template>
 
       <!-- 卡片模式展示 -->
-      <el-row :gutter="20" v-loading="loading">
+      <el-row :gutter="20" v-loading="loading" data-testid="ai-knowledge-list">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="kb in kbList" :key="kb.kbId" class="kb-col">
-          <el-card shadow="hover" class="kb-card" @click="handleDetail(kb)">
+          <el-card shadow="hover" class="kb-card" data-testid="ai-knowledge-card" @click="handleDetail(kb)">
             <div class="kb-card-header">
               <el-icon :size="32" color="#409eff"><Collection /></el-icon>
               <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, kb)" @click.stop>
@@ -69,7 +69,7 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.kbId ? '编辑知识库' : '创建知识库'" width="55%" class="dialog-md" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" data-testid="ai-knowledge-form">
         <el-form-item label="知识库名称" prop="kbName">
           <el-input v-model="form.kbName" placeholder="请输入知识库名称" />
         </el-form-item>

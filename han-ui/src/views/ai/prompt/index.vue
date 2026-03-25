@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-prompt-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="模板名称" prop="templateName">
@@ -27,11 +27,11 @@
       <template #header>
         <div class="card-header">
           <span>Prompt模板列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增模板</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-prompt-create-button" @click="handleAdd">新增模板</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="templateList">
+      <el-table v-loading="loading" :data="templateList" data-testid="ai-prompt-table">
         <el-table-column label="模板名称" prop="templateName" min-width="150" show-overflow-tooltip />
         <el-table-column label="分类" width="120" align="center">
           <template #default="{ row }">
@@ -64,7 +64,7 @@
         <el-table-column label="创建时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="info" link @click="handlePreview(row)">预览</el-button>
+            <el-button type="info" link data-testid="ai-prompt-preview-button" @click="handlePreview(row)">预览</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
           </template>
@@ -80,7 +80,7 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.templateId ? '编辑模板' : '新增模板'" width="65%" class="dialog-lg" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" data-testid="ai-prompt-form">
         <el-form-item label="模板名称" prop="templateName">
           <el-input v-model="form.templateName" placeholder="请输入模板名称" />
         </el-form-item>
@@ -113,6 +113,7 @@
 
     <!-- 预览对话框 -->
     <el-dialog v-model="previewVisible" title="模板预览" width="55%" class="dialog-md">
+      <div data-testid="ai-prompt-preview-panel">
       <el-descriptions :column="1" border>
         <el-descriptions-item label="模板名称">{{ previewData.templateName }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ getCategoryLabel(previewData.category) }}</el-descriptions-item>
@@ -134,6 +135,7 @@
           <div class="preview-label">渲染结果：</div>
           <div class="preview-text rendered">{{ renderedContent }}</div>
         </div>
+      </div>
       </div>
     </el-dialog>
   </div>

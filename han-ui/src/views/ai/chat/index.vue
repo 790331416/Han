@@ -49,7 +49,14 @@
           <span v-else>AI 智能助手</span>
         </div>
         <div class="chat-header-actions">
-          <el-select v-model="selectedModelId" placeholder="选择模型" size="small" style="width: 180px">
+          <el-select
+            v-model="selectedModelId"
+            data-testid="ai-chat-model-select"
+            placeholder="选择模型"
+            size="small"
+            style="width: 180px"
+            @change="handleModelChange"
+          >
             <el-option v-for="m in modelList" :key="m.modelId" :label="m.modelName" :value="m.modelId" />
           </el-select>
         </div>
@@ -209,18 +216,32 @@ const editTitleValue = ref('')
 const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
 
+const CHAT_STORAGE_KEYS = {
+  conversationId: 'HAN-ai-chat-conversation-id',
+  modelId: 'HAN-ai-chat-model-id'
+} as const
+
 onMounted(async () => {
   await loadModels()
   await loadConversations()
+  await restoreConversationState()
 })
 
 async function loadModels() {
   try {
     const res = await listAllModels('LLM')
     modelList.value = (res as any).data || []
-    if (modelList.value.length > 0 && !selectedModelId.value) {
+    const currentModel = modelList.value.find((item) => String(item.modelId) === String(selectedModelId.value ?? ''))
+    const storedModelId = restoreSelectedModelId()
+    const storedModel = modelList.value.find((item) => String(item.modelId) === String(storedModelId ?? ''))
+    if (currentModel) {
+      selectedModelId.value = currentModel.modelId
+    } else if (storedModel) {
+      selectedModelId.value = storedModel.modelId
+    } else if (modelList.value.length > 0) {
       selectedModelId.value = modelList.value[0].modelId
     }
+    persistSelectedModelId(selectedModelId.value)
   } catch (e) {
     console.error('加载模型列表失败', e)
   }
@@ -249,6 +270,22 @@ async function reloadCurrentConversationMessages() {
   }
 }
 
+async function restoreConversationState() {
+  const storedConversationId = restoreConversationId()
+  const storedConversation = storedConversationId
+    ? conversationList.value.find((item) => String(item.conversationId) === storedConversationId)
+    : undefined
+  const fallbackConversation = conversationList.value[0]
+  const targetConversation = storedConversation || fallbackConversation
+  if (!targetConversation) {
+    return
+  }
+  if (!storedConversation && storedConversationId) {
+    persistConversationId(null)
+  }
+  await selectConversation(targetConversation)
+}
+
 async function syncCurrentConversationState() {
   await loadConversations()
   if (!currentConversationId.value && conversationList.value.length > 0) {
@@ -256,12 +293,14 @@ async function syncCurrentConversationState() {
     currentConversationId.value = latest.conversationId
     currentConversation.value = latest
   }
+  persistConversationId(currentConversationId.value ?? null)
   await reloadCurrentConversationMessages()
 }
 
 async function selectConversation(conv: AiConversation) {
   currentConversationId.value = conv.conversationId
   currentConversation.value = conv
+  persistConversationId(conv.conversationId)
   try {
     const res = await listChatMessages(conv.conversationId)
     messages.value = (res as any).data || []
@@ -276,13 +315,14 @@ function handleNewChat() {
   currentConversation.value = undefined
   messages.value = []
   inputMessage.value = ''
+  persistConversationId(null)
 }
 
 async function handleDeleteConversation(id: string | number) {
   try {
     await ElMessageBox.confirm('确认删除该对话？', '提示', { type: 'warning' })
     await deleteConversation(id)
-    if (currentConversationId.value === id) {
+    if (String(currentConversationId.value ?? '') === String(id)) {
       handleNewChat()
     }
     await loadConversations()
@@ -375,6 +415,12 @@ function handleStopGenerate() {
     })
     streamContent.value = ''
   }
+  scrollToBottom()
+}
+
+function handleModelChange(value: string | number) {
+  selectedModelId.value = value
+  persistSelectedModelId(value)
 }
 
 // ==================== 重新生成 ====================
@@ -537,6 +583,48 @@ function renderMarkdown(content: string): string {
     return marked.parse(content) as string
   } catch {
     return content
+  }
+}
+
+function persistConversationId(value: string | number | null | undefined) {
+  try {
+    if (value === null || value === undefined || value === '') {
+      localStorage.removeItem(CHAT_STORAGE_KEYS.conversationId)
+      return
+    }
+    localStorage.setItem(CHAT_STORAGE_KEYS.conversationId, String(value))
+  } catch (error) {
+    console.warn('Persist conversation id failed', error)
+  }
+}
+
+function restoreConversationId() {
+  try {
+    return localStorage.getItem(CHAT_STORAGE_KEYS.conversationId) || undefined
+  } catch (error) {
+    console.warn('Restore conversation id failed', error)
+    return undefined
+  }
+}
+
+function persistSelectedModelId(value: string | number | null | undefined) {
+  try {
+    if (value === null || value === undefined || value === '') {
+      localStorage.removeItem(CHAT_STORAGE_KEYS.modelId)
+      return
+    }
+    localStorage.setItem(CHAT_STORAGE_KEYS.modelId, String(value))
+  } catch (error) {
+    console.warn('Persist model id failed', error)
+  }
+}
+
+function restoreSelectedModelId() {
+  try {
+    return localStorage.getItem(CHAT_STORAGE_KEYS.modelId) || undefined
+  } catch (error) {
+    console.warn('Restore model id failed', error)
+    return undefined
   }
 }
 </script>

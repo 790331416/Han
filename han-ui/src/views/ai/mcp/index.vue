@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-mcp-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="服务名称" prop="serverName">
@@ -21,11 +21,11 @@
       <template #header>
         <div class="card-header">
           <span>MCP服务管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增MCP服务</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-mcp-create-button" @click="handleAdd">新增MCP服务</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="mcpList">
+      <el-table v-loading="loading" :data="mcpList" data-testid="ai-mcp-table">
         <el-table-column label="服务名称" prop="serverName" min-width="150" show-overflow-tooltip />
         <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ row.description || '-' }}</template>
@@ -73,7 +73,7 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.mcpId ? '编辑MCP服务' : '新增MCP服务'" width="65%" class="dialog-lg" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" data-testid="ai-mcp-form">
         <el-form-item label="服务名称" prop="serverName">
           <el-input v-model="form.serverName" placeholder="请输入服务名称" />
         </el-form-item>
