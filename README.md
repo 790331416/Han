@@ -754,3 +754,16 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/tests/e2e/fixtures/files/ai-knowledge-upload-extra.txt`
 - 修改文件：`han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts`
 - 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`
+
+### 2026-03-25 AI 管理页保护与传输回归补齐
+
+- 本轮主要目标：继续向文档目标靠拢，在不简化任何现有功能的前提下，把 AI 管理页回归继续推进到“知识库整库删除、Prompt 内置模板删除保护、MCP streamable_http 传输类型”这一层。
+- 已完成关键任务：为 [index.vue](D:/code/Han/han-ui/src/views/ai/knowledge/index.vue) 补充知识库卡片删除菜单测试钩子；为 [index.vue](D:/code/Han/han-ui/src/views/ai/prompt/index.vue) 补充删除按钮测试钩子；扩展 [ai-admin.ts](D:/code/Han/han-ui/tests/e2e/utils/ai-admin.ts)，支持创建内置 Prompt 模板并增加删除保护探测接口；新增 [ai-admin-extended.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts)，覆盖“知识库卡片删除后列表清空”“内置 Prompt 模板删除保护”“MCP streamable_http 工具元数据回归”三条新回归；本地执行 `eslint`、`vite build` 通过；本地最新前端连 `95` 真实后端执行新增 Playwright，结果 `3 passed`；将代码提交为 `7600142` 并推送到 `codex/han-ui-remote-validate`；在 `95` 服务器 `/opt/han/source/Han-ui-validate-20260323` 拉取最新代码、重新构建 `han-ui` 镜像并替换独立前端容器；最终以远端 `95:3000 + 95:9090` 重跑新增 Playwright，结果 `3 passed`，且容器状态恢复为 `healthy`。
+- 关键决策与解决方案：不为了测试方便绕开页面真实交互，也不凭空扩展当前页面并不存在的“知识库批量删除”交互；知识库删除链路直接走卡片动作菜单，验证页面删除入口和后端真实状态一起回落；Prompt 删除保护不仅验证前端禁用态，也补一层真实接口删除失败校验，确保不是单纯把按钮灰掉；MCP 继续坚持按真实 transport type 构造数据，验证 `streamable_http` 刷新后工具元数据与 `sse/stdio` 不同；远端验证继续坚持“95 前端 + 95 后端”整链路口径。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Docker、MCP SSH、PowerShell、Node.js、`eslint`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`docs/full-tier-ai-validation-20260325.md`
+- 修改文件：`han-ui/src/views/ai/knowledge/index.vue`
+- 修改文件：`han-ui/src/views/ai/prompt/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-admin-extended.spec.ts`
+- 修改文件：`han-ui/tests/e2e/utils/ai-admin.ts`

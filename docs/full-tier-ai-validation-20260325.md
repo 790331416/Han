@@ -66,6 +66,12 @@
 - `ai prompt page should support edit and keep preview rendering correct`
 - `ai mcp page should distinguish sse and stdio tool metadata after refresh`
 
+### 本轮新增通过的 AI 管理页保护与传输回归
+
+- `ai knowledge page should delete knowledge base from card actions and clear list state`
+- `ai prompt page should keep built-in templates protected from deletion`
+- `ai mcp page should support streamable_http tool metadata regression`
+
 ## 本轮关键收口
 
 ### AI 对话链路
@@ -83,6 +89,7 @@
 - 新增 [ai-admin.ts](/D:/code/Han/han-ui/tests/e2e/utils/ai-admin.ts) 作为 AI 管理页测试辅助，负责真实接口准备与清理数据。
 - 新增 [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts)，覆盖知识库上传文档、重建索引、命中测试，Prompt 变量渲染，以及 MCP 工具刷新与展示。
 - 新增 [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts)，覆盖多文档上传与删除后的统计回落、Prompt 编辑更新后的预览与渲染，以及 MCP `sse/stdio` 传输类型差异化工具元数据。
+- 新增 [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts)，覆盖知识库卡片删除、Prompt 内置模板删除保护，以及 MCP `streamable_http` 传输类型回归。
 
 ## 验证结果
 
@@ -92,24 +99,26 @@
 - `vite build` 通过
 - `ai-admin-deep.spec.ts` 结果 `3 passed`
 - `ai-admin-lifecycle.spec.ts` 结果 `3 passed`
+- `ai-admin-extended.spec.ts` 结果 `3 passed`
 
 ### 95 前端 + 95 后端
 
-- 远端源码已拉到提交 `71d0803`
+- 远端源码已拉到提交 `7600142`
 - `han-ui` 已重建并替换最新镜像
 - 容器状态 `healthy`
 - `ai-admin-deep.spec.ts` 结果 `3 passed`
 - `ai-admin-lifecycle.spec.ts` 结果 `3 passed`
+- `ai-admin-extended.spec.ts` 结果 `3 passed`
 
 ## 结论
 
-- `full` 档 AI 模块已经从“服务可起”推进到“核心页面可回归、边界行为可验证、管理页关键交互可回归、生命周期操作可回归”的阶段。
-- `知识库` 已形成“上传文档 -> 重新索引 -> 命中测试 -> 单文档删除 -> 统计回落”的真实页面回归链路。
-- `Prompt` 已形成“模板预览 -> 变量填写 -> 渲染结果 -> 编辑更新 -> 再次预览渲染”的真实页面回归链路。
-- `MCP` 已形成“刷新工具 -> 查看工具列表 -> 区分不同传输类型元数据”的真实页面回归链路。
+- `full` 档 AI 模块已经从“服务可起”推进到“核心页面可回归、边界行为可验证、管理页关键交互可回归、生命周期操作可回归、保护性约束可回归”的阶段。
+- `知识库` 已形成“上传文档 -> 重新索引 -> 命中测试 -> 单文档删除 -> 统计回落 -> 卡片入口整库删除”的真实页面回归链路。
+- `Prompt` 已形成“模板预览 -> 变量填写 -> 渲染结果 -> 编辑更新 -> 再次预览渲染 -> 内置模板删除保护”的真实页面回归链路。
+- `MCP` 已形成“刷新工具 -> 查看工具列表 -> 区分不同传输类型元数据 -> 覆盖 streamable_http 传输类型”的真实页面回归链路。
 - 当前 `95` 环境下，`AI 模型 / 智能体 / 工作流 / 对话 / 知识库 / MCP / Prompt` 均具备最小可用闭环和持续回归能力。
 
 ## 当前剩余项
 
 - 真实模型供应商配置与调用链仍需继续收口。
-- AI 管理页还可以继续向更深层操作推进，例如知识库批量删除、Prompt 删除保护、MCP `streamable_http` 类型回归。
+- AI 管理页还可以继续向更深层操作推进，例如知识库批量删除、Prompt 内置模板编辑保护、MCP 外部真实服务联通回归。
