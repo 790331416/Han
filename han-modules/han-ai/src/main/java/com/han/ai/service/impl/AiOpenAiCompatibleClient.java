@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ class AiOpenAiCompatibleClient {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
+    private static final String CURL_STATUS_MARKER = "__CURL_STATUS__:";
 
     String testConnection(AiModelPo model, String apiKey) {
         String content = chatCompletion(model, apiKey, List.of(
@@ -105,6 +107,15 @@ class AiOpenAiCompatibleClient {
     }
 
     private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody) throws IOException {
+        try {
+            return executeWithHttpURLConnection(requestUri, apiKey, requestBody);
+        } catch (UnknownHostException exception) {
+            log.warn("Primary provider request hit DNS resolution issue, falling back to curl, uri={}", requestUri, exception);
+            return executeWithCurl(requestUri, apiKey, requestBody);
+        }
+    }
+
+    private HttpResponsePayload executeWithHttpURLConnection(URI requestUri, String apiKey, String requestBody) throws IOException {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) requestUri.toURL().openConnection();
@@ -127,6 +138,77 @@ class AiOpenAiCompatibleClient {
                 connection.disconnect();
             }
         }
+    }
+
+    private HttpResponsePayload executeWithCurl(URI requestUri, String apiKey, String requestBody) throws IOException {
+        List<String> command = List.of(
+                "curl",
+                "--silent",
+                "--show-error",
+                "--ipv4",
+                "--connect-timeout",
+                String.valueOf(CONNECT_TIMEOUT.toSeconds()),
+                "--max-time",
+                String.valueOf(REQUEST_TIMEOUT.toSeconds()),
+                "-X",
+                "POST",
+                requestUri.toString(),
+                "-H",
+                HttpHeaders.AUTHORIZATION + ": Bearer " + apiKey,
+                "-H",
+                HttpHeaders.CONTENT_TYPE + ": " + MediaType.APPLICATION_JSON_VALUE,
+                "--data-raw",
+                requestBody,
+                "-w",
+                "\n" + CURL_STATUS_MARKER + "%{http_code}"
+        );
+        Process process = new ProcessBuilder(command).start();
+        String responseBody;
+        String errorBody;
+        try (InputStream stdout = process.getInputStream(); InputStream stderr = process.getErrorStream()) {
+            responseBody = readBody(stdout);
+            errorBody = readBody(stderr);
+        }
+        int exitCode;
+        try {
+            exitCode = process.waitFor();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IOException("curl request interrupted", exception);
+        }
+        if (exitCode != 0) {
+            String message = trimResponse(errorBody);
+            if (!StringUtils.hasText(message)) {
+                message = trimResponse(responseBody);
+            }
+            throw new IOException(StringUtils.hasText(message) ? message : "curl request failed with exit code " + exitCode);
+        }
+        return parseCurlResponse(responseBody);
+    }
+
+    private HttpResponsePayload parseCurlResponse(String rawResponse) throws IOException {
+        int markerIndex = rawResponse.lastIndexOf(CURL_STATUS_MARKER);
+        if (markerIndex < 0) {
+            throw new IOException("Unable to parse curl response status");
+        }
+        String body = rawResponse.substring(0, markerIndex).trim();
+        String statusText = rawResponse.substring(markerIndex + CURL_STATUS_MARKER.length()).trim();
+        try {
+            return new HttpResponsePayload(Integer.parseInt(statusText), body);
+        } catch (NumberFormatException exception) {
+            throw new IOException("Invalid curl response status: " + statusText, exception);
+        }
+    }
+
+    private String trimResponse(String responseBody) {
+        if (!StringUtils.hasText(responseBody)) {
+            return "";
+        }
+        String trimmed = responseBody.replaceAll("\\s+", " ").trim();
+        if (trimmed.length() > 300) {
+            return trimmed.substring(0, 300) + "...";
+        }
+        return trimmed;
     }
 
     private String readBody(InputStream inputStream) throws IOException {
