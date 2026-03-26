@@ -776,3 +776,24 @@ docker-compose -f docker-compose-dev.yml up -d
 - 使用技术栈/工具：Vue 3、TypeScript、Playwright、Docker、MCP SSH、PowerShell、Node.js、NPM、Maven、`apply_patch`。
 - 修改文件：`README.md`
 - 修改文件：`docs/full-tier-ai-validation-20260325.md`
+
+### 2026-03-26 DashScope 真实连通修复与 95 标准发布链路校正
+
+- 本轮主要目标：在不简化任何现有功能的前提下，把 AI 模型真实调用接到 `DashScope`，并严格纠正发布流程为“本地先 push，`95` 服务器 pull 代码后自行打包和构建镜像”，不再走本地 `jar` 旁路。
+- 已完成关键任务：补齐 [AiModelCredentialResolver.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelCredentialResolver.java)，支持 `DASHSCOPE_API_KEY` 与多级环境变量优先解析；新增 [Sensitive.java](D:/code/Han/han-common/han-common-web/src/main/java/com/han/common/web/sensitive/Sensitive.java)、[SensitiveType.java](D:/code/Han/han-common/han-common-web/src/main/java/com/han/common/web/sensitive/SensitiveType.java)、[SensitiveSerializer.java](D:/code/Han/han-common/han-common-web/src/main/java/com/han/common/web/sensitive/SensitiveSerializer.java)，为模型 `apiKey` 提供掩码输出能力；调整 [AiModelPo.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/domain/po/AiModelPo.java)、[AiModelServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelServiceImpl.java)、[AiChatServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java)、[index.vue](D:/code/Han/han-ui/src/views/ai/model/index.vue)，实现“空白或掩码值不覆盖原始 Key、优先从环境变量读取真实 Key、模型测试走真实调用、对话链路优先真实模型、失败时保留原兜底回复”；更新 [docker-compose-full.yml](D:/code/Han/docker-compose-full.yml)，让 `ai` 服务支持 `DASHSCOPE_API_KEY` 注入；重写 [server-95-deploy-flow.md](D:/code/Han/docs/server-95-deploy-flow.md) 与 [deployment-guide.md](D:/code/Han/docs/deployment-guide.md)，明确 `95` 标准流程是“本地 push -> 95 pull -> 95 自己打包 -> 95 自己构镜像部署”，并新增 [settings.workspace.xml](D:/code/Han/settings.workspace.xml) 供 `95` 容器化 Maven 打包使用；在 `95` 上新建干净源码目录 `/opt/han/source/Han-dashscope-20260326`，验证代码已拉到提交 `17c6376`，并用容器化 Maven 成功完成服务端自打包；复现 `/ai/model/test/3` 失败后，在 `95` 上用独立 JDK 容器确认 `java.net.http.HttpClient` 对 `DashScope` 会稳定触发 `UnresolvedAddressException`，而 `HttpURLConnection` 同环境可返回 `401 invalid_api_key`，据此把 [AiOpenAiCompatibleClient.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java) 的底层实现从 `HttpClient` 切换为 `HttpURLConnection`，保留原有接口、错误语义和业务流转不变；本地使用 `JAVA_HOME + mvn --%` 完成 `han-ai` 编译通过，确认修复可构建。
+- 关键决策与解决方案：不删减任何 AI 管理、测试和对话能力，也不把真实模型调用退化回假响应；部署链路坚决纠正为“代码先推远端，`95` 自己 pull 和打包”，后续不再采用上传本地 `jar` 的旁路方式；经过 `95` 上的对照实验，问题被定位为运行时 `JDK HttpClient` 与当前服务器环境的出站兼容异常，而不是 `DashScope key`、数据库 `baseUrl`、DNS 或 AI 业务代码本身，因此选择只替换底层 HTTP 执行器为 `HttpURLConnection`，最大程度保持现有接口契约、错误包装和后续 SSE/对话逻辑稳定；本地 Maven 自检同时规避了 `JAVA_HOME` 缺失和 `MAVEN_OPTS` 干扰本地仓库路径的问题，为后续同类构建提供了固定做法。
+- 使用技术栈/工具：Java 21、Spring Boot、MyBatis-Plus、Vue 3、Docker、MCP SSH、PowerShell、Maven、`apply_patch`、`HttpURLConnection`、容器化 JDK/JShell。
+- 修改文件：`README.md`
+- 修改文件：`docker-compose-full.yml`
+- 修改文件：`docs/deployment-guide.md`
+- 修改文件：`docs/server-95-deploy-flow.md`
+- 修改文件：`han-common/han-common-web/src/main/java/com/han/common/web/sensitive/Sensitive.java`
+- 修改文件：`han-common/han-common-web/src/main/java/com/han/common/web/sensitive/SensitiveSerializer.java`
+- 修改文件：`han-common/han-common-web/src/main/java/com/han/common/web/sensitive/SensitiveType.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/domain/po/AiModelPo.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelCredentialResolver.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelServiceImpl.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java`
+- 修改文件：`han-ui/src/views/ai/model/index.vue`
+- 修改文件：`settings.workspace.xml`

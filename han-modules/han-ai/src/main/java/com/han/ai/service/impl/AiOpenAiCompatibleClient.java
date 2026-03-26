@@ -12,28 +12,25 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 最小可用的 OpenAI 兼容协议客户端，用于模型测试与对话调用。
+ * Minimal OpenAI-compatible client used for model connectivity checks and chat requests.
  */
 @Slf4j
 @Component
 class AiOpenAiCompatibleClient {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
-
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
 
     String testConnection(AiModelPo model, String apiKey) {
         String content = chatCompletion(model, apiKey, List.of(
@@ -41,7 +38,7 @@ class AiOpenAiCompatibleClient {
                 ProviderMessage.user("Reply with OK only.")
         ), 32);
         if (!StringUtils.hasText(content)) {
-            throw new BusinessException("模型连通测试未返回有效内容");
+            throw new BusinessException("模型连通性测试未返回有效内容");
         }
         return "模型真实连通成功: " + model.getProvider() + "/" + model.getModelCode() + " -> " + content.trim();
     }
@@ -49,15 +46,10 @@ class AiOpenAiCompatibleClient {
     String chatCompletion(AiModelPo model, String apiKey, List<ProviderMessage> messages, Integer maxTokensOverride) {
         validateArguments(model, apiKey, messages);
         ChatCompletionRequest payload = buildRequest(model, messages, maxTokensOverride);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(buildChatCompletionUri(model.getBaseUrl()))
-                .timeout(REQUEST_TIMEOUT)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .POST(HttpRequest.BodyPublishers.ofString(XuJsonUtil.toJsonString(payload)))
-                .build();
+        URI requestUri = buildChatCompletionUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
             }
@@ -70,10 +62,6 @@ class AiOpenAiCompatibleClient {
         } catch (IOException e) {
             log.warn("AI provider request IO error, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
             throw new BusinessException("模型调用失败: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("AI provider request interrupted, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
-            throw new BusinessException("模型调用被中断");
         }
     }
 
@@ -116,6 +104,40 @@ class AiOpenAiCompatibleClient {
         return URI.create(normalizedBaseUrl + CHAT_COMPLETIONS_PATH);
     }
 
+    private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) requestUri.toURL().openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+            connection.setReadTimeout((int) REQUEST_TIMEOUT.toMillis());
+            connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
+            connection.setRequestProperty(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+            byte[] bodyBytes = requestBody.getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(bodyBytes.length);
+            try (var outputStream = connection.getOutputStream()) {
+                outputStream.write(bodyBytes);
+            }
+            int statusCode = connection.getResponseCode();
+            String responseBody = readBody(statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream());
+            return new HttpResponsePayload(statusCode, responseBody);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String readBody(InputStream inputStream) throws IOException {
+        if (inputStream == null) {
+            return "";
+        }
+        try (InputStream stream = inputStream) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
     private double resolveTemperature(BigDecimal temperature) {
         return temperature != null ? temperature.doubleValue() : 0.7D;
     }
@@ -152,7 +174,7 @@ class AiOpenAiCompatibleClient {
                 return "模型调用失败(" + statusCode + "): " + envelope.error.message;
             }
         } catch (RuntimeException ignored) {
-            // Provider 错误体不一定是 JSON，回退到摘要文本即可。
+            // Provider error bodies are not guaranteed to be JSON.
         }
         String excerpt = body == null ? "" : body.replaceAll("\\s+", " ").trim();
         if (excerpt.length() > 180) {
@@ -231,5 +253,8 @@ class AiOpenAiCompatibleClient {
     static class ErrorBody {
         @JsonProperty("message")
         public String message;
+    }
+
+    record HttpResponsePayload(int statusCode, String body) {
     }
 }
