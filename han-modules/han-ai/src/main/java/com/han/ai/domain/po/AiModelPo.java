@@ -3,6 +3,8 @@ package com.han.ai.domain.po;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.han.common.web.sensitive.Sensitive;
+import com.han.common.web.sensitive.SensitiveType;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -28,6 +30,7 @@ public class AiModelPo {
 
     private String baseUrl;
 
+    @Sensitive(value = SensitiveType.CUSTOM, prefixKeep = 4, suffixKeep = 4)
     private String apiKey;
 
     private Integer maxTokens;

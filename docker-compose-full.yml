@@ -305,6 +305,7 @@ services:
     container_name: han-ai
     environment:
       <<: *service-env
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
     ports:
       - "9208:9208"
     depends_on:

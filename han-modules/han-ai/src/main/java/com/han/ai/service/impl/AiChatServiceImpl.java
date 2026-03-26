@@ -24,6 +24,7 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,13 +43,16 @@ import java.util.concurrent.CompletableFuture;
 /**
  * AI chat service implementation.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiChatServiceImpl extends AiServiceSupport implements IAiChatService {
 
+    private static final String ROLE_SYSTEM = "system";
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
     private static final long SSE_TIMEOUT = 60_000L;
+    private static final int HISTORY_MESSAGE_LIMIT = 12;
 
     private final AiConversationMapper aiConversationMapper;
     private final AiChatMessageMapper aiChatMessageMapper;
@@ -56,6 +60,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private final AiParagraphMapper aiParagraphMapper;
     private final AiAgentMapper aiAgentMapper;
     private final AiWorkflowMapper aiWorkflowMapper;
+    private final AiModelCredentialResolver credentialResolver;
+    private final AiOpenAiCompatibleClient openAiCompatibleClient;
 
     @Override
     public PageResult<AiConversationPo> selectConversationPage(AiConversationQuery query) {
@@ -178,7 +184,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         AiConversationPo conversation = requireConversation(conversationId);
         List<AiChatMessagePo> messages = selectMessages(conversationId);
         if (messages.isEmpty()) {
-            throw new BusinessException("当前会话暂无可重生成的消息");
+            throw new BusinessException("当前会话暂无可重新生成的消息");
         }
         AiChatMessagePo lastMessage = messages.get(messages.size() - 1);
         if (ROLE_ASSISTANT.equals(lastMessage.getRole())) {
@@ -187,7 +193,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         }
         AiChatMessagePo lastUserMessage = findLastUserMessage(messages);
         if (lastUserMessage == null) {
-            throw new BusinessException("当前会话缺少用户消息，无法重生成");
+            throw new BusinessException("当前会话缺少用户消息，无法重新生成");
         }
         refreshConversationCount(conversation);
         return appendAssistantMessage(conversation, buildContextFromConversation(conversation), lastUserMessage.getContent());
@@ -195,7 +201,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private GeneratedReply editAndRegenerate(AiMessageEditRequest request) {
         if (request == null || request.getConversationId() == null || request.getMessageId() == null) {
-            throw new BusinessException("编辑重生成参数不完整");
+            throw new BusinessException("编辑重新生成参数不完整");
         }
         AiConversationPo conversation = requireConversation(request.getConversationId());
         AiChatMessagePo targetMessage = aiChatMessageMapper.selectById(request.getMessageId());
@@ -227,7 +233,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage) {
-        String assistantContent = buildAssistantReply(context, userMessage);
+        String assistantContent = buildAssistantReply(conversation, context, userMessage);
         AiChatMessagePo assistantMessage = new AiChatMessagePo();
         assistantMessage.setConversationId(conversation.getConversationId());
         assistantMessage.setRole(ROLE_ASSISTANT);
@@ -270,25 +276,102 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return userMessage;
     }
 
-    private String buildAssistantReply(ChatContext context, String userMessage) {
+    private String buildAssistantReply(AiConversationPo conversation, ChatContext context, String userMessage) {
         AiModelPo model = resolveModel(context.modelId());
         List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
 
+        String modelReply = tryBuildModelReply(conversation, context, model, hitParagraphs);
+        if (StringUtils.hasText(modelReply)) {
+            return modelReply;
+        }
+        return buildFallbackAssistantReply(context, model, userMessage, hitParagraphs);
+    }
+
+    private String tryBuildModelReply(AiConversationPo conversation, ChatContext context, AiModelPo model,
+                                      List<AiParagraphPo> hitParagraphs) {
+        if (model == null) {
+            return null;
+        }
+        String apiKey = credentialResolver.resolveApiKey(model);
+        if (!StringUtils.hasText(apiKey)) {
+            return null;
+        }
+        List<AiOpenAiCompatibleClient.ProviderMessage> messages = buildProviderMessages(conversation, context, hitParagraphs);
+        try {
+            return openAiCompatibleClient.chatCompletion(model, apiKey, messages, model.getMaxTokens());
+        } catch (BusinessException ex) {
+            log.warn("AI provider fallback triggered, provider={}, modelCode={}, conversationId={}, reason={}",
+                    model.getProvider(), model.getModelCode(), conversation.getConversationId(), ex.getMessage());
+            return null;
+        }
+    }
+
+    private List<AiOpenAiCompatibleClient.ProviderMessage> buildProviderMessages(AiConversationPo conversation,
+                                                                                 ChatContext context,
+                                                                                 List<AiParagraphPo> hitParagraphs) {
+        List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
+        String systemPrompt = buildSystemPrompt(context, hitParagraphs);
+        if (StringUtils.hasText(systemPrompt)) {
+            messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt));
+        }
+
+        List<AiChatMessagePo> history = selectMessages(conversation.getConversationId());
+        int startIndex = Math.max(0, history.size() - HISTORY_MESSAGE_LIMIT);
+        for (int index = startIndex; index < history.size(); index++) {
+            AiChatMessagePo historyMessage = history.get(index);
+            if (!StringUtils.hasText(historyMessage.getContent())) {
+                continue;
+            }
+            if (ROLE_USER.equals(historyMessage.getRole())) {
+                messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(historyMessage.getContent()));
+            } else if (ROLE_ASSISTANT.equals(historyMessage.getRole())) {
+                messages.add(AiOpenAiCompatibleClient.ProviderMessage.assistant(historyMessage.getContent()));
+            }
+        }
+        if (messages.isEmpty()) {
+            messages.add(AiOpenAiCompatibleClient.ProviderMessage.user("你好"));
+        }
+        return messages;
+    }
+
+    private String buildSystemPrompt(ChatContext context, List<AiParagraphPo> hitParagraphs) {
+        StringBuilder builder = new StringBuilder();
+        if (StringUtils.hasText(context.systemPrompt())) {
+            builder.append(context.systemPrompt().trim()).append("\n\n");
+        }
+        if (StringUtils.hasText(context.sourceName())) {
+            builder.append("当前对话来源：").append(context.sourceName().trim()).append("。\n");
+        }
+        if (!hitParagraphs.isEmpty()) {
+            builder.append("以下是命中的知识库上下文，请优先引用并结合它们回答：\n");
+            int index = 1;
+            for (AiParagraphPo paragraph : hitParagraphs) {
+                builder.append(index++)
+                        .append(". ")
+                        .append(excerpt(paragraph.getContent(), 200))
+                        .append('\n');
+            }
+        }
+        return builder.toString().trim();
+    }
+
+    private String buildFallbackAssistantReply(ChatContext context, AiModelPo model, String userMessage,
+                                               List<AiParagraphPo> hitParagraphs) {
         StringBuilder builder = new StringBuilder();
         if (StringUtils.hasText(context.sourceName())) {
-            builder.append("已按「").append(context.sourceName()).append("」的上下文处理你的问题。").append('\n');
+            builder.append("已按“").append(context.sourceName()).append("”的上下文处理你的问题。\n");
         } else {
-            builder.append("已收到你的问题，并基于当前 AI 配置生成回复。").append('\n');
+            builder.append("已收到你的问题，并基于当前 AI 配置生成兜底回复。\n");
         }
         if (model != null) {
-            builder.append("当前模型：").append(model.getModelName()).append(" (").append(model.getModelCode()).append(")").append('\n');
+            builder.append("当前模型：").append(model.getModelName()).append(" (").append(model.getModelCode()).append(")\n");
         }
         if (StringUtils.hasText(context.systemPrompt())) {
-            builder.append("角色设定已生效，回答会遵循预设的系统提示词。").append('\n');
+            builder.append("角色设定已生效，回答会遵循预设的系统提示词。\n");
         }
         builder.append("问题：").append(userMessage).append('\n');
         if (!hitParagraphs.isEmpty()) {
-            builder.append("知识库命中：").append('\n');
+            builder.append("知识库命中：\n");
             int index = 1;
             for (AiParagraphPo paragraph : hitParagraphs) {
                 builder.append(index++)
@@ -296,14 +379,10 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                         .append(excerpt(paragraph.getContent(), 120))
                         .append('\n');
             }
+            builder.append("建议：优先结合上面的知识命中内容继续细化答案。若需要正式生成式输出，请配置可用的模型 API Key。");
         } else {
-            builder.append("当前未命中可直接引用的知识片段，将按已有模型与提示词给出基础建议。").append('\n');
-        }
-        builder.append("建议：");
-        if (!hitParagraphs.isEmpty()) {
-            builder.append("优先结合上面的知识命中内容继续细化答案，如需正式生成式输出，请补充可用的模型 API Key。");
-        } else {
-            builder.append("可继续补充更具体的上下文、目标和约束，我会基于当前配置继续整理。");
+            builder.append("当前未命中可直接引用的知识片段，将按已有模型和提示词给出基础建议。\n");
+            builder.append("建议：可以继续补充更具体的上下文、目标和约束，我会基于当前配置继续整理。");
         }
         return builder.toString().trim();
     }

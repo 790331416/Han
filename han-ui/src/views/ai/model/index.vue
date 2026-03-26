@@ -104,7 +104,7 @@
           <el-input v-model="form.baseUrl" placeholder="如: https://api.deepseek.com/v1" />
         </el-form-item>
         <el-form-item label="API Key" prop="apiKey">
-          <el-input v-model="form.apiKey" type="password" show-password placeholder="请输入API Key" />
+          <el-input v-model="form.apiKey" type="password" show-password placeholder="请输入API Key，留空表示保留原值" />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
@@ -220,6 +220,7 @@ const handleAdd = () => { Object.assign(form, defaultForm()); dialogVisible.valu
 const handleEdit = async (row: AiModel) => {
   const res = await getAiModel(row.modelId)
   Object.assign(form, res.data)
+  form.apiKey = ''
   dialogVisible.value = true
 }
 

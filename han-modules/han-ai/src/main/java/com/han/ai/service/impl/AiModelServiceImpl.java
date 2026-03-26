@@ -24,6 +24,8 @@ import java.util.List;
 public class AiModelServiceImpl extends AiServiceSupport implements IAiModelService {
 
     private final AiModelMapper aiModelMapper;
+    private final AiModelCredentialResolver credentialResolver;
+    private final AiOpenAiCompatibleClient openAiCompatibleClient;
 
     @Override
     public PageResult<AiModelPo> selectPage(AiModelQuery query) {
@@ -98,7 +100,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         if (!STATUS_ENABLED.equals(model.getStatus())) {
             throw new BusinessException("当前模型已停用，无法测试");
         }
-        return "模型配置校验通过: " + model.getProvider() + "/" + model.getModelCode();
+        return openAiCompatibleClient.testConnection(model, credentialResolver.resolveApiKey(model));
     }
 
     private LambdaQueryWrapper<AiModelPo> buildQueryWrapper(AiModelQuery query) {
@@ -198,7 +200,9 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         target.setProvider(source.getProvider());
         target.setModelCode(source.getModelCode());
         target.setBaseUrl(source.getBaseUrl());
-        target.setApiKey(source.getApiKey());
+        if (!credentialResolver.shouldKeepExistingApiKey(source.getApiKey())) {
+            target.setApiKey(source.getApiKey());
+        }
         target.setMaxTokens(source.getMaxTokens());
         target.setTemperature(source.getTemperature());
         target.setStatus(source.getStatus());
