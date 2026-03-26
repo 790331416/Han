@@ -122,6 +122,14 @@ export DASHSCOPE_API_KEY=<server-env-only>
 docker compose -f docker-compose-full.yml up -d ai
 ```
 
+为避免部分 Docker 环境下的 JVM DNS 抖动影响 DashScope 真实调用，`han-ai` 建议显式带上以下 JVM 参数：
+
+```bash
+export DASHSCOPE_API_KEY=<server-env-only>
+export JAVA_OPTS="-Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0"
+docker compose -f docker-compose-full.yml up -d ai
+```
+
 ## 5. 镜像使用原则
 
 - 优先使用 `registry.cn-hangzhou.aliyuncs.com/xzy0112/*`

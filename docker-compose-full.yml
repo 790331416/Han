@@ -306,6 +306,7 @@ services:
     environment:
       <<: *service-env
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
     ports:
       - "9208:9208"
     depends_on:

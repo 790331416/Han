@@ -115,6 +115,14 @@ export DASHSCOPE_API_KEY=<server-env-only>
 docker compose -f docker-compose-full.yml up -d ai
 ```
 
+若部署环境中的 Docker DNS 对 JVM 解析存在抖动，建议同步给 `han-ai` 增加如下 JVM 参数，以稳定 DashScope 等外部模型供应商调用：
+
+```bash
+export DASHSCOPE_API_KEY=<server-env-only>
+export JAVA_OPTS="-Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0"
+docker compose -f docker-compose-full.yml up -d ai
+```
+
 ## 6. 验证步骤
 
 ### 6.1 服务自检
