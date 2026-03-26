@@ -797,3 +797,16 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java`
 - 修改文件：`han-ui/src/views/ai/model/index.vue`
 - 修改文件：`settings.workspace.xml`
+
+### 2026-03-26 DashScope Docker DNS 抖动收口与 AI 模型管理真链路验收
+
+- 本轮主要目标：在不简化任何现有功能的前提下，彻底收口 `95` 服务器上 `DashScope` 真实模型调用的 Docker DNS 抖动问题，并补齐 `AI 模型管理 + AI 对话` 的远端真实回归。
+- 已完成关键任务：定位 `95` 上 `han-ai` 容器存在“系统层 `wget/getent` 可解析 `dashscope.aliyuncs.com`，但 JVM 侧偶发 `UnknownHostException`”的真实现象；验证仅加 `JAVA_OPTS` 的 `preferIPv4 + DNS cache` 参数可以改善但不能彻底消除抖动；更新 [han-modules/han-ai/Dockerfile](D:/code/Han/han-modules/han-ai/Dockerfile)、[docker-compose-full.yml](D:/code/Han/docker-compose-full.yml)、[docs/server-95-deploy-flow.md](D:/code/Han/docs/server-95-deploy-flow.md)、[docs/deployment-guide.md](D:/code/Han/docs/deployment-guide.md)，将 AI 容器的 IPv4/DNS 稳定参数固化进默认部署口径；在 [AiOpenAiCompatibleClient.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java) 增加“`HttpURLConnection` 命中 `UnknownHostException` 时，自动回退到容器内 `curl --ipv4` 执行同一 OpenAI-compatible 请求”的增强兜底；本地重新编译 `han-ai` 通过；将修复分两次提交并推送到 `codex/han-ui-remote-validate`，提交分别为 `10c72a5` 和 `33dc9b3`；严格按“本地 push -> 95 pull -> 95 容器化 Maven `clean package` -> 95 自己构镜像 -> 95 自己重启容器”链路完成远端部署；在 `95` 上用真实网关连续验证 `/ai/model/test/3` 和新建模型 `/ai/model/test/9` 共 `6` 次全部返回 `200`；清理临时调试模型；提权执行 Playwright，直连 `95:3000 + 95:9090` 跑通 [ai-full.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) 与 [ai-model.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)，结果 `4 passed`。
+- 关键决策与解决方案：不删除任何 AI 页面、接口、环境变量能力和真实调用逻辑，也不把问题简单掩盖成“偶发失败重试”；通过两轮 `95` 实测确认，单纯改 JVM 参数只能缓解、不能根治，真正稳妥的方案是在保留 Java 主链请求的前提下，为容器网络场景补一层系统级 `curl --ipv4` 回退，从而把 Docker DNS 抖动隔离在基础设施层之外；远端发布坚持使用 `clean package`，避免 Maven 增量编译误判导致新源码未真正进入 `jar`；浏览器回归继续坚持“远端前端 + 远端后端”的真实链路，不回退到本地 mock 或接口替代。
+- 使用技术栈/工具：Java 21、Spring Boot、MyBatis-Plus、Vue 3、Playwright、Docker、MCP SSH、PowerShell、Maven、`apply_patch`、`curl --ipv4`、容器化构建。
+- 修改文件：`README.md`
+- 修改文件：`docker-compose-full.yml`
+- 修改文件：`docs/deployment-guide.md`
+- 修改文件：`docs/server-95-deploy-flow.md`
+- 修改文件：`han-modules/han-ai/Dockerfile`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java`
