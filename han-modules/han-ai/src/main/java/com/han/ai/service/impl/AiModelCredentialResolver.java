@@ -18,27 +18,43 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 class AiModelCredentialResolver {
 
+    static final String CREDENTIAL_SOURCE_ENV = "env";
+    static final String CREDENTIAL_SOURCE_DATABASE = "database";
+    static final String CREDENTIAL_SOURCE_NONE = "none";
+
     private static final Pattern MASKED_VALUE_PATTERN = Pattern.compile("^[*]+$");
 
     private final Environment environment;
 
     String resolveApiKey(AiModelPo model) {
+        return resolveCredentialBinding(model).apiKey();
+    }
+
+    String resolveCredentialSource(AiModelPo model) {
+        return resolveCredentialBinding(model).source();
+    }
+
+    boolean isCredentialConfigured(AiModelPo model) {
+        return !CREDENTIAL_SOURCE_NONE.equals(resolveCredentialSource(model));
+    }
+
+    private CredentialBinding resolveCredentialBinding(AiModelPo model) {
         if (model == null) {
-            return null;
+            return new CredentialBinding(null, CREDENTIAL_SOURCE_NONE);
         }
 
         for (String propertyName : buildCandidatePropertyNames(model)) {
             String propertyValue = trimToNull(environment.getProperty(propertyName));
             if (propertyValue != null) {
-                return propertyValue;
+                return new CredentialBinding(propertyValue, CREDENTIAL_SOURCE_ENV);
             }
         }
 
         String persisted = trimToNull(model.getApiKey());
         if (persisted == null || isMaskedValue(persisted)) {
-            return null;
+            return new CredentialBinding(null, CREDENTIAL_SOURCE_NONE);
         }
-        return persisted;
+        return new CredentialBinding(persisted, CREDENTIAL_SOURCE_DATABASE);
     }
 
     boolean shouldKeepExistingApiKey(String incomingApiKey) {
@@ -79,5 +95,8 @@ class AiModelCredentialResolver {
 
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private record CredentialBinding(String apiKey, String source) {
     }
 }

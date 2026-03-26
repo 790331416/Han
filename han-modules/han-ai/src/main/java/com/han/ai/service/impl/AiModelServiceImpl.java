@@ -33,12 +33,15 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         int pageNum = normalizePageNum(safeQuery.getPageNum());
         int pageSize = normalizePageSize(safeQuery.getPageSize());
         Page<AiModelPo> page = aiModelMapper.selectPage(new Page<>(pageNum, pageSize), buildQueryWrapper(safeQuery));
+        enrichCredentialMetadata(page.getRecords());
         return PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize);
     }
 
     @Override
     public AiModelPo selectById(Long modelId) {
-        return requireExisting(modelId);
+        AiModelPo model = requireExisting(modelId);
+        enrichCredentialMetadata(model);
+        return model;
     }
 
     @Override
@@ -50,6 +53,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         applyTenantScope(enabledWrapper);
         List<AiModelPo> enabledModels = aiModelMapper.selectList(enabledWrapper);
         if (!enabledModels.isEmpty()) {
+            enrichCredentialMetadata(enabledModels);
             return enabledModels;
         }
 
@@ -59,7 +63,9 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
                 .orderByAsc(AiModelPo::getStatus)
                 .orderByAsc(AiModelPo::getModelName);
         applyTenantScope(fallbackWrapper);
-        return aiModelMapper.selectList(fallbackWrapper);
+        List<AiModelPo> fallbackModels = aiModelMapper.selectList(fallbackWrapper);
+        enrichCredentialMetadata(fallbackModels);
+        return fallbackModels;
     }
 
     @Override
@@ -231,5 +237,22 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
     private void fillUpdateAudit(AiModelPo model) {
         model.setUpdateBy(resolveOperator());
         model.setUpdateTime(now());
+    }
+
+    private void enrichCredentialMetadata(List<AiModelPo> models) {
+        if (models == null || models.isEmpty()) {
+            return;
+        }
+        for (AiModelPo model : models) {
+            enrichCredentialMetadata(model);
+        }
+    }
+
+    private void enrichCredentialMetadata(AiModelPo model) {
+        if (model == null) {
+            return;
+        }
+        model.setCredentialConfigured(credentialResolver.isCredentialConfigured(model));
+        model.setCredentialSource(credentialResolver.resolveCredentialSource(model));
     }
 }

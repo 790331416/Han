@@ -11,6 +11,8 @@ export interface AiModel {
   modelCode: string
   baseUrl: string
   apiKey: string
+  credentialConfigured?: boolean
+  credentialSource?: string
   maxTokens: number
   temperature: number
   status: string

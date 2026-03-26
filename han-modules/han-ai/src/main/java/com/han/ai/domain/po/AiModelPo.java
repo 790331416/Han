@@ -1,6 +1,7 @@
 package com.han.ai.domain.po;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.han.common.web.sensitive.Sensitive;
@@ -32,6 +33,12 @@ public class AiModelPo {
 
     @Sensitive(value = SensitiveType.CUSTOM, prefixKeep = 4, suffixKeep = 4)
     private String apiKey;
+
+    @TableField(exist = false)
+    private Boolean credentialConfigured;
+
+    @TableField(exist = false)
+    private String credentialSource;
 
     private Integer maxTokens;
 
