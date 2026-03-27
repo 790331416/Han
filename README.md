@@ -885,3 +885,15 @@ docker-compose -f docker-compose-dev.yml up -d
 - 使用技术栈/工具：Playwright、PowerShell、`95` 远端容器运行态联调。
 - 验证结果：`3 passed`，说明 `AI应用` 首页、创建跳转链路、统一详情页在 `95` 新部署镜像上均可用。
 - 修改文件：`README.md`
+
+### 2026-03-27 AI 应用详情页第四版（访问入口深化与日志跳转）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，继续把 `AI` 应用详情页做成更像工作台的主入口，补强真实发布状态说明、访问入口明细，以及从工作流最近日志跳回指定对话的链路。
+- 已完成关键任务：重写 [detail.vue](D:/code/Han/han-ui/src/views/ai/application/detail.vue)，将应用详情页升级为第四版工作台，补齐发布状态说明、详情入口/管理入口/调试入口三类真实路径展示与复制按钮，并将工作流最近日志升级为可点击跳转；补强 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue)，支持通过 `conversationId` 路由参数恢复指定会话、同步会话切换到 URL，并在新建会话时清理查询参数；更新 [ai-application-detail.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts)，优先选取工作流应用做详情验证，并在存在日志时校验“详情页日志 -> AI 对话页指定会话”跳转链路；本地执行 `npm run build` 通过，本地指向旧版 `95` 页面时明确定位出“缺少新测试钩子”不是代码问题；随后将功能提交 `1e1b451 feat(ui): deepen ai application detail workspace` 推送到 `origin/codex/han-ui-remote-validate`，由 `95` 服务器在 `/opt/han/source/Han-ai-app-validate-20260327` 自行拉取代码、用 Node 容器重新构建 `han-ui/dist`、重建 `han-ui` 镜像并替换运行容器。
+- 关键决策与解决方案：不伪造智能体日志，也不新造与原有管理页平行的调试体系；工作流日志仍然复用已有真实会话数据，只补前端详情工作台与聊天页之间的路由衔接；本机只做代码开发与推送，最终验证严格走“本地 push -> 95 pull -> 95 自编译 -> 95 自构镜像 -> 95 自运行”标准流程；由于 `han-ui` Dockerfile 只复制 `dist`，因此在 `95` 上必须先用容器化 Node 构建前端产物，再构建镜像，不能跳过构建步骤直接替换容器。
+- 使用技术栈/工具：Vue 3、TypeScript、Vue Router、Element Plus、Playwright、Vite、Docker、Node 容器、PowerShell、`local95` MCP、`apply_patch`。
+- 验证结果：`95` 上新前端容器 `han-ui` 重新部署后为 `healthy`；`curl -I -H 'Accept: text/html' http://127.0.0.1:3000/ai/application` 返回 `200`；使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 执行 `ai-application.spec.ts` 和 `ai-application-detail.spec.ts`，结果 `3 passed`，说明应用首页、详情工作台、访问入口和日志跳转链路均在 `95` 真环境上通过。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
