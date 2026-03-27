@@ -919,3 +919,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`README.md`
 - 修改文件：`han-ui/src/views/ai/application/detail.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 AI 应用详情页第七版（知识来源明细卡片与执行阶段占位）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，把 AI 应用详情页日志抽屉继续向 `MaxKB` 的解释工作台靠拢，补齐知识来源明细卡片和执行阶段结构化占位，并继续在 `95` 真环境锁定这条链路。
+- 已完成关键任务：增强 [detail.vue](D:/code/Han/han-ui/src/views/ai/application/detail.vue)，在“知识来源”侧栏中新增知识库明细卡片，展示当前应用真实绑定的知识库类型、状态、文档数、段落数、字符数，并在未绑定知识库时保留诚实的空状态占位；在“执行信息”侧栏中新增五段结构化阶段列表，分别覆盖“会话定位、消息明细、知识增强、工具执行、模型回复”，并根据真实会话消息、知识库绑定情况、MCP 绑定情况动态标记“已定位、已拉取、待引用、待轨迹、已生成”等状态；同步升级 [ai-application-detail.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts)，增加对知识来源卡片列表和执行阶段列表的断言；本地 `npm run build` 通过后，将功能提交 `b9183f0 feat(ui): deepen ai log insight workspace` 推送到 `origin/codex/han-ui-remote-validate`。
+- 关键决策与解决方案：不伪造后端尚未提供的结构化引用、来源得分和节点轨迹，而是只基于当前已经真实存在的知识库配置、MCP 绑定和聊天消息来组织解释面板；在 `95` 部署中额外定位出一个关键问题，首次镜像替换时实际上吃到了仓库里旧 `dist`，导致页面白屏和回归失败，因此本轮明确把“先让 `95` 真正完成前端构建，再基于新产物重建镜像”作为固定校验步骤；为避免脏工作树影响拉取，本轮继续使用新的独立目录 `/opt/han/source/Han-ai-insight-20260327-v2` 完成远端构建和替换。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Vite、Docker、Node 容器、Git、PowerShell、`local95` MCP、`apply_patch`。
+- 验证结果：本地 `npm run build` 通过；`95` 上先用旧 `dist` 替换镜像时出现白屏并触发 Playwright `3 failed`，随后定位并修正为“先真实构建 `dist` 再构镜像”后，`han-ui` 容器恢复为 `healthy`，首页引用到新的资源包；使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 重新执行 `ai-application.spec.ts` 和 `ai-application-detail.spec.ts`，结果 `3 passed`，说明第七版知识来源卡片与执行阶段占位已在 `95` 真环境稳定通过。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
