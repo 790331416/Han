@@ -232,9 +232,21 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/ai',
     name: 'AI',
     component: () => import('@/layout/index.vue'),
-    redirect: '/ai/model',
+    redirect: '/ai/application',
     meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full', module: 'ai', feature: 'ai' },
     children: [
+      {
+        path: 'application',
+        name: 'AiApplication',
+        component: () => import('@/views/ai/application/index.vue'),
+        meta: { title: 'AI应用', icon: 'Grid' }
+      },
+      {
+        path: 'application/:type/:id',
+        name: 'AiApplicationDetail',
+        component: () => import('@/views/ai/application/detail.vue'),
+        meta: { title: '应用详情', icon: 'Grid', hidden: true }
+      },
       {
         path: 'model',
         name: 'AiModel',

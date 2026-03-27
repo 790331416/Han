@@ -810,3 +810,60 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`docs/server-95-deploy-flow.md`
 - 修改文件：`han-modules/han-ai/Dockerfile`
 - 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiOpenAiCompatibleClient.java`
+
+### 2026-03-26 MaxKB 界面流程对标调研
+
+- 本轮主要目标：在不简化任何现有功能的前提下，拉取 `MaxKB` 官方开源源码，拆解其界面组织方式、主流程设计和产品节奏，并与当前 `Han AI` 做结构化对比，为后续按批次吸收优点提供依据。
+- 已完成关键任务：通过提权 `git clone` 将 `MaxKB` 官方源码拉取到独立研究目录 `D:\code\Han\_research\MaxKB-upstream`；确认本次对比源码提交为 `b0ba621e010e4347147bae337bcdbf103e5d4e9e`；完成对 `MaxKB` 管理端与聊天端双入口、应用首页、应用详情、知识库主页、知识库列表容器、模型主页、模型创建弹窗、聊天主组件、知识来源组件、执行详情组件、工作流画布等关键页面和路由的只读分析；同时回看 [index.ts](D:/code/Han/han-ui/src/router/index.ts)、[index.vue](D:/code/Han/han-ui/src/views/ai/model/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/knowledge/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/agent/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/workflow/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 作为 Han 侧对比基线；新增对标分析文档 [maxkb-han-ai-ui-flow-analysis-20260326.md](D:/code/Han/docs/maxkb-han-ai-ui-flow-analysis-20260326.md)，整理“应用优先、双入口、知识库产品化、模型供应商优先、对话可解释、工作流底座化”等可借鉴优点，并给出 Han AI 的第一批建议落地项。
+- 关键决策与解决方案：不改动任何现有业务功能，也不在本轮直接开始大规模 UI 改版，而是先用“MaxKB 源码主流程拆解 + Han 现状对照”的方式把改造方向定清楚；MaxKB 源码放在独立研究目录，不混入当前仓库业务代码；对标重点放在信息架构和用户路径，而不是只抄样式；结论上优先建议 Han AI 学习 `MaxKB` 的“应用优先入口、应用详情分层、知识来源与执行解释、知识库工作台、供应商优先模型配置”，而不是优先照搬它更重的权限体系和超大节点数量。
+- 使用技术栈/工具：Git、PowerShell、`rg`、`apply_patch`、官方开源仓库只读源码分析。
+- 修改文件：`README.md`
+- 修改文件：`docs/maxkb-han-ai-ui-flow-analysis-20260326.md`
+
+### 2026-03-26 AI 应用优先入口第一阶段落地
+
+- 本轮主要目标：在不简化任何现有功能的前提下，基于 [maxkb-han-ai-ui-flow-analysis-20260326.md](D:/code/Han/docs/maxkb-han-ai-ui-flow-analysis-20260326.md) 的结论，启动 `Han AI` 的第一段信息架构调整，让 `AI` 从“能力页平铺入口”开始向“应用优先入口”收拢。
+- 已完成关键任务：调整 [index.ts](D:/code/Han/han-ui/src/router/index.ts)，将 `/ai` 默认入口从 `/ai/model` 改为 `/ai/application`，并新增 `AI应用` 子路由；新增 [index.vue](D:/code/Han/han-ui/src/views/ai/application/index.vue)，聚合展示“简单应用=智能体”“高级应用=工作流”，补齐应用总数、已发布数、快速创建、资源入口、统一卡片列表等首页能力；保持原有 [index.vue](D:/code/Han/han-ui/src/views/ai/agent/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/workflow/index.vue)、[index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 等页面全部保留不删不藏；为智能体和工作流页新增路由联动，支持从 `AI应用` 首页通过 `action=create` 直接打开原有创建弹窗，并支持通过 `action=chat` 直达原有调试对话弹窗；为智能体与工作流表单补充稳定测试钩子；新增 [ai-application.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts)，覆盖“应用首页可见”和“从首页进入智能体/工作流创建”两条关键链路；本地执行 `npm run build` 通过，Playwright 执行新增回归结果 `2 passed`。
+- 关键决策与解决方案：不做破坏式改版，不删除原有 `智能体/工作流/对话` 页面，也不强行把后台页面一次性改成 `MaxKB` 式复杂结构，而是先通过新增 `AI应用` 首页做“加法式重组”；首页只承担统一入口和统一视角，现阶段继续复用既有智能体/工作流页面作为第二层管理页，降低回归风险；为了避免无 `智能体/工作流` 权限用户被 `/ai/application` 卡住，在首页挂载时增加“按权限回退到首个可访问 AI 能力页”的保护逻辑；快速创建和调试链路采用路由查询参数联动，而不是重写原有业务弹窗，最大限度保留现有实现。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Vue Router、Playwright、PowerShell、`vue-tsc`、Vite、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/router/index.ts`
+- 修改文件：`han-ui/src/views/ai/application/index.vue`
+- 修改文件：`han-ui/src/views/ai/agent/index.vue`
+- 修改文件：`han-ui/src/views/ai/workflow/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application.spec.ts`
+
+### 2026-03-26 AI 应用详情页第一版
+
+- 本轮主要目标：在不简化任何现有功能的前提下，为 AI 应用首页补齐第一版统一详情页，把“概览、设置、调试”三层视角先落下来，继续向 MaxKB 的应用工作台靠拢。
+- 已完成关键任务：在 `han-ui/src/router/index.ts` 新增隐藏路由 `/ai/application/:type/:id` 作为统一应用详情入口；重写并清理 `han-ui/src/views/ai/application/index.vue` 的文案编码，保留原有首页结构并新增“查看详情”入口；新增 `han-ui/src/views/ai/application/detail.vue`，统一承接智能体和工作流两类应用的概览、设置、调试视角；详情页按路由参数动态复用 `getAiAgent/getAiWorkflow`，并聚合模型、知识库、MCP 资源名称用于展示；调试入口继续复用原有智能体页、工作流页、流程设计页与对话调试逻辑；新增 `han-ui/tests/e2e/specs/ai-application-detail.spec.ts`，用于锁定“首页进入详情页 -> 概览/设置/调试切换”的主链回归。
+- 关键决策与解决方案：不删除原有 `智能体/工作流/对话/流程设计` 页面，也不重写现有调试逻辑，只在应用层增加统一详情视图；详情页通过 `type=agent|workflow` 动态分流，不新增后端接口，最大限度复用既有能力；首页同时顺手收口编码问题，避免乱码继续扩散到后续 UI 迭代。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Vue Router、Playwright、PowerShell、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/router/index.ts`
+- 修改文件：`han-ui/src/views/ai/application/index.vue`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-26 AI 应用详情页第二版（发布/日志/访问入口骨架）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，为应用详情页补齐“发布、日志、访问入口”三块骨架，延续应用工作台的主线体验。
+- 已完成关键任务：在 `han-ui/src/views/ai/application/detail.vue` 的“调试”页追加发布状态、访问入口、最近日志三块区域；不新增后端接口，仅展示应用当前状态并给出后续接入说明；在 `han-ui/tests/e2e/specs/ai-application-detail.spec.ts` 增加对应可见性断言，锁定 UI 骨架回归。
+- 关键决策与解决方案：继续复用现有管理页与对话调试入口，不改变已有发布逻辑；新增区域全部为信息与入口层，避免侵入式重构。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 AI 应用详情页第三版（真实发布/访问入口/工作流日志）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，把 AI 应用详情页从“发布、日志、访问入口骨架”推进到“真实可用的详情工作台”，优先补齐工作流最近日志、应用发布切换、访问链接复制三条主链。
+- 已完成关键任务：在 `han-modules/han-ai/src/main/java/com/han/ai/domain/query/AiConversationQuery.java` 新增 `workflowId` 查询条件，并在 `han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java` 的会话分页查询中接入该过滤能力；在 `han-ui/src/api/ai/index.ts` 补充 `AiConversationQuery` 类型并放宽 `listConversations` 的查询参数；重写 `han-ui/src/views/ai/application/detail.vue`，将“调试”页升级为真实详情工作台，支持应用发布/取消发布、访问链接生成与复制、工作流最近对话日志展示，同时保留智能体当前尚未具备应用级日志关联时的诚实占位提示；本地执行 `han-ai` 模块编译通过，执行 `ai-application-detail.spec.ts` 结果 `1 passed`。
+- 关键决策与解决方案：不伪造智能体日志，也不为了统一展示而简化现有数据模型；考虑到当前会话表只有 `workflowId` 没有 `agentId`，本轮只把工作流日志做成真实链路，智能体仍明确提示“需要补应用级关联字段”；发布能力与访问入口均继续复用现有智能体、工作流管理能力和聊天入口，不新增破坏性后端接口；同时修正了本地 Maven 环境被 `MAVEN_OPTS=-Dmaven.repo.local=D:\.m2\repository` 干扰的问题，统一改用工作区本地仓库和 JDK 21 验证。
+- 使用技术栈/工具：Java 21、Maven、Vue 3、TypeScript、Element Plus、Playwright、PowerShell、`apply_patch`。
+- 修改文件：`README.md`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/domain/query/AiConversationQuery.java`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java`
+- 修改文件：`han-ui/src/api/ai/index.ts`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`

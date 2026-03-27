@@ -333,7 +333,11 @@ export function sendChatMessage(data: ChatRequest) {
   return post<AiChatMessage>('/ai/chat/send', data)
 }
 
-export function listConversations(query: PageQuery) {
+export interface AiConversationQuery extends PageQuery {
+  workflowId?: string | number
+}
+
+export function listConversations(query: AiConversationQuery) {
   return get<PageResult<AiConversation>>('/ai/chat/conversations', query)
 }
 

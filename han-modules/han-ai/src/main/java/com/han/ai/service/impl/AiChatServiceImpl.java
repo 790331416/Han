@@ -76,6 +76,9 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (tenantId != null) {
             wrapper.eq(AiConversationPo::getTenantId, tenantId);
         }
+        if (safeQuery.getWorkflowId() != null) {
+            wrapper.eq(AiConversationPo::getWorkflowId, safeQuery.getWorkflowId());
+        }
         Page<AiConversationPo> page = aiConversationMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         return PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize);
     }
