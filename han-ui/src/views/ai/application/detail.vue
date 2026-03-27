@@ -450,6 +450,59 @@
           </div>
         </div>
 
+        <div v-loading="logDetailLoading" class="drawer-side-panels">
+          <section
+            class="drawer-section"
+            data-testid="ai-application-log-source-panel"
+          >
+            <div class="drawer-section-label">知识来源</div>
+            <div class="drawer-section-copy">
+              {{ sourcePanelTitle }}
+            </div>
+            <div class="drawer-tag-list">
+              <el-tag
+                v-for="item in knowledgeBaseNames"
+                :key="item"
+                size="small"
+                effect="plain"
+              >
+                {{ item }}
+              </el-tag>
+              <span v-if="knowledgeBaseNames.length === 0" class="drawer-empty-text">当前没有知识库来源可展示</span>
+            </div>
+            <div class="drawer-note">
+              当前消息接口尚未返回结构化引用片段、文档命中位置和来源得分，后续后端补齐后会优先接到这里。
+            </div>
+          </section>
+
+          <section
+            class="drawer-section"
+            data-testid="ai-application-log-execution-panel"
+          >
+            <div class="drawer-section-label">执行信息</div>
+            <div class="drawer-stat-list">
+              <div
+                v-for="item in executionSummaryItems"
+                :key="item.label"
+                class="drawer-stat-item"
+              >
+                <span class="drawer-stat-label">{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <div class="drawer-preview">
+              <div class="drawer-preview-block">
+                <span class="drawer-preview-label">最近问题</span>
+                <p>{{ summarizeMessage(selectedLatestUserMessage?.content, 120) }}</p>
+              </div>
+              <div class="drawer-preview-block">
+                <span class="drawer-preview-label">最近回复摘要</span>
+                <p>{{ summarizeMessage(selectedLatestAssistantMessage?.content, 160) }}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
         <div class="drawer-actions">
           <el-button
             type="primary"
@@ -487,10 +540,12 @@ import {
   listAllKnowledgeBases,
   listAllMcpServers,
   listAllModels,
+  listChatMessages,
   listConversations,
   publishAiAgent,
   publishAiWorkflow,
   type AiAgent,
+  type AiChatMessage,
   type AiConversation,
   type AiModel,
   type AiWorkflow,
@@ -549,6 +604,8 @@ const mcpServerList = ref<McpServer[]>([])
 const recentConversations = ref<AiConversation[]>([])
 const logDrawerVisible = ref(false)
 const selectedConversation = ref<AiConversation | null>(null)
+const logDetailLoading = ref(false)
+const selectedConversationMessages = ref<AiChatMessage[]>([])
 
 const applicationType = computed<ApplicationType>(() => {
   return route.params.type === 'workflow' ? 'workflow' : 'agent'
@@ -667,6 +724,45 @@ const accessEntryList = computed<AccessEntryItem[]>(() => {
       description: '进入应用的真实调试链路和对话工作区',
       path: debugPath.value,
       available: Boolean(debugPath.value)
+    }
+  ]
+})
+
+const selectedLatestAssistantMessage = computed(() => {
+  const assistantMessages = selectedConversationMessages.value.filter((item) => item.role === 'assistant')
+  return assistantMessages[assistantMessages.length - 1]
+})
+
+const selectedLatestUserMessage = computed(() => {
+  const userMessages = selectedConversationMessages.value.filter((item) => item.role === 'user')
+  return userMessages[userMessages.length - 1]
+})
+
+const sourcePanelTitle = computed(() => {
+  if (knowledgeBaseNames.value.length > 0) {
+    return '当前应用已绑定知识能力，但本次会话还没有返回结构化引用片段。'
+  }
+  return '当前应用没有绑定知识库，本次会话也没有结构化来源信息。'
+})
+
+const executionSummaryItems = computed(() => {
+  const latestAssistant = selectedLatestAssistantMessage.value
+  return [
+    {
+      label: '最新回复消息 ID',
+      value: latestAssistant?.messageId ? String(latestAssistant.messageId) : '暂无'
+    },
+    {
+      label: 'Token 消耗',
+      value: latestAssistant?.tokenCount ? String(latestAssistant.tokenCount) : '暂无'
+    },
+    {
+      label: '回复时间',
+      value: formatDateTime(latestAssistant?.createTime)
+    },
+    {
+      label: '回复长度',
+      value: latestAssistant?.content ? `${latestAssistant.content.length} 字符` : '暂无'
     }
   ]
 })
@@ -807,9 +903,19 @@ function conversationDetailPath(conversation: AiConversation) {
   return `/ai/chat?conversationId=${conversation.conversationId}`
 }
 
-function openConversationLogDrawer(conversation: AiConversation) {
+async function openConversationLogDrawer(conversation: AiConversation) {
   selectedConversation.value = conversation
   logDrawerVisible.value = true
+  logDetailLoading.value = true
+  try {
+    const response = await listChatMessages(conversation.conversationId)
+    selectedConversationMessages.value = response.data || []
+  } catch {
+    selectedConversationMessages.value = []
+    ElMessage.warning('当前会话详情加载失败，已保留基础摘要信息')
+  } finally {
+    logDetailLoading.value = false
+  }
 }
 
 function openConversationLog(conversation: AiConversation) {
@@ -824,6 +930,17 @@ function openConversationLog(conversation: AiConversation) {
 
 async function copyConversationLink(conversation: AiConversation) {
   await copyAccessLink(conversationDetailPath(conversation), '对话入口')
+}
+
+function summarizeMessage(content?: string, limit = 120) {
+  if (!content) {
+    return '暂无'
+  }
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return '暂无'
+  }
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized
 }
 
 async function loadRecentConversations(type: ApplicationType, id: string) {
@@ -1388,6 +1505,103 @@ watch(
   line-height: 1.7;
   word-break: break-all;
   white-space: pre-wrap;
+}
+
+.drawer-side-panels {
+  display: grid;
+  gap: 16px;
+}
+
+.drawer-section {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.drawer-section-label {
+  margin-bottom: 10px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.drawer-section-copy {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.drawer-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.drawer-empty-text {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.drawer-note {
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.drawer-stat-list {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-stat-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.drawer-stat-label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.drawer-stat-item strong {
+  color: #0f172a;
+  font-size: 13px;
+  text-align: right;
+}
+
+.drawer-preview {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.drawer-preview-block {
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.drawer-preview-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.drawer-preview-block p {
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.75;
+  word-break: break-word;
 }
 
 .drawer-actions {
