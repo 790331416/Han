@@ -908,3 +908,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`README.md`
 - 修改文件：`han-ui/src/views/ai/application/detail.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 AI 应用详情页第六版（知识来源与执行信息侧栏骨架）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，继续沿着 `MaxKB` 的解释面板思路，把 AI 应用详情页日志抽屉升级成“知识来源 + 执行信息”双侧栏骨架，并在 `95` 真环境里锁定这条链路。
+- 已完成关键任务：增强 [detail.vue](D:/code/Han/han-ui/src/views/ai/application/detail.vue)，在工作流日志抽屉中新增“知识来源”侧栏，展示当前应用绑定的知识库标签，并明确提示当前消息接口尚未返回结构化引用片段、命中文档位置和来源得分；新增“执行信息”侧栏，实时加载对应会话消息，通过 `listChatMessages` 取回真实对话记录后展示最近问题、最近回复摘要、回复消息 ID、Token 消耗、回复时间、回复长度等摘要信息；同步升级 [ai-application-detail.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts)，新增对“知识来源面板”和“执行信息面板”的可见性断言；本地仅提交功能代码，生成提交 `c070a2c feat(ui): add ai log insight side panels` 并推送到 `origin/codex/han-ui-remote-validate`；考虑到 `95` 上原验证目录存在前端构建产物脏改动，本轮新建独立目录 `/opt/han/source/Han-ai-insight-20260327` 重新拉取同分支代码，由 `95` 自己使用 Node 容器完成 `npm install --legacy-peer-deps && npm run build`、自己构建 `han-ui` 镜像并替换运行容器。
+- 关键决策与解决方案：不伪造后端尚未提供的结构化知识引用和节点执行轨迹，而是先把真实可用的信息组织成诚实的解释面板骨架；知识来源只展示当前应用实际绑定的知识库，不捏造命中明细；执行信息直接基于会话真实消息计算摘要，确保后续后端补齐引用片段、执行节点、重排分数后可以无缝扩展到同一块 UI；`95` 上现有验证目录已被 `dist` 和 `package-lock` 等构建产物污染，因此不覆盖旧目录，而是改用新的独立目录自拉代码、自构建、自运行，避免破坏现有回滚面。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Playwright、Vite、Docker、Node 容器、Git、PowerShell、`local95` MCP、`apply_patch`。
+- 验证结果：本地 `npm run build` 通过；`95` 上新构建的 `han-ui` 容器状态为 `healthy`，`curl -I -H 'Accept: text/html' http://127.0.0.1:3000/ai/application` 返回 `200`；使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 运行 `ai-application.spec.ts` 和 `ai-application-detail.spec.ts`，结果 `3 passed`，说明第六版日志抽屉解释面板已在 `95` 真环境上通过。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
