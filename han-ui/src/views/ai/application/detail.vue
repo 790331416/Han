@@ -470,6 +470,36 @@
               </el-tag>
               <span v-if="knowledgeBaseNames.length === 0" class="drawer-empty-text">当前没有知识库来源可展示</span>
             </div>
+            <div
+              class="source-card-list"
+              data-testid="ai-application-log-source-card-list"
+            >
+              <article
+                v-for="item in selectedKnowledgeBases"
+                :key="String(item.kbId)"
+                class="source-card"
+                data-testid="ai-application-log-source-card"
+              >
+                <div class="source-card-header">
+                  <strong>{{ item.kbName }}</strong>
+                  <el-tag size="small" effect="plain" type="success">
+                    {{ getKnowledgeStatusLabel(item.status) }}
+                  </el-tag>
+                </div>
+                <div class="source-card-meta">
+                  <span>类型：{{ getKnowledgeTypeLabel(item.kbType) }}</span>
+                  <span>文档：{{ item.documentCount }}</span>
+                  <span>段落：{{ item.paragraphCount }}</span>
+                  <span>字符：{{ item.charCount }}</span>
+                </div>
+              </article>
+              <div
+                v-if="selectedKnowledgeBases.length === 0"
+                class="source-card source-card-empty"
+              >
+                当前应用还没有绑定知识库，所以这里先保留知识来源卡片位，等绑定后直接展示文档规模和状态。
+              </div>
+            </div>
             <div class="drawer-note">
               当前消息接口尚未返回结构化引用片段、文档命中位置和来源得分，后续后端补齐后会优先接到这里。
             </div>
@@ -489,6 +519,26 @@
                 <span class="drawer-stat-label">{{ item.label }}</span>
                 <strong>{{ item.value }}</strong>
               </div>
+            </div>
+            <div
+              class="drawer-stage-list"
+              data-testid="ai-application-log-execution-stage-list"
+            >
+              <article
+                v-for="item in executionStageItems"
+                :key="item.label"
+                class="drawer-stage-item"
+                :class="`is-${item.state}`"
+                data-testid="ai-application-log-execution-stage"
+              >
+                <div class="drawer-stage-main">
+                  <span class="drawer-stage-label">{{ item.label }}</span>
+                  <p>{{ item.detail }}</p>
+                </div>
+                <el-tag size="small" effect="plain" :type="item.tagType">
+                  {{ item.stateLabel }}
+                </el-tag>
+              </article>
             </div>
             <div class="drawer-preview">
               <div class="drawer-preview-block">
@@ -542,6 +592,8 @@ import {
   listAllModels,
   listChatMessages,
   listConversations,
+  kbTypeOptions,
+  indexStatusOptions,
   publishAiAgent,
   publishAiWorkflow,
   type AiAgent,
@@ -580,6 +632,14 @@ interface PublishReadinessItem {
   label: string
   hint: string
   ready: boolean
+}
+
+interface ExecutionStageItem {
+  label: string
+  detail: string
+  state: 'ready' | 'pending' | 'inactive'
+  stateLabel: string
+  tagType: 'success' | 'warning' | 'info'
 }
 
 interface AccessEntryItem {
@@ -767,11 +827,71 @@ const executionSummaryItems = computed(() => {
   ]
 })
 
+const executionStageItems = computed<ExecutionStageItem[]>(() => {
+  const hasMessages = selectedConversationMessages.value.length > 0
+  const latestAssistant = selectedLatestAssistantMessage.value
+  const selectedConversationTitle = selectedConversation.value?.title || '未命名会话'
+  return [
+    {
+      label: '会话定位',
+      detail: selectedConversation.value
+        ? `${selectedConversationTitle}，会话 ID ${selectedConversation.value.conversationId}`
+        : '当前还没有选中的运行日志。',
+      state: selectedConversation.value ? 'ready' : 'inactive',
+      stateLabel: selectedConversation.value ? '已定位' : '未载入',
+      tagType: selectedConversation.value ? 'success' : 'info'
+    },
+    {
+      label: '消息明细',
+      detail: hasMessages
+        ? `已加载 ${selectedConversationMessages.value.length} 条消息，可继续还原问答过程。`
+        : logDetailLoading.value
+          ? '正在加载会话消息，请稍候。'
+          : '当前只保留基础摘要，后续可继续补细节。',
+      state: hasMessages ? 'ready' : (logDetailLoading.value ? 'pending' : 'inactive'),
+      stateLabel: hasMessages ? '已拉取' : (logDetailLoading.value ? '加载中' : '待补充'),
+      tagType: hasMessages ? 'success' : (logDetailLoading.value ? 'warning' : 'info')
+    },
+    {
+      label: '知识增强',
+      detail: knowledgeBaseNames.value.length > 0
+        ? `已绑定 ${knowledgeBaseNames.value.length} 个知识库，等待后端补回命中片段与来源得分。`
+        : '当前应用没有绑定知识库，本次不会展示知识命中。',
+      state: knowledgeBaseNames.value.length > 0 ? 'pending' : 'inactive',
+      stateLabel: knowledgeBaseNames.value.length > 0 ? '待引用' : '未启用',
+      tagType: knowledgeBaseNames.value.length > 0 ? 'warning' : 'info'
+    },
+    {
+      label: '工具执行',
+      detail: mcpServerNames.value.length > 0
+        ? `已绑定 ${mcpServerNames.value.length} 个 MCP 服务，等待后端补执行轨迹。`
+        : '当前应用没有绑定 MCP 服务，本次不会展示工具轨迹。',
+      state: mcpServerNames.value.length > 0 ? 'pending' : 'inactive',
+      stateLabel: mcpServerNames.value.length > 0 ? '待轨迹' : '未启用',
+      tagType: mcpServerNames.value.length > 0 ? 'warning' : 'info'
+    },
+    {
+      label: '模型回复',
+      detail: latestAssistant?.content
+        ? `当前会话已生成回复摘要，可继续跳转到对话页查看完整上下文。`
+        : '当前会话还没有可展示的助手回复。',
+      state: latestAssistant?.content ? 'ready' : 'inactive',
+      stateLabel: latestAssistant?.content ? '已生成' : '待生成',
+      tagType: latestAssistant?.content ? 'success' : 'info'
+    }
+  ]
+})
+
 const knowledgeBaseNames = computed(() => {
   const map = new Map(knowledgeBaseList.value.map((item) => [String(item.kbId), item.kbName]))
   return (applicationDetail.value?.knowledgeBaseIds || []).map((item) => {
     return map.get(String(item)) || String(item)
   })
+})
+
+const selectedKnowledgeBases = computed(() => {
+  const targetIds = new Set((applicationDetail.value?.knowledgeBaseIds || []).map((item) => String(item)))
+  return knowledgeBaseList.value.filter((item) => targetIds.has(String(item.kbId)))
 })
 
 const mcpServerNames = computed(() => {
@@ -798,6 +918,14 @@ function formatDateTime(value?: string) {
     return '暂无'
   }
   return value.length >= 16 ? value.slice(0, 16) : value
+}
+
+function getKnowledgeTypeLabel(value?: string) {
+  return kbTypeOptions.find((item) => item.value === value)?.label || value || '未知'
+}
+
+function getKnowledgeStatusLabel(value?: string) {
+  return indexStatusOptions.find((item) => item.value === value)?.label || value || '待处理'
 }
 
 function getManagementRoute(): RouteLocationRaw {
@@ -907,6 +1035,7 @@ async function openConversationLogDrawer(conversation: AiConversation) {
   selectedConversation.value = conversation
   logDrawerVisible.value = true
   logDetailLoading.value = true
+  selectedConversationMessages.value = []
   try {
     const response = await listChatMessages(conversation.conversationId)
     selectedConversationMessages.value = response.data || []
@@ -1551,6 +1680,45 @@ watch(
   line-height: 1.7;
 }
 
+.source-card-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.source-card {
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.source-card-empty {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.source-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-card-header strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.source-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
 .drawer-stat-list {
   display: grid;
   gap: 10px;
@@ -1581,6 +1749,51 @@ watch(
   display: grid;
   gap: 12px;
   margin-top: 14px;
+}
+
+.drawer-stage-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.drawer-stage-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.drawer-stage-item.is-ready {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.drawer-stage-item.is-pending {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.drawer-stage-main {
+  display: grid;
+  gap: 6px;
+}
+
+.drawer-stage-label {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.drawer-stage-main p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .drawer-preview-block {

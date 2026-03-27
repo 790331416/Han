@@ -44,6 +44,9 @@ test('ai application detail should expose workspace panels and support workflow 
     await expect(page.getByTestId('ai-application-log-drawer-body')).toBeVisible()
     await expect(page.getByTestId('ai-application-log-source-panel')).toBeVisible()
     await expect(page.getByTestId('ai-application-log-execution-panel')).toBeVisible()
+    await expect(page.getByTestId('ai-application-log-source-card-list')).toBeVisible()
+    await expect(page.getByTestId('ai-application-log-execution-stage-list')).toBeVisible()
+    await expect(page.getByTestId('ai-application-log-execution-stage')).toHaveCount(5)
     await expect(page.getByTestId('ai-application-log-drawer-open-button')).toBeVisible()
     await page.getByTestId('ai-application-log-drawer-open-button').click()
     await page.waitForURL(/\/ai\/chat\?conversationId=/, {
