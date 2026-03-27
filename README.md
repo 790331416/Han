@@ -876,3 +876,12 @@ docker-compose -f docker-compose-dev.yml up -d
 - 使用技术栈/工具：Git、Docker、Maven 容器、Node 容器、Nginx 镜像、PowerShell、`local95` MCP。
 - 验证结果：`95` 上 `han-ai` 和 `han-ui` 容器均为 `healthy`；`http://127.0.0.1:9208/actuator/health` 返回 `UP`；`http://127.0.0.1:3000/` 返回 `200`；带 `Accept: text/html` 访问 `http://127.0.0.1:3000/ai/application` 返回 `200`；`http://127.0.0.1:9090/system/runtime/capabilities` 返回 `200`，并显示 `tier=full`、`ai=true`。
 - 修改文件：`README.md`
+
+### 2026-03-27 95 运行态 AI 应用页面联调回归
+
+- 本轮主要目标：在 `95` 服务器完成标准链路部署后，继续用真实运行态验证 `AI应用` 首页和统一详情页主链，确保上线容器而不是本机开发态可用。
+- 已完成关键任务：使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 作为 Playwright 环境变量，执行 `han-ui/tests/e2e/specs/ai-application.spec.ts` 和 `han-ui/tests/e2e/specs/ai-application-detail.spec.ts`；覆盖“AI 应用首页加载”“从应用首页进入智能体/工作流原管理页创建链路”“应用详情页概览/设置/调试三层视角”三条回归。
+- 关键决策与解决方案：不在本机重新起前端或后端服务，全部回归都指向 `95` 的新容器；为绕开本机 Playwright 的 `spawn EPERM` 环境问题，沿用已批准的提权规则启动浏览器子进程，但验证目标仍然是远端 `95` 运行态。
+- 使用技术栈/工具：Playwright、PowerShell、`95` 远端容器运行态联调。
+- 验证结果：`3 passed`，说明 `AI应用` 首页、创建跳转链路、统一详情页在 `95` 新部署镜像上均可用。
+- 修改文件：`README.md`
