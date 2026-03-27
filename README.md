@@ -867,3 +867,12 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/api/ai/index.ts`
 - 修改文件：`han-ui/src/views/ai/application/detail.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 95 服务器标准链路编译运行（AI 应用工作台）
+
+- 本轮主要目标：严格按“本机只开发代码，本地先提交并推送，`95` 服务器拉代码后自己编译、自己构镜像、自己运行验证”的标准流程，将 AI 应用工作台这批改动真正部署到 `95`。
+- 已完成关键任务：在本地仅提交本次 AI 应用工作台相关文件，生成提交 `b32d205 feat(ai): add application workspace flows` 并推送到 `origin/codex/han-ui-remote-validate`；考虑到 `95` 上现有 `/opt/han/source/Han` 工作树存在脏改动，未覆盖原目录，而是新建独立验证目录 `/opt/han/source/Han-ai-app-validate-20260327` 拉取同一分支代码；在 `95` 上通过 `maven:3.9.9-eclipse-temurin-21` 容器自打 `han-ai` 包，产出 `han-modules/han-ai/target/han-ai.jar`；在 `95` 上通过 `node:20-alpine` 容器自装依赖并自构建 `han-ui/dist`；随后在 `95` 上自构建 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest` 与 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ui:latest` 两个镜像，并替换运行 `han-ai`、`han-ui` 容器。
+- 关键决策与解决方案：不走本机上传 `jar` 或 `dist` 的旁路，也不覆盖 `95` 上已有脏工作树；为避免污染原验证目录，统一采用新的独立目录拉分支编译；`han-ui` 在 `95` 上构建时遇到 `pinia` 与 `pinia-plugin-persistedstate` 的 peer 依赖冲突，采用 `npm install --legacy-peer-deps` 仅作为服务器安装策略解决构建环境问题，不改任何业务代码；`han-ai` 重新启动时保留现有 `DashScope`、数据库、Redis、Nacos、RabbitMQ、JVM DNS 参数等环境变量，确保新镜像继承当前可用运行态。
+- 使用技术栈/工具：Git、Docker、Maven 容器、Node 容器、Nginx 镜像、PowerShell、`local95` MCP。
+- 验证结果：`95` 上 `han-ai` 和 `han-ui` 容器均为 `healthy`；`http://127.0.0.1:9208/actuator/health` 返回 `UP`；`http://127.0.0.1:3000/` 返回 `200`；带 `Accept: text/html` 访问 `http://127.0.0.1:3000/ai/application` 返回 `200`；`http://127.0.0.1:9090/system/runtime/capabilities` 返回 `200`，并显示 `tier=full`、`ai=true`。
+- 修改文件：`README.md`
