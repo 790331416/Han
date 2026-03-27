@@ -897,3 +897,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`han-ui/src/views/ai/application/detail.vue`
 - 修改文件：`han-ui/src/views/ai/chat/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 AI 应用详情页第五版（发布就绪度、访问入口卡片、日志详情抽屉）
+
+- 本轮主要目标：在不简化任何现有功能的前提下，继续把 `AI` 应用详情页向应用工作台推进，补上更清晰的发布就绪度、可直接打开的访问入口卡片，以及最近日志的详情抽屉。
+- 已完成关键任务：增强 [detail.vue](D:/code/Han/han-ui/src/views/ai/application/detail.vue)，在发布区新增“模型配置、系统提示词、交付入口、知识增强”四项发布就绪度面板；在访问入口区新增三类真实入口卡片，分别承接详情页、管理页、调试页，并支持直接打开与复制；在日志区新增运行日志详情抽屉，点击工作流日志卡片可查看会话摘要、消息数、时间、对话入口和调试入口，再从抽屉继续跳转到指定对话；同步更新 [ai-application-detail.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts)，补充对发布就绪度、访问入口卡片和日志抽屉的回归断言；本地执行 `npm run build` 通过后，将功能提交 `c8342e8 feat(ui): enrich ai application delivery workspace` 推送到 `origin/codex/han-ui-remote-validate`，并由 `95` 在 `/opt/han/source/Han-ai-app-validate-20260327` 自行拉取代码、自行用 Node 容器构建前端产物、自行构建并替换 `han-ui` 容器。
+- 关键决策与解决方案：不伪造不存在的执行详情，也不为了表现层统一去改动当前后端数据模型；日志抽屉先诚实复用已有真实会话数据，后续如果后端补齐执行节点、知识来源和耗时信息，再在同一抽屉中继续扩展；访问入口不再只展示路径字符串，而是提升为更接近交付工作台的入口卡片，但仍然复用现有详情页、管理页和调试页，不新造平行页面。
+- 使用技术栈/工具：Vue 3、TypeScript、Vue Router、Element Plus、Playwright、Vite、Docker、Node 容器、PowerShell、`local95` MCP、`apply_patch`。
+- 验证结果：`95` 上新前端容器 `han-ui` 重新部署后为 `healthy`；`curl -I -H 'Accept: text/html' http://127.0.0.1:3000/ai/application` 返回 `200`；使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 再次执行 `ai-application.spec.ts` 和 `ai-application-detail.spec.ts`，结果仍为 `3 passed`，说明第五版详情工作台在 `95` 真环境上稳定可用。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/application/detail.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
