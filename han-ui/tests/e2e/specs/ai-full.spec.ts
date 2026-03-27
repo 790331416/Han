@@ -43,6 +43,11 @@ test('ai chat page should send a message and render assistant reply', async ({ a
   const lastAssistantMessage = page.locator('[data-testid="ai-chat-message"][data-role="assistant"]').last()
   await expect(lastAssistantMessage).toContainText('当前模型')
   await expect(page.getByTestId('ai-chat-conversation-list')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-inspector')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-context-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-source-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-execution-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-execution-stage')).toHaveCount(5)
 })
 
 test('ai chat page should support regenerate and edit-regenerate', async ({ authenticatedPage }) => {

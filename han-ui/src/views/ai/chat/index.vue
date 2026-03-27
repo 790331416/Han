@@ -62,110 +62,248 @@
         </div>
       </div>
 
-      <!-- 消息列表 -->
-      <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list">
-        <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen">
-          <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
-          <h2>欢迎使用 HAN AI 助手</h2>
-          <p>选择一个模型，开始对话吧</p>
-        </div>
-        <div
-          v-for="(msg, idx) in messages"
-          :key="msg.messageId || msg.sortOrder"
-          :class="['message-item', msg.role]"
-          data-testid="ai-chat-message"
-          :data-role="msg.role"
-          :data-message-id="String(msg.messageId ?? '')"
-        >
-          <div class="message-avatar">
-            <el-avatar v-if="msg.role === 'user'" :size="36" style="background: #409eff">
-              <el-icon><User /></el-icon>
-            </el-avatar>
-            <el-avatar v-else :size="36" style="background: #67c23a">
-              <el-icon><Monitor /></el-icon>
-            </el-avatar>
+      <div class="chat-workspace">
+        <div class="chat-thread">
+          <!-- 消息列表 -->
+          <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list">
+            <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen">
+              <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
+              <h2>欢迎使用 HAN AI 助手</h2>
+              <p>选择一个模型，开始对话吧</p>
+            </div>
+            <div
+              v-for="(msg, idx) in messages"
+              :key="msg.messageId || msg.sortOrder"
+              :class="['message-item', msg.role]"
+              data-testid="ai-chat-message"
+              :data-role="msg.role"
+              :data-message-id="String(msg.messageId ?? '')"
+            >
+              <div class="message-avatar">
+                <el-avatar v-if="msg.role === 'user'" :size="36" style="background: #409eff">
+                  <el-icon><User /></el-icon>
+                </el-avatar>
+                <el-avatar v-else :size="36" style="background: #67c23a">
+                  <el-icon><Monitor /></el-icon>
+                </el-avatar>
+              </div>
+              <div class="message-content">
+                <div class="message-role">{{ msg.role === 'user' ? '我' : 'AI 助手' }}</div>
+                <template v-if="editingMessageId === msg.messageId && msg.role === 'user'">
+                  <el-input
+                    v-model="editMessageContent"
+                    data-testid="ai-chat-edit-input"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 8 }"
+                  />
+                  <div class="edit-actions">
+                    <el-button size="small" type="primary" data-testid="ai-chat-edit-submit-button" @click="submitEditMessage(msg)">发送</el-button>
+                    <el-button size="small" @click="cancelEditMessage">取消</el-button>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
+                  <div class="message-actions" v-if="!streaming">
+                    <el-button v-if="msg.role === 'user'" type="info" link size="small" data-testid="ai-chat-edit-button" @click="startEditMessage(msg)">
+                      <el-icon><Edit /></el-icon>编辑
+                    </el-button>
+                    <el-button v-if="msg.role === 'assistant' && idx === messages.length - 1" type="info" link size="small" data-testid="ai-chat-regenerate-button" @click="handleRegenerate">
+                      <el-icon><RefreshRight /></el-icon>重新生成
+                    </el-button>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div v-if="streaming" class="message-item assistant" data-testid="ai-chat-streaming">
+              <div class="message-avatar">
+                <el-avatar :size="36" style="background: #67c23a">
+                  <el-icon><Monitor /></el-icon>
+                </el-avatar>
+              </div>
+              <div class="message-content">
+                <div class="message-role">AI 助手</div>
+                <div class="message-text">
+                  <span v-html="renderMarkdown(streamContent)"></span>
+                  <span class="cursor-blink">|</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="message-content">
-            <div class="message-role">{{ msg.role === 'user' ? '我' : 'AI 助手' }}</div>
-            <!-- 编辑模式 -->
-            <template v-if="editingMessageId === msg.messageId && msg.role === 'user'">
+
+          <!-- 输入区域 -->
+          <div class="chat-input-area">
+            <div v-if="streaming" class="stop-generate">
+              <el-button type="danger" size="small" round data-testid="ai-chat-stop-button" @click="handleStopGenerate">
+                <el-icon><VideoPause /></el-icon>停止生成
+              </el-button>
+            </div>
+            <div class="input-wrapper">
               <el-input
-                v-model="editMessageContent"
-                data-testid="ai-chat-edit-input"
+                data-testid="ai-chat-input"
+                v-model="inputMessage"
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 8 }"
+                :autosize="{ minRows: 1, maxRows: 5 }"
+                placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
+                resize="none"
+                @keydown.enter.exact.prevent="handleSend"
+                :disabled="sending"
               />
-              <div class="edit-actions">
-                <el-button size="small" type="primary" data-testid="ai-chat-edit-submit-button" @click="submitEditMessage(msg)">发送</el-button>
-                <el-button size="small" @click="cancelEditMessage">取消</el-button>
-              </div>
-            </template>
-            <template v-else>
-              <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
-              <div class="message-actions" v-if="!streaming">
-                <el-button v-if="msg.role === 'user'" type="info" link size="small" data-testid="ai-chat-edit-button" @click="startEditMessage(msg)">
-                  <el-icon><Edit /></el-icon>编辑
-                </el-button>
-                <el-button v-if="msg.role === 'assistant' && idx === messages.length - 1" type="info" link size="small" data-testid="ai-chat-regenerate-button" @click="handleRegenerate">
-                  <el-icon><RefreshRight /></el-icon>重新生成
-                </el-button>
-              </div>
-            </template>
-          </div>
-        </div>
-        <!-- 流式输出中 -->
-        <div v-if="streaming" class="message-item assistant" data-testid="ai-chat-streaming">
-          <div class="message-avatar">
-            <el-avatar :size="36" style="background: #67c23a">
-              <el-icon><Monitor /></el-icon>
-            </el-avatar>
-          </div>
-          <div class="message-content">
-            <div class="message-role">AI 助手</div>
-            <div class="message-text">
-              <span v-html="renderMarkdown(streamContent)"></span>
-              <span class="cursor-blink">|</span>
+              <el-button
+                type="primary"
+                :icon="Promotion"
+                circle
+                class="send-btn"
+                data-testid="ai-chat-send-button"
+                :loading="sending"
+                :disabled="!inputMessage.trim() || !selectedModelId"
+                @click="handleSend"
+              />
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- 输入区域 -->
-      <div class="chat-input-area">
-        <div v-if="streaming" class="stop-generate">
-          <el-button type="danger" size="small" round data-testid="ai-chat-stop-button" @click="handleStopGenerate">
-            <el-icon><VideoPause /></el-icon>停止生成
-          </el-button>
-        </div>
-        <div class="input-wrapper">
-          <el-input
-            data-testid="ai-chat-input"
-            v-model="inputMessage"
-            type="textarea"
-            :autosize="{ minRows: 1, maxRows: 5 }"
-            placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
-            resize="none"
-            @keydown.enter.exact.prevent="handleSend"
-            :disabled="sending"
-          />
-          <el-button
-            type="primary"
-            :icon="Promotion"
-            circle
-            class="send-btn"
-            data-testid="ai-chat-send-button"
-            :loading="sending"
-            :disabled="!inputMessage.trim() || !selectedModelId"
-            @click="handleSend"
-          />
-        </div>
+        <aside class="chat-inspector" data-testid="ai-chat-inspector">
+          <section class="inspector-section" data-testid="ai-chat-context-panel">
+            <div class="inspector-section-header">
+              <div>
+                <div class="inspector-eyebrow">应用上下文</div>
+                <h3>{{ contextApplication?.name || contextTypeLabel }}</h3>
+              </div>
+              <el-tag size="small" effect="plain" :type="contextApplication ? 'primary' : 'info'">
+                {{ contextTypeLabel }}
+              </el-tag>
+            </div>
+            <p class="inspector-copy">
+              {{ contextDescription }}
+            </p>
+            <div v-loading="contextLoading" class="context-meta-list">
+              <div class="context-meta-item">
+                <span>运行状态</span>
+                <strong>{{ contextApplication?.status || '通用模式' }}</strong>
+              </div>
+              <div class="context-meta-item">
+                <span>调试模型</span>
+                <strong>{{ selectedModel?.modelName || resolveModelName(contextApplication?.modelId) || '未选择模型' }}</strong>
+              </div>
+              <div class="context-meta-item">
+                <span>当前会话</span>
+                <strong>{{ currentConversation?.title || '新对话' }}</strong>
+              </div>
+            </div>
+            <div class="context-actions">
+              <el-button
+                type="primary"
+                plain
+                data-testid="ai-chat-context-detail-button"
+                :disabled="!contextApplication"
+                @click="openContextDetail"
+              >
+                查看应用详情
+              </el-button>
+              <el-button
+                data-testid="ai-chat-context-manage-button"
+                @click="openContextManagement"
+              >
+                打开管理页
+              </el-button>
+            </div>
+          </section>
+
+          <section class="inspector-section" data-testid="ai-chat-source-panel">
+            <div class="inspector-section-header">
+              <div>
+                <div class="inspector-eyebrow">知识来源</div>
+                <h3>来源卡片</h3>
+              </div>
+              <el-tag size="small" effect="plain" type="success">
+                {{ selectedKnowledgeBases.length }} 个知识库
+              </el-tag>
+            </div>
+            <p class="inspector-copy">
+              {{ selectedKnowledgeBases.length > 0 ? '当前先展示知识库规模与状态，后续后端补齐结构化命中片段后，这里会继续承接引用明细。' : '当前上下文还没有绑定知识库，先保留知识来源卡位。' }}
+            </p>
+            <div class="source-card-list" data-testid="ai-chat-source-card-list">
+              <article
+                v-for="item in selectedKnowledgeBases"
+                :key="String(item.kbId)"
+                class="source-card"
+                data-testid="ai-chat-source-card"
+              >
+                <div class="source-card-header">
+                  <strong>{{ item.kbName }}</strong>
+                  <el-tag size="small" effect="plain" type="success">
+                    {{ getKnowledgeStatusLabel(item.status) }}
+                  </el-tag>
+                </div>
+                <div class="source-card-meta">
+                  <span>类型：{{ getKnowledgeTypeLabel(item.kbType) }}</span>
+                  <span>文档：{{ item.documentCount }}</span>
+                  <span>段落：{{ item.paragraphCount }}</span>
+                  <span>字符：{{ item.charCount }}</span>
+                </div>
+              </article>
+              <div v-if="selectedKnowledgeBases.length === 0" class="source-card source-card-empty">
+                暂无知识来源卡片。后续绑定知识库后，这里会直接展示来源规模和状态。
+              </div>
+            </div>
+          </section>
+
+          <section class="inspector-section" data-testid="ai-chat-execution-panel">
+            <div class="inspector-section-header">
+              <div>
+                <div class="inspector-eyebrow">执行信息</div>
+                <h3>解释工作台</h3>
+              </div>
+              <el-tag size="small" effect="plain" :type="streaming ? 'warning' : 'info'">
+                {{ streaming ? '生成中' : '已同步' }}
+              </el-tag>
+            </div>
+            <div class="inspector-stat-list">
+              <div
+                v-for="item in executionSummaryItems"
+                :key="item.label"
+                class="inspector-stat-item"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <div class="inspector-stage-list" data-testid="ai-chat-execution-stage-list">
+              <article
+                v-for="item in executionStageItems"
+                :key="item.label"
+                class="inspector-stage-item"
+                :class="`is-${item.state}`"
+                data-testid="ai-chat-execution-stage"
+              >
+                <div class="inspector-stage-main">
+                  <span class="inspector-stage-label">{{ item.label }}</span>
+                  <p>{{ item.detail }}</p>
+                </div>
+                <el-tag size="small" effect="plain" :type="item.tagType">
+                  {{ item.stateLabel }}
+                </el-tag>
+              </article>
+            </div>
+            <div class="inspector-preview">
+              <div class="inspector-preview-block">
+                <span class="inspector-preview-label">最近问题</span>
+                <p>{{ summarizeMessage(latestUserMessage?.content, 120) }}</p>
+              </div>
+              <div class="inspector-preview-block">
+                <span class="inspector-preview-label">最近回复摘要</span>
+                <p>{{ summarizeMessage(latestAssistantMessage?.content || streamContent, 160) }}</p>
+              </div>
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, watch } from 'vue'
+import { computed, ref, nextTick, onMounted, watch } from 'vue'
 import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
@@ -173,14 +311,24 @@ import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import {
+  getAiAgent,
+  getAiWorkflow,
   listConversations,
   listChatMessages,
   deleteConversation,
   renameConversation,
   listAllModels,
+  listAllKnowledgeBases,
+  listAllMcpServers,
+  kbTypeOptions,
+  indexStatusOptions,
+  type AiAgent,
   type AiConversation,
   type AiChatMessage,
-  type AiModel
+  type AiModel,
+  type AiWorkflow,
+  type KnowledgeBase,
+  type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
 import { consumeAiStreamResponse, requestAiStream } from '@/utils/ai-stream'
@@ -224,10 +372,201 @@ const CHAT_STORAGE_KEYS = {
   modelId: 'HAN-ai-chat-model-id'
 } as const
 
+interface ChatContextApplication {
+  type: 'agent' | 'workflow'
+  id: string
+  name: string
+  description?: string
+  modelId?: string | number
+  knowledgeBaseIds: string[]
+  mcpServerIds: string[]
+  status?: string
+  published?: boolean
+}
+
+interface InspectorStageItem {
+  label: string
+  detail: string
+  state: 'ready' | 'pending' | 'inactive'
+  stateLabel: string
+  tagType: 'success' | 'warning' | 'info'
+}
+
+const knowledgeBaseList = ref<KnowledgeBase[]>([])
+const mcpServerList = ref<McpServer[]>([])
+const contextApplication = ref<ChatContextApplication>()
+const contextLoading = ref(false)
+
+const selectedModel = computed(() => {
+  return modelList.value.find((item) => String(item.modelId) === String(selectedModelId.value ?? ''))
+})
+
+const latestAssistantMessage = computed(() => {
+  const assistantMessages = messages.value.filter((item) => item.role === 'assistant')
+  return assistantMessages[assistantMessages.length - 1]
+})
+
+const latestUserMessage = computed(() => {
+  const userMessages = messages.value.filter((item) => item.role === 'user')
+  return userMessages[userMessages.length - 1]
+})
+
+const routeAgentId = computed(() => normalizeConversationIdQuery(route.query.agentId))
+const routeWorkflowId = computed(() => normalizeConversationIdQuery(route.query.workflowId))
+
+const contextType = computed<'agent' | 'workflow' | null>(() => {
+  if (routeAgentId.value) {
+    return 'agent'
+  }
+  if (routeWorkflowId.value || currentConversation.value?.workflowId) {
+    return 'workflow'
+  }
+  return null
+})
+
+const contextId = computed(() => {
+  if (contextType.value === 'agent') {
+    return routeAgentId.value
+  }
+  if (contextType.value === 'workflow') {
+    const workflowId = routeWorkflowId.value || currentConversation.value?.workflowId
+    return workflowId === undefined || workflowId === null || workflowId === ''
+      ? undefined
+      : String(workflowId)
+  }
+  return undefined
+})
+
+const contextTypeLabel = computed(() => {
+  if (contextType.value === 'agent') {
+    return '简单应用 / 智能体'
+  }
+  if (contextType.value === 'workflow') {
+    return '高级应用 / 工作流'
+  }
+  return '通用对话'
+})
+
+const contextDescription = computed(() => {
+  if (contextApplication.value?.description) {
+    return contextApplication.value.description
+  }
+  if (contextType.value === 'workflow') {
+    return '当前会话已绑定工作流上下文，可以在这里同步查看知识来源和执行阶段。'
+  }
+  if (contextType.value === 'agent') {
+    return '当前会话已绑定智能体上下文，可以继续补充应用解释信息。'
+  }
+  return '当前页面保持通用对话能力，同时把模型、知识和执行信息收拢到右侧工作台。'
+})
+
+const currentKnowledgeBaseIds = computed(() => {
+  return contextApplication.value?.knowledgeBaseIds || []
+})
+
+const currentMcpServerIds = computed(() => {
+  return contextApplication.value?.mcpServerIds || []
+})
+
+const selectedKnowledgeBases = computed(() => {
+  const targetIds = new Set(currentKnowledgeBaseIds.value.map((item) => String(item)))
+  return knowledgeBaseList.value.filter((item) => targetIds.has(String(item.kbId)))
+})
+
+const selectedMcpServers = computed(() => {
+  const targetIds = new Set(currentMcpServerIds.value.map((item) => String(item)))
+  return mcpServerList.value.filter((item) => targetIds.has(String(item.mcpId)))
+})
+
+const executionSummaryItems = computed(() => {
+  return [
+    {
+      label: '当前模型',
+      value: selectedModel.value?.modelName || resolveModelName(contextApplication.value?.modelId) || '未选择模型'
+    },
+    {
+      label: '会话 ID',
+      value: currentConversationId.value ? String(currentConversationId.value) : '新对话'
+    },
+    {
+      label: '消息数',
+      value: String(messages.value.length)
+    },
+    {
+      label: '最近回复 Token',
+      value: latestAssistantMessage.value?.tokenCount ? String(latestAssistantMessage.value.tokenCount) : '暂无'
+    },
+    {
+      label: '最近更新时间',
+      value: formatDateTime(currentConversation.value?.updateTime || currentConversation.value?.createTime)
+    }
+  ]
+})
+
+const executionStageItems = computed<InspectorStageItem[]>(() => {
+  const hasReply = Boolean(latestAssistantMessage.value?.content || streamContent.value)
+  const selectedKnowledgeBaseCount = selectedKnowledgeBases.value.length
+  const selectedMcpCount = selectedMcpServers.value.length
+  return [
+    {
+      label: '应用上下文',
+      detail: contextApplication.value
+        ? `当前已绑定${contextTypeLabel.value}「${contextApplication.value.name}」`
+        : '当前是通用对话模式，暂未绑定具体应用上下文。',
+      state: contextApplication.value ? 'ready' : 'inactive',
+      stateLabel: contextApplication.value ? '已绑定' : '通用模式',
+      tagType: contextApplication.value ? 'success' : 'info'
+    },
+    {
+      label: '会话定位',
+      detail: currentConversation.value
+        ? `${currentConversation.value.title || '未命名会话'}，消息数 ${currentConversation.value.messageCount || messages.value.length}`
+        : '当前还没有会话记录，发送消息后会自动创建对话。',
+      state: currentConversation.value ? 'ready' : 'pending',
+      stateLabel: currentConversation.value ? '已定位' : '待创建',
+      tagType: currentConversation.value ? 'success' : 'warning'
+    },
+    {
+      label: '知识增强',
+      detail: selectedKnowledgeBaseCount > 0
+        ? `已绑定 ${selectedKnowledgeBaseCount} 个知识库，当前先展示来源规模，后续再补结构化命中片段。`
+        : '当前上下文没有绑定知识库，本次不会展示知识命中。',
+      state: selectedKnowledgeBaseCount > 0 ? 'pending' : 'inactive',
+      stateLabel: selectedKnowledgeBaseCount > 0 ? '待命中' : '未启用',
+      tagType: selectedKnowledgeBaseCount > 0 ? 'warning' : 'info'
+    },
+    {
+      label: '工具执行',
+      detail: selectedMcpCount > 0
+        ? `已绑定 ${selectedMcpCount} 个 MCP 服务，当前先保留执行轨迹位。`
+        : '当前上下文没有绑定 MCP 服务，本次不会展示工具轨迹。',
+      state: selectedMcpCount > 0 ? 'pending' : 'inactive',
+      stateLabel: selectedMcpCount > 0 ? '待轨迹' : '未启用',
+      tagType: selectedMcpCount > 0 ? 'warning' : 'info'
+    },
+    {
+      label: '模型回复',
+      detail: hasReply
+        ? '当前已经生成助手回复，可以继续从右侧查看摘要与上下文。'
+        : streaming.value
+          ? '模型正在生成回复，解释面板会在完成后刷新摘要。'
+          : '当前还没有助手回复。',
+      state: hasReply ? 'ready' : (streaming.value ? 'pending' : 'inactive'),
+      stateLabel: hasReply ? '已生成' : (streaming.value ? '生成中' : '待生成'),
+      tagType: hasReply ? 'success' : (streaming.value ? 'warning' : 'info')
+    }
+  ]
+})
+
 onMounted(async () => {
-  await loadModels()
-  await loadConversations()
+  await Promise.all([
+    loadModels(),
+    loadKnowledgeBaseCatalog(),
+    loadMcpServerCatalog(),
+    loadConversations()
+  ])
   await restoreConversationState()
+  await loadContextApplication()
 })
 
 watch(
@@ -256,6 +595,13 @@ watch(
   }
 )
 
+watch(
+  [routeAgentId, routeWorkflowId, () => currentConversation.value?.workflowId],
+  async () => {
+    await loadContextApplication()
+  }
+)
+
 async function loadModels() {
   try {
     const res = await listAllModels('LLM')
@@ -276,12 +622,54 @@ async function loadModels() {
   }
 }
 
+async function loadKnowledgeBaseCatalog() {
+  try {
+    const res = await listAllKnowledgeBases()
+    knowledgeBaseList.value = (res as any).data || []
+  } catch (e) {
+    console.error('加载知识库列表失败', e)
+  }
+}
+
+async function loadMcpServerCatalog() {
+  try {
+    const res = await listAllMcpServers()
+    mcpServerList.value = (res as any).data || []
+  } catch (e) {
+    console.error('加载MCP服务列表失败', e)
+  }
+}
+
 async function loadConversations() {
   try {
     const res = await listConversations({ pageNum: 1, pageSize: 50 })
     conversationList.value = (res as any).data?.rows || []
   } catch (e) {
     console.error('加载会话列表失败', e)
+  }
+}
+
+async function loadContextApplication() {
+  const type = contextType.value
+  const id = contextId.value
+  if (!type || !id) {
+    contextApplication.value = undefined
+    return
+  }
+  contextLoading.value = true
+  try {
+    const res = type === 'agent' ? await getAiAgent(id) : await getAiWorkflow(id)
+    const data = (res as any).data
+    if (!data) {
+      contextApplication.value = undefined
+      return
+    }
+    contextApplication.value = normalizeContextApplication(type, data)
+  } catch (e) {
+    console.error('加载应用上下文失败', e)
+    contextApplication.value = undefined
+  } finally {
+    contextLoading.value = false
   }
 }
 
@@ -610,6 +998,100 @@ async function processSSEResponse(response: Response) {
   await syncCurrentConversationState()
 }
 
+function normalizeContextApplication(type: 'agent' | 'workflow', data: AiAgent | AiWorkflow): ChatContextApplication {
+  if (type === 'agent') {
+    const agent = data as AiAgent
+    return {
+      type,
+      id: String(agent.agentId),
+      name: agent.agentName,
+      description: agent.description,
+      modelId: agent.modelId,
+      knowledgeBaseIds: parseIdArray(agent.knowledgeBaseIds),
+      mcpServerIds: parseIdArray(agent.mcpServerIds),
+      status: agent.status,
+      published: Boolean(agent.published)
+    }
+  }
+  const workflow = data as AiWorkflow
+  return {
+    type,
+    id: String(workflow.workflowId),
+    name: workflow.workflowName,
+    description: workflow.description,
+    modelId: workflow.modelId,
+    knowledgeBaseIds: parseIdArray(workflow.knowledgeBaseIds),
+    mcpServerIds: parseIdArray(workflow.mcpServerIds),
+    status: workflow.status,
+    published: Boolean(workflow.published)
+  }
+}
+
+function parseIdArray(value?: string) {
+  if (!value) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : []
+  } catch {
+    return []
+  }
+}
+
+function resolveModelName(modelId?: string | number) {
+  if (modelId === undefined || modelId === null || modelId === '') {
+    return ''
+  }
+  return modelList.value.find((item) => String(item.modelId) === String(modelId))?.modelName || ''
+}
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return '暂无'
+  }
+  return value.length >= 16 ? value.slice(0, 16) : value
+}
+
+function getKnowledgeTypeLabel(value?: string) {
+  return kbTypeOptions.find((item) => item.value === value)?.label || value || '未知'
+}
+
+function getKnowledgeStatusLabel(value?: string) {
+  return indexStatusOptions.find((item) => item.value === value)?.label || value || '待处理'
+}
+
+function summarizeMessage(content?: string, limit = 96) {
+  if (!content) {
+    return '暂无'
+  }
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return '暂无'
+  }
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized
+}
+
+function openContextDetail() {
+  if (!contextApplication.value || !contextType.value) {
+    ElMessage.info('当前通用对话暂无应用详情入口')
+    return
+  }
+  router.push(`/ai/application/${contextType.value}/${contextApplication.value.id}`)
+}
+
+function openContextManagement() {
+  if (contextType.value === 'agent') {
+    router.push('/ai/agent')
+    return
+  }
+  if (contextType.value === 'workflow') {
+    router.push('/ai/workflow')
+    return
+  }
+  ElMessage.info('当前通用对话没有专属管理入口')
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesRef.value) {
@@ -789,6 +1271,19 @@ function restoreSelectedModelId() {
       font-weight: 600;
       color: #303133;
     }
+  }
+
+  .chat-workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .chat-thread {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .chat-messages {
@@ -971,11 +1466,231 @@ function restoreSelectedModelId() {
       }
     }
   }
+
+  .chat-inspector {
+    width: 360px;
+    flex-shrink: 0;
+    border-left: 1px solid #e4e7ed;
+    background: #fbfcfe;
+    padding: 18px 18px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .inspector-section {
+    background: #fff;
+    border: 1px solid #e9edf5;
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .inspector-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+
+    h3 {
+      margin: 4px 0 0;
+      font-size: 16px;
+      color: #1f2a37;
+    }
+  }
+
+  .inspector-eyebrow {
+    font-size: 12px;
+    line-height: 1;
+    color: #8a94a6;
+    letter-spacing: 0.08em;
+  }
+
+  .inspector-copy {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #5f6b7a;
+  }
+
+  .context-meta-list,
+  .inspector-stat-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .context-meta-item,
+  .inspector-stat-item {
+    border-radius: 12px;
+    background: #f7f9fc;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    span {
+      font-size: 12px;
+      color: #8a94a6;
+    }
+
+    strong {
+      color: #1f2a37;
+      word-break: break-word;
+    }
+  }
+
+  .context-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .source-card-list,
+  .inspector-stage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .source-card {
+    border-radius: 14px;
+    border: 1px solid #ecf1f7;
+    background: #f9fbff;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .source-card-empty {
+    color: #7d8798;
+    line-height: 1.7;
+  }
+
+  .source-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    strong {
+      color: #1f2a37;
+    }
+  }
+
+  .source-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    font-size: 12px;
+    color: #5f6b7a;
+  }
+
+  .inspector-stage-item {
+    border-radius: 14px;
+    border: 1px solid #ecf1f7;
+    background: #fff;
+    padding: 14px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+
+    &.is-ready {
+      border-color: #cfe7d5;
+      background: #f4fbf6;
+    }
+
+    &.is-pending {
+      border-color: #f7dfb6;
+      background: #fff9ee;
+    }
+  }
+
+  .inspector-stage-main {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #5f6b7a;
+    }
+  }
+
+  .inspector-stage-label,
+  .inspector-preview-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2a37;
+  }
+
+  .inspector-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .inspector-preview-block {
+    border-radius: 14px;
+    background: #f7f9fc;
+    padding: 14px;
+
+    p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #5f6b7a;
+      word-break: break-word;
+    }
+  }
 }
 
 .cursor-blink {
   animation: blink 0.8s infinite;
   font-weight: bold;
+}
+
+@media (max-width: 1280px) {
+  .chat-main {
+    .chat-inspector {
+      width: 320px;
+    }
+  }
+}
+
+@media (max-width: 1100px) {
+  .ai-chat-container {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 84px);
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e4e7ed;
+  }
+
+  .chat-main {
+    min-height: 0;
+
+    .chat-workspace {
+      flex-direction: column;
+    }
+
+    .chat-inspector {
+      width: 100%;
+      border-left: none;
+      border-top: 1px solid #e4e7ed;
+    }
+  }
 }
 
 @keyframes blink {
