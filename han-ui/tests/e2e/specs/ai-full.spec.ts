@@ -47,7 +47,11 @@ test('ai chat page should send a message and render assistant reply', async ({ a
   await expect(page.getByTestId('ai-chat-context-panel')).toBeVisible()
   await expect(page.getByTestId('ai-chat-source-panel')).toBeVisible()
   await expect(page.getByTestId('ai-chat-execution-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-source-insight-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-tool-trace-panel')).toBeVisible()
   await expect(page.getByTestId('ai-chat-execution-stage')).toHaveCount(5)
+  await expect(page.getByTestId('ai-chat-source-insight-list')).toBeVisible()
+  await expect(page.getByTestId('ai-chat-tool-trace-list')).toBeVisible()
 })
 
 test('ai chat page should support regenerate and edit-regenerate', async ({ authenticatedPage }) => {

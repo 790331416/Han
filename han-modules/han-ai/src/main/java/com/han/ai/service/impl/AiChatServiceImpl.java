@@ -8,13 +8,19 @@ import com.han.ai.domain.dto.AiMessageEditRequest;
 import com.han.ai.domain.po.AiAgentPo;
 import com.han.ai.domain.po.AiChatMessagePo;
 import com.han.ai.domain.po.AiConversationPo;
+import com.han.ai.domain.po.AiKnowledgeBasePo;
+import com.han.ai.domain.po.AiMcpServerPo;
 import com.han.ai.domain.po.AiModelPo;
 import com.han.ai.domain.po.AiParagraphPo;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiConversationQuery;
+import com.han.ai.domain.vo.AiChatKnowledgeSourceVo;
+import com.han.ai.domain.vo.AiChatToolTraceVo;
 import com.han.ai.mapper.AiAgentMapper;
 import com.han.ai.mapper.AiChatMessageMapper;
 import com.han.ai.mapper.AiConversationMapper;
+import com.han.ai.mapper.AiKnowledgeBaseMapper;
+import com.han.ai.mapper.AiMcpServerMapper;
 import com.han.ai.mapper.AiModelMapper;
 import com.han.ai.mapper.AiParagraphMapper;
 import com.han.ai.mapper.AiWorkflowMapper;
@@ -34,6 +40,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +63,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private final AiConversationMapper aiConversationMapper;
     private final AiChatMessageMapper aiChatMessageMapper;
+    private final AiKnowledgeBaseMapper aiKnowledgeBaseMapper;
+    private final AiMcpServerMapper aiMcpServerMapper;
     private final AiModelMapper aiModelMapper;
     private final AiParagraphMapper aiParagraphMapper;
     private final AiAgentMapper aiAgentMapper;
@@ -85,17 +94,19 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     @Override
     public List<AiChatMessagePo> selectMessages(Long conversationId) {
-        requireConversation(conversationId);
-        return aiChatMessageMapper.selectList(new LambdaQueryWrapper<AiChatMessagePo>()
+        AiConversationPo conversation = requireConversation(conversationId);
+        List<AiChatMessagePo> messages = aiChatMessageMapper.selectList(new LambdaQueryWrapper<AiChatMessagePo>()
                 .eq(AiChatMessagePo::getConversationId, conversationId)
                 .orderByAsc(AiChatMessagePo::getSortOrder)
                 .orderByAsc(AiChatMessagePo::getMessageId));
+        return enrichConversationMessages(messages, buildContextFromConversation(conversation));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AiChatMessagePo send(AiChatRequest request) {
-        return createGenericReply(request).assistantMessage();
+        GeneratedReply reply = createGenericReply(request);
+        return reply.assistantMessage();
     }
 
     @Override
@@ -159,7 +170,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             throw new BusinessException("智能体未发布，无法对话");
         }
         ChatContext context = ChatContext.agent(conversationId, agent.getModelId(), agent.getAgentName(),
-                agent.getSystemPrompt(), parseIdList(agent.getKnowledgeBaseIds()));
+                agent.getSystemPrompt(), parseIdList(agent.getKnowledgeBaseIds()), parseIdList(agent.getMcpServerIds()));
         return appendReply(context, message).assistantMessage().getContent();
     }
 
@@ -171,7 +182,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             throw new BusinessException("工作流未发布，无法对话");
         }
         ChatContext context = ChatContext.workflow(conversationId, workflow.getWorkflowId(), workflow.getModelId(),
-                workflow.getWorkflowName(), workflow.getSystemPrompt(), parseIdList(workflow.getKnowledgeBaseIds()));
+                workflow.getWorkflowName(), workflow.getSystemPrompt(), parseIdList(workflow.getKnowledgeBaseIds()),
+                parseIdList(workflow.getMcpServerIds()));
         return appendReply(context, message).assistantMessage().getContent();
     }
 
@@ -247,6 +259,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         aiChatMessageMapper.insert(assistantMessage);
 
         refreshConversationCount(conversation);
+        enrichAssistantMessage(assistantMessage, context, userMessage);
         return new GeneratedReply(conversation, assistantMessage);
     }
 
@@ -441,12 +454,154 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return aiParagraphMapper.selectList(wrapper);
     }
 
+    private List<AiChatMessagePo> enrichConversationMessages(List<AiChatMessagePo> messages, ChatContext context) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        String latestUserPrompt = null;
+        for (AiChatMessagePo message : messages) {
+            if (ROLE_USER.equals(message.getRole())) {
+                latestUserPrompt = message.getContent();
+                continue;
+            }
+            if (ROLE_ASSISTANT.equals(message.getRole())) {
+                enrichAssistantMessage(message, context, latestUserPrompt);
+            }
+        }
+        return messages;
+    }
+
+    private void enrichAssistantMessage(AiChatMessagePo assistantMessage, ChatContext context, String userPrompt) {
+        if (assistantMessage == null || !ROLE_ASSISTANT.equals(assistantMessage.getRole())) {
+            return;
+        }
+        assistantMessage.setKnowledgeSources(buildKnowledgeSources(context.knowledgeBaseIds(), userPrompt));
+        assistantMessage.setToolExecutions(buildToolTraceSummaries(context.mcpServerIds()));
+    }
+
+    private List<AiChatKnowledgeSourceVo> buildKnowledgeSources(List<Long> knowledgeBaseIds, String userPrompt) {
+        List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(knowledgeBaseIds, userPrompt);
+        if (hitParagraphs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, AiKnowledgeBasePo> knowledgeBaseMap = loadKnowledgeBaseMap(knowledgeBaseIds);
+        List<AiChatKnowledgeSourceVo> results = new ArrayList<>();
+        for (AiParagraphPo paragraph : hitParagraphs) {
+            AiKnowledgeBasePo knowledgeBase = knowledgeBaseMap.get(paragraph.getKbId());
+            AiChatKnowledgeSourceVo source = new AiChatKnowledgeSourceVo();
+            source.setKbId(paragraph.getKbId());
+            source.setKbName(knowledgeBase != null ? knowledgeBase.getKbName() : null);
+            source.setKbType(knowledgeBase != null ? knowledgeBase.getKbType() : null);
+            source.setKbStatus(knowledgeBase != null ? knowledgeBase.getStatus() : null);
+            source.setDocumentCount(knowledgeBase != null ? knowledgeBase.getDocumentCount() : null);
+            source.setParagraphCount(knowledgeBase != null ? knowledgeBase.getParagraphCount() : null);
+            source.setCharCount(knowledgeBase != null ? knowledgeBase.getCharCount() : null);
+            source.setParagraphId(paragraph.getParagraphId());
+            source.setParagraphTitle(paragraph.getTitle());
+            source.setHitCount(paragraph.getHitCount());
+            source.setExcerpt(excerpt(paragraph.getContent(), 160));
+            results.add(source);
+        }
+        return results;
+    }
+
+    private Map<Long, AiKnowledgeBasePo> loadKnowledgeBaseMap(List<Long> knowledgeBaseIds) {
+        if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, AiKnowledgeBasePo> knowledgeBaseMap = new HashMap<>();
+        for (AiKnowledgeBasePo knowledgeBase : aiKnowledgeBaseMapper.selectBatchIds(knowledgeBaseIds)) {
+            if (knowledgeBase != null && knowledgeBase.getKbId() != null) {
+                knowledgeBaseMap.put(knowledgeBase.getKbId(), knowledgeBase);
+            }
+        }
+        return knowledgeBaseMap;
+    }
+
+    private List<AiChatToolTraceVo> buildToolTraceSummaries(List<Long> mcpServerIds) {
+        if (mcpServerIds == null || mcpServerIds.isEmpty()) {
+            return List.of();
+        }
+        LambdaQueryWrapper<AiMcpServerPo> wrapper = new LambdaQueryWrapper<AiMcpServerPo>()
+                .in(AiMcpServerPo::getMcpId, mcpServerIds);
+        Long tenantId = currentTenantId();
+        if (tenantId != null) {
+            wrapper.eq(AiMcpServerPo::getTenantId, tenantId);
+        }
+        List<AiMcpServerPo> servers = aiMcpServerMapper.selectList(wrapper);
+        if (servers.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, AiMcpServerPo> serverMap = new HashMap<>();
+        for (AiMcpServerPo server : servers) {
+            if (server.getMcpId() != null) {
+                serverMap.put(server.getMcpId(), server);
+            }
+        }
+        List<AiChatToolTraceVo> results = new ArrayList<>();
+        for (Long mcpServerId : mcpServerIds) {
+            AiMcpServerPo server = serverMap.get(mcpServerId);
+            if (server == null) {
+                continue;
+            }
+            List<String> toolNames = parseToolNames(server.getTools());
+            AiChatToolTraceVo trace = new AiChatToolTraceVo();
+            trace.setMcpId(server.getMcpId());
+            trace.setServerName(server.getServerName());
+            trace.setTransportType(server.getTransportType());
+            trace.setStatus(server.getStatus());
+            trace.setToolCount(toolNames.size());
+            trace.setToolNames(toolNames);
+            trace.setSummary(buildToolTraceSummary(server, toolNames));
+            results.add(trace);
+        }
+        return results;
+    }
+
+    private List<String> parseToolNames(String toolsJson) {
+        if (!StringUtils.hasText(toolsJson)) {
+            return List.of();
+        }
+        try {
+            List<Map<String, Object>> toolList = XuJsonUtil.parseObject(toolsJson,
+                    new TypeReference<List<Map<String, Object>>>() {});
+            if (toolList == null || toolList.isEmpty()) {
+                return List.of();
+            }
+            List<String> toolNames = new ArrayList<>();
+            for (Map<String, Object> tool : toolList) {
+                Object name = tool != null ? tool.get("name") : null;
+                if (name != null && StringUtils.hasText(String.valueOf(name))) {
+                    toolNames.add(String.valueOf(name));
+                }
+            }
+            return toolNames;
+        } catch (RuntimeException ignored) {
+            return List.of();
+        }
+    }
+
+    private String buildToolTraceSummary(AiMcpServerPo server, List<String> toolNames) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("已挂载 ")
+                .append(server.getServerName())
+                .append("，传输方式 ")
+                .append(server.getTransportType());
+        if (!toolNames.isEmpty()) {
+            builder.append("，可用工具 ").append(String.join("、", toolNames));
+        } else {
+            builder.append("，当前还没有工具元数据");
+        }
+        return builder.toString();
+    }
+
     private ChatContext buildContextFromConversation(AiConversationPo conversation) {
         if (conversation.getWorkflowId() != null) {
             AiWorkflowPo workflow = aiWorkflowMapper.selectById(conversation.getWorkflowId());
             if (workflow != null) {
                 return ChatContext.workflow(conversation.getConversationId(), workflow.getWorkflowId(), workflow.getModelId(),
-                        workflow.getWorkflowName(), workflow.getSystemPrompt(), parseIdList(workflow.getKnowledgeBaseIds()));
+                        workflow.getWorkflowName(), workflow.getSystemPrompt(), parseIdList(workflow.getKnowledgeBaseIds()),
+                        parseIdList(workflow.getMcpServerIds()));
             }
         }
         return ChatContext.general(conversation.getConversationId(), conversation.getModelId());
@@ -629,20 +784,23 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private record ChatContext(Long conversationId, Long workflowId, Long modelId, String titlePrefix,
-                               String sourceName, String systemPrompt, List<Long> knowledgeBaseIds) {
+                               String sourceName, String systemPrompt, List<Long> knowledgeBaseIds,
+                               List<Long> mcpServerIds) {
 
         private static ChatContext general(Long conversationId, Long modelId) {
-            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of());
+            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of(), List.of());
         }
 
         private static ChatContext agent(Long conversationId, Long modelId, String agentName,
-                                         String systemPrompt, List<Long> knowledgeBaseIds) {
-            return new ChatContext(conversationId, null, modelId, "智能体对话", agentName, systemPrompt, knowledgeBaseIds);
+                                         String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
+            return new ChatContext(conversationId, null, modelId, "智能体对话", agentName, systemPrompt,
+                    knowledgeBaseIds, mcpServerIds);
         }
 
         private static ChatContext workflow(Long conversationId, Long workflowId, Long modelId, String workflowName,
-                                            String systemPrompt, List<Long> knowledgeBaseIds) {
-            return new ChatContext(conversationId, workflowId, modelId, "工作流对话", workflowName, systemPrompt, knowledgeBaseIds);
+                                            String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
+            return new ChatContext(conversationId, workflowId, modelId, "工作流对话", workflowName, systemPrompt,
+                    knowledgeBaseIds, mcpServerIds);
         }
     }
 }

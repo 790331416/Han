@@ -1,11 +1,15 @@
 package com.han.ai.domain.po;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.han.ai.domain.vo.AiChatKnowledgeSourceVo;
+import com.han.ai.domain.vo.AiChatToolTraceVo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * AI chat message entity.
@@ -28,4 +32,10 @@ public class AiChatMessagePo {
     private Integer sortOrder;
 
     private LocalDateTime createTime;
+
+    @TableField(exist = false)
+    private List<AiChatKnowledgeSourceVo> knowledgeSources;
+
+    @TableField(exist = false)
+    private List<AiChatToolTraceVo> toolExecutions;
 }

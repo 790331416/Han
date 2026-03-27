@@ -296,6 +296,98 @@
               </div>
             </div>
           </section>
+          <section class="inspector-section" data-testid="ai-chat-source-insight-panel">
+            <div class="inspector-section-header">
+              <div>
+                <div class="inspector-eyebrow">结构化引用</div>
+                <h3>引用明细</h3>
+              </div>
+              <el-tag size="small" effect="plain" :type="latestKnowledgeSources.length > 0 ? 'success' : 'info'">
+                {{ knowledgeInsightItems.length }} 条
+              </el-tag>
+            </div>
+            <p class="inspector-copy">
+              {{ latestKnowledgeSources.length > 0 ? '当前消息已经回传结构化知识引用，这里直接展示命中片段与摘录。' : knowledgeInsightItems.length > 0 ? '当前先回退展示绑定知识库概况，后续消息返回结构化引用后会自动切到命中明细。' : '当前还没有可展示的知识来源明细。' }}
+            </p>
+            <div class="source-card-list" data-testid="ai-chat-source-insight-list">
+              <article
+                v-for="item in knowledgeInsightItems"
+                :key="`${String(item.kbId)}-${item.paragraphTitle || 'base'}-${item.mode}`"
+                class="source-card"
+                data-testid="ai-chat-source-insight-card"
+              >
+                <div class="source-card-header">
+                  <strong>{{ item.kbName }}</strong>
+                  <el-tag size="small" effect="plain" :type="item.mode === 'structured' ? 'success' : 'info'">
+                    {{ item.mode === 'structured' ? '已命中' : '上下文' }}
+                  </el-tag>
+                </div>
+                <div class="source-card-meta">
+                  <span>类型：{{ getKnowledgeTypeLabel(item.kbType) }}</span>
+                  <span>状态：{{ getKnowledgeStatusLabel(item.kbStatus) }}</span>
+                  <span>文档：{{ item.documentCount ?? 0 }}</span>
+                  <span>段落：{{ item.paragraphCount ?? 0 }}</span>
+                </div>
+                <div v-if="item.paragraphTitle" class="source-card-detail">
+                  命中段落：{{ item.paragraphTitle }}
+                  <span v-if="item.hitCount">，命中次数 {{ item.hitCount }}</span>
+                </div>
+                <p v-if="item.excerpt" class="source-card-excerpt">{{ item.excerpt }}</p>
+              </article>
+              <div v-if="knowledgeInsightItems.length === 0" class="source-card source-card-empty" data-testid="ai-chat-source-insight-empty">
+                当前还没有结构化知识引用，等消息命中知识库后会展示在这里。
+              </div>
+            </div>
+          </section>
+
+          <section class="inspector-section" data-testid="ai-chat-tool-trace-panel">
+            <div class="inspector-section-header">
+              <div>
+                <div class="inspector-eyebrow">工具轨迹</div>
+                <h3>MCP 服务摘要</h3>
+              </div>
+              <el-tag size="small" effect="plain" :type="latestToolExecutions.length > 0 ? 'success' : 'info'">
+                {{ toolTraceItems.length }} 组
+              </el-tag>
+            </div>
+            <p class="inspector-copy">
+              {{ latestToolExecutions.length > 0 ? '当前消息已经回传结构化工具轨迹摘要，这里优先展示真实服务与工具清单。' : toolTraceItems.length > 0 ? '当前先回退展示已绑定的 MCP 服务元数据，后续消息返回真实轨迹后会自动升级。' : '当前还没有可展示的 MCP 服务轨迹。' }}
+            </p>
+            <div class="source-card-list" data-testid="ai-chat-tool-trace-list">
+              <article
+                v-for="item in toolTraceItems"
+                :key="`${String(item.mcpId)}-${item.mode}`"
+                class="source-card"
+                data-testid="ai-chat-tool-trace-card"
+              >
+                <div class="source-card-header">
+                  <strong>{{ item.serverName }}</strong>
+                  <el-tag size="small" effect="plain" :type="item.mode === 'structured' ? 'success' : 'info'">
+                    {{ getTransportTypeLabel(item.transportType) }}
+                  </el-tag>
+                </div>
+                <div class="source-card-meta">
+                  <span>状态：{{ getEnableStatusLabel(item.status) }}</span>
+                  <span>工具数：{{ item.toolCount }}</span>
+                </div>
+                <p class="source-card-excerpt">{{ item.summary }}</p>
+                <div v-if="item.toolNames.length > 0" class="trace-tool-list">
+                  <el-tag
+                    v-for="toolName in item.toolNames"
+                    :key="toolName"
+                    size="small"
+                    effect="plain"
+                    type="primary"
+                  >
+                    {{ toolName }}
+                  </el-tag>
+                </div>
+              </article>
+              <div v-if="toolTraceItems.length === 0" class="source-card source-card-empty" data-testid="ai-chat-tool-trace-empty">
+                当前还没有工具轨迹，等绑定 MCP 服务并回传结构化摘要后会展示在这里。
+              </div>
+            </div>
+          </section>
         </aside>
       </div>
     </div>
@@ -322,9 +414,12 @@ import {
   listAllMcpServers,
   kbTypeOptions,
   indexStatusOptions,
+  transportTypeOptions,
   type AiAgent,
   type AiConversation,
+  type AiChatKnowledgeSource,
   type AiChatMessage,
+  type AiChatToolTrace,
   type AiModel,
   type AiWorkflow,
   type KnowledgeBase,
@@ -390,6 +485,31 @@ interface InspectorStageItem {
   state: 'ready' | 'pending' | 'inactive'
   stateLabel: string
   tagType: 'success' | 'warning' | 'info'
+}
+
+interface KnowledgeInsightItem {
+  kbId?: string | number
+  kbName: string
+  kbType?: string
+  kbStatus?: string
+  documentCount?: number
+  paragraphCount?: number
+  charCount?: number
+  paragraphTitle?: string
+  hitCount?: number
+  excerpt?: string
+  mode: 'structured' | 'fallback'
+}
+
+interface ToolTraceInsightItem {
+  mcpId?: string | number
+  serverName: string
+  transportType?: string
+  status?: string
+  toolCount: number
+  toolNames: string[]
+  summary: string
+  mode: 'structured' | 'fallback'
 }
 
 const knowledgeBaseList = ref<KnowledgeBase[]>([])
@@ -476,6 +596,70 @@ const selectedKnowledgeBases = computed(() => {
 const selectedMcpServers = computed(() => {
   const targetIds = new Set(currentMcpServerIds.value.map((item) => String(item)))
   return mcpServerList.value.filter((item) => targetIds.has(String(item.mcpId)))
+})
+
+const latestKnowledgeSources = computed<AiChatKnowledgeSource[]>(() => {
+  return latestAssistantMessage.value?.knowledgeSources || []
+})
+
+const latestToolExecutions = computed<AiChatToolTrace[]>(() => {
+  return latestAssistantMessage.value?.toolExecutions || []
+})
+
+const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
+  if (latestKnowledgeSources.value.length > 0) {
+    return latestKnowledgeSources.value.map((item) => ({
+      kbId: item.kbId,
+      kbName: item.kbName || `知识库 #${item.kbId || '--'}`,
+      kbType: item.kbType,
+      kbStatus: item.kbStatus,
+      documentCount: item.documentCount,
+      paragraphCount: item.paragraphCount,
+      charCount: item.charCount,
+      paragraphTitle: item.paragraphTitle,
+      hitCount: item.hitCount,
+      excerpt: item.excerpt,
+      mode: 'structured'
+    }))
+  }
+  return selectedKnowledgeBases.value.map((item) => ({
+    kbId: item.kbId,
+    kbName: item.kbName,
+    kbType: item.kbType,
+    kbStatus: item.status,
+    documentCount: item.documentCount,
+    paragraphCount: item.paragraphCount,
+    charCount: item.charCount,
+    mode: 'fallback'
+  }))
+})
+
+const toolTraceItems = computed<ToolTraceInsightItem[]>(() => {
+  if (latestToolExecutions.value.length > 0) {
+    return latestToolExecutions.value.map((item) => ({
+      mcpId: item.mcpId,
+      serverName: item.serverName || `MCP #${item.mcpId || '--'}`,
+      transportType: item.transportType,
+      status: item.status,
+      toolCount: item.toolCount || 0,
+      toolNames: item.toolNames || [],
+      summary: item.summary || '当前会话已挂载工具服务。',
+      mode: 'structured'
+    }))
+  }
+  return selectedMcpServers.value.map((item) => {
+    const parsedToolNames = parseMcpToolNames(item.tools)
+    return {
+      mcpId: item.mcpId,
+      serverName: item.serverName,
+      transportType: item.transportType,
+      status: item.status,
+      toolCount: parsedToolNames.length,
+      toolNames: parsedToolNames,
+      summary: `当前已绑定 ${item.serverName}，待后端回传真实工具执行轨迹。`,
+      mode: 'fallback' as const
+    }
+  })
 })
 
 const executionSummaryItems = computed(() => {
@@ -1061,6 +1245,37 @@ function getKnowledgeStatusLabel(value?: string) {
   return indexStatusOptions.find((item) => item.value === value)?.label || value || '待处理'
 }
 
+function getTransportTypeLabel(value?: string) {
+  return transportTypeOptions.find((item) => item.value === value)?.label || value || '未知'
+}
+
+function getEnableStatusLabel(value?: string) {
+  if (value === '0') {
+    return '启用'
+  }
+  if (value === '1') {
+    return '停用'
+  }
+  return value || '未知'
+}
+
+function parseMcpToolNames(rawTools?: string) {
+  if (!rawTools) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(rawTools)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed
+      .map((item) => typeof item?.name === 'string' ? item.name : '')
+      .filter((item): item is string => Boolean(item))
+  } catch {
+    return []
+  }
+}
+
 function summarizeMessage(content?: string, limit = 96) {
   if (!content) {
     return '暂无'
@@ -1588,6 +1803,26 @@ function restoreSelectedModelId() {
     gap: 8px 12px;
     font-size: 12px;
     color: #5f6b7a;
+  }
+
+  .source-card-detail {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #374151;
+  }
+
+  .source-card-excerpt {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #5f6b7a;
+    word-break: break-word;
+  }
+
+  .trace-tool-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .inspector-stage-item {

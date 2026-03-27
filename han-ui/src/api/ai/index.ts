@@ -320,6 +320,32 @@ export interface AiChatMessage {
   tokenCount?: number
   sortOrder: number
   createTime?: string
+  knowledgeSources?: AiChatKnowledgeSource[]
+  toolExecutions?: AiChatToolTrace[]
+}
+
+export interface AiChatKnowledgeSource {
+  kbId?: string | number
+  kbName?: string
+  kbType?: string
+  kbStatus?: string
+  documentCount?: number
+  paragraphCount?: number
+  charCount?: number
+  paragraphId?: string | number
+  paragraphTitle?: string
+  hitCount?: number
+  excerpt?: string
+}
+
+export interface AiChatToolTrace {
+  mcpId?: string | number
+  serverName?: string
+  transportType?: string
+  status?: string
+  toolCount?: number
+  toolNames?: string[]
+  summary?: string
 }
 
 export interface ChatRequest {
