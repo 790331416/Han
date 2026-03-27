@@ -31,13 +31,19 @@ test('ai application detail should expose workspace panels and support workflow 
   await expect(page.getByTestId('ai-application-access-panel')).toBeVisible()
   await expect(page.getByTestId('ai-application-log-panel')).toBeVisible()
   await expect(page.getByTestId('ai-application-publish-toggle')).toBeVisible()
+  await expect(page.getByTestId('ai-application-publish-readiness')).toBeVisible()
   await expect(page.getByTestId('ai-application-copy-detail-link')).toBeVisible()
   await expect(page.getByTestId('ai-application-copy-management-link')).toBeVisible()
+  await expect(page.getByTestId('ai-application-access-entry-list')).toBeVisible()
+  await expect(page.getByTestId('ai-application-access-item')).toHaveCount(3)
 
   const logItems = page.getByTestId('ai-application-log-item')
   if (await logItems.count() > 0) {
-    await expect(page.getByTestId('ai-application-open-log-link').first()).toBeVisible()
-    await page.getByTestId('ai-application-open-log-link').first().click()
+    await logItems.first().click()
+    await expect(page.getByTestId('ai-application-log-drawer')).toBeVisible()
+    await expect(page.getByTestId('ai-application-log-drawer-body')).toBeVisible()
+    await expect(page.getByTestId('ai-application-log-drawer-open-button')).toBeVisible()
+    await page.getByTestId('ai-application-log-drawer-open-button').click()
     await page.waitForURL(/\/ai\/chat\?conversationId=/, {
       timeout: 30000,
       waitUntil: 'domcontentloaded'

@@ -228,6 +228,23 @@
                     <span class="meta-label">发布说明</span>
                     <span class="meta-value">{{ publishHint }}</span>
                   </div>
+                  <div
+                    class="publish-checklist"
+                    data-testid="ai-application-publish-readiness"
+                  >
+                    <div
+                      v-for="item in publishReadiness"
+                      :key="item.label"
+                      class="check-item"
+                      :class="{ 'is-ready': item.ready }"
+                    >
+                      <div class="check-item-main">
+                        <span class="check-item-label">{{ item.label }}</span>
+                        <p class="check-item-hint">{{ item.hint }}</p>
+                      </div>
+                      <strong>{{ item.ready ? '已就绪' : '待完善' }}</strong>
+                    </div>
+                  </div>
                   <div class="access-actions">
                     <el-button
                       :loading="publishLoading"
@@ -265,6 +282,37 @@
                   <div class="meta-row">
                     <span class="meta-label">访问说明</span>
                     <span class="meta-value">{{ accessHint }}</span>
+                  </div>
+                  <div class="access-entry-list" data-testid="ai-application-access-entry-list">
+                    <div
+                      v-for="item in accessEntryList"
+                      :key="item.key"
+                      class="access-entry-card"
+                      :data-access-key="item.key"
+                      data-testid="ai-application-access-item"
+                    >
+                      <div class="access-entry-main">
+                        <div class="access-entry-title">{{ item.label }}</div>
+                        <div class="access-entry-desc">{{ item.description }}</div>
+                        <div class="access-entry-path">{{ item.path || '当前不可用' }}</div>
+                      </div>
+                      <div class="access-entry-actions">
+                        <el-button
+                          size="small"
+                          :disabled="!item.available"
+                          @click="openAccessPath(item.path)"
+                        >
+                          打开
+                        </el-button>
+                        <el-button
+                          size="small"
+                          :disabled="!item.available"
+                          @click="copyAccessLink(item.path, item.label)"
+                        >
+                          复制
+                        </el-button>
+                      </div>
+                    </div>
                   </div>
                   <div class="access-actions">
                     <el-button
@@ -307,6 +355,7 @@
                       :key="conversation.conversationId"
                       class="log-item"
                       data-testid="ai-application-log-item"
+                      @click="openConversationLogDrawer(conversation)"
                     >
                       <div class="log-main">
                         <div class="log-title">{{ conversation.title }}</div>
@@ -320,7 +369,7 @@
                           link
                           type="primary"
                           data-testid="ai-application-open-log-link"
-                          @click="openConversationLog(conversation)"
+                          @click.stop="openConversationLog(conversation)"
                         >
                           查看对话
                         </el-button>
@@ -354,6 +403,77 @@
         </el-tabs>
       </template>
     </div>
+
+    <el-drawer
+      v-model="logDrawerVisible"
+      title="运行日志详情"
+      size="460px"
+      append-to-body
+      data-testid="ai-application-log-drawer"
+    >
+      <div v-if="selectedConversation" class="log-drawer-body" data-testid="ai-application-log-drawer-body">
+        <div class="drawer-summary">
+          <h3>{{ selectedConversation.title }}</h3>
+          <p>
+            当前先复用已有会话数据展示运行摘要，后续如果后端补齐执行节点、来源片段和耗时信息，
+            这里可以继续扩成更完整的执行详情侧栏。
+          </p>
+        </div>
+
+        <div class="drawer-metrics">
+          <div class="drawer-metric">
+            <span class="drawer-metric-label">会话 ID</span>
+            <strong>{{ selectedConversation.conversationId }}</strong>
+          </div>
+          <div class="drawer-metric">
+            <span class="drawer-metric-label">消息数</span>
+            <strong>{{ selectedConversation.messageCount }}</strong>
+          </div>
+          <div class="drawer-metric">
+            <span class="drawer-metric-label">创建时间</span>
+            <strong>{{ formatDateTime(selectedConversation.createTime) }}</strong>
+          </div>
+          <div class="drawer-metric">
+            <span class="drawer-metric-label">最近更新时间</span>
+            <strong>{{ formatDateTime(selectedConversation.updateTime || selectedConversation.createTime) }}</strong>
+          </div>
+        </div>
+
+        <div class="drawer-route-list">
+          <div class="drawer-route-item">
+            <span class="drawer-route-label">对话入口</span>
+            <code>{{ conversationDetailPath(selectedConversation) }}</code>
+          </div>
+          <div class="drawer-route-item">
+            <span class="drawer-route-label">应用调试入口</span>
+            <code>{{ debugPath || '需要先发布后才能启用' }}</code>
+          </div>
+        </div>
+
+        <div class="drawer-actions">
+          <el-button
+            type="primary"
+            data-testid="ai-application-log-drawer-open-button"
+            @click="openConversationLog(selectedConversation)"
+          >
+            打开对话
+          </el-button>
+          <el-button
+            data-testid="ai-application-log-drawer-copy-button"
+            @click="copyConversationLink(selectedConversation)"
+          >
+            复制对话入口
+          </el-button>
+          <el-button
+            v-if="canDebugCurrentApplication"
+            data-testid="ai-application-log-drawer-debug-button"
+            @click="goToDebugChat"
+          >
+            回到应用调试
+          </el-button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -401,6 +521,20 @@ interface ApplicationDetail {
   mcpServerIds: string[]
 }
 
+interface PublishReadinessItem {
+  label: string
+  hint: string
+  ready: boolean
+}
+
+interface AccessEntryItem {
+  key: string
+  label: string
+  description: string
+  path: string
+  available: boolean
+}
+
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -413,6 +547,8 @@ const modelList = ref<AiModel[]>([])
 const knowledgeBaseList = ref<KnowledgeBase[]>([])
 const mcpServerList = ref<McpServer[]>([])
 const recentConversations = ref<AiConversation[]>([])
+const logDrawerVisible = ref(false)
+const selectedConversation = ref<AiConversation | null>(null)
 
 const applicationType = computed<ApplicationType>(() => {
   return route.params.type === 'workflow' ? 'workflow' : 'agent'
@@ -481,6 +617,58 @@ const accessHint = computed(() => {
   return canDebugCurrentApplication.value
     ? '当前详情页、管理页和调试页已经连成一条工作路径，可以直接切换使用。'
     : '当前还未发布，先通过管理页完善配置，发布后再开放调试入口。'
+})
+
+const publishReadiness = computed<PublishReadinessItem[]>(() => {
+  const detail = applicationDetail.value
+  return [
+    {
+      label: '模型配置',
+      hint: detail?.modelName ? `当前模型为 ${detail.modelName}` : '还没有绑定模型，建议先补齐模型配置',
+      ready: Boolean(detail?.modelId)
+    },
+    {
+      label: '系统提示词',
+      hint: detail?.systemPrompt ? '已配置系统提示词，可直接用于调试' : '当前还未配置系统提示词',
+      ready: Boolean(detail?.systemPrompt)
+    },
+    {
+      label: '交付入口',
+      hint: canDebugCurrentApplication.value ? '当前已开放调试入口，可继续做交付和验证' : '需要先发布后才能开放调试入口',
+      ready: canDebugCurrentApplication.value
+    },
+    {
+      label: '知识增强',
+      hint: knowledgeBaseNames.value.length > 0 ? `已绑定 ${knowledgeBaseNames.value.length} 个知识库` : '当前未绑定知识库，可按场景选配',
+      ready: knowledgeBaseNames.value.length > 0
+    }
+  ]
+})
+
+const accessEntryList = computed<AccessEntryItem[]>(() => {
+  return [
+    {
+      key: 'detail',
+      label: '详情入口',
+      description: '查看应用概览、配置、日志和交付信息',
+      path: detailPath.value,
+      available: Boolean(detailPath.value)
+    },
+    {
+      key: 'management',
+      label: '管理入口',
+      description: '继续编辑智能体或工作流的核心配置',
+      path: managementPath.value,
+      available: Boolean(managementPath.value)
+    },
+    {
+      key: 'debug',
+      label: '调试入口',
+      description: '进入应用的真实调试链路和对话工作区',
+      path: debugPath.value,
+      available: Boolean(debugPath.value)
+    }
+  ]
 })
 
 const knowledgeBaseNames = computed(() => {
@@ -607,13 +795,35 @@ async function copyAccessLink(path: string, label: string) {
   ElMessage.info(absolutePath)
 }
 
+function openAccessPath(path: string) {
+  if (!path) {
+    ElMessage.warning('当前入口不可用')
+    return
+  }
+  router.push(path)
+}
+
+function conversationDetailPath(conversation: AiConversation) {
+  return `/ai/chat?conversationId=${conversation.conversationId}`
+}
+
+function openConversationLogDrawer(conversation: AiConversation) {
+  selectedConversation.value = conversation
+  logDrawerVisible.value = true
+}
+
 function openConversationLog(conversation: AiConversation) {
+  logDrawerVisible.value = false
   router.push({
     path: '/ai/chat',
     query: {
       conversationId: String(conversation.conversationId)
     }
   })
+}
+
+async function copyConversationLink(conversation: AiConversation) {
+  await copyAccessLink(conversationDetailPath(conversation), '对话入口')
 }
 
 async function loadRecentConversations(type: ApplicationType, id: string) {
@@ -942,6 +1152,52 @@ watch(
   margin-top: 14px;
 }
 
+.publish-checklist {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.check-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.check-item.is-ready {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(240, 253, 244, 0.9);
+}
+
+.check-item-main {
+  min-width: 0;
+}
+
+.check-item-label {
+  display: block;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.check-item-hint {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.check-item strong {
+  flex-shrink: 0;
+  color: #0f172a;
+  font-size: 13px;
+}
+
 .meta-row {
   display: flex;
   align-items: flex-start;
@@ -968,6 +1224,54 @@ watch(
 
 .access-path {
   word-break: break-all;
+}
+
+.access-entry-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.access-entry-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.access-entry-main {
+  min-width: 0;
+}
+
+.access-entry-title {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.access-entry-desc {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.access-entry-path {
+  margin-top: 8px;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.access-entry-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
 }
 
 .log-item {
@@ -1006,6 +1310,92 @@ watch(
   flex-shrink: 0;
 }
 
+.log-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.drawer-summary {
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+  border: 1px solid rgba(191, 219, 254, 0.9);
+}
+
+.drawer-summary h3 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.drawer-summary p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.75;
+}
+
+.drawer-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.drawer-metric {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.drawer-metric-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.drawer-metric strong {
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.drawer-route-list {
+  display: grid;
+  gap: 12px;
+}
+
+.drawer-route-item {
+  padding: 14px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.drawer-route-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.drawer-route-item code {
+  display: block;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.7;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 @media (max-width: 1080px) {
   .detail-hero,
   .detail-grid {
@@ -1030,6 +1420,19 @@ watch(
   .meta-row,
   .log-item {
     flex-direction: column;
+  }
+
+  .access-entry-card {
+    flex-direction: column;
+  }
+
+  .access-entry-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .drawer-metrics {
+    grid-template-columns: 1fr;
   }
 
   .debug-panel {
