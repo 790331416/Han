@@ -23,12 +23,28 @@
             </div>
             <h2 data-testid="ai-application-detail-title">{{ applicationDetail.name }}</h2>
             <p class="detail-description">
-              {{ applicationDetail.description || '当前应用还没有补充说明，可先进入设置页完善业务定位。' }}
+              {{ applicationDetail.description || '当前应用还没有补充业务说明，可以先进入设置页完善定位。' }}
             </p>
             <div class="detail-actions">
-              <el-button type="primary" @click="goToManagement">进入管理</el-button>
-              <el-button v-if="canDebugCurrentApplication" @click="goToDebugChat">调试对话</el-button>
-              <el-button v-if="applicationType === 'workflow'" @click="goToWorkflowDesigner">
+              <el-button
+                type="primary"
+                data-testid="ai-application-open-management-link"
+                @click="goToManagement"
+              >
+                进入管理
+              </el-button>
+              <el-button
+                v-if="canDebugCurrentApplication"
+                data-testid="ai-application-open-debug-link"
+                @click="goToDebugChat"
+              >
+                打开调试
+              </el-button>
+              <el-button
+                v-if="applicationType === 'workflow'"
+                data-testid="ai-application-open-designer-link"
+                @click="goToWorkflowDesigner"
+              >
                 流程设计
               </el-button>
             </div>
@@ -49,8 +65,8 @@
                 <strong>{{ mcpServerNames.length }}</strong>
               </div>
               <div class="signal-item">
-                <span class="signal-label">创建时间</span>
-                <strong>{{ formatDate(applicationDetail.createTime) }}</strong>
+                <span class="signal-label">最近更新时间</span>
+                <strong>{{ formatDateTime(applicationDetail.createTime) }}</strong>
               </div>
             </div>
           </aside>
@@ -63,19 +79,19 @@
                 <section class="detail-section">
                   <div class="section-label">应用定位</div>
                   <div class="section-body">
-                    {{ applicationDetail.description || '暂无描述，可在管理页中继续补充业务说明。' }}
+                    {{ applicationDetail.description || '暂无业务描述，可在管理页继续补充。' }}
                   </div>
                 </section>
 
                 <section class="detail-section">
-                  <div class="section-label">角色与系统提示词</div>
+                  <div class="section-label">系统提示词</div>
                   <pre class="prompt-block">{{ applicationDetail.systemPrompt || '当前未配置系统提示词。' }}</pre>
                 </section>
 
                 <section class="detail-section">
                   <div class="section-label">{{ applicationType === 'agent' ? '欢迎语' : '开场白' }}</div>
                   <div class="section-body">
-                    {{ applicationDetail.prologue || '当前未配置开场内容。' }}
+                    {{ applicationDetail.prologue || '当前未配置欢迎语或开场白。' }}
                   </div>
                 </section>
               </div>
@@ -134,7 +150,7 @@
                 <span class="settings-value">{{ applicationDetail.published ? '已发布' : '未发布' }}</span>
               </div>
               <div class="settings-row">
-                <span class="settings-label">状态</span>
+                <span class="settings-label">运行状态</span>
                 <span class="settings-value">{{ statusLabel }}</span>
               </div>
               <div class="settings-row">
@@ -154,9 +170,9 @@
                 <span class="settings-value">{{ mcpServerNames.length }}</span>
               </div>
               <div class="settings-row">
-                <span class="settings-label">配置建议</span>
+                <span class="settings-label">当前阶段</span>
                 <span class="settings-value">
-                  当前为第二版详情视图，后续会继续向“应用概览、设置、调试、发布、日志”闭环深化。
+                  这一版先把应用详情工作台做实，保留原有管理页、设计页和调试入口，不重复造一套平行业务。
                 </span>
               </div>
             </div>
@@ -165,18 +181,32 @@
           <el-tab-pane label="调试" name="debug">
             <div class="debug-panel" data-testid="ai-application-debug-panel">
               <div class="debug-copy">
-                <h3>调试入口</h3>
+                <h3>应用调试工作台</h3>
                 <p>
-                  当前继续复用原有智能体页、工作流页和流程设计页，不新造一套平行逻辑。
-                  这样先把应用主线收顺，再逐步收口统一调试、发布和日志工作台。
+                  当前继续复用已有智能体页、工作流页和对话页来完成调试、设计和发布。
+                  这层详情页负责把入口、状态和最近运行情况收拢起来，保证主流程更顺手。
                 </p>
               </div>
               <div class="debug-actions">
-                <el-button type="primary" @click="goToManagement">进入管理页</el-button>
-                <el-button v-if="canDebugCurrentApplication" @click="goToDebugChat">
-                  打开对话调试
+                <el-button
+                  type="primary"
+                  data-testid="ai-application-debug-manage-button"
+                  @click="goToManagement"
+                >
+                  进入管理页
                 </el-button>
-                <el-button v-if="applicationType === 'workflow'" @click="goToWorkflowDesigner">
+                <el-button
+                  v-if="canDebugCurrentApplication"
+                  data-testid="ai-application-debug-chat-button"
+                  @click="goToDebugChat"
+                >
+                  打开调试对话
+                </el-button>
+                <el-button
+                  v-if="applicationType === 'workflow'"
+                  data-testid="ai-application-debug-designer-button"
+                  @click="goToWorkflowDesigner"
+                >
                   进入流程设计
                 </el-button>
               </div>
@@ -188,19 +218,30 @@
                 <div class="section-body">
                   <div class="meta-row">
                     <span class="meta-label">当前状态</span>
-                    <span class="meta-value">{{ applicationDetail.published ? '已发布' : '未发布' }}</span>
+                    <span class="meta-value">{{ publishStatusLabel }}</span>
                   </div>
                   <div class="meta-row">
-                    <span class="meta-label">最近更新</span>
+                    <span class="meta-label">最近更新时间</span>
                     <span class="meta-value">{{ formatDateTime(applicationDetail.createTime) }}</span>
                   </div>
                   <div class="meta-row">
-                    <span class="meta-label">说明</span>
-                    <span class="meta-value">这里直接复用现有发布能力，不重写原有业务逻辑。</span>
+                    <span class="meta-label">发布说明</span>
+                    <span class="meta-value">{{ publishHint }}</span>
                   </div>
                   <div class="access-actions">
-                    <el-button :loading="publishLoading" type="primary" @click="togglePublish">
+                    <el-button
+                      :loading="publishLoading"
+                      type="primary"
+                      data-testid="ai-application-publish-toggle"
+                      @click="togglePublish"
+                    >
                       {{ applicationDetail.published ? '取消发布' : '立即发布' }}
+                    </el-button>
+                    <el-button
+                      data-testid="ai-application-copy-detail-link"
+                      @click="copyAccessLink(detailPath, '详情入口')"
+                    >
+                      复制详情入口
                     </el-button>
                   </div>
                 </div>
@@ -210,23 +251,49 @@
                 <div class="section-label">访问入口</div>
                 <div class="section-body">
                   <div class="meta-row">
+                    <span class="meta-label">详情入口</span>
+                    <span class="meta-value access-path">{{ detailPath }}</span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="meta-label">管理入口</span>
+                    <span class="meta-value access-path">{{ managementPath }}</span>
+                  </div>
+                  <div class="meta-row">
                     <span class="meta-label">调试入口</span>
-                    <span class="meta-value">{{ canDebugCurrentApplication ? '可用' : '需先发布' }}</span>
+                    <span class="meta-value access-path">{{ debugPath || '需要先发布后才能启用' }}</span>
                   </div>
                   <div class="meta-row">
-                    <span class="meta-label">访问路径</span>
-                    <span class="meta-value access-path">{{ accessPath || '暂无' }}</span>
-                  </div>
-                  <div class="meta-row">
-                    <span class="meta-label">访问提示</span>
-                    <span class="meta-value">当前先通过管理页和对话调试进入应用。</span>
+                    <span class="meta-label">访问说明</span>
+                    <span class="meta-value">{{ accessHint }}</span>
                   </div>
                   <div class="access-actions">
-                    <el-button type="primary" @click="goToManagement">进入管理</el-button>
-                    <el-button v-if="canDebugCurrentApplication" @click="goToDebugChat">
-                      打开对话
+                    <el-button
+                      type="primary"
+                      data-testid="ai-application-access-manage-button"
+                      @click="goToManagement"
+                    >
+                      打开管理页
                     </el-button>
-                    <el-button @click="copyAccessLink">复制入口</el-button>
+                    <el-button
+                      v-if="canDebugCurrentApplication"
+                      data-testid="ai-application-access-debug-button"
+                      @click="goToDebugChat"
+                    >
+                      打开调试页
+                    </el-button>
+                    <el-button
+                      data-testid="ai-application-copy-management-link"
+                      @click="copyAccessLink(managementPath, '管理入口')"
+                    >
+                      复制管理入口
+                    </el-button>
+                    <el-button
+                      v-if="canDebugCurrentApplication"
+                      data-testid="ai-application-copy-debug-link"
+                      @click="copyAccessLink(debugPath, '调试入口')"
+                    >
+                      复制调试入口
+                    </el-button>
                   </div>
                 </div>
               </section>
@@ -239,28 +306,45 @@
                       v-for="conversation in recentConversations"
                       :key="conversation.conversationId"
                       class="log-item"
+                      data-testid="ai-application-log-item"
                     >
-                      <div class="log-title">{{ conversation.title }}</div>
-                      <div class="log-meta">
-                        <span>消息数 {{ conversation.messageCount }}</span>
-                        <span>{{ formatDateTime(conversation.updateTime || conversation.createTime) }}</span>
+                      <div class="log-main">
+                        <div class="log-title">{{ conversation.title }}</div>
+                        <div class="log-meta">
+                          <span>消息数 {{ conversation.messageCount }}</span>
+                          <span>{{ formatDateTime(conversation.updateTime || conversation.createTime) }}</span>
+                        </div>
+                      </div>
+                      <div class="log-actions">
+                        <el-button
+                          link
+                          type="primary"
+                          data-testid="ai-application-open-log-link"
+                          @click="openConversationLog(conversation)"
+                        >
+                          查看对话
+                        </el-button>
                       </div>
                     </div>
                   </template>
                   <template v-else-if="applicationType === 'workflow'">
                     <div class="meta-row">
                       <span class="meta-label">日志状态</span>
-                      <span class="meta-value">当前工作流还没有最近对话记录。</span>
+                      <span class="meta-value">当前工作流还没有最近的对话记录。</span>
+                    </div>
+                    <div class="meta-row">
+                      <span class="meta-label">建议</span>
+                      <span class="meta-value">可以先进入调试页跑一轮，再回到这里查看最近日志。</span>
                     </div>
                   </template>
                   <template v-else>
                     <div class="meta-row">
                       <span class="meta-label">日志状态</span>
-                      <span class="meta-value">智能体日志当前仍需补应用级关联字段。</span>
+                      <span class="meta-value">智能体日志目前还缺应用级会话关联字段。</span>
                     </div>
                     <div class="meta-row">
-                      <span class="meta-label">说明</span>
-                      <span class="meta-value">这轮先不伪造日志，避免把后续真实链路做偏。</span>
+                      <span class="meta-label">处理原则</span>
+                      <span class="meta-value">这轮先保持诚实占位，不伪造不存在的日志链路。</span>
                     </div>
                   </template>
                 </div>
@@ -276,7 +360,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import {
   getAiAgent,
   getAiWorkflow,
@@ -338,6 +422,16 @@ const applicationTypeLabel = computed(() => {
   return applicationType.value === 'agent' ? '简单应用' : '高级应用'
 })
 
+const publishStatusLabel = computed(() => {
+  return applicationDetail.value?.published ? '已发布，可进入调试和交付链路' : '未发布，当前以配置和管理为主'
+})
+
+const publishHint = computed(() => {
+  return applicationDetail.value?.published
+    ? '当前应用已经开放调试入口，后续可以继续衔接用户侧访问和交付。'
+    : '建议先完成配置校验与调试，再切换为发布状态。'
+})
+
 const statusLabel = computed(() => {
   const status = applicationDetail.value?.status
   if (status === '0') {
@@ -367,24 +461,40 @@ const canDebugCurrentApplication = computed(() => {
   return Boolean(applicationDetail.value?.published)
 })
 
-const accessPath = computed(() => {
+const detailPath = computed(() => {
   if (!applicationDetail.value) {
     return ''
   }
-  if (applicationType.value === 'agent') {
-    return `/ai/agent?action=chat&agentId=${applicationDetail.value.id}`
-  }
-  return `/ai/workflow?action=chat&workflowId=${applicationDetail.value.id}`
+  return `/ai/application/${applicationType.value}/${applicationDetail.value.id}`
+})
+
+const managementPath = computed(() => {
+  return router.resolve(getManagementRoute()).fullPath
+})
+
+const debugPath = computed(() => {
+  const target = getDebugRoute()
+  return target ? router.resolve(target).fullPath : ''
+})
+
+const accessHint = computed(() => {
+  return canDebugCurrentApplication.value
+    ? '当前详情页、管理页和调试页已经连成一条工作路径，可以直接切换使用。'
+    : '当前还未发布，先通过管理页完善配置，发布后再开放调试入口。'
 })
 
 const knowledgeBaseNames = computed(() => {
   const map = new Map(knowledgeBaseList.value.map((item) => [String(item.kbId), item.kbName]))
-  return (applicationDetail.value?.knowledgeBaseIds || []).map((item) => map.get(String(item)) || String(item))
+  return (applicationDetail.value?.knowledgeBaseIds || []).map((item) => {
+    return map.get(String(item)) || String(item)
+  })
 })
 
 const mcpServerNames = computed(() => {
   const map = new Map(mcpServerList.value.map((item) => [String(item.mcpId), item.serverName]))
-  return (applicationDetail.value?.mcpServerIds || []).map((item) => map.get(String(item)) || String(item))
+  return (applicationDetail.value?.mcpServerIds || []).map((item) => {
+    return map.get(String(item)) || String(item)
+  })
 })
 
 function parseJsonArray(value?: string) {
@@ -399,13 +509,6 @@ function parseJsonArray(value?: string) {
   }
 }
 
-function formatDate(value?: string) {
-  if (!value) {
-    return '暂无'
-  }
-  return value.length >= 10 ? value.slice(0, 10) : value
-}
-
 function formatDateTime(value?: string) {
   if (!value) {
     return '暂无'
@@ -413,25 +516,42 @@ function formatDateTime(value?: string) {
   return value.length >= 16 ? value.slice(0, 16) : value
 }
 
+function getManagementRoute(): RouteLocationRaw {
+  return applicationType.value === 'agent' ? '/ai/agent' : '/ai/workflow'
+}
+
+function getDebugRoute(): RouteLocationRaw | null {
+  if (!applicationDetail.value || !canDebugCurrentApplication.value) {
+    return null
+  }
+  if (applicationType.value === 'agent') {
+    return {
+      path: '/ai/agent',
+      query: {
+        action: 'chat',
+        agentId: String(applicationDetail.value.id)
+      }
+    }
+  }
+  return {
+    path: '/ai/workflow',
+    query: {
+      action: 'chat',
+      workflowId: String(applicationDetail.value.id)
+    }
+  }
+}
+
 function goToManagement() {
-  router.push(applicationType.value === 'agent' ? '/ai/agent' : '/ai/workflow')
+  router.push(getManagementRoute())
 }
 
 function goToDebugChat() {
-  if (!applicationDetail.value) {
+  const target = getDebugRoute()
+  if (!target) {
     return
   }
-  if (applicationType.value === 'agent') {
-    router.push({
-      path: '/ai/agent',
-      query: { action: 'chat', agentId: String(applicationDetail.value.id) }
-    })
-    return
-  }
-  router.push({
-    path: '/ai/workflow',
-    query: { action: 'chat', workflowId: String(applicationDetail.value.id) }
-  })
+  router.push(target)
 }
 
 function goToWorkflowDesigner() {
@@ -471,19 +591,29 @@ async function togglePublish() {
   }
 }
 
-async function copyAccessLink() {
-  if (!accessPath.value) {
+async function copyAccessLink(path: string, label: string) {
+  if (!path) {
+    ElMessage.warning(`${label}当前不可用`)
     return
   }
   const absolutePath = typeof window !== 'undefined'
-    ? `${window.location.origin}${accessPath.value}`
-    : accessPath.value
+    ? `${window.location.origin}${path}`
+    : path
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(absolutePath)
-    ElMessage.success('访问入口已复制')
+    ElMessage.success(`${label}已复制`)
     return
   }
   ElMessage.info(absolutePath)
+}
+
+function openConversationLog(conversation: AiConversation) {
+  router.push({
+    path: '/ai/chat',
+    query: {
+      conversationId: String(conversation.conversationId)
+    }
+  })
 }
 
 async function loadRecentConversations(type: ApplicationType, id: string) {
@@ -840,10 +970,21 @@ watch(
   word-break: break-all;
 }
 
+.log-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .log-item + .log-item {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid #eef2f7;
+}
+
+.log-main {
+  min-width: 0;
 }
 
 .log-title {
@@ -859,6 +1000,10 @@ watch(
   margin-top: 6px;
   color: #64748b;
   font-size: 12px;
+}
+
+.log-actions {
+  flex-shrink: 0;
 }
 
 @media (max-width: 1080px) {
@@ -877,10 +1022,14 @@ watch(
     font-size: 24px;
   }
 
-  .settings-row,
-  .meta-row {
+  .settings-row {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .meta-row,
+  .log-item {
+    flex-direction: column;
   }
 
   .debug-panel {

@@ -1,15 +1,18 @@
 import { test, expect } from '../fixtures/test'
 
-test('ai application detail should open from home and expose overview settings and debug tabs', async ({ authenticatedPage }) => {
+test('ai application detail should expose workspace panels and support workflow log jump', async ({ authenticatedPage }) => {
   const page = authenticatedPage
 
   await page.goto('/ai/application')
   await page.waitForLoadState('networkidle')
 
-  await expect(page.getByTestId('ai-application-card').first()).toBeVisible()
-  await expect(page.getByTestId('ai-application-detail-link').first()).toBeVisible()
+  const workflowCard = page.locator('[data-testid="ai-application-card"][data-application-type="workflow"]').first()
+  const fallbackCard = page.getByTestId('ai-application-card').first()
+  const targetCard = await workflowCard.count() > 0 ? workflowCard : fallbackCard
 
-  await page.getByTestId('ai-application-detail-link').first().click()
+  await expect(targetCard).toBeVisible()
+  await expect(targetCard.getByTestId('ai-application-detail-link')).toBeVisible()
+  await targetCard.getByTestId('ai-application-detail-link').click()
 
   await page.waitForURL(/\/ai\/application\/(agent|workflow)\/.+/, {
     timeout: 30000,
@@ -27,4 +30,19 @@ test('ai application detail should open from home and expose overview settings a
   await expect(page.getByTestId('ai-application-publish-panel')).toBeVisible()
   await expect(page.getByTestId('ai-application-access-panel')).toBeVisible()
   await expect(page.getByTestId('ai-application-log-panel')).toBeVisible()
+  await expect(page.getByTestId('ai-application-publish-toggle')).toBeVisible()
+  await expect(page.getByTestId('ai-application-copy-detail-link')).toBeVisible()
+  await expect(page.getByTestId('ai-application-copy-management-link')).toBeVisible()
+
+  const logItems = page.getByTestId('ai-application-log-item')
+  if (await logItems.count() > 0) {
+    await expect(page.getByTestId('ai-application-open-log-link').first()).toBeVisible()
+    await page.getByTestId('ai-application-open-log-link').first().click()
+    await page.waitForURL(/\/ai\/chat\?conversationId=/, {
+      timeout: 30000,
+      waitUntil: 'domcontentloaded'
+    })
+    await expect(page.getByTestId('ai-chat-page')).toBeVisible()
+    await expect(page.getByTestId('ai-chat-conversation-list')).toBeVisible()
+  }
 })

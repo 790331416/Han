@@ -165,9 +165,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, watch } from 'vue'
 import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -215,6 +216,8 @@ const editingTitle = ref(false)
 const editTitleValue = ref('')
 const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
+const route = useRoute()
+const router = useRouter()
 
 const CHAT_STORAGE_KEYS = {
   conversationId: 'HAN-ai-chat-conversation-id',
@@ -226,6 +229,32 @@ onMounted(async () => {
   await loadConversations()
   await restoreConversationState()
 })
+
+watch(
+  () => route.query.conversationId,
+  async (value) => {
+    const targetConversationId = normalizeConversationIdQuery(value)
+    if (!targetConversationId) {
+      return
+    }
+    if (String(currentConversationId.value ?? '') === targetConversationId) {
+      return
+    }
+    if (conversationList.value.length === 0) {
+      await loadConversations()
+    }
+    const targetConversation = conversationList.value.find((item) => {
+      return String(item.conversationId) === targetConversationId
+    })
+    if (!targetConversation) {
+      ElMessage.warning('指定对话不存在或已删除')
+      syncConversationRoute(null)
+      persistConversationId(null)
+      return
+    }
+    await selectConversation(targetConversation, { syncRoute: false })
+  }
+)
 
 async function loadModels() {
   try {
@@ -271,16 +300,22 @@ async function reloadCurrentConversationMessages() {
 }
 
 async function restoreConversationState() {
-  const storedConversationId = restoreConversationId()
+  const routeConversationId = normalizeConversationIdQuery(route.query.conversationId)
+  const storedConversationId = routeConversationId || restoreConversationId()
   const storedConversation = storedConversationId
     ? conversationList.value.find((item) => String(item.conversationId) === storedConversationId)
     : undefined
-  const fallbackConversation = conversationList.value[0]
+  const fallbackConversation = routeConversationId ? undefined : conversationList.value[0]
   const targetConversation = storedConversation || fallbackConversation
   if (!targetConversation) {
+    if (routeConversationId) {
+      ElMessage.warning('指定对话不存在或已删除')
+      syncConversationRoute(null)
+      persistConversationId(null)
+    }
     return
   }
-  if (!storedConversation && storedConversationId) {
+  if (!routeConversationId && !storedConversation && storedConversationId) {
     persistConversationId(null)
   }
   await selectConversation(targetConversation)
@@ -294,13 +329,18 @@ async function syncCurrentConversationState() {
     currentConversation.value = latest
   }
   persistConversationId(currentConversationId.value ?? null)
+  syncConversationRoute(currentConversationId.value ?? null)
   await reloadCurrentConversationMessages()
 }
 
-async function selectConversation(conv: AiConversation) {
+async function selectConversation(conv: AiConversation, options: { syncRoute?: boolean } = {}) {
+  const { syncRoute = true } = options
   currentConversationId.value = conv.conversationId
   currentConversation.value = conv
   persistConversationId(conv.conversationId)
+  if (syncRoute) {
+    syncConversationRoute(conv.conversationId)
+  }
   try {
     const res = await listChatMessages(conv.conversationId)
     messages.value = (res as any).data || []
@@ -316,6 +356,7 @@ function handleNewChat() {
   messages.value = []
   inputMessage.value = ''
   persistConversationId(null)
+  syncConversationRoute(null)
 }
 
 async function handleDeleteConversation(id: string | number) {
@@ -596,6 +637,34 @@ function persistConversationId(value: string | number | null | undefined) {
   } catch (error) {
     console.warn('Persist conversation id failed', error)
   }
+}
+
+function normalizeConversationIdQuery(value: unknown) {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : undefined
+  }
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+  return String(value)
+}
+
+function syncConversationRoute(value: string | number | null | undefined) {
+  const normalizedValue = normalizeConversationIdQuery(value)
+  const currentValue = normalizeConversationIdQuery(route.query.conversationId)
+  if (normalizedValue === currentValue) {
+    return
+  }
+  const nextQuery = { ...route.query }
+  if (normalizedValue) {
+    nextQuery.conversationId = normalizedValue
+  } else {
+    delete nextQuery.conversationId
+  }
+  router.replace({
+    path: route.path,
+    query: nextQuery
+  }).catch(() => undefined)
 }
 
 function restoreConversationId() {
