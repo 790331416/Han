@@ -930,3 +930,14 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`README.md`
 - 修改文件：`han-ui/src/views/ai/application/detail.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-application-detail.spec.ts`
+
+### 2026-03-27 AI 对话页解释工作台对齐与 95 真环境回归
+
+- 本轮主要目标：在不简化任何现有功能的前提下，把 [AI 对话页](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 往 `MaxKB` 的解释工作台体验继续靠拢，为通用聊天页补上“应用上下文、知识来源、执行信息”右侧面板，并在 `95` 真环境完成标准链路部署和回归。
+- 已完成关键任务：重构 [AI 对话页](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 的主工作区布局，在保留现有会话列表、消息流、停止生成、重新生成、编辑重生成全部原功能的基础上，新增右侧 `chat-inspector` 解释工作台；右侧工作台补齐“应用上下文”区块，按真实 `route.query.agentId/workflowId` 和当前会话 `workflowId` 识别上下文并拉取智能体或工作流详情，同时提供“查看应用详情 / 打开管理页”入口；补齐“知识来源”区块，基于真实知识库目录展示当前上下文绑定的知识库卡片、状态、文档数、段落数和字符数；补齐“执行信息”区块，展示当前模型、会话 ID、消息数、最近回复 Token、最近更新时间，并用五段结构化阶段列表承接“应用上下文、会话定位、知识增强、工具执行、模型回复”；同步升级 [ai-full.spec.ts](D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts)，增加对 `ai-chat-inspector`、上下文面板、知识来源面板、执行信息面板和五段阶段列表的断言；本地执行 `npm run build` 通过，功能提交为 `e25fe63 feat(ui): align ai chat with insight workspace` 并已推送到 `origin/codex/han-ui-remote-validate`。
+- 关键决策与解决方案：不另造一套聊天体系，也不把对话页改成和应用详情页割裂的另一种信息结构，而是直接复用应用详情页已经成型的“知识来源 + 执行信息”语言做对齐；对话页右侧所有信息都尽量走真实数据，不伪造后端尚未返回的结构化引用片段和工具轨迹，缺失部分继续诚实占位；部署严格遵守“本机只开发代码，本地只提交并推送，`95` 服务器新目录拉代码、自己构建 `dist`、自己构镜像、自己替换容器”的标准流程，本轮新建远端目录 `/opt/han/source/Han-ai-chat-workspace-20260327` 完成构建；考虑到 `95` 上前端依赖已有缓存，本轮复用前一套验证目录中的 `node_modules` 和 `package-lock.json`，再由 `95` 使用 `node:20-alpine` 容器自行生成新 `dist`，最后基于新产物构建 `registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ui:latest` 并替换现网容器，同时为旧镜像打了 `backup-han-ui:20260327-chat-inspector` 备份标签。
+- 使用技术栈/工具：Vue 3、TypeScript、Element Plus、Vue Router、Playwright、Vite、Docker、Node 容器、Git、PowerShell、`local95` MCP、`apply_patch`。
+- 验证结果：`95` 新构建的 `han-ui` 容器状态为 `healthy`，`curl -I -H 'Accept: text/html' http://127.0.0.1:3000/ai/chat` 返回 `200`；远端构建产物中可检索到 `ai-chat-inspector` 标识，确认新面板已进入镜像；使用远端前端 `http://10.18.35.95:3000` 与远端网关 `http://10.18.35.95:9090` 执行 `tests/e2e/specs/ai-full.spec.ts`，结果 `3 passed`，说明 AI 智能体页、工作流页、聊天页发送消息、重新生成、编辑重生成和新的解释工作台面板均在 `95` 真环境通过。
+- 修改文件：`README.md`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
+- 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
