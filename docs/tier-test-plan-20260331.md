@@ -1,0 +1,162 @@
+# 2026-03-31 三档功能清单与测试执行计划
+
+## 1. 目标
+
+本轮目标不是只看单点接口通不通，而是按 `small / medium / full` 三档部署口径，把每档应该具备的功能、当前实现状态、现有自动化覆盖、本轮测试状态和未开发项一起拉平，边测边回填。
+
+## 2. 状态说明
+
+### 2.1 实现状态
+
+| 状态 | 含义 |
+| --- | --- |
+| 已开发 | 代码、路由或接口已落地，具备真实能力 |
+| 部分开发 | 主链路存在，但细节能力仍缺口或明确有诚实占位 |
+| 未开发 | 路由、页面或后端能力尚未真正开放 |
+
+### 2.2 测试状态
+
+| 状态 | 含义 |
+| --- | --- |
+| 本轮通过 | 2026-03-31 本轮真实测试已通过 |
+| 本轮失败 | 2026-03-31 本轮真实测试已执行但失败 |
+| 进行中 | 已进入当前轮次执行，但尚未收敛 |
+| 待测 | 本轮尚未执行 |
+| 历史通过 | 之前轮次在真实环境通过，但本轮尚未重跑 |
+| 环境阻塞 | 当前运行环境不满足验收前置条件 |
+| 未开发 | 功能本身还没真正开放，不进入通过/失败判断 |
+
+## 3. 证据来源
+
+- 能力矩阵：[capability-matrix.md](/D:/code/Han/docs/capability-matrix.md)
+- 基础测试计划：[test-plan.md](/D:/code/Han/docs/test-plan.md)
+- 三档历史验收：[tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md)
+- Full AI 历史验收：[full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md)
+- 前端静态路由：[index.ts](/D:/code/Han/han-ui/src/router/index.ts)
+- 当前自动化用例目录：`han-ui/tests/e2e/specs`
+
+## 4. 总览
+
+| Tier | 默认能力 | 本轮总状态 | 备注 |
+| --- | --- | --- | --- |
+| `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录与菜单降级已验证，通知中心仍有异常待收敛 |
+| `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 进行中 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS 已验证，租户列表/套餐已打通，但配额接口仍返回业务 `500`，且 RustFS 探测存在偏差 |
+| `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞集中在 Prompt API、模型凭证和部分样本数据 |
+
+## 5. Small 清单
+
+`small` 目标口径：仅保留核心系统能力，不暴露 `tenant / workflow / open / file / ai` 等中高阶入口。
+
+| 模块 | 细节功能 | 实现状态 | 现有自动化/证据 | 本轮状态 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 运行时能力 | `/system/runtime/capabilities` 返回 `tier=small`，`enabledModules` 包含 `gateway/auth/system/job` | 已开发 | [capability-matrix.md](/D:/code/Han/docs/capability-matrix.md), [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md) | 本轮通过 | 2026-03-31 隔离 small 网关 `19090` 返回 `tier=small`，`tenant/workflow/open/file/ai=false` |
+| 登录与鉴权 | 验证码、登录、刷新登录态、登出 | 已开发 | [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts), [auth-logout.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-logout.spec.ts) | 本轮通过 | `auth-login.spec.ts` 2 条通过；验证码接口 `200`，登录后未出现租户选择 |
+| 首页与个人中心 | dashboard、当前用户、个人中心 | 已开发 | 历史接口验收 | 本轮通过 | `auth-login.spec.ts` 已确认可进入 dashboard 且右上角用户菜单可见 |
+| 系统管理 | 用户、角色、分配用户、菜单、部门、岗位、字典、字典数据、参数配置 | 已开发 | 静态路由与历史验收 | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已逐页打开 `/system/user|role|menu|dept|post|dict|config` |
+| 公告通知 | 列表、最新通知、未读数、单条已读、全部已读、SSE 推送/降级 | 已开发 | [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts), 历史 medium 验收 | 本轮失败 | 2026-03-31 在 `small` 与 `full` 上均复现：首次未看到新建通知，重试时 `/system/notice/markAllRead` 返回业务 `500: 系统繁忙，请稍后重试`，更像共享后端缺陷而非 tier 差异 |
+| 日志监控 | 操作日志、登录日志、在线用户、服务监控、缓存监控 | 已开发 | 静态路由与历史验收 | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已打开 `/system/operlog|loginlog|online|server|cache-monitor` |
+| 任务调度页面 | 任务列表、任务日志页面可达 | 已开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts), [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已打开 `/job/list` 与 `/job/log` |
+| 任务调度基础接口 | `handlers`、Cron 校验、任务列表、日志列表 | 已开发 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts), [SysJobController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java), [SysJobLogController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobLogController.java) | 本轮通过 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) 已确认网关下 `/job/handlers`、`/job/checkCron`、`/job/list`、`/job/log/list` 全部返回 `200`；同时确认 `/job/handlers` 当前读取的是 `sys_job` 持久化任务，而不是 Spring handler Bean 目录 |
+| 任务执行控制 | 新增、编辑、删除、暂停/恢复、立即执行、Cron 生成器 | 已开发 | [index.vue](/D:/code/Han/han-ui/src/views/job/index.vue), [SysJobController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java), [SampleTaskHandler.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/handler/SampleTaskHandler.java) | 本轮通过 | 2026-03-31 已用 `sampleTask.execute` 在 small 上跑通“新增任务 -> 暂停 -> 恢复 -> 立即执行 -> 查日志 -> 删除”；说明真实执行链路可用，但前端 handler 下拉为空时仍会影响可发现性 |
+| JobFlow 监控端点 | `health`、`metrics`、`config` | 已开发 | [JobFlowMonitorController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/JobFlowMonitorController.java) | 本轮失败 | 直连 `han-small-job:19204` 时 `health/metrics` 返回 `200`，但 `config` 序列化异常；经网关访问 `/actuator/jobflow/*` 为 `404`，说明当前未纳入网关验收口径 |
+| 菜单降级 | 不显示工作流、开放平台、OSS、AI | 已开发 | [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts), 路由 tier 标记 | 本轮通过 | `runtime-sidebar.spec.ts` 已确认 `small` 下仅保留核心菜单，`tenant/workflow/open/oss/ai` 不显示 |
+
+## 6. Medium 清单
+
+`medium` 必须覆盖 `small` 全量能力，并额外提供多租户、工作流、开放平台和文件能力。
+
+### 6.1 继承要求
+
+- `medium` 必须同时满足上文 `small` 全量检查项。
+
+### 6.2 增量能力
+
+| 模块 | 细节功能 | 实现状态 | 现有自动化/证据 | 本轮状态 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 运行时能力 | `/system/runtime/capabilities` 返回 `tier=medium`，包含 `tenant/workflow/open/file` | 已开发 | [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts) | 本轮通过 | 2026-03-31 隔离 medium 网关 `29090` 返回 `tier=medium`，`tenant/workflow/open/file=true`，`ai=false` |
+| 可选中间件探测 | `optionalServices.rustfs/rabbitmq` 识别正确 | 已开发 | [capability-matrix.md](/D:/code/Han/docs/capability-matrix.md) | 本轮失败 | `rabbitmq=true` 正常，但 RustFS 控制台/对象口 `29001/29000` 实测均可返回 `403`，能力接口仍回 `rustfs=false`，存在探测口径偏差 |
+| 租户管理 | 租户列表、套餐、配额、真实数据渲染 | 已开发 | [tenant-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tenant-pages.spec.ts) | 本轮失败 | 先通过正式接口补种 1 个套餐 + 1 个租户后，租户列表与套餐页均转为通过；但 `/tenant/quota/{tenantId}` 仍返回业务 `500: 系统繁忙，请稍后重试`，导致配额页失败 |
+| 工作流 | 流程定义、实例、待办、已办 | 已开发 | [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已逐页打开 `/workflow/definition|instance|todo|done` |
+| 开放平台 | 应用列表、创建、启停、重置密钥、生命周期 | 已开发 | [open-app.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts) | 本轮通过 | `open-app.spec.ts` 生命周期完整通过：新增、编辑、启停、重置密钥、删除均成功 |
+| OAuth2/SSO | `/oauth2`、`/sso` 与 `/open/oauth2`、`/open/sso` 兼容 | 已开发 | README 历史记录 | 本轮通过 | 2026-03-31 接口层确认：`/oauth2/authorize`、`/open/oauth2/authorize`、`/sso/login`、`/open/sso/login` 均返回 `200` |
+| 文件/OSS | OSS 配置列表、活动配置、上传链路、RustFS | 已开发 | [oss-config.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/oss-config.spec.ts), README 历史记录 | 进行中 | `oss-config.spec.ts` 页面/入口已通过；上传链路本轮未专项回归，RustFS 能力探测异常见上一行 |
+| 代码生成器（可选） | 导入表、库表扫描、配置编辑、代码预览、ZIP 下载 | 已开发 | [index.vue](/D:/code/Han/han-ui/src/views/tool/gen/index.vue), [gen.ts](/D:/code/Han/han-ui/src/api/tool/gen.ts), [GenController.java](/D:/code/Han/han-modules/han-gen/src/main/java/com/han/gen/controller/GenController.java), [han_data.sql](/D:/code/Han/sql/han_data.sql), [pom.xml](/D:/code/Han/han-modules/han-gen/pom.xml) | 环境阻塞 | 菜单种子、前端页面和 `han-gen` 模块代码都在，但当前默认 compose 未部署该服务，网关 `application-docker.yml` 也没有 `/gen/**` 路由；此外 `han-gen` 目录尚未补独立 Dockerfile，95 当前部署源码目录下该模块也未同步完整源码，故 `full` 网关 `/gen/list` 仍为 `404` |
+| 菜单降级 | `medium` 可见租户/工作流/开放平台/OSS，不应显示 AI | 已开发 | [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts) | 本轮通过 | `runtime-sidebar.spec.ts` 已确认 `tenant/open/oss/workflow` 可见，`AI` 不显示 |
+
+## 7. Full 清单
+
+`full` 必须覆盖 `small + medium` 全量能力，并额外提供 AI 管理、知识增强与 AI 对话能力。
+
+### 7.1 继承要求
+
+- `full` 必须同时满足 `small` 和 `medium` 的全部检查项。
+
+### 7.2 AI 增量能力
+
+| 模块 | 细节功能 | 实现状态 | 现有自动化/证据 | 本轮状态 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 运行时能力 | `/system/runtime/capabilities` 返回 `tier=full` 且 `ai=true` | 已开发 | [full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md) | 本轮通过 | 2026-03-31 远端 API 返回 `tier=full`、`ai=true` |
+| AI 应用首页 | 应用首页可加载，保留 app-first 入口 | 已开发 | [ai-application.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts) | 本轮通过 | `ai-application.spec.ts` 2 条通过 |
+| AI 应用详情 | 详情工作台、发布/取消发布、访问链接、工作流日志跳转 | 部分开发 | [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts), README | 本轮失败 | 当前 `95` 应用首页没有可进入的应用卡数据，详情入口无法打开；同时仍保留“应用级日志关联未完备”的诚实占位 |
+| AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) | 本轮失败 | 模型页可打开，但环境变量凭证状态显示“未配置”，`95` 当前缺少对应模型密钥前置 |
+| 知识库基础 | 创建、文档上传、重建索引、命中测试 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts) | 本轮通过 | 知识库上传、重建索引、命中测试通过 |
+| 知识库生命周期 | 多文档、统计回滚、删除知识库 | 已开发 | [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | 2026-03-31 已补跑并通过多文档上传/删除与统计回滚，删除知识库卡片操作也已通过 |
+| 文档解析 | `txt/md/json/html` 可解析，`pdf/docx` 允许上传但暂未自动解析 | 部分开发 | README 历史记录 | 待测 | 需诚实记为部分开发 |
+| MCP 管理 | 创建、刷新工具、SSE/stdio/streamable_http 元数据展示 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | `refresh tools`、`streamable_http`、`sse/stdio` 元数据回归通过 |
+| Prompt 模板 | 预览变量、编辑、内置模板禁删、内置模板禁编 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮失败 | Prompt 相关 API 当前在 `95` 返回业务 `500: 系统繁忙，请稍后重试`，导致预览、编辑、内置保护链路均未通过 |
+| 智能体/工作流页 | AI 智能体列表、AI 工作流列表、设计器入口 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) | 本轮通过 | `ai-full.spec.ts` 已覆盖智能体/工作流页可达 |
+| Token 统计 | 模型/用户/按日统计页面 | 已开发 | 历史接口与页面验收, [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts) | 本轮通过 | [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts) 已确认模型、用户、按日统计接口与页面卡片可加载 |
+| AI 对话主链路 | 新建会话、发送消息、刷新恢复、停止生成、重新生成、编辑后重新生成 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts), [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts) | 本轮通过 | 发送、停止后续发、刷新恢复、重新生成、编辑后重生成均通过 |
+| 结构化元数据 | 助手消息级 `knowledgeSources` 与 `toolExecutions` 真正返回并被右侧面板消费 | 已开发 | [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts) | 本轮通过 | 首跑存在发送按钮偶发 disabled，重试后通过；功能已闭环但有轻微抖动 |
+| 上下文恢复 | 显式 `workflowId/agentId` 上下文优先，不被旧会话抢占 | 已开发 | 2026-03-31 最新修复与远端实测 | 本轮通过 | `workflowId` 场景下结构化元数据会话可直接发起并回拉正确消息 |
+| AI Graph | 知识图谱页面 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts) | 未开发 | 路由已注释 |
+| Embed Chat | 嵌入式免登录对话页 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts) | 未开发 | 路由已注释 |
+
+## 8. 自动化映射
+
+| 范围 | 已有自动化 |
+| --- | --- |
+| 认证 | `auth-login.spec.ts`, `auth-logout.spec.ts` |
+| 公告通知 | `notice-center.spec.ts` |
+| 任务调度 | `job-core.spec.ts` |
+| 中型模块 | `tenant-pages.spec.ts`, `open-app.spec.ts`, `oss-config.spec.ts`, `runtime-sidebar.spec.ts` |
+| 三档核心路由烟测 | `tier-core-pages.spec.ts` |
+| AI 主链路 | `ai-full.spec.ts`, `ai-chat-edge.spec.ts`, `ai-chat-structured-meta.spec.ts`, `ai-model.spec.ts`, `ai-token.spec.ts` |
+| AI 管理页深度回归 | `ai-admin-pages.spec.ts`, `ai-admin-deep.spec.ts`, `ai-admin-lifecycle.spec.ts`, `ai-admin-extended.spec.ts`, `ai-application.spec.ts`, `ai-application-detail.spec.ts` |
+
+## 9. 本轮执行记录
+
+| 时间 | 动作 | 结果 |
+| --- | --- | --- |
+| 2026-03-31 | 重新梳理三档矩阵、静态路由和现有 E2E 用例，生成本清单 | 已完成 |
+| 2026-03-31 | 检查 95 容器状态 | 发现容器多数 `healthy`，但网关口径仍需进一步确认 |
+| 2026-03-31 | 访问 `95 /system/runtime/capabilities` | 当前返回 `404`，说明标准 tier 验收环境尚未完全恢复 |
+| 2026-03-31 | 修复 `95` full 环境 `docker-*` 旧镜像串用、`sys_oss_config.sql` 目录挂载错误、`han-ui` 未接入新 network 的问题 | 已完成，`full` 标准 compose 已恢复 |
+| 2026-03-31 | Full API 冒烟：`/system/runtime/capabilities`、`/auth/captcha` | 已通过，返回 `tier=full` 且验证码 `200` |
+| 2026-03-31 | Playwright `ai-full.spec.ts` | `3 passed` |
+| 2026-03-31 | Playwright `ai-chat-edge.spec.ts`、`ai-chat-structured-meta.spec.ts`、`ai-model.spec.ts`、`ai-application*.spec.ts`、`ai-admin-pages.spec.ts` | `7 passed, 2 failed, 1 flaky` |
+| 2026-03-31 | Playwright `ai-admin-deep.spec.ts`、`ai-admin-lifecycle.spec.ts`、`ai-admin-extended.spec.ts` | `5 passed, 5 failed`，失败集中在 `Prompt` API `500` 与登录限流 |
+| 2026-03-31 | Playwright `ai-admin-lifecycle.spec.ts -g "ai knowledge page should support multi-document lifecycle and stats rollback"` | `1 passed`，已排除登录限流噪音并确认知识库多文档生命周期正常 |
+| 2026-03-31 | Playwright `ai-token.spec.ts`（full） | `1 passed`，已确认 Token 统计页模型/用户/按日接口与卡片加载正常 |
+| 2026-03-31 | Playwright `auth-login.spec.ts`、`runtime-sidebar.spec.ts`、`tier-core-pages.spec.ts`（full 继承链路） | `4 passed`，已确认 full 下 small/medium 核心页面和菜单降级逻辑仍可用 |
+| 2026-03-31 | Playwright `notice-center.spec.ts`（full 对照） | `1 failed`，与 small 复现同样的通知不可见与 `markAllRead` 业务 `500`，基本排除 tier 特异性 |
+| 2026-03-31 | 拉起隔离 `small` 环境与 `han-ui-small`，验证 `/system/runtime/capabilities`、`/auth/captcha` | 已通过，返回 `tier=small`，验证码 `200`，`han-ui-small` 可经 small 网关正常加载登录页 |
+| 2026-03-31 | Playwright `auth-login.spec.ts`、`runtime-sidebar.spec.ts`（small） | `3 passed` |
+| 2026-03-31 | Playwright `tier-core-pages.spec.ts`（small） | `1 passed`，已逐页打开 small 核心系统/监控/任务页面 |
+| 2026-03-31 | Playwright `notice-center.spec.ts`（small） | `1 failed`，失败点为通知列表未及时出现与 `markAllRead` 业务 `500` |
+| 2026-03-31 | Playwright `job-core.spec.ts`（small） | `2 passed`，除 `handlers/checkCron/list/log` 基础接口外，已新增并跑通 `sampleTask.execute` 生命周期：创建、暂停/恢复、立即执行、日志回收、删除 |
+| 2026-03-31 | small JobFlow 监控端点直连核验 | `health/metrics` 直连 `19204` 返回 `200`；`config` 序列化失败，且经网关访问 `/actuator/jobflow/*` 为 `404` |
+| 2026-03-31 | 拉起隔离 `medium` 环境与 `han-ui-medium`，验证 `/system/runtime/capabilities`、`/auth/captcha` | 已通过，返回 `tier=medium`，验证码 `200`，`han-ui-medium` 可经 medium 网关正常加载登录页 |
+| 2026-03-31 | Playwright `auth-login.spec.ts`、`runtime-sidebar.spec.ts`、`open-app.spec.ts`、`oss-config.spec.ts`（medium） | `5 passed` |
+| 2026-03-31 | Playwright `tenant-pages.spec.ts`（medium） | 首轮 `3 failed`，根因是租户/套餐/有效租户接口均为空；补种 1 个套餐 + 1 个租户后重跑变为 `2 passed, 1 failed`，剩余失败点为 `/tenant/quota/{tenantId}` 业务 `500` |
+| 2026-03-31 | 通过正式接口向隔离 `medium` 补种租户样本 | 已补入 1 个套餐 `E2E Medium Package` 与 1 个租户 `E2E Medium Tenant`，用于区分“无数据”与“真实接口缺陷” |
+| 2026-03-31 | Playwright `tier-core-pages.spec.ts`（medium） | 首轮因 auth 登录限流失败，冷却后单独重跑 `1 passed`；已逐页打开继承 small 页面与 `workflow/*` 路由 |
+| 2026-03-31 | 接口核验 `OAuth2/SSO` 与 RustFS（medium） | `/oauth2`、`/open/oauth2`、`/sso`、`/open/sso` 入口均 `200`；RustFS 端口可达但 capability 仍回 `rustfs=false` |
+| 2026-03-31 | 代码生成器部署核验 | `han-gen` 本地源码、菜单种子与前端入口存在，但当前网关无 `/gen/**` 路由、模块未补独立 Dockerfile，且 95 部署源码目录下 `han-gen` 仅见 `pom.xml`；因此默认 compose 无法直接拉起，full 网关 `/gen/list` 返回 `404` |
+
+## 10. 下一步执行顺序
+
+1. 先恢复 95 上可复用的标准 tier 验收环境，至少拿回正确的 `/system/runtime/capabilities`。
+2. 先跑 `small` 和 `medium` 的运行时能力、登录、菜单降级、核心页面/API 冒烟。
+3. 再跑 `full` 的 AI 主链路与结构化元数据回归。
+4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。

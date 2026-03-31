@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, postParams } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 // 定时任务类型
@@ -129,7 +129,7 @@ export function deleteJobs(jobIds: (string | number)[]) {
 
 // 修改任务状态
 export function changeJobStatus(jobId: string | number, status: string) {
-  return post<void>('/job/changeStatus', { jobId, status })
+  return postParams<void>('/job/changeStatus', { jobId, status })
 }
 
 // 立即执行任务
