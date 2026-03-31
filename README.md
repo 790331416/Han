@@ -941,3 +941,15 @@ docker-compose -f docker-compose-dev.yml up -d
 - 修改文件：`README.md`
 - 修改文件：`han-ui/src/views/ai/chat/index.vue`
 - 修改文件：`han-ui/tests/e2e/specs/ai-full.spec.ts`
+
+### 2026-03-31 AI 对话结构化知识引用与工具轨迹闭环（95 真环境）
+
+- 本轮主要目标：沿着“结构化知识引用 + MCP 工具轨迹”的最小闭环继续推进，在不删减任何现有 AI 能力的前提下，把后端真实命中的知识片段与 MCP 工具元数据从“内容字符串里隐含”提升为“消息级结构化字段”，并在 `95` 真环境完成远端部署和验收。
+- 已完成关键任务：在 [AiChatServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java) 中让 `stream / regenerate / edit-regenerate` 的 SSE 在 `delta` 之后追加 `meta` 事件，真实回传 `messageId / tokenCount / knowledgeSources / toolExecutions`；在 [ai-stream.ts](D:/code/Han/han-ui/src/utils/ai-stream.ts) 中补齐 `meta` 事件解析和 `onMeta` 回调；在 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 中新增 `streamMeta`，让聊天页右侧解释面板优先消费最新一条助手消息的真实结构化元数据，而旧的会话回拉回退链路继续保留；随后继续补齐 workflow 语境下的上下文保持逻辑，在 [AiChatServiceImpl.java](D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java) 中支持 `AiChatRequest.workflowId` 走真实工作流上下文，并在已有 workflow 会话发送新消息时自动回收真实会话上下文；在 [index.vue](D:/code/Han/han-ui/src/views/ai/chat/index.vue) 中让流式发送在 workflow 语境下补发 `workflowId`。
+- 关键决策与解决方案：不改数据库表结构，只在消息响应层做运行时结构化增强；不覆盖 `95` 上已有脏工作树，而是新建干净目录 `/opt/han/source/Han-ai-chat-structured-meta-20260331` 拉取 `codex/han-ui-remote-validate`；严格遵守“本地 push -> 95 pull/clone -> 95 容器化 Maven/Node 自构建 -> 95 自构镜像 -> 95 自替换容器”的标准链路；由于 `95` 上直接 `npm install --legacy-peer-deps` 命中过依赖缺失，前端构建改为复用已验证目录 `/opt/han/source/Han-ai-chat-workspace-20260327/han-ui` 中可用的 `node_modules` 与 `package-lock.json`，再在新目录里只跑 `npm run build`，保证远端构建仍然来自 `95` 本机且不改业务依赖。
+- 使用技术栈/工具：Spring Boot、Vue 3、TypeScript、SSE、Docker、`maven:3.9.9-eclipse-temurin-21`、`node:20-alpine`、PowerShell、Git、`local95` MCP、`apply_patch`。
+- 验证结果：本地仅提交本轮文件并推送两个提交 `4769e04 feat(ai): stream structured chat metadata`、`ba4abd3 fix(ai): preserve workflow chat context`；`95` 上 `han-ai` 与 `han-ui` 新镜像重建完成并替换运行容器，容器状态均为 `healthy`；通过 `curl -N` 直连 `http://127.0.0.1:9090/ai/chat/stream`，在临时验证 workflow `workflow_id=2` 上真实收到非空 `meta` 事件，其中 `knowledgeSources` 命中 `kb_id=13 / paragraph_id=16`，`toolExecutions` 命中临时 MCP `mcp_id=15`，且工具名 `structured_lookup / tool_trace_probe` 已进入结构化返回；随后通过 `GET /ai/chat/messages/32` 验证同一条会话的助手消息已能在消息回拉接口中返回相同的 `knowledgeSources / toolExecutions` 结构；再通过第二次 `conversationId=32 + workflowId=2` 的流式请求验证 workflow 会话续聊时 `meta` 仍保持非空结构，说明“流式即时 + 会话回拉 + 续聊保持上下文”三条链路已经闭环。
+- 修改文件：`README.md`
+- 修改文件：`han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java`
+- 修改文件：`han-ui/src/utils/ai-stream.ts`
+- 修改文件：`han-ui/src/views/ai/chat/index.vue`
