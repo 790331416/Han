@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/test'
 import {
+  expectMessageTextContains,
   expectRenderedMessageContent,
   latestAssistantMessage,
   latestUserMessage,
@@ -25,7 +26,7 @@ test('ai chat page should send a message and render assistant reply', async ({ a
   const page = authenticatedPage
   const prompt = `Playwright AI smoke ${Date.now()}`
 
-  await openAiChatPage(page)
+  await openAiChatPage(page, undefined, { fresh: true })
   await sendChatMessage(page, prompt)
 
   await expectRenderedMessageContent(latestAssistantMessage(page))
@@ -46,7 +47,7 @@ test('ai chat page should support regenerate and edit-regenerate', async ({ auth
   const originalPrompt = `Playwright regenerate ${Date.now()}`
   const editedPrompt = `${originalPrompt} edited`
 
-  await openAiChatPage(page)
+  await openAiChatPage(page, undefined, { fresh: true })
   await sendChatMessage(page, originalPrompt)
   await expectRenderedMessageContent(latestAssistantMessage(page))
 
@@ -73,6 +74,6 @@ test('ai chat page should support regenerate and edit-regenerate', async ({ auth
   await currentLatestUserMessage.getByTestId('ai-chat-edit-submit-button').click()
   await editRegenerateResponsePromise
 
-  await expect(latestUserMessage(page)).toContainText(editedPrompt)
+  await expectMessageTextContains(latestUserMessage(page), editedPrompt)
   await expectRenderedMessageContent(latestAssistantMessage(page))
 })
