@@ -91,28 +91,6 @@ export async function applyAuthSession(page: Page, session: AuthSession, tenantI
     },
     scriptPayload
   )
-
-  await page.goto('/login')
-  await page.evaluate(({ accessToken, refreshToken, userId, runtimeTenantId, tokenKey, refreshTokenKey, userStoreKey }) => {
-    localStorage.setItem(tokenKey, accessToken)
-    localStorage.setItem(refreshTokenKey, refreshToken)
-    localStorage.setItem(
-      userStoreKey,
-      JSON.stringify({
-        token: accessToken,
-        tenantId: runtimeTenantId ?? null,
-        _userId: userId ?? null
-      })
-    )
-  }, {
-    accessToken: scriptPayload.accessToken,
-    refreshToken: scriptPayload.refreshToken,
-    userId: scriptPayload.userId,
-    runtimeTenantId: scriptPayload.persistedTenantId,
-    tokenKey: scriptPayload.tokenKey,
-    refreshTokenKey: scriptPayload.refreshTokenKey,
-    userStoreKey: scriptPayload.userStoreKey
-  })
 }
 
 function normalizeTenantId(tenantId: string | number): string | number {

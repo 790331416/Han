@@ -55,6 +55,30 @@ export interface PromptTemplateRecord {
   status?: string
 }
 
+export interface AiModelRecord {
+  modelId: string | number
+  modelName: string
+  modelType: string
+  provider?: string
+  modelCode?: string
+  status?: string
+}
+
+export interface WorkflowRecord {
+  workflowId: string | number
+  workflowName: string
+  description?: string
+  workflowType: string
+  modelId?: string | number
+  knowledgeBaseIds?: string
+  mcpServerIds?: string
+  systemPrompt?: string
+  flowConfig?: string
+  prologue?: string
+  published?: string
+  status?: string
+}
+
 function buildHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -117,6 +141,46 @@ export async function fetchKnowledgeDocuments(
   })
   const result = await ensureSuccess<PageResult<KbDocumentRecord>>(response)
   return result.data?.rows || []
+}
+
+export async function uploadKnowledgeDocument(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  kbId: string | number,
+  fileName: string,
+  content: string
+): Promise<void> {
+  const response = await request.post(`${apiBaseUrl}/ai/kb/${kbId}/document/upload`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    multipart: {
+      file: {
+        name: fileName,
+        mimeType: 'text/plain',
+        buffer: Buffer.from(content, 'utf-8')
+      }
+    }
+  })
+  await ensureSuccess<void>(response)
+}
+
+export async function hitTestKnowledgeBase(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  kbId: string | number,
+  query: string
+): Promise<Array<Record<string, unknown>>> {
+  const response = await request.post(`${apiBaseUrl}/ai/kb/hit-test/${kbId}`, {
+    headers: buildHeaders(accessToken),
+    data: {
+      query
+    }
+  })
+  const result = await ensureSuccess<Array<Record<string, unknown>>>(response)
+  return result.data || []
 }
 
 export async function deleteKnowledgeBase(
@@ -267,6 +331,98 @@ export async function deleteMcpServer(
   mcpId: string | number
 ): Promise<void> {
   const response = await request.post(`${apiBaseUrl}/ai/mcp/remove/${mcpId}`, {
+    headers: buildHeaders(accessToken)
+  })
+  await ensureSuccess<void>(response)
+}
+
+export async function refreshMcpServerTools(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  mcpId: string | number
+): Promise<void> {
+  const response = await request.post(`${apiBaseUrl}/ai/mcp/refresh/${mcpId}`, {
+    headers: buildHeaders(accessToken)
+  })
+  await ensureSuccess<void>(response)
+}
+
+export async function listAvailableAiModels(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  modelType = 'LLM'
+): Promise<AiModelRecord[]> {
+  const response = await request.get(`${apiBaseUrl}/ai/model/all?modelType=${encodeURIComponent(modelType)}`, {
+    headers: buildHeaders(accessToken)
+  })
+  const result = await ensureSuccess<AiModelRecord[]>(response)
+  return result.data || []
+}
+
+export async function createWorkflow(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  payload: Partial<WorkflowRecord>
+): Promise<WorkflowRecord> {
+  const response = await request.post(`${apiBaseUrl}/ai/workflow`, {
+    headers: buildHeaders(accessToken),
+    data: {
+      workflowName: payload.workflowName,
+      description: payload.description || '',
+      workflowType: payload.workflowType || 'simple',
+      modelId: payload.modelId,
+      knowledgeBaseIds: payload.knowledgeBaseIds || '[]',
+      mcpServerIds: payload.mcpServerIds || '[]',
+      systemPrompt: payload.systemPrompt || '',
+      flowConfig: payload.flowConfig || '{}',
+      prologue: payload.prologue || '',
+      published: payload.published || '0',
+      status: payload.status || '0'
+    }
+  })
+  await ensureSuccess<void>(response)
+  const created = await findWorkflowByName(request, apiBaseUrl, accessToken, String(payload.workflowName))
+  if (!created) {
+    throw new Error(`链壘鍒版柊寤哄伐浣滄祦: ${payload.workflowName}`)
+  }
+  return created
+}
+
+export async function findWorkflowByName(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  workflowName: string
+): Promise<WorkflowRecord | null> {
+  const response = await request.get(`${apiBaseUrl}/ai/workflow/list?pageNum=1&pageSize=100&workflowName=${encodeURIComponent(workflowName)}`, {
+    headers: buildHeaders(accessToken)
+  })
+  const result = await ensureSuccess<PageResult<WorkflowRecord>>(response)
+  return result.data?.rows?.find((item) => item.workflowName === workflowName) || null
+}
+
+export async function publishWorkflow(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  workflowId: string | number
+): Promise<void> {
+  const response = await request.post(`${apiBaseUrl}/ai/workflow/publish/${workflowId}`, {
+    headers: buildHeaders(accessToken)
+  })
+  await ensureSuccess<void>(response)
+}
+
+export async function deleteWorkflow(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  workflowId: string | number
+): Promise<void> {
+  const response = await request.post(`${apiBaseUrl}/ai/workflow/remove/${workflowId}`, {
     headers: buildHeaders(accessToken)
   })
   await ensureSuccess<void>(response)

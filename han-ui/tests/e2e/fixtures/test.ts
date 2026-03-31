@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test'
+import { test as base, expect, request as playwrightRequest, type Page } from '@playwright/test'
 import { applyAuthSession, loginByApi, type AuthSession } from '../utils/auth'
 
 export const e2eRuntime = {
@@ -10,45 +10,51 @@ export const e2eRuntime = {
 
 interface E2EFixtures {
   authSession: AuthSession
+  isolatedAuthSession: AuthSession
   authenticatedPage: Page
+  isolatedAuthenticatedPage: Page
 }
 
-/**
- * Han UI Playwright 基础夹具。
- *
- * 提供能力：
- * - 复用 API 登录建立稳定测试会话
- * - 统一注入前端 localStorage
- * - 统一进入首页并等待仪表盘完成首屏加载
- */
-export const test = base.extend<E2EFixtures>({
-  authSession: async ({ request }, use) => {
-    const session = await loginByApi(request, {
+async function createAuthSession(): Promise<AuthSession> {
+  const apiRequest = await playwrightRequest.newContext()
+  try {
+    return await loginByApi(apiRequest, {
       apiBaseUrl: e2eRuntime.apiBaseUrl,
       username: e2eRuntime.username,
       password: e2eRuntime.password,
       tenantId: e2eRuntime.tenantId || undefined
     })
+  } finally {
+    await apiRequest.dispose()
+  }
+}
+
+/**
+ * Shared Playwright fixtures for Han UI.
+ *
+ * Provides:
+ * - API login for a stable authenticated session
+ * - localStorage bootstrap for frontend auth state
+ * - an authenticated page without implicit navigation side effects
+ */
+export const test = base.extend<E2EFixtures>({
+  authSession: async ({}, use) => {
+    const session = await createAuthSession()
+    await use(session)
+  },
+
+  isolatedAuthSession: async ({}, use) => {
+    const session = await createAuthSession()
     await use(session)
   },
 
   authenticatedPage: async ({ page, authSession }, use) => {
     await applyAuthSession(page, authSession, e2eRuntime.tenantId || undefined)
-    await expect.poll(async () => {
-      return page.evaluate(() => ({
-        token: localStorage.getItem('Admin-Token'),
-        refreshToken: localStorage.getItem('Admin-Refresh-Token'),
-        userStore: localStorage.getItem('HAN-user')
-      }))
-    }).toMatchObject({
-      token: authSession.accessToken,
-      refreshToken: authSession.refreshToken
-    })
+    await use(page)
+  },
 
-    await page.goto('/')
-    await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15000 })
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByTestId('dashboard-page')).toBeVisible()
+  isolatedAuthenticatedPage: async ({ page, isolatedAuthSession }, use) => {
+    await applyAuthSession(page, isolatedAuthSession, e2eRuntime.tenantId || undefined)
     await use(page)
   }
 })

@@ -793,6 +793,16 @@ watch(
 )
 
 watch(
+  [routeAgentId, routeWorkflowId],
+  async ([nextAgentId, nextWorkflowId], [prevAgentId, prevWorkflowId]) => {
+    if (nextAgentId === prevAgentId && nextWorkflowId === prevWorkflowId) {
+      return
+    }
+    await restoreConversationState()
+  }
+)
+
+watch(
   [routeAgentId, routeWorkflowId, () => currentConversation.value?.workflowId],
   async () => {
     await loadContextApplication()
@@ -885,23 +895,50 @@ async function reloadCurrentConversationMessages() {
   }
 }
 
+function matchesExplicitRouteContext(conversation?: AiConversation) {
+  if (!conversation) {
+    return false
+  }
+  if (routeWorkflowId.value) {
+    return String(conversation.workflowId ?? '') === String(routeWorkflowId.value)
+  }
+  if (routeAgentId.value) {
+    const conversationAgentId = (conversation as AiConversation & { agentId?: string | number }).agentId
+    return conversationAgentId !== undefined
+      && conversationAgentId !== null
+      && String(conversationAgentId) === String(routeAgentId.value)
+  }
+  return true
+}
+
 async function restoreConversationState() {
   const routeConversationId = normalizeConversationIdQuery(route.query.conversationId)
   const storedConversationId = routeConversationId || restoreConversationId()
+  const explicitRouteContext = Boolean(routeAgentId.value || routeWorkflowId.value)
   const storedConversation = storedConversationId
     ? conversationList.value.find((item) => String(item.conversationId) === storedConversationId)
     : undefined
-  const fallbackConversation = routeConversationId ? undefined : conversationList.value[0]
-  const targetConversation = storedConversation || fallbackConversation
+  const matchedStoredConversation = storedConversation && matchesExplicitRouteContext(storedConversation)
+    ? storedConversation
+    : undefined
+  const fallbackConversation = routeConversationId
+    ? undefined
+    : conversationList.value.find((item) => matchesExplicitRouteContext(item))
+  const targetConversation = matchedStoredConversation || fallbackConversation
   if (!targetConversation) {
     if (routeConversationId) {
       ElMessage.warning('指定对话不存在或已删除')
       syncConversationRoute(null)
       persistConversationId(null)
+    } else if (storedConversationId) {
+      persistConversationId(null)
+    }
+    if (explicitRouteContext) {
+      handleNewChat()
     }
     return
   }
-  if (!routeConversationId && !storedConversation && storedConversationId) {
+  if (!routeConversationId && !matchedStoredConversation && storedConversationId) {
     persistConversationId(null)
   }
   await selectConversation(targetConversation)
