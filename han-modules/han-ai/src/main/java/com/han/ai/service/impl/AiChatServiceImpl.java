@@ -191,7 +191,18 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (request == null) {
             throw new BusinessException("对话请求不能为空");
         }
-        ChatContext context = ChatContext.general(request.getConversationId(), request.getModelId());
+        ChatContext context;
+        if (request.getWorkflowId() != null) {
+            AiWorkflowPo workflow = aiWorkflowMapper.selectById(request.getWorkflowId());
+            if (workflow == null) {
+                throw new BusinessException("宸ヤ綔娴佷笉瀛樺湪");
+            }
+            context = ChatContext.workflow(request.getConversationId(), workflow.getWorkflowId(), workflow.getModelId(),
+                    workflow.getWorkflowName(), workflow.getSystemPrompt(), parseIdList(workflow.getKnowledgeBaseIds()),
+                    parseIdList(workflow.getMcpServerIds()));
+        } else {
+            context = ChatContext.general(request.getConversationId(), request.getModelId());
+        }
         return appendReply(context, request.getMessage());
     }
 
@@ -242,9 +253,10 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private GeneratedReply appendReply(ChatContext context, String message) {
         String normalizedMessage = normalizeMessage(message);
         AiConversationPo conversation = prepareConversation(context, normalizedMessage);
+        ChatContext effectiveContext = context.conversationId() != null ? buildContextFromConversation(conversation) : context;
         appendUserMessage(conversation.getConversationId(), normalizedMessage);
         refreshConversationCount(conversation);
-        return appendAssistantMessage(conversation, context, normalizedMessage);
+        return appendAssistantMessage(conversation, effectiveContext, normalizedMessage);
     }
 
     private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage) {

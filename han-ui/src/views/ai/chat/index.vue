@@ -994,6 +994,7 @@ async function handleSend() {
       tenantId: userStore.tenantId,
       body: {
         conversationId: currentConversationId.value || null,
+        workflowId: routeWorkflowId.value || currentConversation.value?.workflowId || null,
         modelId: selectedModelId.value,
         message: msg
       },
