@@ -7,17 +7,27 @@ export interface AiStreamRequestOptions {
   signal?: AbortSignal
   onDelta?: (payload: { chunk: string; fullContent: string }) => void
   onError?: (message: string) => void
+  onMeta?: (payload: AiStreamMetaPayload) => void
 }
 
 export interface AiStreamConsumeOptions {
   onDelta?: (payload: { chunk: string; fullContent: string }) => void
   onError?: (message: string) => void
+  onMeta?: (payload: AiStreamMetaPayload) => void
 }
 
 interface ParsedAiStreamEvent {
   done: boolean
   delta?: string
   error?: string
+  meta?: AiStreamMetaPayload
+}
+
+export interface AiStreamMetaPayload {
+  messageId?: string | number
+  tokenCount?: number
+  knowledgeSources?: unknown
+  toolExecutions?: unknown
 }
 
 /**
@@ -71,6 +81,10 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
         options.onError?.(event.error)
         continue
       }
+      if (event.meta) {
+        options.onMeta?.(event.meta)
+        continue
+      }
       if (event.delta) {
         fullContent += event.delta
         options.onDelta?.({ chunk: event.delta, fullContent })
@@ -82,6 +96,9 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
         const tailEvent = parseAiStreamEvent(pending)
         if (tailEvent?.error) {
           options.onError?.(tailEvent.error)
+        }
+        if (tailEvent?.meta) {
+          options.onMeta?.(tailEvent.meta)
         }
         if (tailEvent?.delta) {
           fullContent += tailEvent.delta
@@ -124,6 +141,12 @@ function parseAiStreamEvent(segment: string): ParsedAiStreamEvent | null {
     }
     if (parsed.type === 'delta') {
       return { done: false, delta: parsed.content || '' }
+    }
+    if (parsed.type === 'meta') {
+      return {
+        done: false,
+        meta: (parsed as { content?: AiStreamMetaPayload }).content || (parsed as AiStreamMetaPayload)
+      }
     }
   } catch {
     return { done: false, delta: payload }

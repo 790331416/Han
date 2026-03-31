@@ -426,7 +426,7 @@ import {
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
-import { consumeAiStreamResponse, requestAiStream } from '@/utils/ai-stream'
+import { consumeAiStreamResponse, requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
 
 // marked 配置：启用代码高亮
 marked.setOptions({
@@ -448,6 +448,7 @@ const inputMessage = ref('')
 const sending = ref(false)
 const streaming = ref(false)
 const streamContent = ref('')
+const streamMeta = ref<AiStreamMetaPayload | null>(null)
 const selectedModelId = ref<string | number>()
 const currentConversationId = ref<string | number>()
 const currentConversation = ref<AiConversation>()
@@ -599,11 +600,19 @@ const selectedMcpServers = computed(() => {
 })
 
 const latestKnowledgeSources = computed<AiChatKnowledgeSource[]>(() => {
-  return latestAssistantMessage.value?.knowledgeSources || []
+  const streamSources = streamMeta.value?.knowledgeSources as AiChatKnowledgeSource[] | undefined
+  if (streaming.value && streamSources) {
+    return streamSources
+  }
+  return latestAssistantMessage.value?.knowledgeSources || streamSources || []
 })
 
 const latestToolExecutions = computed<AiChatToolTrace[]>(() => {
-  return latestAssistantMessage.value?.toolExecutions || []
+  const streamTraces = streamMeta.value?.toolExecutions as AiChatToolTrace[] | undefined
+  if (streaming.value && streamTraces) {
+    return streamTraces
+  }
+  return latestAssistantMessage.value?.toolExecutions || streamTraces || []
 })
 
 const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
@@ -678,7 +687,11 @@ const executionSummaryItems = computed(() => {
     },
     {
       label: '最近回复 Token',
-      value: latestAssistantMessage.value?.tokenCount ? String(latestAssistantMessage.value.tokenCount) : '暂无'
+      value: streamMeta.value?.tokenCount !== undefined
+        ? String(streamMeta.value.tokenCount)
+        : latestAssistantMessage.value?.tokenCount
+          ? String(latestAssistantMessage.value.tokenCount)
+          : '暂无'
     },
     {
       label: '最近更新时间',
@@ -864,6 +877,7 @@ async function reloadCurrentConversationMessages() {
   try {
     const res = await listChatMessages(currentConversationId.value)
     messages.value = (res as any).data || []
+    streamMeta.value = null
     currentConversation.value = conversationList.value.find((item) => item.conversationId === currentConversationId.value)
     scrollToBottom()
   } catch (e) {
@@ -909,6 +923,7 @@ async function selectConversation(conv: AiConversation, options: { syncRoute?: b
   const { syncRoute = true } = options
   currentConversationId.value = conv.conversationId
   currentConversation.value = conv
+  streamMeta.value = null
   persistConversationId(conv.conversationId)
   if (syncRoute) {
     syncConversationRoute(conv.conversationId)
@@ -927,6 +942,7 @@ function handleNewChat() {
   currentConversation.value = undefined
   messages.value = []
   inputMessage.value = ''
+  streamMeta.value = null
   persistConversationId(null)
   syncConversationRoute(null)
 }
@@ -964,10 +980,12 @@ async function handleSend() {
 
   streaming.value = true
   streamContent.value = ''
+  streamMeta.value = null
 
   try {
     const userStore = useUserStore()
     const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
+    let responseMeta: AiStreamMetaPayload | null = null
     abortController.value = new AbortController()
     const fullContent = await requestAiStream({
       baseUrl,
@@ -984,6 +1002,10 @@ async function handleSend() {
         streamContent.value = fullContent
         scrollToBottom()
       },
+      onMeta: (meta) => {
+        responseMeta = meta
+        streamMeta.value = meta
+      },
       onError: (message) => {
         ElMessage.error('AI回复出错: ' + (message || '未知错误'))
       }
@@ -991,13 +1013,7 @@ async function handleSend() {
 
     streaming.value = false
     if (fullContent) {
-      messages.value.push({
-        messageId: Date.now() + 1,
-        conversationId: currentConversationId.value || 0,
-        role: 'assistant',
-        content: fullContent,
-        sortOrder: messages.value.length + 1,
-      })
+      messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
     }
 
     await syncCurrentConversationState()
@@ -1018,6 +1034,7 @@ function handleStopGenerate() {
   }
   streaming.value = false
   sending.value = false
+  streamMeta.value = null
   if (streamContent.value) {
     messages.value.push({
       messageId: Date.now() + 1,
@@ -1046,6 +1063,7 @@ async function handleRegenerate() {
   sending.value = true
   streaming.value = true
   streamContent.value = ''
+  streamMeta.value = null
   try {
     const userStore = useUserStore()
     const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
@@ -1095,6 +1113,7 @@ async function submitEditMessage(msg: AiChatMessage) {
   sending.value = true
   streaming.value = true
   streamContent.value = ''
+  streamMeta.value = null
 
   // 添加编辑后的用户消息到界面
   messages.value.push({
@@ -1159,10 +1178,16 @@ async function saveTitle() {
 
 // ==================== SSE 响应处理 ====================
 async function processSSEResponse(response: Response) {
+  streamMeta.value = null
+  let responseMeta: AiStreamMetaPayload | null = null
   const fullContent = await consumeAiStreamResponse(response, {
     onDelta: ({ fullContent }) => {
       streamContent.value = fullContent
       scrollToBottom()
+    },
+    onMeta: (meta) => {
+      responseMeta = meta
+      streamMeta.value = meta
     },
     onError: (message) => {
       ElMessage.error('AI回复出错: ' + (message || '未知错误'))
@@ -1171,15 +1196,29 @@ async function processSSEResponse(response: Response) {
 
   streaming.value = false
   if (fullContent) {
-    messages.value.push({
-      messageId: Date.now() + 1,
-      conversationId: currentConversationId.value || 0,
-      role: 'assistant',
-      content: fullContent,
-      sortOrder: messages.value.length + 1,
-    })
+    messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
   }
   await syncCurrentConversationState()
+}
+
+function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload | null): AiChatMessage {
+  const assistantMessage: AiChatMessage = {
+    messageId: meta?.messageId ?? Date.now() + 1,
+    conversationId: currentConversationId.value || 0,
+    role: 'assistant',
+    content,
+    sortOrder: messages.value.length + 1,
+  }
+  if (meta?.tokenCount !== undefined) {
+    assistantMessage.tokenCount = meta.tokenCount
+  }
+  if (meta?.knowledgeSources) {
+    assistantMessage.knowledgeSources = meta.knowledgeSources as AiChatKnowledgeSource[]
+  }
+  if (meta?.toolExecutions) {
+    assistantMessage.toolExecutions = meta.toolExecutions as AiChatToolTrace[]
+  }
+  return assistantMessage
 }
 
 function normalizeContextApplication(type: 'agent' | 'workflow', data: AiAgent | AiWorkflow): ChatContextApplication {

@@ -113,21 +113,21 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     @Transactional(rollbackFor = Exception.class)
     public SseEmitter stream(AiChatRequest request) {
         GeneratedReply reply = createGenericReply(request);
-        return buildEmitter(reply.assistantMessage().getContent());
+        return buildEmitter(reply.assistantMessage());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SseEmitter regenerate(Long conversationId) {
         GeneratedReply reply = regenerateReply(conversationId);
-        return buildEmitter(reply.assistantMessage().getContent());
+        return buildEmitter(reply.assistantMessage());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SseEmitter editRegenerate(AiMessageEditRequest request) {
         GeneratedReply reply = editAndRegenerate(request);
-        return buildEmitter(reply.assistantMessage().getContent());
+        return buildEmitter(reply.assistantMessage());
     }
 
     @Override
@@ -631,7 +631,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         }
     }
 
-    private SseEmitter buildEmitter(String content) {
+    private SseEmitter buildEmitter(AiChatMessagePo assistantMessage) {
+        String content = assistantMessage != null ? assistantMessage.getContent() : "";
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
         CompletableFuture.runAsync(() -> {
             try {
@@ -640,6 +641,13 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                             .name("message")
                             .data(XuJsonUtil.toJsonString(Map.of("type", "delta", "content", chunk)), MediaType.APPLICATION_JSON));
                     Thread.sleep(25L);
+                }
+                Map<String, Object> metaPayload = buildStreamMeta(assistantMessage);
+                if (!metaPayload.isEmpty()) {
+                    emitter.send(SseEmitter.event()
+                            .name("message")
+                            .data(XuJsonUtil.toJsonString(Map.of("type", "meta", "content", metaPayload)),
+                                    MediaType.APPLICATION_JSON));
                 }
                 emitter.send(SseEmitter.event().name("message").data("[DONE]"));
                 emitter.complete();
@@ -659,6 +667,26 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             }
         });
         return emitter;
+    }
+
+    private Map<String, Object> buildStreamMeta(AiChatMessagePo assistantMessage) {
+        if (assistantMessage == null) {
+            return Map.of();
+        }
+        Map<String, Object> meta = new HashMap<>();
+        if (assistantMessage.getMessageId() != null) {
+            meta.put("messageId", assistantMessage.getMessageId());
+        }
+        if (assistantMessage.getTokenCount() != null) {
+            meta.put("tokenCount", assistantMessage.getTokenCount());
+        }
+        if (assistantMessage.getKnowledgeSources() != null && !assistantMessage.getKnowledgeSources().isEmpty()) {
+            meta.put("knowledgeSources", assistantMessage.getKnowledgeSources());
+        }
+        if (assistantMessage.getToolExecutions() != null && !assistantMessage.getToolExecutions().isEmpty()) {
+            meta.put("toolExecutions", assistantMessage.getToolExecutions());
+        }
+        return meta;
     }
 
     private List<String> splitChunks(String content) {
