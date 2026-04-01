@@ -32,9 +32,7 @@ test.describe('AI 模型管理', () => {
         remark: 'E2E create'
       })
 
-      await authenticatedPage.goto('/ai/model')
-      await authenticatedPage.waitForURL('**/ai/model')
-      await authenticatedPage.waitForLoadState('networkidle')
+      await openAiModelPage(authenticatedPage)
 
       await expect(authenticatedPage.getByTestId('ai-model-page')).toBeVisible()
       await expect(authenticatedPage.getByTestId('ai-model-table')).toBeVisible()
@@ -99,4 +97,22 @@ async function waitForApiEnvelope(page: Page, urlFragment: string): Promise<ApiE
     return currentResponse.request().method() === 'POST' && currentResponse.url().includes(urlFragment)
   })
   return response.json() as Promise<ApiEnvelope>
+}
+
+async function openAiModelPage(page: Page): Promise<void> {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
+  const aiMenu = page.getByTestId('sidebar-menu-ai')
+  await expect(aiMenu).toBeVisible()
+
+  const aiModelMenu = page.getByTestId('sidebar-menu-aimodel')
+  if (!(await aiModelMenu.isVisible())) {
+    await aiMenu.click()
+  }
+
+  await expect(aiModelMenu).toBeVisible()
+  await aiModelMenu.click()
+  await page.waitForURL('**/ai/model')
+  await page.waitForLoadState('networkidle')
 }
