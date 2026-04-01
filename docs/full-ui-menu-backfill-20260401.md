@@ -18,8 +18,10 @@ This note captures the 95 environment fixes and validation results for the remai
    - `han-medium-postgres`
    - `han-small-postgres`
 2. Added upgrade script [phase9_base_menu_backfill.sql](/D:/code/Han/sql/upgrade/phase9_base_menu_backfill.sql) so this backfill is no longer a one-off manual action.
-3. Restarted `han-ui` and `han-ui-medium` on `95` to refresh nginx upstream resolution.
-4. Re-ran targeted Playwright validation against the repaired full UI.
+3. Patched [nginx.conf](/D:/code/Han/han-ui/nginx.conf) so `han-ui` resolves `gateway` through Docker DNS at runtime instead of keeping a stale upstream IP forever.
+4. Rebuilt and redeployed `han-ui` on `95` with the nginx resolver fix.
+5. Forced a real `han-gateway` IP change on `95` and verified that `han-ui` recovered without a UI restart after the resolver TTL window.
+6. Re-ran targeted Playwright validation against the repaired full UI.
 
 ## Verification
 
@@ -32,6 +34,7 @@ This note captures the 95 environment fixes and validation results for the remai
 
 - `http://127.0.0.1:3000/system/runtime/capabilities` now returns `200`.
 - `http://127.0.0.1:3200/system/runtime/capabilities` now returns `200`.
+- After a controlled `han-gateway` IP change from `172.19.0.13` to `172.19.0.18`, full UI recovered on its own after the nginx DNS cache window and returned `200` again without restarting `han-ui`.
 
 ### Playwright
 
@@ -54,4 +57,12 @@ This note captures the 95 environment fixes and validation results for the remai
 - `OPENAI_API_KEY`
 - `ZHIPU_API_KEY`
 
+Additional diagnosis on `95`:
+
+- `ai_model.api_key` is empty for all seeded models
+- `sys_config` does not contain AI provider credentials
+- direct lookup for Nacos config `han-ai.yml` returned `config data not exist`
+
 Until at least one supported provider key is injected into the running `han-ai` service, the `ai-model` full-tier credential validation will continue to fail honestly.
+
+Follow-up operating notes are captured in [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md).
