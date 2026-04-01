@@ -232,3 +232,40 @@ test('job module should support sample task lifecycle via APIs', async ({ reques
     }
   }
 })
+
+test('job module should expose jobflow monitor endpoints via gateway', async ({ request, authSession }) => {
+  const headers = authHeaders(authSession.accessToken)
+
+  const healthResponse = await request.get(`${e2eRuntime.apiBaseUrl}/actuator/jobflow/health`, {
+    headers
+  })
+  const healthJson = await healthResponse.json() as Record<string, unknown>
+  expect(healthResponse.ok()).toBeTruthy()
+  expect(healthJson.status).toBe('UP')
+  expect(typeof healthJson.schedulerName).toBe('string')
+
+  const metricsResponse = await request.get(`${e2eRuntime.apiBaseUrl}/actuator/jobflow/metrics`, {
+    headers
+  })
+  const metricsJson = await metricsResponse.json() as Record<string, unknown>
+  expect(metricsResponse.ok()).toBeTruthy()
+  expect(typeof metricsJson.totalJobsExecuted).toBe('number')
+  expect(typeof metricsJson.threadPoolSize).toBe('number')
+
+  const configResponse = await request.get(`${e2eRuntime.apiBaseUrl}/actuator/jobflow/config`, {
+    headers
+  })
+  const configJson = await configResponse.json() as Record<string, unknown>
+  expect(configResponse.ok()).toBeTruthy()
+  expect(configJson).toMatchObject({
+    compensationEnabled: expect.any(Boolean),
+    compensationInterval: expect.any(Number),
+    connectTimeout: expect.any(Number),
+    lockTimeout: expect.any(Number),
+    maxRetry: expect.any(Number),
+    readTimeout: expect.any(Number),
+    stuckThreshold: expect.any(Number),
+    threadPoolSize: expect.any(Number),
+    timeout: expect.any(Number)
+  })
+})

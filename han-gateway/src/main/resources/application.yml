@@ -33,7 +33,7 @@ spring:
             - id: han-job
               uri: lb://han-job
               predicates:
-                - Path=/job/**
+                - Path=/job/**,/actuator/jobflow/**
             - id: han-open
               uri: lb://han-open
               predicates:
