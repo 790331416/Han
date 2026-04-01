@@ -159,10 +159,11 @@
 | 2026-04-01 | full 代码生成器远端部署与 Playwright 回归 | 已补齐 `han-gen` 依赖、Dockerfile、Nacos/Redis 配置与网关 `/gen/**` 路由，在 95 full 环境以镜像 `han-gen:gen-494fdbf` 成功拉起服务；同时手工重启 `han-auth` 恢复 `/auth/login`；最终 Playwright [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts) `1 passed`，覆盖导入表、预览、ZIP 下载与清理 |
 | 2026-04-01 | 95 `full` 运行时能力补齐 `open/file/gen/rustfs` | 先补 `han-system` 的 `RUSTFS_*` 与 `HAN_GEN_ENABLED` compose 环境变量，再重建 `han-system` 镜像并拉起 `han-open`、`han-file`、`han-gen`；最终 `9090/system/runtime/capabilities` 返回 `open/file/gen` 已启用，`optionalServices.rustfs=true` |
 | 2026-04-01 | 95 `full/medium` 通知中心后端补齐与 Playwright 回归 | 先确认 `han-postgres` 与 `han-medium-postgres` 均缺失 `sys_notice_read`，并在 `95` 上补执行 [phase6_notice_center.sql](/D:/code/Han/sql/upgrade/phase6_notice_center.sql)；随后定位到运行中 `han-system` 仍是旧版通知控制器，正式将通知中心增强代码纳入分支、远端重建 `han-system` 并重启 `hanfull/hanmedium`；最终接口 `POST /system/notice/markAllRead`、`GET /system/notice/unreadCount`、`GET /system/notice/latest` 均恢复 `200`，Playwright [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts) `1 passed` |
+| 2026-04-01 | 95 `full/medium` 登录日志表结构对齐 | 确认两套库的 `sys_login_log` 仍使用旧列名 `ipaddr/msg` 且缺少 `client_type`，补执行 [phase7_login_log_alignment.sql](/D:/code/Han/sql/upgrade/phase7_login_log_alignment.sql) 后，`sys_login_log` 已对齐为 `ip_addr/message/client_type`；full 与 medium 的 `/auth/login` 复验均返回 `200`，`han-system` 不再出现登录日志写入 SQL 异常 |
 
 ## 10. 下一步执行顺序
 
-1. 修复 `95` 共享库的登录日志表结构漂移：当前 `sys_login_log` 仍是旧列名 `ipaddr/msg`，代码已按 `ip_addr/message` 写入，继续回归时可能反复污染认证与审计链路。
-2. 继续收敛 `full` 真实 blocker：优先处理 Prompt API `500`、模型凭证缺失与 AI 应用详情样本数据不足。
-3. 补跑 `medium` 的文件上传链路与 `small` 的 JobFlow 监控端点，收敛剩余“已开发但未全绿”项。
+1. 继续收敛 `full` 真实 blocker：优先处理 Prompt API `500`、模型凭证缺失与 AI 应用详情样本数据不足。
+2. 补跑 `medium` 的文件上传链路与 `small` 的 JobFlow 监控端点，收敛剩余“已开发但未全绿”项。
+3. 结合本轮已补的通知中心与登录日志 migration，整理一份环境漂移清单，避免后续新环境继续漏 `phase6/phase7`。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。
