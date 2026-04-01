@@ -39,7 +39,7 @@
 
 | Tier | 默认能力 | 本轮总状态 | 备注 |
 | --- | --- | --- | --- |
-| `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录与菜单降级已验证，通知中心仍有异常待收敛 |
+| `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录、公告通知、任务调度与菜单降级已验证，剩余收敛点集中在 JobFlow 监控端点 |
 | `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 本轮通过 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS、租户列表/套餐/配额与可选中间件探测均已验证通过 |
 | `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞集中在 Prompt API、模型凭证和部分样本数据 |
 
@@ -53,7 +53,7 @@
 | 登录与鉴权 | 验证码、登录、刷新登录态、登出 | 已开发 | [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts), [auth-logout.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-logout.spec.ts) | 本轮通过 | `auth-login.spec.ts` 2 条通过；验证码接口 `200`，登录后未出现租户选择 |
 | 首页与个人中心 | dashboard、当前用户、个人中心 | 已开发 | 历史接口验收 | 本轮通过 | `auth-login.spec.ts` 已确认可进入 dashboard 且右上角用户菜单可见 |
 | 系统管理 | 用户、角色、分配用户、菜单、部门、岗位、字典、字典数据、参数配置 | 已开发 | 静态路由与历史验收 | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已逐页打开 `/system/user|role|menu|dept|post|dict|config` |
-| 公告通知 | 列表、最新通知、未读数、单条已读、全部已读、SSE 推送/降级 | 已开发 | [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts), 历史 medium 验收 | 本轮失败 | 2026-03-31 在 `small` 与 `full` 上均复现：首次未看到新建通知，重试时 `/system/notice/markAllRead` 返回业务 `500: 系统繁忙，请稍后重试`，更像共享后端缺陷而非 tier 差异 |
+| 公告通知 | 列表、最新通知、未读数、单条已读、全部已读、SSE 推送/降级 | 已开发 | [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts), 历史 medium 验收 | 本轮通过 | 2026-04-01 查明 `95` 共享后端同时存在 `sys_notice_read` 缺表与旧版 `ASysNoticeController` 仍在运行；补执行 [phase6_notice_center.sql](/D:/code/Han/sql/upgrade/phase6_notice_center.sql)、推送通知中心增强代码并重建 `han-system` 后，接口 `markAllRead/latest/unreadCount` 均恢复 `200`，Playwright `notice-center.spec.ts` 实测 `1 passed` |
 | 日志监控 | 操作日志、登录日志、在线用户、服务监控、缓存监控 | 已开发 | 静态路由与历史验收 | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已打开 `/system/operlog|loginlog|online|server|cache-monitor` |
 | 任务调度页面 | 任务列表、任务日志页面可达 | 已开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts), [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已打开 `/job/list` 与 `/job/log` |
 | 任务调度基础接口 | `handlers`、Cron 校验、任务列表、日志列表 | 已开发 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts), [SysJobController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java), [SysJobLogController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobLogController.java) | 本轮通过 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) 已确认网关下 `/job/handlers`、`/job/checkCron`、`/job/list`、`/job/log/list` 全部返回 `200`；同时确认 `/job/handlers` 当前读取的是 `sys_job` 持久化任务，而不是 Spring handler Bean 目录 |
@@ -158,10 +158,11 @@
 | 2026-03-31 | 代码生成器部署核验 | `han-gen` 本地源码、菜单种子与前端入口存在，但当前网关无 `/gen/**` 路由、模块未补独立 Dockerfile，且 95 部署源码目录下 `han-gen` 仅见 `pom.xml`；因此默认 compose 无法直接拉起，full 网关 `/gen/list` 返回 `404` |
 | 2026-04-01 | full 代码生成器远端部署与 Playwright 回归 | 已补齐 `han-gen` 依赖、Dockerfile、Nacos/Redis 配置与网关 `/gen/**` 路由，在 95 full 环境以镜像 `han-gen:gen-494fdbf` 成功拉起服务；同时手工重启 `han-auth` 恢复 `/auth/login`；最终 Playwright [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts) `1 passed`，覆盖导入表、预览、ZIP 下载与清理 |
 | 2026-04-01 | 95 `full` 运行时能力补齐 `open/file/gen/rustfs` | 先补 `han-system` 的 `RUSTFS_*` 与 `HAN_GEN_ENABLED` compose 环境变量，再重建 `han-system` 镜像并拉起 `han-open`、`han-file`、`han-gen`；最终 `9090/system/runtime/capabilities` 返回 `open/file/gen` 已启用，`optionalServices.rustfs=true` |
+| 2026-04-01 | 95 `full/medium` 通知中心后端补齐与 Playwright 回归 | 先确认 `han-postgres` 与 `han-medium-postgres` 均缺失 `sys_notice_read`，并在 `95` 上补执行 [phase6_notice_center.sql](/D:/code/Han/sql/upgrade/phase6_notice_center.sql)；随后定位到运行中 `han-system` 仍是旧版通知控制器，正式将通知中心增强代码纳入分支、远端重建 `han-system` 并重启 `hanfull/hanmedium`；最终接口 `POST /system/notice/markAllRead`、`GET /system/notice/unreadCount`、`GET /system/notice/latest` 均恢复 `200`，Playwright [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts) `1 passed` |
 
 ## 10. 下一步执行顺序
 
-1. 先恢复 95 上可复用的标准 tier 验收环境，至少拿回正确的 `/system/runtime/capabilities`。
-2. 先跑 `small` 和 `medium` 的运行时能力、登录、菜单降级、核心页面/API 冒烟。
-3. 再跑 `full` 的 AI 主链路与结构化元数据回归。
+1. 修复 `95` 共享库的登录日志表结构漂移：当前 `sys_login_log` 仍是旧列名 `ipaddr/msg`，代码已按 `ip_addr/message` 写入，继续回归时可能反复污染认证与审计链路。
+2. 继续收敛 `full` 真实 blocker：优先处理 Prompt API `500`、模型凭证缺失与 AI 应用详情样本数据不足。
+3. 补跑 `medium` 的文件上传链路与 `small` 的 JobFlow 监控端点，收敛剩余“已开发但未全绿”项。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。
