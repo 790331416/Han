@@ -40,7 +40,7 @@
 | Tier | 默认能力 | 本轮总状态 | 备注 |
 | --- | --- | --- | --- |
 | `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录与菜单降级已验证，通知中心仍有异常待收敛 |
-| `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 进行中 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS 已验证，租户列表/套餐已打通，但配额接口仍返回业务 `500`，且 RustFS 探测存在偏差 |
+| `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 进行中 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS、租户列表/套餐/配额均已验证通过，剩余偏差集中在 RustFS capability 探测 |
 | `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞集中在 Prompt API、模型凭证和部分样本数据 |
 
 ## 5. Small 清单
@@ -75,7 +75,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 运行时能力 | `/system/runtime/capabilities` 返回 `tier=medium`，包含 `tenant/workflow/open/file` | 已开发 | [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts) | 本轮通过 | 2026-03-31 隔离 medium 网关 `29090` 返回 `tier=medium`，`tenant/workflow/open/file=true`，`ai=false` |
 | 可选中间件探测 | `optionalServices.rustfs/rabbitmq` 识别正确 | 已开发 | [capability-matrix.md](/D:/code/Han/docs/capability-matrix.md) | 本轮失败 | `rabbitmq=true` 正常，但 RustFS 控制台/对象口 `29001/29000` 实测均可返回 `403`，能力接口仍回 `rustfs=false`，存在探测口径偏差 |
-| 租户管理 | 租户列表、套餐、配额、真实数据渲染 | 已开发 | [tenant-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tenant-pages.spec.ts) | 本轮失败 | 先通过正式接口补种 1 个套餐 + 1 个租户后，租户列表与套餐页均转为通过；但 `/tenant/quota/{tenantId}` 仍返回业务 `500: 系统繁忙，请稍后重试`，导致配额页失败 |
+| 租户管理 | 租户列表、套餐、配额、真实数据渲染 | 已开发 | [tenant-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tenant-pages.spec.ts) | 本轮通过 | 2026-04-01 已在 95 medium 环境补执行 [tenant_quota.sql](/D:/code/Han/sql/tenant_quota.sql)，随后 Playwright `tenant-pages.spec.ts` 实测 `3 passed`，租户列表、套餐与配额页全部恢复 |
 | 工作流 | 流程定义、实例、待办、已办 | 已开发 | [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已逐页打开 `/workflow/definition|instance|todo|done` |
 | 开放平台 | 应用列表、创建、启停、重置密钥、生命周期 | 已开发 | [open-app.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts) | 本轮通过 | `open-app.spec.ts` 生命周期完整通过：新增、编辑、启停、重置密钥、删除均成功 |
 | OAuth2/SSO | `/oauth2`、`/sso` 与 `/open/oauth2`、`/open/sso` 兼容 | 已开发 | README 历史记录 | 本轮通过 | 2026-03-31 接口层确认：`/oauth2/authorize`、`/open/oauth2/authorize`、`/sso/login`、`/open/sso/login` 均返回 `200` |
@@ -151,6 +151,7 @@
 | 2026-03-31 | Playwright `auth-login.spec.ts`、`runtime-sidebar.spec.ts`、`open-app.spec.ts`、`oss-config.spec.ts`（medium） | `5 passed` |
 | 2026-03-31 | Playwright `tenant-pages.spec.ts`（medium） | 首轮 `3 failed`，根因是租户/套餐/有效租户接口均为空；补种 1 个套餐 + 1 个租户后重跑变为 `2 passed, 1 failed`，剩余失败点为 `/tenant/quota/{tenantId}` 业务 `500` |
 | 2026-03-31 | 通过正式接口向隔离 `medium` 补种租户样本 | 已补入 1 个套餐 `E2E Medium Package` 与 1 个租户 `E2E Medium Tenant`，用于区分“无数据”与“真实接口缺陷” |
+| 2026-04-01 | 95 `medium` 环境补齐租户配额 migration 并回归 `tenant-pages.spec.ts` | 确认 `han-medium-postgres` 缺失 `sys_tenant_quota` 表后执行 [tenant_quota.sql](/D:/code/Han/sql/tenant_quota.sql)；`hanmedium` 与 `han-ui-medium` 拉起后，Playwright `tenant-pages.spec.ts` 实测 `3 passed`，说明租户列表、套餐、配额链路均已恢复 |
 | 2026-03-31 | Playwright `tier-core-pages.spec.ts`（medium） | 首轮因 auth 登录限流失败，冷却后单独重跑 `1 passed`；已逐页打开继承 small 页面与 `workflow/*` 路由 |
 | 2026-03-31 | 接口核验 `OAuth2/SSO` 与 RustFS（medium） | `/oauth2`、`/open/oauth2`、`/sso`、`/open/sso` 入口均 `200`；RustFS 端口可达但 capability 仍回 `rustfs=false` |
 | 2026-03-31 | 代码生成器部署核验 | `han-gen` 本地源码、菜单种子与前端入口存在，但当前网关无 `/gen/**` 路由、模块未补独立 Dockerfile，且 95 部署源码目录下 `han-gen` 仅见 `pom.xml`；因此默认 compose 无法直接拉起，full 网关 `/gen/list` 返回 `404` |

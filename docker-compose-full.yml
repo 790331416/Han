@@ -193,6 +193,9 @@ services:
     container_name: han-system
     environment:
       <<: *service-env
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
     ports:
       - "9201:9201"
     depends_on:

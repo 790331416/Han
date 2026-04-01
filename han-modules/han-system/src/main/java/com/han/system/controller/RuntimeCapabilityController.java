@@ -141,12 +141,25 @@ public class RuntimeCapabilityController {
 
     private boolean hasAny(String... keys) {
         for (String key : keys) {
-            String value = environment.getProperty(key);
-            if (value != null && !value.isBlank()) {
+            if (hasText(environment.getProperty(key))) {
+                return true;
+            }
+            if (hasText(System.getenv(key))) {
+                return true;
+            }
+            if (hasText(System.getenv(normalizeEnvKey(key)))) {
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String normalizeEnvKey(String key) {
+        return key.toUpperCase(Locale.ROOT).replace('.', '_').replace('-', '_');
     }
 
     private Set<String> resolveDiscoveredServices() {
