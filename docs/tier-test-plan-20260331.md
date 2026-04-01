@@ -95,7 +95,7 @@
 
 | 模块 | 细节功能 | 实现状态 | 现有自动化/证据 | 本轮状态 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| 运行时能力 | `/system/runtime/capabilities` 返回 `tier=full` 且 `ai=true` | 已开发 | [full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md) | 本轮通过 | 2026-03-31 远端 API 返回 `tier=full`、`ai=true` |
+| 运行时能力 | `/system/runtime/capabilities` 返回 `tier=full` 且 `ai=true` | 已开发 | [full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md) | 本轮通过 | 2026-04-01 远端 API 返回 `tier=full`、`ai=true`，且 `open/file/gen` 模块与 `optionalServices.rustfs=true` 已重新对齐 |
 | AI 应用首页 | 应用首页可加载，保留 app-first 入口 | 已开发 | [ai-application.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts) | 本轮通过 | `ai-application.spec.ts` 2 条通过 |
 | AI 应用详情 | 详情工作台、发布/取消发布、访问链接、工作流日志跳转 | 部分开发 | [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts), README | 本轮失败 | 当前 `95` 应用首页没有可进入的应用卡数据，详情入口无法打开；同时仍保留“应用级日志关联未完备”的诚实占位 |
 | AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) | 本轮失败 | 模型页可打开，但环境变量凭证状态显示“未配置”，`95` 当前缺少对应模型密钥前置 |
@@ -157,6 +157,7 @@
 | 2026-03-31 | 接口核验 `OAuth2/SSO` 与 RustFS（medium） | `/oauth2`、`/open/oauth2`、`/sso`、`/open/sso` 入口均 `200`；RustFS 端口可达但 capability 仍回 `rustfs=false` |
 | 2026-03-31 | 代码生成器部署核验 | `han-gen` 本地源码、菜单种子与前端入口存在，但当前网关无 `/gen/**` 路由、模块未补独立 Dockerfile，且 95 部署源码目录下 `han-gen` 仅见 `pom.xml`；因此默认 compose 无法直接拉起，full 网关 `/gen/list` 返回 `404` |
 | 2026-04-01 | full 代码生成器远端部署与 Playwright 回归 | 已补齐 `han-gen` 依赖、Dockerfile、Nacos/Redis 配置与网关 `/gen/**` 路由，在 95 full 环境以镜像 `han-gen:gen-494fdbf` 成功拉起服务；同时手工重启 `han-auth` 恢复 `/auth/login`；最终 Playwright [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts) `1 passed`，覆盖导入表、预览、ZIP 下载与清理 |
+| 2026-04-01 | 95 `full` 运行时能力补齐 `open/file/gen/rustfs` | 先补 `han-system` 的 `RUSTFS_*` 与 `HAN_GEN_ENABLED` compose 环境变量，再重建 `han-system` 镜像并拉起 `han-open`、`han-file`、`han-gen`；最终 `9090/system/runtime/capabilities` 返回 `open/file/gen` 已启用，`optionalServices.rustfs=true` |
 
 ## 10. 下一步执行顺序
 
