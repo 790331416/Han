@@ -85,9 +85,16 @@ public class JobFlowMonitorController {
     }
 
     private Object normalizeNumeric(Object value) {
+        if (value instanceof Long longValue && longValue >= Integer.MIN_VALUE && longValue <= Integer.MAX_VALUE) {
+            return longValue.intValue();
+        }
         if (value instanceof String text && text.matches("-?\\d+")) {
             try {
-                return Long.parseLong(text);
+                long parsed = Long.parseLong(text);
+                if (parsed >= Integer.MIN_VALUE && parsed <= Integer.MAX_VALUE) {
+                    return (int) parsed;
+                }
+                return parsed;
             } catch (NumberFormatException ex) {
                 log.warn("JobFlow 配置数值转换失败: {}", text, ex);
             }
