@@ -39,7 +39,7 @@
 
 | Tier | 默认能力 | 本轮总状态 | 备注 |
 | --- | --- | --- | --- |
-| `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录、公告通知、任务调度与菜单降级已验证，剩余收敛点集中在 JobFlow 监控端点 |
+| `small` | 核心系统、公告、任务调度、基础监控 | 本轮通过 | 隔离 small 环境已拉起；核心页面、登录、公告通知、任务调度、JobFlow 监控与菜单降级均已验证通过 |
 | `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 本轮通过 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS、租户列表/套餐/配额与可选中间件探测均已验证通过 |
 | `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路、Prompt 与应用详情链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞主要集中在模型凭证前置 |
 
@@ -58,7 +58,7 @@
 | 任务调度页面 | 任务列表、任务日志页面可达 | 已开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts), [tier-validation-report-20260324.md](/D:/code/Han/docs/tier-validation-report-20260324.md), [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) | 本轮通过 | [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts) 已打开 `/job/list` 与 `/job/log` |
 | 任务调度基础接口 | `handlers`、Cron 校验、任务列表、日志列表 | 已开发 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts), [SysJobController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java), [SysJobLogController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobLogController.java) | 本轮通过 | [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) 已确认网关下 `/job/handlers`、`/job/checkCron`、`/job/list`、`/job/log/list` 全部返回 `200`；同时确认 `/job/handlers` 当前读取的是 `sys_job` 持久化任务，而不是 Spring handler Bean 目录 |
 | 任务执行控制 | 新增、编辑、删除、暂停/恢复、立即执行、Cron 生成器 | 已开发 | [index.vue](/D:/code/Han/han-ui/src/views/job/index.vue), [SysJobController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/SysJobController.java), [SampleTaskHandler.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/handler/SampleTaskHandler.java), [job-ui.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-ui.spec.ts) | 本轮通过 | 2026-03-31 已用 `sampleTask.execute` 在 small 上跑通“新增任务 -> 暂停 -> 恢复 -> 立即执行 -> 查日志 -> 删除”；随后修正前端 `changeStatus` 契约为 query params，并在 95 small UI 重建后通过 `job-ui.spec.ts` 验证页面状态开关可用 |
-| JobFlow 监控端点 | `health`、`metrics`、`config` | 已开发 | [JobFlowMonitorController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/JobFlowMonitorController.java) | 本轮失败 | 直连 `han-small-job:19204` 时 `health/metrics` 返回 `200`，但 `config` 序列化异常；经网关访问 `/actuator/jobflow/*` 为 `404`，说明当前未纳入网关验收口径 |
+| JobFlow 监控端点 | `health`、`metrics`、`config` | 已开发 | [JobFlowMonitorController.java](/D:/code/Han/han-modules/han-job/src/main/java/com/han/job/controller/JobFlowMonitorController.java), [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) | 本轮通过 | 2026-04-01 已补齐网关 `/actuator/jobflow/**` 路由与 `han-job` docker 配置，随后以提交 `2ec7228`、`92fc26a`、`b80ecc5` 在 95 远端重建 `han-job`；small/full 现均可经网关返回 `health/metrics/config=200`，且 Playwright `job-core.spec.ts` 在 `19090` 与 `9090` 下均实测 `3 passed` |
 | 菜单降级 | 不显示工作流、开放平台、OSS、AI | 已开发 | [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts), 路由 tier 标记 | 本轮通过 | `runtime-sidebar.spec.ts` 已确认 `small` 下仅保留核心菜单，`tenant/workflow/open/oss/ai` 不显示 |
 
 ## 6. Medium 清单
@@ -162,10 +162,11 @@
 | 2026-04-01 | 95 `full/medium` 登录日志表结构对齐 | 确认两套库的 `sys_login_log` 仍使用旧列名 `ipaddr/msg` 且缺少 `client_type`，补执行 [phase7_login_log_alignment.sql](/D:/code/Han/sql/upgrade/phase7_login_log_alignment.sql) 后，`sys_login_log` 已对齐为 `ip_addr/message/client_type`；full 与 medium 的 `/auth/login` 复验均返回 `200`，`han-system` 不再出现登录日志写入 SQL 异常 |
 | 2026-04-01 | 95 `full` Prompt 模板链路恢复 | 确认 `han-postgres` 缺失 `ai_prompt_template`，且旧脚本口径缺少 `create_by/update_by`；补执行 [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) 后，`/ai/prompt/list`、`/ai/prompt/all` 恢复 `200`，Playwright `--grep "ai prompt page"` 实测 `4 passed` |
 | 2026-04-01 | Playwright `ai-application-detail.spec.ts` 自动 seed 回归 | 将详情页用例从依赖人工样本卡片改为测试前自动创建并发布 workflow，并直达详情页验证工作台/调试面板与访问入口；日志跳转仍按“有日志则验证”的口径保留诚实覆盖 |
+| 2026-04-01 | 95 `small/full` JobFlow 与任务调度链路收口 | 先修复 `han-job` 误用模板化 `application-docker.yml` 导致 Redis 指向 `localhost` 的问题，再将任务 API 从内部 `base` 组合结构拉平为真实前后端扁平契约，并收敛 JobFlow config 数值返回；最终 95 远端以提交 `2ec7228`、`92fc26a`、`b80ecc5` 重建 `han-job` 后，small/full 的 `/job` 创建链路与 `/actuator/jobflow/*` 均恢复正常，Playwright [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) 在 `19090` 与 `9090` 下均实测 `3 passed` |
 
 ## 10. 下一步执行顺序
 
 1. 继续收敛 `full` 真实 blocker：优先处理模型凭证缺失，并确认 `ai-model.spec.ts` 在带密钥环境下全链路通过。
-2. 补跑 `medium` 的文件上传链路与 `small` 的 JobFlow 监控端点，收敛剩余“已开发但未全绿”项。
+2. 补跑 `medium` 的文件上传链路，并继续确认 `full` 里仍处于诚实占位的 AI 管理边角项。
 3. 结合本轮已补的通知中心、登录日志与 Prompt migration，整理一份环境漂移清单，避免后续新环境继续漏 `phase6/phase7/phase8`。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。
