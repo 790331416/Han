@@ -40,6 +40,10 @@ spring:
               uri: lb://han-file
               predicates:
                 - Path=/file/**
+            - id: han-gen
+              uri: lb://han-gen
+              predicates:
+                - Path=/gen/**
             - id: han-workflow
               uri: lb://han-workflow
               predicates:

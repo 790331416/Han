@@ -1,0 +1,25 @@
+package ${packageName}.domain.dto;
+
+import lombok.Data;
+#foreach($type in $importTypes)
+import ${type};
+#end
+
+/**
+ * ${tableComment} DTO
+ *
+ * @author ${author}
+ * @date ${date}
+ */
+@Data
+public class ${className}Dto {
+#foreach($column in $columns)
+#if($column.isInsert == 1 || $column.isEdit == 1)
+
+#if($column.columnComment)
+    /** ${column.columnComment} */
+#end
+    private ${column.javaType} ${column.javaField};
+#end
+#end
+}

@@ -324,6 +324,21 @@ export const constantRoutes: RouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/tool',
+    name: 'Tool',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/tool/gen',
+    meta: { title: '开发工具', icon: 'Tools', tier: 'medium', module: 'gen', feature: 'gen' },
+    children: [
+      {
+        path: 'gen',
+        name: 'ToolGen',
+        component: () => import('@/views/tool/gen/index.vue'),
+        meta: { title: '代码生成', icon: 'Tools', permission: 'tool:gen:list' }
+      }
+    ]
+  },
   // {
   //   path: '/embed/chat/:agentId',
   //   name: 'EmbedChat',

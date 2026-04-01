@@ -1,0 +1,63 @@
+package ${packageName}.controller.admin;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.han.common.core.domain.PageResult;
+import com.han.common.core.domain.R;
+import com.han.common.security.annotation.AdminAuth;
+import ${packageName}.domain.po.${className}Po;
+import ${packageName}.service.I${className}Service;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * ${tableComment} - 管理端控制器
+ *
+ * @author ${author}
+ * @date ${date}
+ */
+@AdminAuth
+@RestController("admin${className}Controller")
+@RequestMapping("/${moduleName}/${businessName}")
+@RequiredArgsConstructor
+public class A${className}Controller {
+
+    private final I${className}Service ${classname}Service;
+
+    @GetMapping("/list")
+    @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:list')")
+    public R<PageResult<${className}Po>> list(
+            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        Page<${className}Po> page = ${classname}Service.page(new Page<>(pageNum, pageSize));
+        return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:query')")
+    public R<${className}Po> getInfo(@PathVariable Long id) {
+        return R.ok(${classname}Service.getById(id));
+    }
+
+    @PostMapping
+    @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:add')")
+    public R<Void> add(@RequestBody ${className}Po po) {
+        ${classname}Service.save(po);
+        return R.ok();
+    }
+
+    @PostMapping("/edit")
+    @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:edit')")
+    public R<Void> edit(@RequestBody ${className}Po po) {
+        ${classname}Service.updateById(po);
+        return R.ok();
+    }
+
+    @PostMapping("/remove/{id}")
+    @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:remove')")
+    public R<Void> remove(@PathVariable Long id) {
+        ${classname}Service.removeById(id);
+        return R.ok();
+    }
+}

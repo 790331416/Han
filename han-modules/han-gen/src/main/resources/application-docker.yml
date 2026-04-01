@@ -1,0 +1,49 @@
+# Docker 环境配置 - 代码生成服务
+server:
+  port: 9202
+
+spring:
+  application:
+    name: han-gen
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:han@2026}
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USER:han}
+    password: ${DB_PASSWORD:han@2026}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.han.gen.domain
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    db-config:
+      id-type: assign_id
+
+logging:
+  level:
+    root: INFO
+    com.han: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
