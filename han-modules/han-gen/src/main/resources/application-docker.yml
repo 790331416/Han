@@ -33,6 +33,19 @@ spring:
       idle-timeout: 300000
       connection-timeout: 30000
       max-lifetime: 1800000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:han@2026}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
