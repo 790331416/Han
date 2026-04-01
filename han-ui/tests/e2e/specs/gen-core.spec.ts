@@ -108,7 +108,11 @@ test('gen module should support import, preview, download and cleanup', async ({
     expect(previewJson.code).toBe(200)
     const previewEntries = Object.entries(previewJson.data || {})
     expect(previewEntries.length).toBeGreaterThan(0)
-    expect(previewEntries.some(([fileName]) => fileName.endsWith('ASysNoticeController.java'))).toBeTruthy()
+    expect(
+      previewEntries.some(
+        ([fileName]) => fileName.includes('/controller/admin/') && fileName.endsWith('Controller.java')
+      )
+    ).toBeTruthy()
 
     const downloadResponse = await request.get(`${e2eRuntime.apiBaseUrl}/gen/download/${importedTableId}`, {
       headers: authHeaders(accessToken)

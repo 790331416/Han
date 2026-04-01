@@ -80,7 +80,7 @@
 | 开放平台 | 应用列表、创建、启停、重置密钥、生命周期 | 已开发 | [open-app.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts) | 本轮通过 | `open-app.spec.ts` 生命周期完整通过：新增、编辑、启停、重置密钥、删除均成功 |
 | OAuth2/SSO | `/oauth2`、`/sso` 与 `/open/oauth2`、`/open/sso` 兼容 | 已开发 | README 历史记录 | 本轮通过 | 2026-03-31 接口层确认：`/oauth2/authorize`、`/open/oauth2/authorize`、`/sso/login`、`/open/sso/login` 均返回 `200` |
 | 文件/OSS | OSS 配置列表、活动配置、上传链路、RustFS | 已开发 | [oss-config.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/oss-config.spec.ts), README 历史记录 | 进行中 | `oss-config.spec.ts` 页面/入口已通过；上传链路本轮未专项回归，RustFS 能力探测异常见上一行 |
-| 代码生成器（可选） | 导入表、库表扫描、配置编辑、代码预览、ZIP 下载 | 已开发 | [index.vue](/D:/code/Han/han-ui/src/views/tool/gen/index.vue), [gen.ts](/D:/code/Han/han-ui/src/api/tool/gen.ts), [GenController.java](/D:/code/Han/han-modules/han-gen/src/main/java/com/han/gen/controller/GenController.java), [han_data.sql](/D:/code/Han/sql/han_data.sql), [pom.xml](/D:/code/Han/han-modules/han-gen/pom.xml) | 环境阻塞 | 菜单种子、前端页面和 `han-gen` 模块代码都在，但当前默认 compose 未部署该服务，网关 `application-docker.yml` 也没有 `/gen/**` 路由；此外 `han-gen` 目录尚未补独立 Dockerfile，95 当前部署源码目录下该模块也未同步完整源码，故 `full` 网关 `/gen/list` 仍为 `404` |
+| 代码生成器（可选） | 导入表、库表扫描、配置编辑、代码预览、ZIP 下载 | 已开发 | [index.vue](/D:/code/Han/han-ui/src/views/tool/gen/index.vue), [gen.ts](/D:/code/Han/han-ui/src/api/tool/gen.ts), [GenController.java](/D:/code/Han/han-modules/han-gen/src/main/java/com/han/gen/controller/GenController.java), [han_data.sql](/D:/code/Han/sql/han_data.sql), [pom.xml](/D:/code/Han/han-modules/han-gen/pom.xml), [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts) | 本轮通过 | 2026-04-01 已补齐 `han-gen` 完整源码、Dockerfile、`/gen/**` 网关路由与运行时部署链，95 full 环境中 `han-gen`、`han-auth` 均已恢复可用；Playwright `gen-core.spec.ts` 实测 `1 passed`，覆盖导入表、预览、ZIP 下载与清理 |
 | 菜单降级 | `medium` 可见租户/工作流/开放平台/OSS，不应显示 AI | 已开发 | [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts) | 本轮通过 | `runtime-sidebar.spec.ts` 已确认 `tenant/open/oss/workflow` 可见，`AI` 不显示 |
 
 ## 7. Full 清单
@@ -154,6 +154,7 @@
 | 2026-03-31 | Playwright `tier-core-pages.spec.ts`（medium） | 首轮因 auth 登录限流失败，冷却后单独重跑 `1 passed`；已逐页打开继承 small 页面与 `workflow/*` 路由 |
 | 2026-03-31 | 接口核验 `OAuth2/SSO` 与 RustFS（medium） | `/oauth2`、`/open/oauth2`、`/sso`、`/open/sso` 入口均 `200`；RustFS 端口可达但 capability 仍回 `rustfs=false` |
 | 2026-03-31 | 代码生成器部署核验 | `han-gen` 本地源码、菜单种子与前端入口存在，但当前网关无 `/gen/**` 路由、模块未补独立 Dockerfile，且 95 部署源码目录下 `han-gen` 仅见 `pom.xml`；因此默认 compose 无法直接拉起，full 网关 `/gen/list` 返回 `404` |
+| 2026-04-01 | full 代码生成器远端部署与 Playwright 回归 | 已补齐 `han-gen` 依赖、Dockerfile、Nacos/Redis 配置与网关 `/gen/**` 路由，在 95 full 环境以镜像 `han-gen:gen-494fdbf` 成功拉起服务；同时手工重启 `han-auth` 恢复 `/auth/login`；最终 Playwright [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts) `1 passed`，覆盖导入表、预览、ZIP 下载与清理 |
 
 ## 10. 下一步执行顺序
 
