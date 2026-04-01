@@ -41,7 +41,7 @@
 | --- | --- | --- | --- |
 | `small` | 核心系统、公告、任务调度、基础监控 | 进行中 | 隔离 small 环境已拉起；核心页面、登录、公告通知、任务调度与菜单降级已验证，剩余收敛点集中在 JobFlow 监控端点 |
 | `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 本轮通过 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS、租户列表/套餐/配额与可选中间件探测均已验证通过 |
-| `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞集中在 Prompt API、模型凭证和部分样本数据 |
+| `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路、Prompt 与应用详情链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞主要集中在模型凭证前置 |
 
 ## 5. Small 清单
 
@@ -97,13 +97,13 @@
 | --- | --- | --- | --- | --- | --- |
 | 运行时能力 | `/system/runtime/capabilities` 返回 `tier=full` 且 `ai=true` | 已开发 | [full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md) | 本轮通过 | 2026-04-01 远端 API 返回 `tier=full`、`ai=true`，且 `open/file/gen` 模块与 `optionalServices.rustfs=true` 已重新对齐 |
 | AI 应用首页 | 应用首页可加载，保留 app-first 入口 | 已开发 | [ai-application.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts) | 本轮通过 | `ai-application.spec.ts` 2 条通过 |
-| AI 应用详情 | 详情工作台、发布/取消发布、访问链接、工作流日志跳转 | 部分开发 | [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts), README | 本轮失败 | 当前 `95` 应用首页没有可进入的应用卡数据，详情入口无法打开；同时仍保留“应用级日志关联未完备”的诚实占位 |
+| AI 应用详情 | 详情工作台、发布/取消发布、访问链接、工作流日志跳转 | 部分开发 | [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts), README | 本轮通过 | 2026-04-01 已将 [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts) 改为测试前自动创建并发布 workflow，再直达详情页验证工作台、调试面板、访问入口与日志抽屉；当前仍保留“应用级日志关联未完备”的诚实占位 |
 | AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) | 本轮失败 | 模型页可打开，但环境变量凭证状态显示“未配置”，`95` 当前缺少对应模型密钥前置 |
 | 知识库基础 | 创建、文档上传、重建索引、命中测试 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts) | 本轮通过 | 知识库上传、重建索引、命中测试通过 |
 | 知识库生命周期 | 多文档、统计回滚、删除知识库 | 已开发 | [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | 2026-03-31 已补跑并通过多文档上传/删除与统计回滚，删除知识库卡片操作也已通过 |
 | 文档解析 | `txt/md/json/html` 可解析，`pdf/docx` 允许上传但暂未自动解析 | 部分开发 | README 历史记录 | 待测 | 需诚实记为部分开发 |
 | MCP 管理 | 创建、刷新工具、SSE/stdio/streamable_http 元数据展示 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | `refresh tools`、`streamable_http`、`sse/stdio` 元数据回归通过 |
-| Prompt 模板 | 预览变量、编辑、内置模板禁删、内置模板禁编 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮失败 | Prompt 相关 API 当前在 `95` 返回业务 `500: 系统繁忙，请稍后重试`，导致预览、编辑、内置保护链路均未通过 |
+| Prompt 模板 | 预览变量、编辑、内置模板禁删、内置模板禁编 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts), [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) | 本轮通过 | 2026-04-01 查明 `95 full` 缺失 `ai_prompt_template` 表且旧表结构也缺 `create_by/update_by`，补执行 [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) 后，`/ai/prompt/list` 与 `/ai/prompt/all` 恢复 `200`，Playwright Prompt 相关专项实测 `4 passed` |
 | 智能体/工作流页 | AI 智能体列表、AI 工作流列表、设计器入口 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) | 本轮通过 | `ai-full.spec.ts` 已覆盖智能体/工作流页可达 |
 | Token 统计 | 模型/用户/按日统计页面 | 已开发 | 历史接口与页面验收, [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts) | 本轮通过 | [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts) 已确认模型、用户、按日统计接口与页面卡片可加载 |
 | AI 对话主链路 | 新建会话、发送消息、刷新恢复、停止生成、重新生成、编辑后重新生成 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts), [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts) | 本轮通过 | 发送、停止后续发、刷新恢复、重新生成、编辑后重生成均通过 |
@@ -160,10 +160,12 @@
 | 2026-04-01 | 95 `full` 运行时能力补齐 `open/file/gen/rustfs` | 先补 `han-system` 的 `RUSTFS_*` 与 `HAN_GEN_ENABLED` compose 环境变量，再重建 `han-system` 镜像并拉起 `han-open`、`han-file`、`han-gen`；最终 `9090/system/runtime/capabilities` 返回 `open/file/gen` 已启用，`optionalServices.rustfs=true` |
 | 2026-04-01 | 95 `full/medium` 通知中心后端补齐与 Playwright 回归 | 先确认 `han-postgres` 与 `han-medium-postgres` 均缺失 `sys_notice_read`，并在 `95` 上补执行 [phase6_notice_center.sql](/D:/code/Han/sql/upgrade/phase6_notice_center.sql)；随后定位到运行中 `han-system` 仍是旧版通知控制器，正式将通知中心增强代码纳入分支、远端重建 `han-system` 并重启 `hanfull/hanmedium`；最终接口 `POST /system/notice/markAllRead`、`GET /system/notice/unreadCount`、`GET /system/notice/latest` 均恢复 `200`，Playwright [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts) `1 passed` |
 | 2026-04-01 | 95 `full/medium` 登录日志表结构对齐 | 确认两套库的 `sys_login_log` 仍使用旧列名 `ipaddr/msg` 且缺少 `client_type`，补执行 [phase7_login_log_alignment.sql](/D:/code/Han/sql/upgrade/phase7_login_log_alignment.sql) 后，`sys_login_log` 已对齐为 `ip_addr/message/client_type`；full 与 medium 的 `/auth/login` 复验均返回 `200`，`han-system` 不再出现登录日志写入 SQL 异常 |
+| 2026-04-01 | 95 `full` Prompt 模板链路恢复 | 确认 `han-postgres` 缺失 `ai_prompt_template`，且旧脚本口径缺少 `create_by/update_by`；补执行 [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) 后，`/ai/prompt/list`、`/ai/prompt/all` 恢复 `200`，Playwright `--grep "ai prompt page"` 实测 `4 passed` |
+| 2026-04-01 | Playwright `ai-application-detail.spec.ts` 自动 seed 回归 | 将详情页用例从依赖人工样本卡片改为测试前自动创建并发布 workflow，并直达详情页验证工作台/调试面板与访问入口；日志跳转仍按“有日志则验证”的口径保留诚实覆盖 |
 
 ## 10. 下一步执行顺序
 
-1. 继续收敛 `full` 真实 blocker：优先处理 Prompt API `500`、模型凭证缺失与 AI 应用详情样本数据不足。
+1. 继续收敛 `full` 真实 blocker：优先处理模型凭证缺失，并确认 `ai-model.spec.ts` 在带密钥环境下全链路通过。
 2. 补跑 `medium` 的文件上传链路与 `small` 的 JobFlow 监控端点，收敛剩余“已开发但未全绿”项。
-3. 结合本轮已补的通知中心与登录日志 migration，整理一份环境漂移清单，避免后续新环境继续漏 `phase6/phase7`。
+3. 结合本轮已补的通知中心、登录日志与 Prompt migration，整理一份环境漂移清单，避免后续新环境继续漏 `phase6/phase7/phase8`。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。
