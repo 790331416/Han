@@ -41,7 +41,7 @@
 | --- | --- | --- | --- |
 | `small` | 核心系统、公告、任务调度、基础监控 | 本轮通过 | 隔离 small 环境已拉起；核心页面、登录、公告通知、任务调度、JobFlow 监控与菜单降级均已验证通过 |
 | `medium` | `small` + 租户、工作流、开放平台、文件/OSS | 本轮通过 | 隔离 medium 环境已拉起；登录、菜单、工作流路由、开放平台、OSS、租户列表/套餐/配额与可选中间件探测均已验证通过 |
-| `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 进行中 | 主环境已恢复；AI 主链路、Prompt 与应用详情链路已回归，继承 small/medium 核心路由也已补跑，剩余阻塞主要集中在模型凭证前置 |
+| `full` | `medium` + AI 管理、AI 对话、知识库、Prompt、MCP | 本轮通过 | 主环境已恢复；AI 主链路、Prompt、应用详情与模型凭证链路均已在 `95` 真环境回归通过，未开发项仍按文档诚实标注 |
 
 ## 5. Small 清单
 
@@ -98,7 +98,7 @@
 | 运行时能力 | `/system/runtime/capabilities` 返回 `tier=full` 且 `ai=true` | 已开发 | [full-tier-ai-validation-20260325.md](/D:/code/Han/docs/full-tier-ai-validation-20260325.md) | 本轮通过 | 2026-04-01 远端 API 返回 `tier=full`、`ai=true`，且 `open/file/gen` 模块与 `optionalServices.rustfs=true` 已重新对齐 |
 | AI 应用首页 | 应用首页可加载，保留 app-first 入口 | 已开发 | [ai-application.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts) | 本轮通过 | `ai-application.spec.ts` 2 条通过 |
 | AI 应用详情 | 详情工作台、发布/取消发布、访问链接、工作流日志跳转 | 部分开发 | [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts), README | 本轮通过 | 2026-04-01 已将 [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts) 改为测试前自动创建并发布 workflow，再直达详情页验证工作台、调试面板、访问入口与日志抽屉；当前仍保留“应用级日志关联未完备”的诚实占位 |
-| AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) | 本轮失败 | 模型页可打开，但环境变量凭证状态显示“未配置”，`95` 当前缺少对应模型密钥前置 |
+| AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts), [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md) | 本轮通过 | 2026-04-01 已在 `95` 通过 DeepSeek 环境变量凭证完成真实连通回归；模型创建后显示“已配置/环境变量”，测试连通返回 `200`，编辑后凭证来源与掩码保留正常 |
 | 知识库基础 | 创建、文档上传、重建索引、命中测试 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts) | 本轮通过 | 知识库上传、重建索引、命中测试通过 |
 | 知识库生命周期 | 多文档、统计回滚、删除知识库 | 已开发 | [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | 2026-03-31 已补跑并通过多文档上传/删除与统计回滚，删除知识库卡片操作也已通过 |
 | 文档解析 | `txt/md/json/html` 可解析，`pdf/docx` 允许上传但暂未自动解析 | 部分开发 | README 历史记录 | 待测 | 需诚实记为部分开发 |
@@ -163,10 +163,11 @@
 | 2026-04-01 | 95 `full` Prompt 模板链路恢复 | 确认 `han-postgres` 缺失 `ai_prompt_template`，且旧脚本口径缺少 `create_by/update_by`；补执行 [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) 后，`/ai/prompt/list`、`/ai/prompt/all` 恢复 `200`，Playwright `--grep "ai prompt page"` 实测 `4 passed` |
 | 2026-04-01 | Playwright `ai-application-detail.spec.ts` 自动 seed 回归 | 将详情页用例从依赖人工样本卡片改为测试前自动创建并发布 workflow，并直达详情页验证工作台/调试面板与访问入口；日志跳转仍按“有日志则验证”的口径保留诚实覆盖 |
 | 2026-04-01 | 95 `small/full` JobFlow 与任务调度链路收口 | 先修复 `han-job` 误用模板化 `application-docker.yml` 导致 Redis 指向 `localhost` 的问题，再将任务 API 从内部 `base` 组合结构拉平为真实前后端扁平契约，并收敛 JobFlow config 数值返回；最终 95 远端以提交 `2ec7228`、`92fc26a`、`b80ecc5` 重建 `han-job` 后，small/full 的 `/job` 创建链路与 `/actuator/jobflow/*` 均恢复正常，Playwright [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts) 在 `19090` 与 `9090` 下均实测 `3 passed` |
+| 2026-04-01 | 95 `full` AI 模型凭证链路收口 | 先确认 [AiModelCredentialResolver.java](/D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiModelCredentialResolver.java) 的解析顺序确实优先读取环境变量，再从 `maxkb` 现有部署提取可用 DeepSeek 凭证并注入 `han-ai`；最终容器内 `DEEPSEEK_API_KEY` 与 `HAN_AI_PROVIDER_DEEPSEEK_API_KEY` 均为非空，Playwright [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 在 provider override 下实测 `1 passed (31.0s)` |
 
 ## 10. 下一步执行顺序
 
-1. 继续收敛 `full` 真实 blocker：优先处理模型凭证缺失，并确认 `ai-model.spec.ts` 在带密钥环境下全链路通过。
-2. 补跑 `medium` 的文件上传链路，并继续确认 `full` 里仍处于诚实占位的 AI 管理边角项。
-3. 结合本轮已补的通知中心、登录日志与 Prompt migration，整理一份环境漂移清单，避免后续新环境继续漏 `phase6/phase7/phase8`。
+1. 补跑 `medium/full` 的 OSS 真实上传链路，把当前“页面通过、上传未专项回归”的口子收掉。
+2. 把 `phase6/phase7/phase8` 与 AI 凭证注入手册整理成环境初始化 checklist，避免后续新环境再出现同类漂移。
+3. 继续保留并核查“部分开发/未开发”边界，包括 `pdf/docx` 自动解析、`AI Graph` 与 `Embed Chat`，确保计划文档与真实实现始终对齐。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。

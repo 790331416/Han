@@ -3,6 +3,7 @@ import { test, expect, e2eRuntime } from '../fixtures/test'
 import { cleanupAiModelsByPrefix, createAiModel, findAiModelByName } from '../utils/ai-model'
 
 const AI_MODEL_E2E_PREFIX = 'E2E AI Model'
+const AI_MODEL_PRESET = resolveAiModelPreset()
 
 interface ApiEnvelope {
   code: number
@@ -21,10 +22,10 @@ test.describe('AI 模型管理', () => {
     try {
       const createdModel = await createAiModel(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
         modelName,
-        provider: 'qwen',
+        provider: AI_MODEL_PRESET.provider,
         modelType: 'LLM',
-        modelCode: 'qwen-plus',
-        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        modelCode: AI_MODEL_PRESET.modelCode,
+        baseUrl: AI_MODEL_PRESET.baseUrl,
         apiKey: '',
         maxTokens: 1024,
         temperature: 0.7,
@@ -115,4 +116,42 @@ async function openAiModelPage(page: Page): Promise<void> {
   await aiModelMenu.click()
   await page.waitForURL('**/ai/model')
   await page.waitForLoadState('networkidle')
+}
+
+interface AiModelPreset {
+  provider: string
+  modelCode: string
+  baseUrl: string
+}
+
+function resolveAiModelPreset(): AiModelPreset {
+  const provider = (process.env.PW_AI_MODEL_PROVIDER || 'qwen').trim().toLowerCase()
+  const presetMap: Record<string, AiModelPreset> = {
+    qwen: {
+      provider: 'qwen',
+      modelCode: 'qwen-plus',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    },
+    deepseek: {
+      provider: 'deepseek',
+      modelCode: 'deepseek-chat',
+      baseUrl: 'https://api.deepseek.com/v1'
+    },
+    openai: {
+      provider: 'openai',
+      modelCode: 'gpt-4o',
+      baseUrl: 'https://api.openai.com/v1'
+    },
+    zhipu: {
+      provider: 'zhipu',
+      modelCode: 'glm-4',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
+    }
+  }
+  const preset = presetMap[provider] || presetMap.qwen
+  return {
+    provider: process.env.PW_AI_MODEL_PROVIDER?.trim() || preset.provider,
+    modelCode: process.env.PW_AI_MODEL_CODE?.trim() || preset.modelCode,
+    baseUrl: process.env.PW_AI_MODEL_BASE_URL?.trim() || preset.baseUrl
+  }
 }
