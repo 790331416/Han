@@ -54,15 +54,15 @@ public class JobFlowMonitorController {
     public Map<String, Object> config() {
         log.info("查询 JobFlow 配置: {}", properties);
         Map<String, Object> config = new HashMap<>();
-        config.put("threadPoolSize", properties.getThreadPoolSize());
-        config.put("timeout", properties.getTimeout());
-        config.put("maxRetry", properties.getMaxRetry());
-        config.put("connectTimeout", properties.getConnectTimeout());
-        config.put("readTimeout", properties.getReadTimeout());
-        config.put("lockTimeout", properties.getLockTimeout());
+        config.put("threadPoolSize", normalizeNumeric(properties.getThreadPoolSize()));
+        config.put("timeout", normalizeNumeric(properties.getTimeout()));
+        config.put("maxRetry", normalizeNumeric(properties.getMaxRetry()));
+        config.put("connectTimeout", normalizeNumeric(properties.getConnectTimeout()));
+        config.put("readTimeout", normalizeNumeric(properties.getReadTimeout()));
+        config.put("lockTimeout", normalizeNumeric(properties.getLockTimeout()));
         config.put("compensationEnabled", properties.getCompensationEnabled());
-        config.put("compensationInterval", properties.getCompensationInterval());
-        config.put("stuckThreshold", properties.getStuckThreshold());
+        config.put("compensationInterval", normalizeNumeric(properties.getCompensationInterval()));
+        config.put("stuckThreshold", normalizeNumeric(properties.getStuckThreshold()));
         return config;
     }
 
@@ -82,5 +82,16 @@ public class JobFlowMonitorController {
         metrics.put("version", metadata.getVersion());
         metrics.put("clustered", metadata.isJobStoreClustered());
         return metrics;
+    }
+
+    private Object normalizeNumeric(Object value) {
+        if (value instanceof String text && text.matches("-?\\d+")) {
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException ex) {
+                log.warn("JobFlow 配置数值转换失败: {}", text, ex);
+            }
+        }
+        return value;
     }
 }
