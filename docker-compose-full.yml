@@ -3,7 +3,7 @@
 # 适用: 生产环境 / 完整功能
 # 硬件: 8核16GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1 + RustFS
-# 服务: gateway, auth, system, tenant, job, open, workflow, file, ai
+# 服务: gateway, auth, system, tenant, job, open, workflow, file, ai, gen
 # =============================================
 
 x-db-env: &db-env
@@ -309,6 +309,21 @@ services:
       JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
     ports:
       - "9208:9208"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  gen:
+    image: ${HAN_GEN_IMAGE:-han-gen:latest}
+    container_name: han-gen
+    environment:
+      <<: *service-env
     depends_on:
       postgres:
         condition: service_healthy

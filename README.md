@@ -97,7 +97,7 @@ han-cloud/
 |------|----------|----------|-------------------|----------|
 | **小型（核心链路）** | 本地开发/功能验证/演示 | 2核4GB | PostgreSQL + Redis + Nacos + gateway/auth/system/job | `docker-compose-small.yml` |
 | **中型（标准联调）** | 小团队/测试环境 | 4核8GB | `small` + RustFS + RabbitMQ + tenant/workflow/open/file | `docker-compose.yml` |
-| **大型（完整能力）** | 完整业务联调/生产预演 | 8核16GB+ | `medium` + ai；Kafka/Elasticsearch/观测组件建议外挂 | `docker-compose-full.yml` |
+| **大型（完整能力）** | 完整业务联调/生产预演 | 8核16GB+ | `medium` + ai + gen；Kafka/Elasticsearch/观测组件建议外挂 | `docker-compose-full.yml` |
 
 ### 部署能力矩阵
 
@@ -105,7 +105,7 @@ han-cloud/
 |------|----------|----------|----------|
 | `small` | gateway、auth、system、job | - | 用户中心、公告通知、参数配置、基础监控 |
 | `medium` | `small` 全部能力 | tenant、workflow、open、file、RustFS、RabbitMQ | 多租户、工作流、开放平台、文件服务 |
-| `full` | `medium` 全部能力 | ai、MCP、Prompt、Agent、Chat、Token | AI 与增强能力；Kafka/Elasticsearch/观测组件按环境外挂 |
+| `full` | `medium` 全部能力 | ai、gen、MCP、Prompt、Agent、Chat、Token | AI 与增强能力，含代码生成；Kafka/Elasticsearch/观测组件按环境外挂 |
 
 统一通过环境变量 `HAN_DEPLOY_TIER=small|medium|full` 控制后端运行时层级，通过 `HAN_INNER_AUTH_SECRET` 控制服务间内部鉴权密钥。前端会优先读取后端运行时能力接口 `/system/runtime/capabilities`，在登录页和侧边栏按真实部署层级降级展示。
 
@@ -159,7 +159,7 @@ docker-compose ps
 - ✅ Workflow (工作流)
 - ✅ Open (开放平台)
 - ✅ File (文件服务)
-- ⚠️ Gen (代码生成器，当前建议按需单独启用)
+- ⚠️ Gen (代码生成器，`full` compose 已预留服务位，默认使用 `HAN_GEN_IMAGE`，仍建议在已完成镜像构建后再启用)
 
 ### 大型部署（生产环境）
 
