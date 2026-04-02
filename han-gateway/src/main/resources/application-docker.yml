@@ -15,6 +15,7 @@ spring:
     gateway:
       server:
         webflux:
+          trusted-proxies: ${SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES:.*}
           routes:
             - id: han-auth
               uri: lb://han-auth
