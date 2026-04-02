@@ -15,7 +15,7 @@ import {
 
 const KNOWLEDGE_FILE_PATH = path.resolve(process.cwd(), 'tests/e2e/fixtures/files/ai-knowledge-upload.txt')
 const KNOWLEDGE_FILE_NAME = 'ai-knowledge-upload.txt'
-const KNOWLEDGE_HIT_PHRASE = 'Playwright knowledge deep hit sample'
+const KNOWLEDGE_HIT_PHRASE = '牛马知识命中短语样本'
 
 function buildUniqueName(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
@@ -39,11 +39,11 @@ function waitForPostResponse(page: Page, pathFragment: string) {
 
 test('ai knowledge page should upload document, reindex, and complete hit test', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const kbName = buildUniqueName('playwright-kb')
+  const kbName = buildUniqueName('知识库回归')
   const createdKb = await createKnowledgeBase(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     kbName,
     kbType: 'general',
-    description: 'Playwright deep regression knowledge base'
+    description: '知识库深度回归样本'
   })
 
   try {
@@ -105,7 +105,7 @@ test('ai knowledge page should upload document, reindex, and complete hit test',
 
 test('ai prompt page should render preview variables with real template data', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const templateName = buildUniqueName('playwright-prompt')
+  const templateName = buildUniqueName('提示词回归')
   const createdTemplate = await createPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     templateName,
     category: 'user',
@@ -125,14 +125,14 @@ test('ai prompt page should render preview variables with real template data', a
     await row.getByTestId('ai-prompt-preview-button').click()
     await expect(page.getByTestId('ai-prompt-preview-panel')).toBeVisible()
 
-    await page.getByTestId('ai-prompt-var-input-name').fill('Han')
-    await page.getByTestId('ai-prompt-var-input-topic').fill('Playwright')
+    await page.getByTestId('ai-prompt-var-input-name').fill('小韩')
+    await page.getByTestId('ai-prompt-var-input-topic').fill('结构化测试')
 
     const renderResponse = waitForPostResponse(page, `/ai/prompt/render/${createdTemplate.templateId}`)
     await page.getByTestId('ai-prompt-render-button').click()
     await renderResponse
 
-    await expect(page.getByTestId('ai-prompt-rendered-content')).toContainText('你好，Han，欢迎来到Playwright。')
+    await expect(page.getByTestId('ai-prompt-rendered-content')).toContainText('你好，小韩，欢迎来到结构化测试。')
   } finally {
     await deletePromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdTemplate.templateId).catch(() => undefined)
   }
@@ -140,7 +140,7 @@ test('ai prompt page should render preview variables with real template data', a
 
 test('ai mcp page should refresh tools and show generated tool list', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const serverName = buildUniqueName('playwright-mcp')
+  const serverName = buildUniqueName('工具服务回归')
   const createdServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName,
     transportType: 'sse'

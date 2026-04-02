@@ -1,2 +1,2 @@
-Han OSS upload fixture.
-This file is used by the Playwright E2E upload flow.
+这是 OSS 上传回归夹具文件。
+该文件用于 Playwright 上传链路验收。

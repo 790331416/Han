@@ -34,11 +34,11 @@ function waitForPostResponse(page: Page, pathFragment: string) {
 
 test('ai knowledge page should delete knowledge base from card actions and clear list state', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const kbName = buildUniqueName('playwright-kb-remove')
+  const kbName = buildUniqueName('知识库删除')
   const createdKb = await createKnowledgeBase(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     kbName,
     kbType: 'general',
-    description: 'Playwright knowledge base removal regression'
+    description: '知识库删除回归样本'
   })
 
   const listResponse = waitForGetResponse(page, '/ai/kb/list')
@@ -111,7 +111,7 @@ test('ai prompt page should keep built-in templates protected from editing', asy
 
 test('ai mcp page should support streamable_http tool metadata regression', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const serverName = buildUniqueName('playwright-mcp-http')
+  const serverName = buildUniqueName('流式HTTP工具服务')
   const createdServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName,
     transportType: 'streamable_http',

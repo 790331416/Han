@@ -59,7 +59,7 @@ test('job page should toggle status with query params contract', async ({
   authSession
 }) => {
   const accessToken = authSession.accessToken
-  const jobName = `E2E Job Toggle ${Date.now()}`
+  const jobName = `任务开关验证-${Date.now()}`
   let jobId: number | undefined
 
   try {
@@ -76,7 +76,7 @@ test('job page should toggle status with query params contract', async ({
         misfirePolicy: '1',
         concurrent: '1',
         status: '0',
-        remark: 'Playwright job UI toggle verification'
+        remark: '任务页面开关回归验证'
       }
     })
     const createJson = await createResponse.json() as ApiEnvelope<null>

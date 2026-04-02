@@ -12,7 +12,7 @@ function buildUniqueName(prefix: string): string {
 
 test('ai application detail should expose workspace panels and support workflow log jump', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const workflowName = buildUniqueName('playwright-application-detail')
+  const workflowName = buildUniqueName('应用详情回归')
   let workflowId: string | number | null = null
 
   try {
@@ -22,11 +22,11 @@ test('ai application detail should expose workspace panels and support workflow 
 
     const workflow = await createWorkflow(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
       workflowName,
-      description: 'Playwright application detail seed workflow',
+      description: '应用详情回归工作流',
       workflowType: 'simple',
       modelId: targetModel.modelId,
-      systemPrompt: 'Keep responses concise.',
-      prologue: 'Application detail seed workflow',
+      systemPrompt: '请用简洁中文回答。',
+      prologue: '应用详情回归工作流',
       status: '0'
     })
     workflowId = workflow.workflowId

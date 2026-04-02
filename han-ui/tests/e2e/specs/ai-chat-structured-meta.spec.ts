@@ -30,15 +30,15 @@ test.describe('ai chat structured metadata', () => {
   test('workflow chat should render structured knowledge and tool metadata', async ({ authenticatedPage, request, authSession }) => {
     const page = authenticatedPage
     const uniqueSuffix = Date.now()
-    const knowledgePhrase = `Structured meta knowledge phrase ${uniqueSuffix}`
-    const kbName = buildUniqueName('playwright-structured-kb')
-    const workflowName = buildUniqueName('playwright-structured-wf')
-    const serverName = buildUniqueName('playwright-structured-mcp')
-    const documentName = `structured-meta-${uniqueSuffix}.txt`
+    const knowledgePhrase = `结构化来源命中短语-${uniqueSuffix}`
+    const kbName = buildUniqueName('结构化知识库')
+    const workflowName = buildUniqueName('结构化工作流')
+    const serverName = buildUniqueName('结构化工具服务')
+    const documentName = `结构化来源-${uniqueSuffix}.txt`
     const documentContent = [
-      `${knowledgePhrase} is the unique retrieval anchor for this Playwright test.`,
-      'This paragraph verifies that structured knowledge excerpts are returned separately from message content.',
-      'The workflow should also expose MCP tool metadata in the tool trace panel.'
+      `${knowledgePhrase} 是这条回归用例的唯一命中锚点。`,
+      '这一段用于验证知识来源片段会以结构化字段单独返回，而不是只混在消息正文里。',
+      '当前工作流还应该把 MCP 工具元数据展示到工具轨迹面板中。'
     ].join('\n')
 
     let createdKb: { kbId: string | number } | null = null
@@ -53,7 +53,7 @@ test.describe('ai chat structured metadata', () => {
       createdKb = await createKnowledgeBase(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
         kbName,
         kbType: 'general',
-        description: 'Playwright structured metadata knowledge base'
+        description: '结构化来源元数据知识库'
       })
 
       await uploadKnowledgeDocument(
@@ -85,18 +85,18 @@ test.describe('ai chat structured metadata', () => {
 
       createdWorkflow = await createWorkflow(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
         workflowName,
-        description: 'Playwright structured metadata workflow',
+        description: '结构化来源与工具轨迹工作流',
         workflowType: 'simple',
         modelId: targetModel.modelId,
         knowledgeBaseIds: JSON.stringify([createdKb.kbId]),
         mcpServerIds: JSON.stringify([createdServer.mcpId]),
-        systemPrompt: 'Use retrieved knowledge when it is relevant and keep the answer concise.',
-        prologue: 'Structured metadata test workflow',
+        systemPrompt: '优先引用命中的知识片段，并用简洁中文回答。',
+        prologue: '结构化元数据验证工作流',
         status: '0'
       })
       await publishWorkflow(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdWorkflow.workflowId)
 
-      const prompt = `Please answer using the phrase "${knowledgePhrase}" and include tool trace details.`
+      const prompt = `请使用“${knowledgePhrase}”这个短语回答，并带上工具轨迹信息。`
 
       await openAiChatPage(page, `workflowId=${createdWorkflow.workflowId}`)
       await sendChatMessage(page, prompt)

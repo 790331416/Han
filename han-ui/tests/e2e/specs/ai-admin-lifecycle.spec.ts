@@ -48,11 +48,11 @@ async function uploadKnowledgeDocument(page: Page, kbId: string | number, filePa
 
 test('ai knowledge page should support multi-document lifecycle and stats rollback', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const kbName = buildUniqueName('playwright-kb-life')
+  const kbName = buildUniqueName('知识库生命周期')
   const createdKb = await createKnowledgeBase(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     kbName,
     kbType: 'general',
-    description: 'Playwright lifecycle knowledge base'
+    description: '知识库生命周期回归样本'
   })
 
   try {
@@ -117,15 +117,15 @@ test('ai knowledge page should support multi-document lifecycle and stats rollba
 
 test('ai prompt page should support edit and keep preview rendering correct', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const templateName = buildUniqueName('playwright-prompt-edit')
+  const templateName = buildUniqueName('提示词编辑')
   const createdTemplate = await createPromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     templateName,
     category: 'user',
-    content: 'Hello {{name}} from {{topic}}.',
+    content: '你好，{{name}}，这里是{{topic}}。',
     variables: '["name","topic"]'
   })
 
-  const editedContent = 'Welcome {{name}} to {{topic}}.'
+  const editedContent = '欢迎{{name}}来到{{topic}}。'
 
   try {
     const listResponse = waitForGetResponse(page, '/ai/prompt/list')
@@ -153,12 +153,12 @@ test('ai prompt page should support edit and keep preview rendering correct', as
     await refreshedRow.getByTestId('ai-prompt-preview-button').click()
     await expect(page.getByTestId('ai-prompt-preview-panel')).toContainText(editedContent)
 
-    await page.getByTestId('ai-prompt-var-input-name').fill('NiuMa')
-    await page.getByTestId('ai-prompt-var-input-topic').fill('AI Regression')
+    await page.getByTestId('ai-prompt-var-input-name').fill('牛马')
+    await page.getByTestId('ai-prompt-var-input-topic').fill('结构化回归')
     const renderResponse = waitForPostResponse(page, `/ai/prompt/render/${createdTemplate.templateId}`)
     await page.getByTestId('ai-prompt-render-button').click()
     await renderResponse
-    await expect(page.getByTestId('ai-prompt-rendered-content')).toContainText('Welcome NiuMa to AI Regression.')
+    await expect(page.getByTestId('ai-prompt-rendered-content')).toContainText('欢迎牛马来到结构化回归。')
   } finally {
     await deletePromptTemplate(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdTemplate.templateId).catch(() => undefined)
   }
@@ -166,8 +166,8 @@ test('ai prompt page should support edit and keep preview rendering correct', as
 
 test('ai mcp page should distinguish sse and stdio tool metadata after refresh', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
-  const sseServerName = buildUniqueName('playwright-mcp-sse')
-  const stdioServerName = buildUniqueName('playwright-mcp-stdio')
+  const sseServerName = buildUniqueName('流式工具服务')
+  const stdioServerName = buildUniqueName('命令工具服务')
   const createdSseServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName: sseServerName,
     transportType: 'sse'

@@ -12,12 +12,12 @@ import {
 test('ai chat should stop streaming and allow sending another message', async ({ authenticatedPage }) => {
   const page = authenticatedPage
   const longPrompt = [
-    `Playwright stop boundary ${Date.now()}`,
-    'Write 120 numbered lines.',
-    'Each line must contain at least 12 English words.',
-    'Do not summarize or compress the answer.'
+    `停止生成边界验证-${Date.now()}`,
+    '请输出 120 行编号内容。',
+    '每一行至少包含 12 个汉字。',
+    '不要总结，也不要压缩答案。'
   ].join(' ')
-  const followUpPrompt = `Playwright after stop ${Date.now()}`
+  const followUpPrompt = `停止后续聊验证-${Date.now()}`
 
   await openAiChatPage(page, undefined, { fresh: true })
 
@@ -42,7 +42,7 @@ test('ai chat should stop streaming and allow sending another message', async ({
 
 test('ai chat should restore current conversation after reload', async ({ authenticatedPage }) => {
   const page = authenticatedPage
-  const prompt = `Playwright restore conversation ${Date.now()}`
+  const prompt = `刷新后恢复会话-${Date.now()}`
 
   await openAiChatPage(page, undefined, { fresh: true })
 

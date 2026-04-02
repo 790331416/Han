@@ -134,7 +134,7 @@ test('job module should expose handlers, cron validation, task list, and log lis
 
 test('job module should support sample task lifecycle via APIs', async ({ request, authSession }) => {
   const accessToken = authSession.accessToken
-  const jobName = `E2E Sample Task ${Date.now()}`
+  const jobName = `中文任务样本-${Date.now()}`
   let jobId: number | undefined
 
   try {
@@ -151,7 +151,7 @@ test('job module should support sample task lifecycle via APIs', async ({ reques
         misfirePolicy: '1',
         concurrent: '1',
         status: '0',
-        remark: 'Playwright lifecycle verification'
+        remark: '任务生命周期回归验证'
       }
     })
     const createJson = await createResponse.json() as ApiEnvelope<null>

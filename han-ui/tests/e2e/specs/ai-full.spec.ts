@@ -24,7 +24,7 @@ test('ai agent and workflow pages should load on full tier', async ({ authentica
 
 test('ai chat page should send a message and render assistant reply', async ({ authenticatedPage }) => {
   const page = authenticatedPage
-  const prompt = `Playwright AI smoke ${Date.now()}`
+  const prompt = `AI 烟测消息-${Date.now()}`
 
   await openAiChatPage(page, undefined, { fresh: true })
   await sendChatMessage(page, prompt)
@@ -44,8 +44,8 @@ test('ai chat page should send a message and render assistant reply', async ({ a
 
 test('ai chat page should support regenerate and edit-regenerate', async ({ authenticatedPage }) => {
   const page = authenticatedPage
-  const originalPrompt = `Playwright regenerate ${Date.now()}`
-  const editedPrompt = `${originalPrompt} edited`
+  const originalPrompt = `重新生成验证-${Date.now()}`
+  const editedPrompt = `${originalPrompt}-已编辑`
 
   await openAiChatPage(page, undefined, { fresh: true })
   await sendChatMessage(page, originalPrompt)

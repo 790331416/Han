@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { APIRequestContext } from '@playwright/test'
 import { test, expect, e2eRuntime } from '../fixtures/test'
 
-const OSS_CONFIG_E2E_PREFIX = 'E2E OSS Config'
+const OSS_CONFIG_E2E_PREFIX = '中文OSS配置回归'
 const OSS_UPLOAD_FILE_PATH = path.resolve(process.cwd(), 'tests/e2e/fixtures/files/oss-upload.txt')
 
 interface ApiEnvelope<T> {
@@ -56,7 +56,7 @@ test.describe('OSS 配置页面', () => {
           region: 'us-east-1',
           isHttps: '1',
           status: '0',
-          remark: 'E2E OSS upload validation'
+          remark: 'OSS 上传回归验证'
         }
       })
       const createEnvelope = (await createResponse.json()) as ApiEnvelope<null>
@@ -92,7 +92,7 @@ test.describe('OSS 配置页面', () => {
       const publicResponse = await request.get(uploadEnvelope.data.url)
       expect(publicResponse.ok()).toBeTruthy()
       const publicText = await publicResponse.text()
-      expect(publicText).toContain('Han OSS upload fixture.')
+      expect(publicText).toContain('这是 OSS 上传回归夹具文件。')
 
       const deleteResponse = await request.post(
         `${e2eRuntime.apiBaseUrl}/system/oss/config/remove/${createdConfig!.ossConfigId}`,
