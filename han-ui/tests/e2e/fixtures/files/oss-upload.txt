@@ -1,0 +1,2 @@
+Han OSS upload fixture.
+This file is used by the Playwright E2E upload flow.
