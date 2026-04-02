@@ -228,9 +228,6 @@ const loadTenantList = async () => {
   try {
     const res = await get<TenantSimple[]>('/tenant/all', undefined, { silentError: true })
     tenantList.value = (res as any).data || []
-    if (tenantList.value.length === 1) {
-      loginForm.tenantId = tenantList.value[0].tenantId
-    }
   } catch { /* tenant list not available */ } finally {
     tenantLoading.value = false
   }

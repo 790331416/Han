@@ -11,6 +11,10 @@
 
 如果走 `95` 服务器验证，必须额外遵守 [server-95-deploy-flow.md](/D:/code/Han/docs/server-95-deploy-flow.md) 中的标准流程。
 
+如果遇到 `95` 上的登录、网关代理、OSS 外链、AI 凭证、Nacos/Redis/Postgres 启动顺序等恢复问题，直接参考：
+
+- [environment-recovery-checklist-20260402.md](/D:/code/Han/docs/environment-recovery-checklist-20260402.md)
+
 ## 2. 环境要求
 
 | 项目 | 建议版本 |

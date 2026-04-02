@@ -12,6 +12,10 @@
 - 优先复用 `xzy0112` 仓库镜像或服务器本地已有镜像
 - 不走“本地打包后手工传 jar”这种旁路
 
+如果 `95` 环境已经出现服务漂移、代理头异常、数据库缺表或容器启动顺序问题，先看恢复清单：
+
+- [environment-recovery-checklist-20260402.md](/D:/code/Han/docs/environment-recovery-checklist-20260402.md)
+
 ## 2. 环境信息
 
 - 服务器地址：`10.18.35.95`
