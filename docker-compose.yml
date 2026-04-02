@@ -267,6 +267,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: medium
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: hanadmin
       RUSTFS_SECRET_KEY: han@2026
