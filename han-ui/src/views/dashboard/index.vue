@@ -257,7 +257,8 @@ onMounted(async () => {
 
   // 加载图表数据
   try {
-    const chartRes = await get<any>('/system/dashboard/charts')
+    // 图表数据属于增强信息，接口缺失时首页应静默降级而不是打断用户。
+    const chartRes = await get<any>('/system/dashboard/charts', undefined, { silentError: true })
     const d = (chartRes as any)?.data
     if (d?.loginTrend) chartData.loginTrend = d.loginTrend
     if (d?.operModules) chartData.operModules = d.operModules
