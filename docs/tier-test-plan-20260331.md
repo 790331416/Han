@@ -101,7 +101,7 @@
 | AI 模型 | 列表、编辑、环境变量密钥、测试连通、掩码保留原值 | 已开发 | [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts), [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md) | 本轮通过 | 2026-04-01 已在 `95` 通过 DeepSeek 环境变量凭证完成真实连通回归；模型创建后显示“已配置/环境变量”，测试连通返回 `200`，编辑后凭证来源与掩码保留正常 |
 | 知识库基础 | 创建、文档上传、重建索引、命中测试 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts) | 本轮通过 | 知识库上传、重建索引、命中测试通过 |
 | 知识库生命周期 | 多文档、统计回滚、删除知识库 | 已开发 | [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | 2026-03-31 已补跑并通过多文档上传/删除与统计回滚，删除知识库卡片操作也已通过 |
-| 文档解析 | `txt/md/json/html` 可解析，`pdf/docx` 允许上传但暂未自动解析 | 部分开发 | [AiKnowledgeBaseServiceImpl.java](/D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiKnowledgeBaseServiceImpl.java), [index.vue](/D:/code/Han/han-ui/src/views/ai/knowledge/index.vue) | 本轮通过 | 2026-04-02 已在 95 full 以中文文件名 `产品说明.pdf`、`接口说明.docx` 做真实上传探针，接口返回 `indexStatus=failed`、`paragraphCount=0`，错误信息为“当前版本暂仅支持 txt、md、html 自动解析”；说明上传入口存在，但 `pdf/docx` 自动解析仍属诚实占位 |
+| 文档解析 | `txt/md/json/html` 可解析，`pdf/docx` 允许上传但暂未自动解析 | 部分开发 | [AiKnowledgeBaseServiceImpl.java](/D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiKnowledgeBaseServiceImpl.java), [index.vue](/D:/code/Han/han-ui/src/views/ai/knowledge/index.vue), [ai-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-boundary.spec.ts) | 本轮通过 | 2026-04-02 已在 95 full 以中文文件名 `产品说明.pdf`、`接口说明.docx` 做真实上传探针，接口返回 `indexStatus=failed`、`paragraphCount=0`，错误信息为“当前版本暂仅支持 txt、md、html 自动解析”；2026-04-03 已补自动化边界回归 [ai-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-boundary.spec.ts) 并在 95 full 实测通过，说明上传入口存在，但 `pdf/docx` 自动解析仍属诚实占位 |
 | MCP 管理 | 创建、刷新工具、SSE/stdio/streamable_http 元数据展示 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts) | 本轮通过 | `refresh tools`、`streamable_http`、`sse/stdio` 元数据回归通过 |
 | Prompt 模板 | 预览变量、编辑、内置模板禁删、内置模板禁编 | 已开发 | [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts), [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts), [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts), [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) | 本轮通过 | 2026-04-01 查明 `95 full` 缺失 `ai_prompt_template` 表且旧表结构也缺 `create_by/update_by`，补执行 [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql) 后，`/ai/prompt/list` 与 `/ai/prompt/all` 恢复 `200`，Playwright Prompt 相关专项实测 `4 passed` |
 | 智能体/工作流页 | AI 智能体列表、AI 工作流列表、设计器入口 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) | 本轮通过 | `ai-full.spec.ts` 已覆盖智能体/工作流页可达 |
@@ -122,6 +122,7 @@
 | 中型模块 | `tenant-pages.spec.ts`, `open-app.spec.ts`, `oss-config.spec.ts`, `runtime-sidebar.spec.ts` |
 | 三档核心路由烟测 | `tier-core-pages.spec.ts` |
 | AI 主链路 | `ai-full.spec.ts`, `ai-chat-edge.spec.ts`, `ai-chat-structured-meta.spec.ts`, `ai-model.spec.ts`, `ai-token.spec.ts` |
+| AI 边界回归 | `ai-boundary.spec.ts` |
 | AI 管理页深度回归 | `ai-admin-pages.spec.ts`, `ai-admin-deep.spec.ts`, `ai-admin-lifecycle.spec.ts`, `ai-admin-extended.spec.ts`, `ai-application.spec.ts`, `ai-application-detail.spec.ts` |
 
 ## 9. 本轮执行记录
@@ -188,6 +189,7 @@
   - [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts)
   - [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts)
   - [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts)
+  - [ai-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-boundary.spec.ts)
   - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
   - [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts)
 - 首轮结果：`23 passed, 1 failed`
@@ -231,7 +233,9 @@
 - 回验结果：
   - `han-ai` 容器内 provider env 已非空
   - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) `1 passed`
-  - Full AI 专项总结果恢复为 `24 passed`
+  - Full AI 专项总结果先恢复为 `24 passed`
+  - 2026-04-03 同日新增 [ai-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-boundary.spec.ts) 覆盖 `pdf/docx` 上传可用但自动解析未开放的边界，并为 [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) 的“编辑后重新生成”单测单独放宽超时
+  - 随后完整重跑 AI 套件，结果更新为 `25 passed`，且不再带 flaky 标记
 
 ### 11.4 当前收口结论
 

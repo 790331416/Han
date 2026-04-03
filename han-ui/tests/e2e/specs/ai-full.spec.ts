@@ -43,6 +43,8 @@ test('ai chat page should send a message and render assistant reply', async ({ a
 })
 
 test('ai chat page should support regenerate and edit-regenerate', async ({ authenticatedPage }) => {
+  test.setTimeout(120_000)
+
   const page = authenticatedPage
   const originalPrompt = `重新生成验证-${Date.now()}`
   const editedPrompt = `${originalPrompt}-已编辑`
@@ -71,7 +73,9 @@ test('ai chat page should support regenerate and edit-regenerate', async ({ auth
   const editRegenerateResponsePromise = page.waitForResponse((response) => {
     return response.url().includes('/ai/chat/edit-regenerate') && response.request().method() === 'POST'
   })
-  await currentLatestUserMessage.getByTestId('ai-chat-edit-submit-button').click()
+  const editSubmitButton = currentLatestUserMessage.getByTestId('ai-chat-edit-submit-button')
+  await expect(editSubmitButton).toBeVisible()
+  await editSubmitButton.click()
   await editRegenerateResponsePromise
 
   await expectMessageTextContains(latestUserMessage(page), editedPrompt)

@@ -30,6 +30,7 @@ export interface KbDocumentRecord {
   docName: string
   indexStatus: string
   indexError?: string
+  paragraphCount?: number
 }
 
 export interface McpServerRecord {
@@ -160,6 +161,32 @@ export async function uploadKnowledgeDocument(
         name: fileName,
         mimeType: 'text/plain',
         buffer: Buffer.from(content, 'utf-8')
+      }
+    }
+  })
+  await ensureSuccess<void>(response)
+}
+
+export async function uploadKnowledgeDocumentBinary(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  kbId: string | number,
+  file: {
+    fileName: string
+    mimeType: string
+    buffer: Buffer
+  }
+): Promise<void> {
+  const response = await request.post(`${apiBaseUrl}/ai/kb/${kbId}/document/upload`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    multipart: {
+      file: {
+        name: file.fileName,
+        mimeType: file.mimeType,
+        buffer: file.buffer
       }
     }
   })
