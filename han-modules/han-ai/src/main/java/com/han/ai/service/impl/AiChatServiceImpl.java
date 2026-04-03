@@ -260,7 +260,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage) {
-        String assistantContent = buildAssistantReply(conversation, context, userMessage);
+        List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
+        String assistantContent = buildAssistantReply(conversation, context, userMessage, hitParagraphs);
         AiChatMessagePo assistantMessage = new AiChatMessagePo();
         assistantMessage.setConversationId(conversation.getConversationId());
         assistantMessage.setRole(ROLE_ASSISTANT);
@@ -271,7 +272,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         aiChatMessageMapper.insert(assistantMessage);
 
         refreshConversationCount(conversation);
-        enrichAssistantMessage(assistantMessage, context, userMessage);
+        enrichAssistantMessage(assistantMessage, context, userMessage, hitParagraphs);
         return new GeneratedReply(conversation, assistantMessage);
     }
 
@@ -304,10 +305,9 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return userMessage;
     }
 
-    private String buildAssistantReply(AiConversationPo conversation, ChatContext context, String userMessage) {
+    private String buildAssistantReply(AiConversationPo conversation, ChatContext context, String userMessage,
+                                       List<AiParagraphPo> hitParagraphs) {
         AiModelPo model = resolveModel(context.modelId());
-        List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
-
         String modelReply = tryBuildModelReply(conversation, context, model, hitParagraphs);
         if (StringUtils.hasText(modelReply)) {
             return modelReply;
@@ -484,15 +484,27 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private void enrichAssistantMessage(AiChatMessagePo assistantMessage, ChatContext context, String userPrompt) {
+        enrichAssistantMessage(assistantMessage, context, userPrompt, null);
+    }
+
+    private void enrichAssistantMessage(AiChatMessagePo assistantMessage, ChatContext context, String userPrompt,
+                                        List<AiParagraphPo> hitParagraphs) {
         if (assistantMessage == null || !ROLE_ASSISTANT.equals(assistantMessage.getRole())) {
             return;
         }
-        assistantMessage.setKnowledgeSources(buildKnowledgeSources(context.knowledgeBaseIds(), userPrompt));
+        assistantMessage.setKnowledgeSources(buildKnowledgeSources(context.knowledgeBaseIds(), userPrompt, hitParagraphs));
         assistantMessage.setToolExecutions(buildToolTraceSummaries(context.mcpServerIds()));
     }
 
     private List<AiChatKnowledgeSourceVo> buildKnowledgeSources(List<Long> knowledgeBaseIds, String userPrompt) {
-        List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(knowledgeBaseIds, userPrompt);
+        return buildKnowledgeSources(knowledgeBaseIds, userPrompt, null);
+    }
+
+    private List<AiChatKnowledgeSourceVo> buildKnowledgeSources(List<Long> knowledgeBaseIds, String userPrompt,
+                                                                List<AiParagraphPo> precomputedHitParagraphs) {
+        List<AiParagraphPo> hitParagraphs = precomputedHitParagraphs != null
+                ? precomputedHitParagraphs
+                : searchKnowledgeParagraphs(knowledgeBaseIds, userPrompt);
         if (hitParagraphs.isEmpty()) {
             return List.of();
         }
