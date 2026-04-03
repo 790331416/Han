@@ -252,5 +252,23 @@ compose 口径：
 ### 10.4 2026-04-03 真环境结论
 
 - 当前 `95 full` 的 AI 聊天、知识库、Prompt、应用详情、结构化引用与工具轨迹都已通过
-- 当前唯一剩余 AI 红项是 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
-- 根因：`han-ai` 容器缺少 provider key 注入
+- [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 在补齐 provider key 持久化后也已通过
+
+### 10.5 当前持久化落点
+
+- 2026-04-03 已在 `95` 宿主机落地：
+  - `/opt/han/docker/.env`
+- 当前用于 full AI 的持久化变量至少包括：
+  - `DEEPSEEK_API_KEY`
+  - `HAN_AI_PROVIDER_DEEPSEEK_API_KEY`
+- 文件权限已收紧为 `600`
+- `han-ai` 重建后，需继续保留这份 `.env`，否则下次 `docker compose ... up -d ai` 仍会把模型页打回“未配置”
+
+### 10.6 当前恢复口径
+
+- 如 `95 full` 再次出现模型页“未配置”，优先检查：
+  - `/opt/han/docker/.env` 是否仍存在
+  - `docker exec han-ai env | grep -E 'DEEPSEEK_API_KEY|HAN_AI_PROVIDER_DEEPSEEK_API_KEY'` 是否非空
+- 当前真环境恢复完成后的回归结果：
+  - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) `1 passed`
+  - Full AI Playwright 专项 `24 passed`

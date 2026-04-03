@@ -190,8 +190,11 @@
   - [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts)
   - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
   - [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts)
-- 实际结果：`23 passed, 1 failed`
-- 当前唯一失败项为 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
+- 首轮结果：`23 passed, 1 failed`
+- 首轮唯一失败项为 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
+- 在恢复 `95 full` 的 provider key 持久化注入后，再次执行同一套 AI 专项回归：
+  - 最终结果：`24 passed`
+  - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 单测复跑 `1 passed`
 
 ### 11.2 结构化知识引用 + 工具轨迹
 
@@ -211,23 +214,30 @@
   - 前端右侧结构化面板消费
   均已在 `95 full` 真环境通过
 
-### 11.3 AI 模型页当前阻塞
+### 11.3 AI 模型页阻塞解除过程
 
-- [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 当前失败已经收敛为环境问题，不再视为页面代码问题。
-- 2026-04-03 重新排查 `95 full` 后确认：
+- [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 的首轮失败已确认是环境问题，而不是页面代码问题。
+- 2026-04-03 首轮排查 `95 full` 时确认：
   - 当前运行中的 `han-ai` 容器未注入 `DEEPSEEK_API_KEY`
   - 当前运行中的 `han-ai` 容器未注入 `DASHSCOPE_API_KEY`
   - 当前运行中的 `han-ai` 容器未注入 `HAN_AI_PROVIDER_DEEPSEEK_API_KEY`
   - 当前数据库 `ai_model.api_key` 为空
   - 当前数据库 `sys_config` 中不存在可回退的 provider key
-- 因此模型列表显示“未配置”是符合运行态事实的诚实结果。
-- 若要重新打通该项，需要先按 [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md) 在 `95` 宿主机持久化注入真实 provider key，再重启 `han-ai`。
+- 同日后续已从运行中的 `maxkb` 部署中提取其有效的 `deepseek-chat` 凭证，并在 `95` 宿主机持久化写入 `/opt/han/docker/.env`：
+  - `DEEPSEEK_API_KEY`
+  - `HAN_AI_PROVIDER_DEEPSEEK_API_KEY`
+- 随后执行：
+  - `docker compose -p hanfull -f /opt/han/docker/docker-compose-full.yml up -d ai`
+- 回验结果：
+  - `han-ai` 容器内 provider env 已非空
+  - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) `1 passed`
+  - Full AI 专项总结果恢复为 `24 passed`
 
 ### 11.4 当前收口结论
 
 - `small`：本轮通过
 - `medium`：本轮通过
-- `full`：除 `ai-model` 凭证环境阻塞外，其余已开发能力本轮通过
+- `full`：本轮通过
 - 未开发/部分开发边界保持不变：
   - `AI Graph`：未开发
   - `Embed Chat`：未开发
