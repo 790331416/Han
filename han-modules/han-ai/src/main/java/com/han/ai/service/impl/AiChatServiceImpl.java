@@ -432,14 +432,16 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         }
         Set<String> searchTerms = new LinkedHashSet<>();
         String normalized = userMessage.trim();
-        searchTerms.add(normalized);
-        for (String term : normalized.split("[\\s,，。；;、]+")) {
-            if (term.length() >= 2) {
-                searchTerms.add(term);
-            }
+        String normalizedForSearch = normalized
+                .replaceAll("[\"“”'‘’《》「」【】（）()]", " ")
+                .trim();
+        addKnowledgeSearchTerm(searchTerms, normalized);
+        addKnowledgeSearchTerm(searchTerms, normalizedForSearch);
+        for (String term : normalizedForSearch.split("[\\s,，。；;、？！!？：:]+")) {
+            addKnowledgeSearchTerm(searchTerms, term);
         }
-        if (normalized.length() > 12) {
-            searchTerms.add(normalized.substring(0, 12));
+        if (normalizedForSearch.length() > 12) {
+            addKnowledgeSearchTerm(searchTerms, normalizedForSearch.substring(0, 12));
         }
 
         LambdaQueryWrapper<AiParagraphPo> wrapper = new LambdaQueryWrapper<AiParagraphPo>()
@@ -464,6 +466,19 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 .orderByDesc(AiParagraphPo::getCreateTime)
                 .last("LIMIT 5");
         return aiParagraphMapper.selectList(wrapper);
+    }
+
+    private void addKnowledgeSearchTerm(Set<String> searchTerms, String rawTerm) {
+        if (!StringUtils.hasText(rawTerm)) {
+            return;
+        }
+        String cleaned = rawTerm.trim()
+                .replaceAll("^[\"“”'‘’《》「」【】（）()，。；;、？！!？：:]+", "")
+                .replaceAll("[\"“”'‘’《》「」【】（）()，。；;、？！!？：:]+$", "")
+                .trim();
+        if (cleaned.length() >= 2) {
+            searchTerms.add(cleaned);
+        }
     }
 
     private List<AiChatMessagePo> enrichConversationMessages(List<AiChatMessagePo> messages, ChatContext context) {
