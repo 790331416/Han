@@ -1,6 +1,16 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm install --legacy-peer-deps --no-audit --no-fund
+
+COPY . .
+RUN npm run build
+
 FROM registry.cn-hangzhou.aliyuncs.com/xzy0112/nginx:1.29-alpine-slim
 
-COPY dist/ /usr/share/nginx/html
+COPY --from=builder /app/dist/ /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

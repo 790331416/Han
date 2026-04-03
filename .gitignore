@@ -396,6 +396,7 @@ docs/_build/
 .docker/
 .docker-staging/
 *.dockerignore
+!han-ui/.dockerignore
 
 # Frontend specific (for han-ui module)
 node_modules/
