@@ -49,6 +49,17 @@ docker run --rm \
   mvn -s settings.workspace.xml -Dmaven.repo.local=/root/.m2/repository -DskipTests package
 ```
 
+前端 `han-ui` 自 `2026-04-03` 起也统一改成“源码内建”镜像，不再依赖仓库里遗留的 `dist`：
+```bash
+docker build -t han-ui:<tag> han-ui
+```
+
+说明：
+- `han-ui/Dockerfile` 会先在构建阶段执行 `npm install --legacy-peer-deps --no-audit --no-fund`
+- 然后执行 `npm run build`
+- 最终运行层只复制新产出的 `/app/dist`
+- 这条链路专门用于避免“代码已更新，但前端仍跑旧 bundle”的假发布
+
 ## 4. 三档部署
 
 ### 4.1 `small`

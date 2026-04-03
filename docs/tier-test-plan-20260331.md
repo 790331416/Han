@@ -109,8 +109,8 @@
 | AI 对话主链路 | 新建会话、发送消息、刷新恢复、停止生成、重新生成、编辑后重新生成 | 已开发 | [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts), [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts) | 本轮通过 | 发送、停止后续发、刷新恢复、重新生成、编辑后重生成均通过 |
 | 结构化元数据 | 助手消息级 `knowledgeSources` 与 `toolExecutions` 真正返回并被右侧面板消费 | 已开发 | [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts) | 本轮通过 | 首跑存在发送按钮偶发 disabled，重试后通过；功能已闭环但有轻微抖动 |
 | 上下文恢复 | 显式 `workflowId/agentId` 上下文优先，不被旧会话抢占 | 已开发 | 2026-03-31 最新修复与远端实测 | 本轮通过 | `workflowId` 场景下结构化元数据会话可直接发起并回拉正确消息 |
-| AI Graph | 知识图谱页面 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts) | 未开发 | 路由已注释 |
-| Embed Chat | 嵌入式免登录对话页 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts) | 未开发 | 路由已注释 |
+| AI Graph | 知识图谱页面 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts), [ai-route-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-route-boundary.spec.ts) | 未开发，访问应回退 404 | 路由已注释；2026-04-03 已在 95 full canary 与正式口验证为 `/404`，不再白屏 |
+| Embed Chat | 嵌入式免登录对话页 | 未开发 | [index.ts](/D:/code/Han/han-ui/src/router/index.ts), [ai-route-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-route-boundary.spec.ts) | 未开发，访问应回退 404 | 路由已注释；2026-04-03 已在 95 full canary 与正式口验证为 `/404`，不再白屏 |
 
 ## 8. 自动化映射
 
@@ -123,6 +123,7 @@
 | 三档核心路由烟测 | `tier-core-pages.spec.ts` |
 | AI 主链路 | `ai-full.spec.ts`, `ai-chat-edge.spec.ts`, `ai-chat-structured-meta.spec.ts`, `ai-model.spec.ts`, `ai-token.spec.ts` |
 | AI 边界回归 | `ai-boundary.spec.ts` |
+| AI 路由边界回归 | `ai-route-boundary.spec.ts` |
 | AI 管理页深度回归 | `ai-admin-pages.spec.ts`, `ai-admin-deep.spec.ts`, `ai-admin-lifecycle.spec.ts`, `ai-admin-extended.spec.ts`, `ai-application.spec.ts`, `ai-application-detail.spec.ts` |
 
 ## 9. 本轮执行记录
@@ -236,6 +237,7 @@
   - Full AI 专项总结果先恢复为 `24 passed`
   - 2026-04-03 同日新增 [ai-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-boundary.spec.ts) 覆盖 `pdf/docx` 上传可用但自动解析未开放的边界，并为 [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) 的“编辑后重新生成”单测单独放宽超时
   - 随后完整重跑 AI 套件，结果更新为 `25 passed`，且不再带 flaky 标记
+  - 2026-04-03 当晚继续补齐未开发路由边界：先在 `95 full` canary 发现在线镜像仍可能吃旧 `dist`，随后将 [Dockerfile](/D:/code/Han/han-ui/Dockerfile) 调整为源码内建、补充 [han-ui/.dockerignore](/D:/code/Han/han-ui/.dockerignore)，并以 [ai-route-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-route-boundary.spec.ts) 在 `3001` canary 与 `3000` 正式口回归通过，确认 `AI Graph` 与 `Embed Chat` 这两类未开发路径现在统一回退 `/404`，不再出现白屏
 
 ### 11.4 当前收口结论
 

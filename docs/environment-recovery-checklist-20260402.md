@@ -280,6 +280,26 @@ compose 口径：
   - dashboard 页面可进入
   - 但首页立刻弹出“资源不存在”
 - 真正根因不是登录态，也不是用户菜单，而是旧 UI bundle 仍会请求 `/system/dashboard/charts`
+
+### 10.8 2026-04-03 full 未开发路由白屏与前端旧 dist 漂移
+
+- 当晚继续验 `AI Graph`、`Embed Chat` 这两个未开发边界时，先在 `95 full` canary 复现到另一类前端假恢复：
+  - 路由源码已经补了 catch-all 到 `/404`
+  - 但在线镜像仍可能因为直接 `COPY dist/` 吃到仓库内旧产物
+  - 结果就是访问 `/ai/graph/*`、`/embed/chat/*` 仍可能白屏
+- 后续已将 [Dockerfile](/D:/code/Han/han-ui/Dockerfile) 改为源码内建，并补上 [han-ui/.dockerignore](/D:/code/Han/han-ui/.dockerignore)：
+  - 镜像构建时先在容器内执行 `npm install --legacy-peer-deps --no-audit --no-fund`
+  - 再执行 `npm run build`
+  - 最终只把新产出的 `/app/dist` 复制进 nginx 运行层
+- 这一步的目的不是“优化构建速度”，而是避免 95 再出现“代码已经 pull 到最新，但页面其实还是旧 bundle”的假更新
+- 2026-04-03 已在 `95 full` 做过双口验证：
+  - `3001` canary： [ai-route-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-route-boundary.spec.ts) `2 passed`
+  - `3000` 正式口： [ai-route-boundary.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-route-boundary.spec.ts) `2 passed`
+  - `3000` 正式口： [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts) 的 dashboard toast 回归 `1 passed`
+- 后续如果 `95 full` 再出现“未知路由白屏”或“明明已推代码但页面没变”，优先检查：
+  - 在线 `han-ui` 镜像是否由源码内建 Dockerfile 重新构建
+  - canary/正式口实际运行镜像标签是否已经切到新镜像
+  - 不要再把仓库里遗留的 `dist` 当成可信发版产物
   - `small` 后端默认不提供这组图表接口
   - `medium` 在线容器的旧 bundle 同样会触发这条请求
 - 处理顺序建议固定为：
@@ -294,7 +314,7 @@ compose 口径：
   - `small` 正式端口整包 `10 passed`
   - `medium` 正式端口整包 `12 passed`
 
-### 10.8 2026-04-03 small 底座补齐项
+### 10.9 2026-04-03 small 底座补齐项
 
 - 如果 `95 small` 出现“登录页能开但无法登录”或通知中心继续 `500`，优先补查这两项：
   - `sys_login_log` 是否仍停留在旧列名 `ipaddr/msg`

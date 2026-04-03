@@ -2,6 +2,10 @@ import { test, expect } from '../fixtures/test'
 
 test('ai graph route should remain unavailable on full tier', async ({ authenticatedPage }) => {
   const page = authenticatedPage
+  await page.goto('/')
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15000 })
+  await expect(page.getByTestId('dashboard-page')).toBeVisible()
+
   await page.goto('/ai/graph/1')
 
   await expect(page.getByTestId('error-404-page')).toBeVisible()

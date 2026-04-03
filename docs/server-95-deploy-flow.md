@@ -121,6 +121,19 @@ docker build -t registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest -f han-m
 
 其它服务按相同原则构建。
 
+前端 `han-ui` 自 `2026-04-03` 起也统一改成“源码内建”口径，不再依赖仓库里残留的 `dist`：
+
+```bash
+cd /opt/han/source/Han
+docker build -t han-ui:<tag> han-ui
+```
+
+说明：
+- `han-ui/Dockerfile` 会在构建阶段先执行 `npm install --legacy-peer-deps --no-audit --no-fund`
+- 然后执行 `npm run build`
+- 运行层只复制新产出的 `/app/dist`
+- 不要再从本地手工上传前端 `dist` 到 `95` 替代服务器构建
+
 ### 4.5 95 服务器 Docker 验证
 
 优先使用部署目录或当前验证目录中的 compose 文件：
