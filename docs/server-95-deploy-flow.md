@@ -26,6 +26,18 @@
 - Docker 部署目录：`/opt/han/docker`
 - 仓库地址：`https://gitee.com/xzy0112/Han.git`
 
+三档默认入口：
+
+- `small`: UI `3100`, gateway `19090`
+- `medium`: UI `3200`, gateway `29090`
+- `full`: UI `3000`, gateway `9090`
+
+如需做 UI canary：
+
+- `small` 建议临时使用 `3101`
+- `medium` 建议临时使用 `3201`
+- `full` 建议临时使用 `3001`
+
 ## 3. 首次准备
 
 ### 3.1 安装 Git
@@ -126,6 +138,14 @@ export DASHSCOPE_API_KEY=<server-env-only>
 docker compose -f docker-compose-full.yml up -d ai
 ```
 
+如果是 `95` 宿主机上的正式部署目录，优先使用 `/opt/han/docker` 下的 compose 和持久化环境文件，不要只在临时 shell 里 `export`：
+
+```bash
+cd /opt/han/docker
+docker compose -p hanfull -f /opt/han/docker/docker-compose-full.yml config
+docker compose -p hanfull -f /opt/han/docker/docker-compose-full.yml up -d ai
+```
+
 为避免部分 Docker 环境下的 JVM DNS 抖动影响 DashScope 真实调用，`han-ai` 建议显式带上以下 JVM 参数：
 
 ```bash
@@ -134,13 +154,49 @@ export JAVA_OPTS="-Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.p
 docker compose -f docker-compose-full.yml up -d ai
 ```
 
-## 5. 镜像使用原则
+更稳的口径是把 AI provider key 固化在 `/opt/han/docker/.env` 这类宿主机持久化来源里，再执行 `compose up -d ai`。否则 shell 退出后，下一次重建 `han-ai` 仍可能回到“未配置”。
+
+## 5. 95 恢复顺序
+
+如果 `95` 已经不是“标准发版”，而是进入恢复态，优先按下面顺序收口，不要一上来就只重启单个前端容器：
+
+1. `postgres`
+2. `redis`
+3. `nacos`
+4. `gateway`
+5. 业务服务：`auth/system/job/file/open/tenant/workflow/ai/gen`
+6. `ui`
+
+经验口径：
+
+- `medium/full` 如出现 `502`、登录回跳或 OSS 上传 `503`，先看 `redis/nacos/gateway` 是否真的恢复
+- `small` 如出现登录失败或通知中心 `500`，除了服务状态，还要回查数据库是否已补齐登录日志和通知中心表结构
+- `full` 如模型页再次显示“未配置”，先查 `/opt/han/docker/.env` 与 `han-ai` 容器内环境变量，再决定是否重启 `ai`
+
+## 6. UI Canary 切换原则
+
+这轮在 `small/medium` 都踩到过“登录成功但首页弹资源不存在”的问题，根因不是登录态，而是旧 UI bundle 仍请求 `/system/dashboard/charts`。因此 `95` 上切 UI 建议统一走 canary：
+
+1. 保留旧 UI 容器作为回滚位
+2. 用新镜像先起 canary 端口
+3. 用 Playwright 或最小登录回归确认 dashboard 不再弹错
+4. 再切正式端口
+
+推荐口径：
+
+- `small`: 旧 `3100` 保留回滚位，新镜像先起 `3101`
+- `medium`: 旧 `3200` 保留回滚位，新镜像先起 `3201`
+- canary 验证通过后，再替换正式端口
+
+如果你只看到“资源不存在”这种前端 toast，不要直接认为是后端功能缺失；先确认在线 UI 镜像是否仍是旧 bundle。
+
+## 7. 镜像使用原则
 
 - 优先使用 `registry.cn-hangzhou.aliyuncs.com/xzy0112/*`
 - 服务器本地已有镜像时优先复用
 - 缺镜像时允许重新拉取，不去额外寻找第三方镜像源
 
-## 6. 基础验收
+## 8. 基础验收
 
 部署后至少验证以下内容：
 
@@ -158,7 +214,19 @@ curl http://127.0.0.1:9090/ai/model/all?modelType=LLM
 curl http://127.0.0.1:9090/ai/chat/conversations
 ```
 
-## 7. 强约束提醒
+如处于恢复态，建议额外补三类最小验证：
+
+```bash
+curl http://127.0.0.1:19090/system/runtime/capabilities
+curl http://127.0.0.1:29090/system/runtime/capabilities
+curl http://127.0.0.1:9090/system/runtime/capabilities
+```
+
+- `small/medium/full` 的 `tier` 是否分别正确
+- UI 正式端口登录后 dashboard 是否正常，不弹“资源不存在”
+- `full` 的 AI 模型页是否显示“已配置”
+
+## 9. 强约束提醒
 
 - 先推代码，再让 `95` 拉代码
 - `95` 自己打包、自构镜像、自验收
