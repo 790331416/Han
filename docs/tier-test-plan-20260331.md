@@ -173,3 +173,62 @@
 2. 继续保留并核查“部分开发/未开发”边界，包括 `pdf/docx` 自动解析、`AI Graph` 与 `Embed Chat`，确保计划文档与真实实现始终对齐。
 3. 针对 medium/full 的容器恢复过程补最小运行手册，至少覆盖 `nacos/redis/postgres/file/gateway/ui` 的联动重启顺序。
 4. 每完成一项就在本文件更新“本轮状态”和备注，不做口头漂移。
+
+## 11. 2026-04-03 增量回填
+
+### 11.1 Full AI 回归结果
+
+- 2026-04-03 在 `95 full` 重新执行 AI 全量专项回归：
+  - [ai-admin-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-pages.spec.ts)
+  - [ai-admin-deep.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-deep.spec.ts)
+  - [ai-admin-lifecycle.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-lifecycle.spec.ts)
+  - [ai-admin-extended.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-admin-extended.spec.ts)
+  - [ai-application.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application.spec.ts)
+  - [ai-application-detail.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-application-detail.spec.ts)
+  - [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts)
+  - [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts)
+  - [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts)
+  - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
+  - [ai-token.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-token.spec.ts)
+- 实际结果：`23 passed, 1 failed`
+- 当前唯一失败项为 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
+
+### 11.2 结构化知识引用 + 工具轨迹
+
+- 2026-04-03 已在 `95 full` 真环境再次闭环验证：
+  - [ai-chat-structured-meta.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-structured-meta.spec.ts) `1 passed`
+  - [ai-full.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-full.spec.ts) + [ai-chat-edge.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-chat-edge.spec.ts) + 结构化专项合计 `6 passed`
+- 这次修复的真实根因不是前端面板，而是聊天检索链路与 `hit-test` 口径不一致：
+  - `hit-test` 能命中中文短语
+  - 聊天实时检索没有把中文引号中的短语稳定拆出来
+  - 导致助手消息真实返回 `knowledgeSources=[]`
+- 后端已在 [AiChatServiceImpl.java](/D:/code/Han/han-modules/han-ai/src/main/java/com/han/ai/service/impl/AiChatServiceImpl.java) 完成两项修复：
+  - 复用当次实时命中的 `hitParagraphs` 生成消息级结构化元数据
+  - 将中文引号/括号短语正规化后再参与知识检索
+- 当前结论：
+  - `knowledgeSources`
+  - `toolExecutions`
+  - 前端右侧结构化面板消费
+  均已在 `95 full` 真环境通过
+
+### 11.3 AI 模型页当前阻塞
+
+- [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 当前失败已经收敛为环境问题，不再视为页面代码问题。
+- 2026-04-03 重新排查 `95 full` 后确认：
+  - 当前运行中的 `han-ai` 容器未注入 `DEEPSEEK_API_KEY`
+  - 当前运行中的 `han-ai` 容器未注入 `DASHSCOPE_API_KEY`
+  - 当前运行中的 `han-ai` 容器未注入 `HAN_AI_PROVIDER_DEEPSEEK_API_KEY`
+  - 当前数据库 `ai_model.api_key` 为空
+  - 当前数据库 `sys_config` 中不存在可回退的 provider key
+- 因此模型列表显示“未配置”是符合运行态事实的诚实结果。
+- 若要重新打通该项，需要先按 [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md) 在 `95` 宿主机持久化注入真实 provider key，再重启 `han-ai`。
+
+### 11.4 当前收口结论
+
+- `small`：本轮通过
+- `medium`：本轮通过
+- `full`：除 `ai-model` 凭证环境阻塞外，其余已开发能力本轮通过
+- 未开发/部分开发边界保持不变：
+  - `AI Graph`：未开发
+  - `Embed Chat`：未开发
+  - `pdf/docx` 自动解析：部分开发，当前仍是允许上传但不自动解析

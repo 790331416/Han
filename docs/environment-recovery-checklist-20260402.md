@@ -217,3 +217,40 @@ compose 口径：
 2. 数据库补齐 SQL 与环境变量检查表
 
 这样下一次遇到服务漂移，先看 checklist 就能快速收口，不用再从零考古。
+
+## 10. 2026-04-03 补充检查项
+
+### 10.1 Full AI 重启前先核 provider key
+
+- 2026-04-03 在 `95 full` 重新回归 AI 套件时确认：
+  - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 唯一失败点不是前端页面，而是运行中的 `han-ai` 没拿到真实 provider key
+  - 当前 `ai_model.api_key` 与 `sys_config` 都不能作为有效回退
+- 所以只要执行：
+  - `docker compose -p hanfull -f /opt/han/docker/docker-compose-full.yml up -d ai`
+  之前没有先确认宿主机环境变量来源，`han-ai` 就可能在重建后失去“已配置”状态。
+
+### 10.2 最小必查项
+
+- 在 `95` 宿主机执行 full AI 重启前，至少先确认以下变量有真实值：
+  - `DEEPSEEK_API_KEY`
+  - `DASHSCOPE_API_KEY`
+  - `OPENAI_API_KEY`
+  - `ZHIPU_API_KEY`
+  - `HAN_AI_PROVIDER_DEEPSEEK_API_KEY`
+  - `HAN_AI_PROVIDER_QWEN_API_KEY`
+- 若这些变量仅存在于临时 shell，而没有落到持久化来源：
+  - shell 退出后会丢
+  - 下次 `compose up -d ai` 后会重新变成空值
+
+### 10.3 建议口径
+
+- 推荐把 `95 full` 的 AI provider key 固化到单独受控的宿主机环境文件或部署侧 secret 注入来源，而不是依赖临时手工 `export`
+- 每次重启 `han-ai` 前后，都补做两步：
+  - 容器内核对一次 `env | grep -E 'DEEPSEEK|DASHSCOPE|OPENAI|ZHIPU|HAN_AI_PROVIDER'`
+  - 回跑 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) 或至少确认模型页显示“已配置”
+
+### 10.4 2026-04-03 真环境结论
+
+- 当前 `95 full` 的 AI 聊天、知识库、Prompt、应用详情、结构化引用与工具轨迹都已通过
+- 当前唯一剩余 AI 红项是 [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts)
+- 根因：`han-ai` 容器缺少 provider key 注入
