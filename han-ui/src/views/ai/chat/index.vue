@@ -601,18 +601,32 @@ const selectedMcpServers = computed(() => {
 
 const latestKnowledgeSources = computed<AiChatKnowledgeSource[]>(() => {
   const streamSources = streamMeta.value?.knowledgeSources as AiChatKnowledgeSource[] | undefined
+  const assistantSources = latestAssistantMessage.value?.knowledgeSources
+  if (Array.isArray(assistantSources) && assistantSources.length > 0) {
+    return assistantSources
+  }
   if (streaming.value && streamSources) {
     return streamSources
   }
-  return latestAssistantMessage.value?.knowledgeSources || streamSources || []
+  if (Array.isArray(streamSources) && streamSources.length > 0) {
+    return streamSources
+  }
+  return assistantSources || streamSources || []
 })
 
 const latestToolExecutions = computed<AiChatToolTrace[]>(() => {
   const streamTraces = streamMeta.value?.toolExecutions as AiChatToolTrace[] | undefined
+  const assistantTraces = latestAssistantMessage.value?.toolExecutions
+  if (Array.isArray(assistantTraces) && assistantTraces.length > 0) {
+    return assistantTraces
+  }
   if (streaming.value && streamTraces) {
     return streamTraces
   }
-  return latestAssistantMessage.value?.toolExecutions || streamTraces || []
+  if (Array.isArray(streamTraces) && streamTraces.length > 0) {
+    return streamTraces
+  }
+  return assistantTraces || streamTraces || []
 })
 
 const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
@@ -887,7 +901,10 @@ async function reloadCurrentConversationMessages() {
   try {
     const res = await listChatMessages(currentConversationId.value)
     messages.value = (res as any).data || []
-    streamMeta.value = null
+    const latestAssistant = [...messages.value].reverse().find((item) => item.role === 'assistant')
+    if (hasStructuredChatInsights(latestAssistant)) {
+      streamMeta.value = null
+    }
     currentConversation.value = conversationList.value.find((item) => item.conversationId === currentConversationId.value)
     scrollToBottom()
   } catch (e) {
@@ -1257,6 +1274,13 @@ function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload 
     assistantMessage.toolExecutions = meta.toolExecutions as AiChatToolTrace[]
   }
   return assistantMessage
+}
+
+function hasStructuredChatInsights(message?: AiChatMessage) {
+  if (!message) {
+    return false
+  }
+  return (message.knowledgeSources?.length ?? 0) > 0 || (message.toolExecutions?.length ?? 0) > 0
 }
 
 function normalizeContextApplication(type: 'agent' | 'workflow', data: AiAgent | AiWorkflow): ChatContextApplication {

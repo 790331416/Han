@@ -25,7 +25,7 @@ export interface LoginByApiOptions {
  * 通过后端登录接口创建测试会话。
  *
  * 说明：
- * 当前 auth 服务仅在传入验证码时才校验验证码，因此 E2E 夹具走用户名密码直登，
+ * 当前 auth 服务仅在传入验证码时才校验验证码，因此 E2E 夹具直接走用户名密码登录，
  * 以保持自动化测试的稳定性。
  */
 export async function loginByApi(request: APIRequestContext, options: LoginByApiOptions): Promise<AuthSession> {
@@ -38,19 +38,31 @@ export async function loginByApi(request: APIRequestContext, options: LoginByApi
     payload.tenantId = normalizeTenantId(options.tenantId)
   }
 
-  const response = await request.post(`${options.apiBaseUrl}/auth/login`, {
-    data: payload,
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
+  let lastError: Error | undefined
 
-  const result = await response.json()
-  if (!response.ok() || result?.code !== 200 || !result?.data?.accessToken) {
-    throw new Error(`E2E 登录失败: ${JSON.stringify(result)}`)
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const response = await request.post(`${options.apiBaseUrl}/auth/login`, {
+      data: payload,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    const result = await response.json()
+    if (response.ok() && result?.code === 200 && result?.data?.accessToken) {
+      return result.data as AuthSession
+    }
+
+    lastError = new Error(`E2E 登录失败: ${JSON.stringify(result)}`)
+    const rateLimited = typeof result?.msg === 'string' && result.msg.includes('请求过于频繁')
+    if (!rateLimited || attempt === 4) {
+      throw lastError
+    }
+
+    await sleep(attempt * 1500)
   }
 
-  return result.data as AuthSession
+  throw lastError ?? new Error('E2E 登录失败: 未知错误')
 }
 
 /**
@@ -99,4 +111,8 @@ function normalizeTenantId(tenantId: string | number): string | number {
   }
 
   return /^\d+$/.test(tenantId) ? Number(tenantId) : tenantId
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }

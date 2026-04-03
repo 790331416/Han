@@ -80,11 +80,21 @@ export async function findAiModelByName(
   accessToken: string,
   modelName: string
 ): Promise<AiModelRecord | null> {
+  const models = await listAiModels(request, apiBaseUrl, accessToken, modelName)
+  return models.find((item) => item.modelName === modelName) || null
+}
+
+export async function listAiModels(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  modelName = ''
+): Promise<AiModelRecord[]> {
   const response = await request.get(`${apiBaseUrl}/ai/model/list?pageNum=1&pageSize=100&modelName=${encodeURIComponent(modelName)}`, {
     headers: buildHeaders(accessToken)
   })
   const result = await ensureSuccess<PageResult<AiModelRecord>>(response)
-  return result.data?.rows?.find((item) => item.modelName === modelName) || null
+  return result.data?.rows || []
 }
 
 export async function deleteAiModelById(

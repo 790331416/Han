@@ -1,9 +1,8 @@
 import type { Page } from '@playwright/test'
 import { test, expect, e2eRuntime } from '../fixtures/test'
-import { cleanupAiModelsByPrefix, createAiModel, findAiModelByName } from '../utils/ai-model'
+import { cleanupAiModelsByPrefix, createAiModel, findAiModelByName, listAiModels } from '../utils/ai-model'
 
 const AI_MODEL_E2E_PREFIX = 'E2E AI Model'
-const AI_MODEL_PRESET = resolveAiModelPreset()
 
 interface ApiEnvelope {
   code: number
@@ -16,16 +15,17 @@ test.describe('AI 模型管理', () => {
     const uniqueSuffix = Date.now()
     const modelName = `${AI_MODEL_E2E_PREFIX} ${uniqueSuffix}`
     const updatedRemark = `E2E updated ${uniqueSuffix}`
+    const aiModelPreset = await resolveAiModelPreset(request, authSession.accessToken)
 
     await cleanupAiModelsByPrefix(request, e2eRuntime.apiBaseUrl, authSession.accessToken, AI_MODEL_E2E_PREFIX)
 
     try {
       const createdModel = await createAiModel(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
         modelName,
-        provider: AI_MODEL_PRESET.provider,
+        provider: aiModelPreset.provider,
         modelType: 'LLM',
-        modelCode: AI_MODEL_PRESET.modelCode,
-        baseUrl: AI_MODEL_PRESET.baseUrl,
+        modelCode: aiModelPreset.modelCode,
+        baseUrl: aiModelPreset.baseUrl,
         apiKey: '',
         maxTokens: 1024,
         temperature: 0.7,
@@ -124,8 +124,7 @@ interface AiModelPreset {
   baseUrl: string
 }
 
-function resolveAiModelPreset(): AiModelPreset {
-  const provider = (process.env.PW_AI_MODEL_PROVIDER || 'qwen').trim().toLowerCase()
+async function resolveAiModelPreset(request: Parameters<typeof listAiModels>[0], accessToken: string): Promise<AiModelPreset> {
   const presetMap: Record<string, AiModelPreset> = {
     qwen: {
       provider: 'qwen',
@@ -148,10 +147,40 @@ function resolveAiModelPreset(): AiModelPreset {
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
     }
   }
-  const preset = presetMap[provider] || presetMap.qwen
-  return {
-    provider: process.env.PW_AI_MODEL_PROVIDER?.trim() || preset.provider,
-    modelCode: process.env.PW_AI_MODEL_CODE?.trim() || preset.modelCode,
-    baseUrl: process.env.PW_AI_MODEL_BASE_URL?.trim() || preset.baseUrl
+
+  const explicitProvider = process.env.PW_AI_MODEL_PROVIDER?.trim().toLowerCase()
+  if (explicitProvider && presetMap[explicitProvider]) {
+    return {
+      provider: process.env.PW_AI_MODEL_PROVIDER?.trim() || presetMap[explicitProvider].provider,
+      modelCode: process.env.PW_AI_MODEL_CODE?.trim() || presetMap[explicitProvider].modelCode,
+      baseUrl: process.env.PW_AI_MODEL_BASE_URL?.trim() || presetMap[explicitProvider].baseUrl
+    }
   }
+
+  const existingModels = await listAiModels(request, e2eRuntime.apiBaseUrl, accessToken)
+  const envConfiguredModel = existingModels.find((item) => {
+    const provider = item.provider?.trim().toLowerCase()
+    return item.modelType === 'LLM' && item.credentialConfigured && item.credentialSource === 'env' && Boolean(provider && presetMap[provider])
+  })
+  if (envConfiguredModel) {
+    return {
+      provider: envConfiguredModel.provider,
+      modelCode: envConfiguredModel.modelCode,
+      baseUrl: envConfiguredModel.baseUrl
+    }
+  }
+
+  const preferredModel = existingModels.find((item) => {
+    const provider = item.provider?.trim().toLowerCase()
+    return item.modelType === 'LLM' && Boolean(provider && presetMap[provider])
+  })
+  if (preferredModel) {
+    return {
+      provider: preferredModel.provider,
+      modelCode: preferredModel.modelCode,
+      baseUrl: preferredModel.baseUrl
+    }
+  }
+
+  return presetMap.deepseek
 }

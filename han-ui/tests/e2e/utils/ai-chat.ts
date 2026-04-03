@@ -15,6 +15,7 @@ export async function openAiChatPage(
   await page.goto(target)
   await expect(page.getByTestId('ai-chat-page')).toBeVisible()
   await expect(page.getByTestId('ai-chat-input')).toBeVisible()
+  await waitForChatBootstrap(page)
   if (fresh) {
     await startNewAiChat(page)
   }
@@ -33,10 +34,17 @@ export function latestUserMessage(page: Page): Locator {
 }
 
 export async function startNewAiChat(page: Page): Promise<void> {
+  await waitForChatBootstrap(page)
+
   const newChatButton = page.getByTestId('ai-chat-new-button')
   await expect(newChatButton).toBeVisible()
   await newChatButton.click()
-  await expect(page.locator('[data-testid="ai-chat-message"]')).toHaveCount(0)
+
+  await expect.poll(async () => {
+    const messageCount = await page.locator('[data-testid="ai-chat-message"]').count()
+    const conversationId = new URL(page.url()).searchParams.get('conversationId')
+    return messageCount === 0 && !conversationId
+  }, { timeout: 15000 }).toBeTruthy()
 }
 
 export async function expectMessageTextContains(message: Locator, text: string, timeout = 10000): Promise<void> {
@@ -77,4 +85,13 @@ export async function sendChatMessage(
     await waitForAssistantMessageCount(page, 1, timeout)
     await expectRenderedMessageContent(latestAssistantMessage(page), timeout)
   }
+}
+
+async function waitForChatBootstrap(page: Page): Promise<void> {
+  await page.waitForResponse(
+    (response) => response.url().includes('/ai/chat/conversations') && response.request().method() === 'GET',
+    { timeout: 15000 }
+  ).catch(() => undefined)
+
+  await page.waitForTimeout(300)
 }

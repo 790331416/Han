@@ -33,15 +33,16 @@ async function createAuthSession(): Promise<AuthSession> {
  * Shared Playwright fixtures for Han UI.
  *
  * Provides:
- * - API login for a stable authenticated session
+ * - worker-scoped API login for stable authenticated sessions
  * - localStorage bootstrap for frontend auth state
  * - an authenticated page without implicit navigation side effects
+ * - test-scoped isolated sessions for destructive auth flows such as logout
  */
 export const test = base.extend<E2EFixtures>({
-  authSession: async ({}, use) => {
+  authSession: [async ({}, use) => {
     const session = await createAuthSession()
     await use(session)
-  },
+  }, { scope: 'worker' }],
 
   isolatedAuthSession: async ({}, use) => {
     const session = await createAuthSession()
