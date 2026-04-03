@@ -272,3 +272,37 @@ compose 口径：
 - 当前真环境恢复完成后的回归结果：
   - [ai-model.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/ai-model.spec.ts) `1 passed`
   - Full AI Playwright 专项 `24 passed`
+
+### 10.7 2026-04-03 small/medium 首页“资源不存在”恢复口径
+
+- 这轮在 `95 small` 和 `95 medium` 都复现到同一种现象：
+  - 登录成功
+  - dashboard 页面可进入
+  - 但首页立刻弹出“资源不存在”
+- 真正根因不是登录态，也不是用户菜单，而是旧 UI bundle 仍会请求 `/system/dashboard/charts`
+  - `small` 后端默认不提供这组图表接口
+  - `medium` 在线容器的旧 bundle 同样会触发这条请求
+- 处理顺序建议固定为：
+  1. 先确认是不是旧 UI 容器还在线
+  2. 不要直接覆盖线上端口，先起 canary 端口验证
+  3. canary 回归通过后，再切正式端口
+- 本轮真实切换方式：
+  - `small`：保留旧 `han-ui-small` 回滚位，使用 `han-ui:structuredmeta-5206f5e` 先起 `3101` canary，再切 `3100`
+  - `medium`：保留旧 `han-ui-medium` 回滚位，使用 `han-ui:structuredmeta-5206f5e` 先起 `3201` canary，再切 `3200`
+- 对应回归口径：
+  - [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts) 中 `dashboard should not show missing resource error after login`
+  - `small` 正式端口整包 `10 passed`
+  - `medium` 正式端口整包 `12 passed`
+
+### 10.8 2026-04-03 small 底座补齐项
+
+- 如果 `95 small` 出现“登录页能开但无法登录”或通知中心继续 `500`，优先补查这两项：
+  - `sys_login_log` 是否仍停留在旧列名 `ipaddr/msg`
+  - `sys_notice_read` 是否存在
+- 这轮真实补齐后，small 才恢复到可完整回归状态：
+  - 登录日志表对齐后，`/auth/login` 恢复正常
+  - 通知中心缺表补齐后，[notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts) 恢复通过
+- 补齐完成后的推荐最小回归：
+  - [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts)
+  - [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts)
+  - [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts)

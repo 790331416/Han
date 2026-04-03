@@ -242,3 +242,50 @@
   - `AI Graph`：未开发
   - `Embed Chat`：未开发
   - `pdf/docx` 自动解析：部分开发，当前仍是允许上传但不自动解析
+
+### 11.5 2026-04-03 三档继承能力与 UI 回归
+
+- 2026-04-03 在 `95 small` 继续回归时，先后踩到三类真实环境问题：
+  - `3100` 端口上的 `han-ui-small` 已退出，导致浏览器直接 `ERR_CONNECTION_REFUSED`
+  - `han-small-postgres` 的 `sys_login_log` 仍是旧列名 `ipaddr/msg`，且缺少 `client_type`
+  - `han-small-postgres` 缺失 `sys_notice_read`，导致通知中心链路仍会报 `500`
+- 同日已在 `95 small` 完成：
+  - 手工对齐登录日志表结构，使 `/auth/login` 恢复正常
+  - 补执行通知中心缺失表结构，使 [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts) 恢复可回归
+  - 发现旧 `han-ui-small` bundle 登录后仍会请求 `/system/dashboard/charts` 并弹“资源不存在”，因此保留旧容器回滚位，改以 `han-ui:structuredmeta-5206f5e` 在 `3101` 先做 canary，验证通过后再切正式 `3100`
+- small 正式端口回归结果：
+  - [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts)
+  - [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts)
+  - [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts)
+  - [job-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-core.spec.ts)
+  - [job-ui.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/job-ui.spec.ts)
+  - [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts)
+  - 合计 `10 passed`
+
+- 2026-04-03 在 `95 medium` 继续回归时，唯一剩余红项是登录后 dashboard 弹“资源不存在”：
+  - 在线容器仍是 `han-ui:latest`
+  - canary 对比表明 `han-ui:structuredmeta-5206f5e` 已不再触发该 toast
+- 同日已在 `95 medium` 完成：
+  - 以 `han-ui:structuredmeta-5206f5e` 在 `3201` 起 `medium` canary
+  - 先单跑 [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts) 的 dashboard toast 回归，结果 `1 passed`
+  - 再跑 medium 整包回归，结果 `12 passed`
+  - 最后保留旧 `han-ui-medium` 作为停机回滚位，切换正式 `3200` 到新容器 `han-ui-medium-live-20260403`
+- medium 正式端口回归结果：
+  - [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts)
+  - [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts)
+  - [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts)
+  - [tenant-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tenant-pages.spec.ts)
+  - [open-app.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts)
+  - [oss-config.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/oss-config.spec.ts)
+  - [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts)
+  - 合计 `12 passed`
+
+- 2026-04-03 为避免只修边缘档位、漏掉主环境继承链，又在 `95 full` 补跑一组非 AI 继承回归：
+  - [auth-login.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/auth-login.spec.ts)
+  - [runtime-sidebar.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/runtime-sidebar.spec.ts)
+  - [notice-center.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/notice-center.spec.ts)
+  - [open-app.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/open-app.spec.ts)
+  - [oss-config.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/oss-config.spec.ts)
+  - [gen-core.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/gen-core.spec.ts)
+  - [tier-core-pages.spec.ts](/D:/code/Han/han-ui/tests/e2e/specs/tier-core-pages.spec.ts)
+  - 合计 `10 passed`
