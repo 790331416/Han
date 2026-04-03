@@ -344,7 +344,12 @@ export const constantRoutes: RouteRecordRaw[] = [
   //   name: 'EmbedChat',
   //   component: () => import('@/views/ai/embed/chat.vue'),
   //   meta: { title: 'AI对话' }
-  // }
+  // },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404',
+    meta: { hidden: true }
+  }
 ]
 
 const router = createRouter({
