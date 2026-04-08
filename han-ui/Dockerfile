@@ -1,12 +1,17 @@
 FROM node:20-alpine AS builder
 
+ENV PNPM_HOME="/pnpm"
+ENV PATH="${PNPM_HOME}:${PATH}"
+
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install --legacy-peer-deps --no-audit --no-fund
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --no-optional
 
 COPY . .
-RUN npm run build
+RUN pnpm build
 
 FROM registry.cn-hangzhou.aliyuncs.com/xzy0112/nginx:1.29-alpine-slim
 
