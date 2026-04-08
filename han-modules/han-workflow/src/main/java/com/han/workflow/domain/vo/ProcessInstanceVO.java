@@ -19,6 +19,8 @@ public class ProcessInstanceVO implements Serializable {
      */
     private String processInstanceId;
 
+    private String instanceId;
+
     /**
      * 流程定义ID
      */
@@ -78,6 +80,8 @@ public class ProcessInstanceVO implements Serializable {
      * 耗时(毫秒)
      */
     private Long duration;
+
+    private String status;
 
     /**
      * 是否挂起

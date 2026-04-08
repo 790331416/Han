@@ -2,7 +2,6 @@ package com.han.workflow.domain.dto;
 
 import lombok.Data;
 
-import jakarta.validation.constraints.NotBlank;
 import java.io.Serializable;
 import java.util.Map;
 
@@ -17,8 +16,9 @@ public class ProcessStartDTO implements Serializable {
     /**
      * 流程定义Key
      */
-    @NotBlank(message = "流程Key不能为空")
     private String processKey;
+
+    private String processDefinitionKey;
 
     /**
      * 业务Key(关联业务表主键)
@@ -39,4 +39,11 @@ public class ProcessStartDTO implements Serializable {
      * 下一节点审批人(指定审批人启动)
      */
     private String nextAssignee;
+
+    public String resolveProcessKey() {
+        if (processKey != null && !processKey.isBlank()) {
+            return processKey;
+        }
+        return processDefinitionKey;
+    }
 }

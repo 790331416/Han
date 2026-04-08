@@ -264,14 +264,14 @@ import {
   UserFilled
 } from '@element-plus/icons-vue'
 import {
-  listAiAgent,
-  listAiWorkflow,
   listAllModels,
   type AiAgent,
   type AiModel,
   type AiWorkflow
 } from '@/api/ai'
+import type { PageResult } from '@/types'
 import { useUserStore } from '@/stores/user'
+import { get } from '@/utils/request'
 
 type ApplicationType = 'agent' | 'workflow'
 
@@ -356,29 +356,20 @@ const filteredApplications = computed(() => {
 async function loadData() {
   loading.value = true
   try {
-    const tasks: Promise<unknown>[] = [listAllModels('LLM')]
-    if (canViewAgent.value) {
-      tasks.push(listAiAgent({ pageNum: 1, pageSize: 100 }))
-    }
-    if (canViewWorkflow.value) {
-      tasks.push(listAiWorkflow({ pageNum: 1, pageSize: 100 }))
-    }
+    const modelResponse = await listAllModels('LLM')
+    modelList.value = (modelResponse.data || []) as AiModel[]
 
-    const results = await Promise.all(tasks)
-    let cursor = 0
-    modelList.value = ((results[cursor++] as any)?.data || []) as AiModel[]
+    const [agentResponse, workflowResponse] = await Promise.all([
+      canViewAgent.value
+        ? get<PageResult<AiAgent>>('/ai/agent/list', { pageNum: 1, pageSize: 100 }, { silentError: true }).catch(() => null)
+        : Promise.resolve(null),
+      canViewWorkflow.value
+        ? get<PageResult<AiWorkflow>>('/ai/workflow/list', { pageNum: 1, pageSize: 100 }, { silentError: true }).catch(() => null)
+        : Promise.resolve(null)
+    ])
 
-    if (canViewAgent.value) {
-      agentList.value = (((results[cursor++] as any)?.data?.rows || []) as AiAgent[])
-    } else {
-      agentList.value = []
-    }
-
-    if (canViewWorkflow.value) {
-      workflowList.value = (((results[cursor++] as any)?.data?.rows || []) as AiWorkflow[])
-    } else {
-      workflowList.value = []
-    }
+    agentList.value = canViewAgent.value ? (((agentResponse as any)?.data?.rows || []) as AiAgent[]) : []
+    workflowList.value = canViewWorkflow.value ? (((workflowResponse as any)?.data?.rows || []) as AiWorkflow[]) : []
   } finally {
     loading.value = false
   }
