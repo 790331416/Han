@@ -8,9 +8,15 @@ import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysLoginLogPo;
-import com.han.system.domain.po.SysOperLogPo;
 import com.han.system.domain.vo.DashboardStatsVO;
-import com.han.system.mapper.*;
+import com.han.system.mapper.SysDeptMapper;
+import com.han.system.mapper.SysDictTypeMapper;
+import com.han.system.mapper.SysLoginLogMapper;
+import com.han.system.mapper.SysNoticeMapper;
+import com.han.system.mapper.SysOperLogMapper;
+import com.han.system.mapper.SysPostMapper;
+import com.han.system.mapper.SysRoleMapper;
+import com.han.system.mapper.SysUserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,12 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * 首页仪表盘 - A层（管理端控制器）
- *
- * <p>根据当前用户权限动态返回统计数据，无权限的模块返回 null，前端据此隐藏对应卡片。
+ * Admin dashboard controller.
  */
 @Slf4j
 @AdminAuth
@@ -35,7 +43,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ASysDashboardController {
 
-    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM-dd");
 
     private final SysUserMapper userMapper;
     private final SysDeptMapper deptMapper;
@@ -67,6 +76,22 @@ public class ASysDashboardController {
         return R.ok(vo);
     }
 
+    @GetMapping("/charts")
+    @PermissionExempt("登录用户查看图表数据")
+    public R<Map<String, Object>> charts() {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if (has(user, "system:loginlog:list")) {
+            result.put("loginTrend", loginTrend());
+        }
+        if (has(user, "system:operlog:list")) {
+            result.put("operModules", operModuleDistribution());
+        }
+
+        return R.ok(result);
+    }
+
     private boolean has(LoginUser user, String permission) {
         return user != null && user.hasPermission(permission);
     }
@@ -80,7 +105,7 @@ public class ASysDashboardController {
             Set<String> keys = redisTemplate.keys(CacheConstants.TOKEN_KEY + "*");
             return keys != null ? keys.size() : 0;
         } catch (Exception e) {
-            log.warn("获取在线用户数失败", e);
+            log.warn("Failed to count online users", e);
             return 0;
         }
     }
@@ -92,62 +117,33 @@ public class ASysDashboardController {
                         .last("LIMIT 5")
         );
         return logs.stream().map(po -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("username", po.getUsername());
-            m.put("ipAddr", po.getIpAddr());
-            m.put("status", po.getStatus());
-            m.put("message", po.getMessage());
-            m.put("loginTime", po.getLoginTime() != null ? po.getLoginTime().format(FMT) : null);
-            return m;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("username", po.getUsername());
+            item.put("ipAddr", po.getIpAddr());
+            item.put("status", po.getStatus());
+            item.put("message", po.getMessage());
+            item.put("loginTime", formatDateTime(po.getLoginTime()));
+            return item;
         }).toList();
     }
 
     private List<Map<String, Object>> recentOperLogs() {
-        List<SysOperLogPo> logs = operLogMapper.selectList(
-                new LambdaQueryWrapper<SysOperLogPo>()
-                        .orderByDesc(SysOperLogPo::getOperTime)
-                        .last("LIMIT 5")
-        );
-        return logs.stream().map(po -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("module", po.getModule());
-            m.put("operName", po.getOperName());
-            m.put("operIp", po.getOperIp());
-            m.put("status", po.getStatus());
-            m.put("operTime", po.getOperTime() != null ? po.getOperTime().format(FMT) : null);
-            return m;
+        List<Map<String, Object>> logs = operLogMapper.selectRecentOperLogs();
+        return logs.stream().map(row -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("module", row.get("module"));
+            item.put("operName", row.get("oper_name"));
+            item.put("operIp", row.get("oper_ip"));
+            item.put("status", row.get("status"));
+            item.put("operTime", formatDateTime(row.get("oper_time")));
+            return item;
         }).toList();
     }
-
-    /**
-     * 仪表盘图表数据（近7天登录趋势 + 操作模块分布）
-     */
-    @GetMapping("/charts")
-    @PermissionExempt("登录用户查看图表数据")
-    public R<Map<String, Object>> charts() {
-        LoginUser user = SecurityContextHolder.getLoginUser();
-        Map<String, Object> result = new LinkedHashMap<>();
-
-        // 近7天登录趋势
-        if (has(user, "system:loginlog:list")) {
-            result.put("loginTrend", loginTrend());
-        }
-
-        // 操作模块分布 Top10
-        if (has(user, "system:operlog:list")) {
-            result.put("operModules", operModuleDistribution());
-        }
-
-        return R.ok(result);
-    }
-
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM-dd");
 
     private Map<String, Object> loginTrend() {
         LocalDate today = LocalDate.now();
         LocalDateTime start = today.minusDays(6).atStartOfDay();
 
-        // SQL GROUP BY 聚合，避免全量加载
         List<Map<String, Object>> rows = loginLogMapper.selectLoginTrend(start);
         Map<String, Map<String, Object>> dayMap = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
@@ -161,22 +157,27 @@ public class ASysDashboardController {
         for (int i = 6; i >= 0; i--) {
             LocalDate day = today.minusDays(i);
             String key = day.format(DATE_FMT);
-            dates.add(key);
             Map<String, Object> row = dayMap.get(key);
+            dates.add(key);
             successCounts.add(row != null ? ((Number) row.get("success_count")).intValue() : 0);
             failCounts.add(row != null ? ((Number) row.get("fail_count")).intValue() : 0);
         }
 
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("dates", dates);
-        m.put("success", successCounts);
-        m.put("fail", failCounts);
-        return m;
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dates", dates);
+        result.put("success", successCounts);
+        result.put("fail", failCounts);
+        return result;
     }
 
     private List<Map<String, Object>> operModuleDistribution() {
-        LocalDateTime start = LocalDate.now().minusDays(30).atStartOfDay();
-        // SQL GROUP BY + ORDER BY + LIMIT，避免全量加载
-        return operLogMapper.selectOperModuleDistribution(start);
+        return operLogMapper.selectOperModuleDistribution(LocalDate.now().minusDays(30).atStartOfDay());
+    }
+
+    private String formatDateTime(Object value) {
+        if (value instanceof LocalDateTime time) {
+            return time.format(DATE_TIME_FMT);
+        }
+        return value != null ? String.valueOf(value) : null;
     }
 }
