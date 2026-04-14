@@ -2,6 +2,8 @@ package com.han.api.system.domain;
 
 import lombok.Data;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -53,7 +55,18 @@ public class UserVO implements Serializable {
     private String loginIp;
 
     /** 最后登录时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime loginTime;
+
+    /** 密码最后修改时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime pwdUpdateTime;
+
+    /** 密码重置标记（1=需要修改密码） */
+    private Integer pwdResetFlag;
+
+    /** 是否启用 2FA（0=未启用 1=已启用） */
+    private Integer totpEnabled;
 
     /** 角色ID列表 */
     private Set<Long> roleIds;

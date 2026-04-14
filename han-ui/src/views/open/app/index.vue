@@ -34,9 +34,8 @@
       </template>
 
       <el-table v-loading="loading" :data="appList">
-        <el-table-column label="应用ID" prop="appId" width="80" align="center" />
-        <el-table-column label="应用名称" prop="appName" width="180" />
-        <el-table-column label="AppKey" prop="appKey" width="280" show-overflow-tooltip />
+        <el-table-column label="应用名称" prop="appName" min-width="180" show-overflow-tooltip />
+        <el-table-column label="AppKey" prop="appKey" min-width="250" show-overflow-tooltip />
         <el-table-column label="应用类型" prop="appType" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.appType === 'web'">Web</el-tag>
@@ -44,14 +43,14 @@
             <el-tag v-else type="info">{{ row.appType || '服务端' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="联系人" prop="contactName" width="120" />
+        <el-table-column label="联系人" prop="contactName" min-width="120" show-overflow-tooltip />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="warning" link :icon="RefreshRight" @click="handleResetSecret(row)">重置密钥</el-button>
@@ -73,7 +72,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
         <el-form-item label="应用名称" prop="appName">
           <el-input v-model="form.appName" placeholder="请输入应用名称" />

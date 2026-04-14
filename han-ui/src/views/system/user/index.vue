@@ -74,11 +74,10 @@
       <!-- 数据表格 -->
       <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="用户ID" prop="userId" width="80" />
-        <el-table-column label="用户名" prop="username" width="120" />
-        <el-table-column label="昵称" prop="nickname" width="120" />
-        <el-table-column label="部门" prop="deptName" width="150" />
-        <el-table-column label="手机号" prop="phone" width="130" />
+        <el-table-column label="用户名" prop="username" min-width="120" show-overflow-tooltip />
+        <el-table-column label="昵称" prop="nickname" min-width="120" show-overflow-tooltip />
+        <el-table-column label="部门" prop="deptName" min-width="130" show-overflow-tooltip />
+        <el-table-column label="手机号" prop="phone" min-width="130" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch
@@ -89,12 +88,12 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="180">
+        <el-table-column label="创建时间" min-width="180">
           <template #default="{ row }">
             {{ formatDate(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" min-width="180">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="primary" link :icon="Key" @click="handleResetPwd(row)">重置</el-button>
@@ -121,7 +120,7 @@
     </el-row>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-row :gutter="20">
           <el-col :span="12">

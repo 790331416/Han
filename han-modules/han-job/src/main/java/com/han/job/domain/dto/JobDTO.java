@@ -21,16 +21,4 @@ public class JobDTO implements Serializable {
     @JsonUnwrapped
     private SysJobPo base;
 
-    // ==================== 核心业务字段便捷访问 ====================
-
-    public Long getJobId() {
-        return base != null ? base.getJobId() : null;
-    }
-
-    public void setJobId(Long jobId) {
-        if (base == null) {
-            base = new SysJobPo();
-        }
-        base.setJobId(jobId);
-    }
 }

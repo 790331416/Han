@@ -69,6 +69,7 @@ public class SysOperLogServiceImpl implements ISysOperLogService, IOperLogServic
                 .deptName(event.getDeptName())
                 .operUrl(event.getOperUrl())
                 .operIp(event.getOperIp())
+                .operLocation(event.getOperLocation())
                 .requestMethod(event.getRequestMethod())
                 .operParam(event.getOperParam())
                 .jsonResult(event.getJsonResult())

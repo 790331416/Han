@@ -2,12 +2,15 @@ package com.han.auth.controller;
 
 import cn.hutool.captcha.CaptchaUtil;
 import cn.hutool.captcha.LineCaptcha;
+import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.service.IAuthService;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
+import com.han.common.security.annotation.RateLimiter;
+import com.han.common.security.annotation.RateLimiter.LimitType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -28,10 +31,12 @@ public class AuthController {
 
     private final IAuthService authService;
     private final StringRedisTemplate redisTemplate;
+    private final SecurityProperties securityProperties;
 
     /**
      * PC端登录
      */
+    @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)
     @PostMapping("/login")
     public R<LoginVO> login(@RequestBody @Valid LoginDTO dto) {
         dto.setClientType(ClientType.PC);
@@ -41,6 +46,7 @@ public class AuthController {
     /**
      * App登录
      */
+    @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)
     @PostMapping("/app/login")
     public R<LoginVO> appLogin(@RequestBody @Valid LoginDTO dto) {
         dto.setClientType(ClientType.APP);
@@ -50,6 +56,7 @@ public class AuthController {
     /**
      * 微信小程序登录
      */
+    @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)
     @PostMapping("/wechat/mp/login")
     public R<LoginVO> wechatMpLogin(@RequestBody @Valid LoginDTO dto) {
         dto.setClientType(ClientType.WECHAT_MP);
@@ -59,6 +66,7 @@ public class AuthController {
     /**
      * 微信公众号登录
      */
+    @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)
     @PostMapping("/wechat/oa/login")
     public R<LoginVO> wechatOaLogin(@RequestBody @Valid LoginDTO dto) {
         dto.setClientType(ClientType.WECHAT_OA);
@@ -83,8 +91,23 @@ public class AuthController {
     }
 
     /**
+     * 获取 RSA 公钥（密码加密传输用）
+     * <p>仅在 han.security.password-encrypt.enabled=true 时返回公钥
+     */
+    @GetMapping("/publicKey")
+    public R<Map<String, Object>> publicKey() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enabled", securityProperties.isEnabled());
+        if (securityProperties.isEnabled()) {
+            result.put("publicKey", securityProperties.getPublicKey());
+        }
+        return R.ok(result);
+    }
+
+    /**
      * 获取验证码
      */
+    @RateLimiter(key = "captcha", time = 60, count = 20, limitType = LimitType.IP)
     @GetMapping("/captcha")
     public R<Map<String, String>> captcha() {
         LineCaptcha captcha = CaptchaUtil.createLineCaptcha(150, 40, 4, 30);

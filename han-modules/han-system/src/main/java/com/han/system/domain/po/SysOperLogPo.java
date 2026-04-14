@@ -48,6 +48,9 @@ public class SysOperLogPo {
     /** 操作IP */
     private String operIp;
 
+    /** 操作归属地 */
+    private String operLocation;
+
     /** 请求方式 */
     private String requestMethod;
 

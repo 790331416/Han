@@ -42,7 +42,7 @@
             {{ row.ttl === -1 ? '永不过期' : row.ttl === -2 ? '已过期' : row.ttl + 's' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" min-width="100">
           <template #default="{ row }">
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row.key)">删除</el-button>
           </template>

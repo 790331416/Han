@@ -48,6 +48,18 @@ public class SysUserPo extends BizEntity {
     /** 最后登录时间 */
     private LocalDateTime loginTime;
 
+    /** 密码最后修改时间 */
+    private LocalDateTime pwdUpdateTime;
+
+    /** 密码重置标记（1=需要修改密码） */
+    private Integer pwdResetFlag;
+
+    /** TOTP 密钥（2FA 绑定后存储，加密保存） */
+    private String totpSecret;
+
+    /** 是否启用 2FA（0=未启用 1=已启用） */
+    private Integer totpEnabled;
+
     /**
      * 是否管理员
      */

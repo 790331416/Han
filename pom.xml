@@ -55,8 +55,10 @@
         <!-- 其他 -->
         <redisson.version>4.2.0</redisson.version>
         <jsoup.version>1.19.1</jsoup.version>
+        <ip2region.version>2.7.0</ip2region.version>
         <ttl.version>2.14.5</ttl.version>
         <easyexcel.version>4.0.3</easyexcel.version>
+        <totp.version>1.7.1</totp.version>
 
         <!-- 工作流引擎 -->
         <flowable.version>7.2.0</flowable.version>
@@ -317,6 +319,20 @@
                 <groupId>org.jsoup</groupId>
                 <artifactId>jsoup</artifactId>
                 <version>${jsoup.version}</version>
+            </dependency>
+
+            <!-- ip2region (IP归属地离线库) -->
+            <dependency>
+                <groupId>org.lionsoul</groupId>
+                <artifactId>ip2region</artifactId>
+                <version>${ip2region.version}</version>
+            </dependency>
+
+            <!-- TOTP (2FA多因素认证) -->
+            <dependency>
+                <groupId>dev.samstevens.totp</groupId>
+                <artifactId>totp</artifactId>
+                <version>${totp.version}</version>
             </dependency>
 
             <!-- TransmittableThreadLocal (线程池上下文传递) -->

@@ -44,7 +44,7 @@
             <el-tag type="warning">{{ getProviderLabel(row.provider) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="模型标识" prop="modelCode" width="160" show-overflow-tooltip />
+        <el-table-column label="模型标识" prop="modelCode" min-width="160" show-overflow-tooltip />
         <el-table-column label="Base URL" prop="baseUrl" min-width="200" show-overflow-tooltip />
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
@@ -53,7 +53,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
             <el-button type="success" link @click="handleTest(row)">测试</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -70,7 +70,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.modelId ? '编辑模型' : '新增模型'" width="700px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.modelId ? '编辑模型' : '新增模型'" width="65%" class="dialog-lg" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-row :gutter="20">
           <el-col :span="12">

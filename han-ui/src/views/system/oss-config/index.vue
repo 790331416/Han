@@ -27,12 +27,11 @@
       </template>
 
       <el-table :data="dataList" v-loading="loading" stripe>
-        <el-table-column prop="ossConfigId" label="ID" width="60" />
-        <el-table-column prop="configKey" label="配置Key" min-width="100" />
+        <el-table-column prop="configKey" label="配置Key" min-width="120" />
         <el-table-column prop="endpoint" label="访问站点" min-width="180" show-overflow-tooltip />
         <el-table-column prop="bucketName" label="桶名称" min-width="100" />
-        <el-table-column prop="region" label="域" width="100" />
-        <el-table-column prop="prefix" label="前缀" width="80" />
+        <el-table-column prop="region" label="域" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="prefix" label="前缀" min-width="80" show-overflow-tooltip />
         <el-table-column label="HTTPS" width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="row.isHttps === '0' ? 'success' : 'info'" size="small">
@@ -47,7 +46,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" align="center">
+        <el-table-column label="操作" min-width="220">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
             <el-button link type="success" size="small" @click="handleChangeStatus(row)" v-if="row.status !== '0'">启用</el-button>
@@ -64,7 +63,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="form.ossConfigId ? '编辑配置' : '新增配置'" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="form.ossConfigId ? '编辑配置' : '新增配置'" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="配置Key" prop="configKey">
           <el-input v-model="form.configKey" placeholder="如: rustfs, aliyun, minio" />

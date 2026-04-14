@@ -1,0 +1,25 @@
+package ${packageName}.domain.query;
+
+import lombok.Data;
+
+/**
+ * ${tableComment} 查询对象
+ *
+ * @author ${author}
+ * @date ${date}
+ */
+@Data
+public class ${className}Query {
+#foreach($column in $columns)
+#if($column.isQuery == 1)
+
+#if($column.columnComment)
+    /** ${column.columnComment} */
+#end
+    private ${column.javaType} ${column.javaField};
+#end
+#end
+
+    private Integer pageNum = 1;
+    private Integer pageSize = 10;
+}

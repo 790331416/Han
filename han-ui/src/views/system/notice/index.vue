@@ -41,8 +41,7 @@
 
       <el-table v-loading="loading" :data="noticeList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="序号" prop="id" width="80" />
-        <el-table-column label="公告标题" prop="noticeTitle" show-overflow-tooltip />
+        <el-table-column label="公告标题" prop="noticeTitle" min-width="200" show-overflow-tooltip />
         <el-table-column label="公告类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.noticeType === '1' ? 'warning' : 'success'">{{ row.noticeType === '1' ? '通知' : '公告' }}</el-tag>
@@ -53,9 +52,9 @@
             <el-tag :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '正常' : '关闭' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建者" prop="createName" width="120" />
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建者" prop="createName" min-width="120" show-overflow-tooltip />
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="primary" link :icon="View" @click="handleDetail(row)">查看</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -78,7 +77,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="70%" class="notice-dialog" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="标题" prop="noticeTitle">
           <el-input v-model="form.noticeTitle" placeholder="请输入公告标题" />
@@ -112,7 +111,7 @@
     </el-dialog>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="公告详情" width="700px" destroy-on-close>
+    <el-dialog v-model="detailVisible" title="公告详情" width="70%" class="notice-dialog" destroy-on-close>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="标题" :span="2">{{ detailData.noticeTitle }}</el-descriptions-item>
         <el-descriptions-item label="类型">

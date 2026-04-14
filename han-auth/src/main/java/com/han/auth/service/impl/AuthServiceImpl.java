@@ -1,18 +1,22 @@
 package com.han.auth.service.impl;
 
 import com.han.api.system.SystemServiceClient;
-import com.han.api.tenant.TenantServiceClient;
 import com.han.api.system.domain.LoginLogDTO;
 import com.han.api.system.domain.UserVO;
+import com.han.api.tenant.TenantServiceClient;
+import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.service.IAuthService;
+import com.han.auth.service.TotpService;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.UnauthorizedException;
+import com.han.common.core.util.HanIpUtil;
+import com.han.common.core.util.HanSecureUtil;
 import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.XuIdUtil;
 import com.han.common.core.util.XuJsonUtil;
@@ -37,56 +41,92 @@ public class AuthServiceImpl implements IAuthService {
     private final StringRedisTemplate redisTemplate;
     private final SystemServiceClient systemServiceClient;
     private final TenantServiceClient tenantServiceClient;
+    private final SecurityProperties securityProperties;
+    private final TotpService totpService;
 
-    /** Token 有效期配置 */
     private static final Duration PC_TOKEN_EXPIRE = Duration.ofMinutes(30);
     private static final Duration APP_TOKEN_EXPIRE = Duration.ofDays(7);
     private static final Duration WECHAT_TOKEN_EXPIRE = Duration.ofDays(30);
 
-    /** Refresh Token 有效期配置 */
     private static final Duration PC_REFRESH_EXPIRE = Duration.ofDays(7);
     private static final Duration APP_REFRESH_EXPIRE = Duration.ofDays(30);
     private static final Duration WECHAT_REFRESH_EXPIRE = Duration.ofDays(90);
 
+    private static final int PASSWORD_EXPIRE_DAYS = 90;
+
+    private static final int MAX_LOGIN_ATTEMPTS = 5;
+    private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(10);
+    private static final String LOGIN_FAIL_KEY = CacheConstants.CACHE_PREFIX + "login_fail:";
+
     @Override
     public LoginVO login(LoginDTO dto) {
-        // 1. 校验验证码（如果启用）
         if (XuStrUtil.isNotBlank(dto.getCode())) {
             validateCaptcha(dto.getCode(), dto.getUuid());
         }
 
-        // 2. 查询用户信息（支持按租户ID过滤）
-        R<UserVO> userResult;
-        if (dto.getTenantId() != null) {
-            userResult = systemServiceClient.getUserByUsername(dto.getUsername(), dto.getTenantId());
-        } else {
-            userResult = systemServiceClient.getUserByUsername(dto.getUsername());
-        }
+        R<UserVO> userResult = dto.getTenantId() != null
+                ? systemServiceClient.getUserByUsername(dto.getUsername(), dto.getTenantId())
+                : systemServiceClient.getUserByUsername(dto.getUsername());
         if (userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
-            recordLoginFail(dto.getUsername(), "用户不存在");
+            recordLoginFail(dto.getUsername(), dto.getTenantId(), "用户不存在");
             throw new BusinessException("用户名或密码错误");
         }
-        
-        UserVO user = userResult.getData();
 
-        // 3. 校验用户状态
+        UserVO user = userResult.getData();
         if (user.getStatus() != 0) {
-            recordLoginFail(dto.getUsername(), "账号已停用");
+            recordLoginFail(dto.getUsername(), user.getTenantId(), "账号已停用");
             throw new BusinessException("账号已停用，请联系管理员");
         }
 
-        // 4. 校验密码
-        if (!PasswordUtil.matches(dto.getPassword(), user.getPassword())) {
-            recordLoginFail(dto.getUsername(), "密码错误");
-            throw new BusinessException("用户名或密码错误");
+        checkLoginLockout(dto.getUsername(), user.getTenantId());
+
+        String rawPassword = dto.getPassword();
+        if (securityProperties.isEnabled()) {
+            try {
+                rawPassword = HanSecureUtil.rsaDecrypt(rawPassword, securityProperties.getPrivateKey());
+            } catch (Exception e) {
+                log.warn("用户[{}]密码解密失败", dto.getUsername());
+                throw new BusinessException("密码解密失败，请重试");
+            }
         }
 
-        // 5. 校验租户有效性（非平台租户需要检查停用/过期）
+        if (!PasswordUtil.matches(rawPassword, user.getPassword())) {
+            int remaining = incrementLoginFail(dto.getUsername(), user.getTenantId());
+            recordLoginFail(dto.getUsername(), user.getTenantId(), "密码错误");
+            if (remaining <= 0) {
+                throw new BusinessException("密码错误次数过多，账户已锁定" + LOCKOUT_DURATION.toMinutes() + "分钟");
+            }
+            throw new BusinessException("用户名或密码错误，还可尝试" + remaining + "次");
+        }
+
+        boolean forceChangePwd = isForceChangePassword(user);
+        boolean totpEnabled = user.getTotpEnabled() != null && user.getTotpEnabled() == 1;
+        if (totpEnabled) {
+            String totpCode = dto.getTotpCode();
+            if (totpCode == null || totpCode.isBlank()) {
+                return LoginVO.builder()
+                        .requireTotp(true)
+                        .build();
+            }
+
+            R<String> secretResult = systemServiceClient.getTotpSecret(user.getUserId());
+            String secret = secretResult.getData();
+            if (secret == null || !totpService.verifyCode(secret, totpCode)) {
+                int remaining = incrementLoginFail(dto.getUsername(), user.getTenantId());
+                if (remaining <= 0) {
+                    throw new BusinessException("验证码错误次数过多，账户已锁定" + LOCKOUT_DURATION.toMinutes() + "分钟");
+                }
+                throw new BusinessException("两步验证码错误，还可尝试" + remaining + "次");
+            }
+        }
+
+        clearLoginFail(dto.getUsername(), user.getTenantId());
+
         if (user.getTenantId() != null && user.getTenantId() != 1L) {
             try {
                 R<Boolean> validResult = tenantServiceClient.checkTenantValid(user.getTenantId());
                 if (validResult.getData() == null || !validResult.getData()) {
-                    recordLoginFail(dto.getUsername(), "租户已停用或已过期");
+                    recordLoginFail(dto.getUsername(), user.getTenantId(), "租户已停用或已过期");
                     throw new BusinessException("租户已停用或已过期，请联系管理员");
                 }
             } catch (BusinessException e) {
@@ -96,26 +136,22 @@ public class AuthServiceImpl implements IAuthService {
             }
         }
 
-        // 6. 查询用户权限
         R<Set<String>> permsResult = systemServiceClient.getPermissionsByUserId(user.getUserId());
         Set<String> permissions = permsResult.getData();
+        R<Set<Long>> dataScopeDeptIdsResult = systemServiceClient.getDataScopeDeptIds(user.getUserId());
+        Set<Long> dataScopeDeptIds = dataScopeDeptIdsResult != null ? dataScopeDeptIdsResult.getData() : null;
 
-        // 7. 构建登录用户信息
-        LoginUser loginUser = buildLoginUser(user, dto.getClientType(), permissions);
+        LoginUser loginUser = buildLoginUser(user, dto.getClientType(), permissions, dataScopeDeptIds);
 
-        // 8. 生成Token
         String accessToken = generateToken();
         String refreshToken = generateToken();
 
-        // 9. 计算过期时间
         Duration tokenExpire = getTokenExpire(dto.getClientType());
         Duration refreshExpire = getRefreshExpire(dto.getClientType());
         loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
 
-        // 10. 处理多端登录限制
         handleMultiLogin(user.getUserId(), dto.getClientType());
 
-        // 11. 缓存Token和用户信息
         String tokenKey = CacheConstants.TOKEN_KEY + accessToken;
         String refreshKey = CacheConstants.REFRESH_TOKEN_KEY + refreshToken;
         String userKey = CacheConstants.LOGIN_USER_KEY + user.getUserId() + ":" + dto.getClientType().getCode();
@@ -124,51 +160,42 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(refreshKey, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, accessToken, tokenExpire);
 
-        // 12. 记录登录成功日志
         recordLoginSuccess(user.getUserId(), dto.getUsername(), dto.getClientType());
 
-        // 13. 返回登录结果
-        return buildLoginVO(accessToken, refreshToken, tokenExpire, user.getUserId(),
+        return buildLoginVO(accessToken, refreshToken, tokenExpire, forceChangePwd, user.getUserId(),
                 user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
     }
 
     @Override
     public LoginVO refreshToken(String refreshToken) {
         if (XuStrUtil.isBlank(refreshToken)) {
-            throw new UnauthorizedException("刷新Token不能为空");
+            throw new UnauthorizedException("刷新 Token 不能为空");
         }
 
         String refreshKey = CacheConstants.REFRESH_TOKEN_KEY + refreshToken;
         String oldAccessToken = redisTemplate.opsForValue().get(refreshKey);
-        
         if (XuStrUtil.isBlank(oldAccessToken)) {
-            throw new UnauthorizedException("刷新Token已过期，请重新登录");
+            throw new UnauthorizedException("刷新 Token 已过期，请重新登录");
         }
 
-        // 获取旧的用户信息
         String oldTokenKey = CacheConstants.TOKEN_KEY + oldAccessToken;
         String userJson = redisTemplate.opsForValue().get(oldTokenKey);
-        
         if (XuStrUtil.isBlank(userJson)) {
             throw new UnauthorizedException("登录已过期，请重新登录");
         }
 
         LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
 
-        // 生成新Token
         String newAccessToken = generateToken();
         String newRefreshToken = generateToken();
 
-        // 计算过期时间
         Duration tokenExpire = getTokenExpire(loginUser.getClientType());
         Duration refreshExpire = getRefreshExpire(loginUser.getClientType());
         loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
 
-        // 删除旧Token
         redisTemplate.delete(oldTokenKey);
         redisTemplate.delete(refreshKey);
 
-        // 缓存新Token
         String newTokenKey = CacheConstants.TOKEN_KEY + newAccessToken;
         String newRefreshKey = CacheConstants.REFRESH_TOKEN_KEY + newRefreshToken;
         String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
@@ -177,7 +204,7 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(newRefreshKey, newAccessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, newAccessToken, tokenExpire);
 
-        return buildLoginVO(newAccessToken, newRefreshToken, tokenExpire, loginUser.getUserId(),
+        return buildLoginVO(newAccessToken, newRefreshToken, tokenExpire, false, loginUser.getUserId(),
                 loginUser.getUsername(), loginUser.getNickname(), loginUser.getAvatar(), loginUser.getPhone());
     }
 
@@ -187,32 +214,28 @@ public class AuthServiceImpl implements IAuthService {
             return;
         }
 
-        // 移除Bearer前缀
         if (token.startsWith("Bearer ")) {
             token = token.substring(7);
         }
 
         String tokenKey = CacheConstants.TOKEN_KEY + token;
         String userJson = redisTemplate.opsForValue().get(tokenKey);
-        
+
         if (XuStrUtil.isNotBlank(userJson)) {
             LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
             String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
             redisTemplate.delete(userKey);
         }
-        
+
         redisTemplate.delete(tokenKey);
         log.info("用户登出成功");
     }
 
-    /**
-     * 校验验证码
-     */
     private void validateCaptcha(String code, String uuid) {
         String captchaKey = CacheConstants.CAPTCHA_KEY + uuid;
         String captcha = redisTemplate.opsForValue().get(captchaKey);
         redisTemplate.delete(captchaKey);
-        
+
         if (XuStrUtil.isBlank(captcha)) {
             throw new BusinessException("验证码已过期");
         }
@@ -221,10 +244,7 @@ public class AuthServiceImpl implements IAuthService {
         }
     }
 
-    /**
-     * 构建登录用户信息
-     */
-    private LoginUser buildLoginUser(UserVO user, ClientType clientType, Set<String> permissions) {
+    private LoginUser buildLoginUser(UserVO user, ClientType clientType, Set<String> permissions, Set<Long> dataScopeDeptIds) {
         return LoginUser.builder()
                 .userId(user.getUserId())
                 .tenantId(user.getTenantId())
@@ -235,23 +255,19 @@ public class AuthServiceImpl implements IAuthService {
                 .phone(user.getPhone())
                 .email(user.getEmail())
                 .clientType(clientType)
+                .loginIp(getClientIp())
                 .loginTime(System.currentTimeMillis())
                 .roleIds(user.getRoleIds())
                 .roleKeys(user.getRoleKeys())
                 .permissions(permissions)
+                .deptIds(dataScopeDeptIds)
                 .build();
     }
 
-    /**
-     * 生成Token
-     */
     private String generateToken() {
         return XuIdUtil.uuid();
     }
 
-    /**
-     * 获取Token过期时间
-     */
     private Duration getTokenExpire(ClientType clientType) {
         return switch (clientType) {
             case PC -> PC_TOKEN_EXPIRE;
@@ -261,9 +277,6 @@ public class AuthServiceImpl implements IAuthService {
         };
     }
 
-    /**
-     * 获取刷新Token过期时间
-     */
     private Duration getRefreshExpire(ClientType clientType) {
         return switch (clientType) {
             case PC -> PC_REFRESH_EXPIRE;
@@ -273,15 +286,26 @@ public class AuthServiceImpl implements IAuthService {
         };
     }
 
-    /**
-     * 构建登录响应VO
-     */
+    private boolean isForceChangePassword(UserVO user) {
+        if (user.getPwdResetFlag() != null && user.getPwdResetFlag() == 1) {
+            return true;
+        }
+        if (PASSWORD_EXPIRE_DAYS > 0 && user.getPwdUpdateTime() != null) {
+            java.time.LocalDateTime expireTime = user.getPwdUpdateTime().plusDays(PASSWORD_EXPIRE_DAYS);
+            return java.time.LocalDateTime.now().isAfter(expireTime);
+        }
+        return false;
+    }
+
     private LoginVO buildLoginVO(String accessToken, String refreshToken, Duration expiresIn,
-                                  Long userId, String username, String nickname, String avatar, String phone) {
+                                 boolean forceChangePassword,
+                                 Long userId, String username, String nickname, String avatar, String phone) {
         return LoginVO.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .expiresIn(expiresIn.toSeconds())
+                .forceChangePassword(forceChangePassword)
+                .requireTotp(false)
                 .userInfo(LoginVO.UserInfoVO.builder()
                         .userId(userId)
                         .username(username)
@@ -292,26 +316,19 @@ public class AuthServiceImpl implements IAuthService {
                 .build();
     }
 
-    /**
-     * 处理多端登录限制（踢掉旧登录）
-     */
     private void handleMultiLogin(Long userId, ClientType clientType) {
-        // PC端限制单设备登录
         if (clientType == ClientType.PC) {
             String userKey = CacheConstants.LOGIN_USER_KEY + userId + ":" + clientType.getCode();
             String oldToken = redisTemplate.opsForValue().get(userKey);
             if (XuStrUtil.isNotBlank(oldToken)) {
                 String oldTokenKey = CacheConstants.TOKEN_KEY + oldToken;
                 redisTemplate.delete(oldTokenKey);
-                log.info("用户[{}]PC端被踢出，新设备登录", userId);
+                log.info("用户[{}]PC 端被踢出，新设备登录", userId);
             }
         }
     }
 
-    /**
-     * 记录登录失败
-     */
-    private void recordLoginFail(String username, String message) {
+    private void recordLoginFail(String username, Long tenantId, String message) {
         log.warn("用户[{}]登录失败: {}", username, message);
         try {
             String userAgent = getUserAgent();
@@ -331,9 +348,6 @@ public class AuthServiceImpl implements IAuthService {
         }
     }
 
-    /**
-     * 记录登录成功
-     */
     private void recordLoginSuccess(Long userId, String username, ClientType clientType) {
         log.info("用户[{}]登录成功, 客户端类型: {}", username, clientType.getCode());
         try {
@@ -355,9 +369,6 @@ public class AuthServiceImpl implements IAuthService {
         }
     }
 
-    /**
-     * 获取当前请求的客户端IP
-     */
     private String getClientIp() {
         try {
             var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
@@ -371,12 +382,12 @@ public class AuthServiceImpl implements IAuthService {
                     ip = request.getRemoteAddr();
                 }
                 if (ip != null && ip.contains(",")) {
-                    ip = ip.substring(0, ip.indexOf(",")).trim();
+                    ip = ip.substring(0, ip.indexOf(',')).trim();
                 }
                 return ip;
             }
         } catch (Exception e) {
-            log.debug("获取客户端IP失败", e);
+            log.debug("获取客户端 IP 失败", e);
         }
         return "unknown";
     }
@@ -388,13 +399,15 @@ public class AuthServiceImpl implements IAuthService {
                 return sra.getRequest().getHeader("User-Agent");
             }
         } catch (Exception e) {
-            log.debug("获取User-Agent失败", e);
+            log.debug("获取 User-Agent 失败", e);
         }
         return null;
     }
 
     private String parseBrowser(String userAgent) {
-        if (userAgent == null || userAgent.isBlank()) return "unknown";
+        if (userAgent == null || userAgent.isBlank()) {
+            return "unknown";
+        }
         String ua = userAgent.toLowerCase();
         if (ua.contains("edg")) return "Edge";
         if (ua.contains("chrome") && !ua.contains("edg")) return "Chrome";
@@ -406,14 +419,13 @@ public class AuthServiceImpl implements IAuthService {
     }
 
     private String resolveLocation(String ip) {
-        if (ip == null || ip.isBlank()) return "未知";
-        if ("127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || ip.startsWith("0:")) return "内网IP";
-        if (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("172.")) return "内网IP";
-        return ip;
+        return HanIpUtil.getLocation(ip);
     }
 
     private String parseOs(String userAgent) {
-        if (userAgent == null || userAgent.isBlank()) return "unknown";
+        if (userAgent == null || userAgent.isBlank()) {
+            return "unknown";
+        }
         if (userAgent.contains("Windows NT 10")) return "Windows 10";
         if (userAgent.contains("Windows NT 11")) return "Windows 11";
         if (userAgent.contains("Windows NT 6.3")) return "Windows 8.1";
@@ -424,5 +436,33 @@ public class AuthServiceImpl implements IAuthService {
         if (userAgent.contains("Linux")) return "Linux";
         if (userAgent.contains("iPhone") || userAgent.contains("iPad")) return "iOS";
         return "unknown";
+    }
+
+    private void checkLoginLockout(String username, Long tenantId) {
+        String key = buildLoginFailKey(username, tenantId);
+        String failCount = redisTemplate.opsForValue().get(key);
+        if (failCount != null && Integer.parseInt(failCount) >= MAX_LOGIN_ATTEMPTS) {
+            Long ttl = redisTemplate.getExpire(key);
+            long minutes = (ttl != null && ttl > 0) ? (ttl + 59) / 60 : LOCKOUT_DURATION.toMinutes();
+            throw new BusinessException("账户已锁定，请" + minutes + "分钟后再试");
+        }
+    }
+
+    private int incrementLoginFail(String username, Long tenantId) {
+        String key = buildLoginFailKey(username, tenantId);
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1L) {
+            redisTemplate.expire(key, LOCKOUT_DURATION);
+        }
+        return MAX_LOGIN_ATTEMPTS - (count != null ? count.intValue() : 1);
+    }
+
+    private void clearLoginFail(String username, Long tenantId) {
+        redisTemplate.delete(buildLoginFailKey(username, tenantId));
+    }
+
+    private String buildLoginFailKey(String username, Long tenantId) {
+        String tenantSegment = tenantId != null ? String.valueOf(tenantId) : "default";
+        return LOGIN_FAIL_KEY + tenantSegment + ":" + username;
     }
 }

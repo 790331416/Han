@@ -89,8 +89,42 @@ public interface SystemServiceClient {
     R<Void> syncRoleMenusByTenantId(@RequestParam("tenantId") Long tenantId, @RequestBody Set<Long> menuIds);
 
     /**
+     * 查询租户管理员用户ID
+     */
+    @GetExchange("/tenant/adminUser")
+    R<Long> getTenantAdminUserId(@RequestParam("tenantId") Long tenantId);
+
+    /**
      * 记录登录日志
      */
     @PostExchange("/loginlog/record")
     R<Void> recordLoginLog(@RequestBody LoginLogDTO dto);
+
+    /**
+     * 更新用户 TOTP 密钥（绑定/解绑 2FA）
+     * @param userId 用户ID
+     * @param secret TOTP 密钥，null 表示解绑
+     */
+    @PostExchange("/user/totp")
+    R<Void> updateTotpSecret(@RequestParam("userId") Long userId, @RequestParam(value = "secret", required = false) String secret);
+
+    /**
+     * 获取用户 TOTP 密钥（仅内部调用，用于登录验证）
+     */
+    @GetExchange("/user/totp/{userId}")
+    R<String> getTotpSecret(@PathVariable("userId") Long userId);
+
+    /**
+     * 查询社交账号绑定的系统用户ID
+     */
+    @GetExchange("/social/bindUser")
+    R<Long> getSocialBindUserId(@RequestParam("provider") String provider, @RequestParam("openId") String openId);
+
+    /**
+     * 绑定社交账号
+     */
+    @PostExchange("/social/bind")
+    R<Void> bindSocialUser(@RequestParam("userId") Long userId, @RequestParam("provider") String provider,
+                            @RequestParam("openId") String openId, @RequestParam(value = "accessToken", required = false) String accessToken,
+                            @RequestParam(value = "nickname", required = false) String nickname, @RequestParam(value = "avatar", required = false) String avatar);
 }

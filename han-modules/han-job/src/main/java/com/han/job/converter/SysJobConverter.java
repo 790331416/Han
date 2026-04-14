@@ -4,6 +4,7 @@ import com.han.job.domain.dto.JobDTO;
 import com.han.job.domain.po.SysJobPo;
 import com.han.job.domain.vo.JobVO;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 import java.util.List;
 
@@ -16,6 +17,7 @@ public interface SysJobConverter {
     /**
      * PO -> DTO
      */
+    @Mapping(source = ".", target = "base")
     JobDTO toDto(SysJobPo po);
 
     /**
@@ -36,5 +38,6 @@ public interface SysJobConverter {
     /**
      * DTO -> PO
      */
+    @Mapping(source = "base", target = ".")
     SysJobPo toPo(JobDTO dto);
 }

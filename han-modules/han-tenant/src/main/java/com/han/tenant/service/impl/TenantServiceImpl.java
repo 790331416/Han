@@ -1,8 +1,6 @@
 package com.han.tenant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.api.system.SystemServiceClient;

@@ -77,7 +77,8 @@ public class SysJobServiceImpl implements ISysJobService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateJob(JobDTO dto) throws SchedulerException {
-        SysJobPo job = jobMapper.selectById(dto.getBase() != null ? dto.getBase().getJobId() : null);
+        Long jobId = dto.getBase() != null ? dto.getBase().getJobId() : null;
+        SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }

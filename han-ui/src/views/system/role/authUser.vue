@@ -38,16 +38,16 @@
 
       <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="用户名" prop="username" width="150" />
-        <el-table-column label="昵称" prop="nickname" width="150" />
-        <el-table-column label="手机号" prop="phone" width="150" />
+        <el-table-column label="用户名" prop="username" min-width="150" show-overflow-tooltip />
+        <el-table-column label="昵称" prop="nickname" min-width="150" show-overflow-tooltip />
+        <el-table-column label="手机号" prop="phone" min-width="150" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" />
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" />
+        <el-table-column label="操作" min-width="120">
           <template #default="{ row }">
             <el-button type="danger" link @click="handleCancel(row)">取消授权</el-button>
           </template>
@@ -67,7 +67,7 @@
     </el-card>
 
     <!-- 添加用户弹窗 -->
-    <el-dialog v-model="addDialogVisible" title="选择用户" width="800px" destroy-on-close>
+    <el-dialog v-model="addDialogVisible" title="选择用户" width="75%" class="dialog-xl" destroy-on-close>
       <el-form :inline="true" :model="addQueryParams" class="mb-4">
         <el-form-item label="用户名">
           <el-input v-model="addQueryParams.username" placeholder="请输入" clearable @keyup.enter="getUnallocatedList" />
@@ -82,9 +82,9 @@
 
       <el-table v-loading="addLoading" :data="unallocatedList" @selection-change="handleAddSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="用户名" prop="username" width="150" />
-        <el-table-column label="昵称" prop="nickname" width="150" />
-        <el-table-column label="手机号" prop="phone" width="150" />
+        <el-table-column label="用户名" prop="username" min-width="150" show-overflow-tooltip />
+        <el-table-column label="昵称" prop="nickname" min-width="150" show-overflow-tooltip />
+        <el-table-column label="手机号" prop="phone" min-width="150" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>

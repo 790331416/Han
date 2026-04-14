@@ -6,17 +6,18 @@ import type { LoginDTO, UserInfo } from '@/types'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(getToken() || '')
-  const _userId = ref<number | null>(null)
+  const _userId = ref<string | number | null>(null)
   const userInfo = ref<UserInfo | null>(null)
-  const tenantId = ref<number | null>(null)
+  const tenantId = ref<string | number | null>(null)
+  const tenantName = ref<string>('')
   const roles = ref<string[]>([])
   const permissions = ref<string[]>([])
 
   const isLogin = computed(() => !!token.value)
-  const userId = computed(() => userInfo.value?.userId)
-  const username = computed(() => userInfo.value?.username)
-  const nickname = computed(() => userInfo.value?.nickname)
-  const avatar = computed(() => userInfo.value?.avatar)
+  const userId = computed(() => userInfo.value?.userId ?? null)
+  const username = computed(() => userInfo.value?.username ?? '')
+  const nickname = computed(() => userInfo.value?.nickname ?? '')
+  const avatar = computed(() => userInfo.value?.avatar ?? '')
 
   async function login(loginForm: LoginDTO) {
     const res = await loginApi(loginForm)
@@ -31,6 +32,7 @@ export const useUserStore = defineStore('user', () => {
     const res = await getUserInfoApi()
     userInfo.value = res.data
     tenantId.value = res.data.tenantId
+    tenantName.value = (res.data as any).tenantName || ''
     roles.value = res.data.roles || []
     permissions.value = res.data.permissions || []
     return res.data
@@ -44,6 +46,8 @@ export const useUserStore = defineStore('user', () => {
     } finally {
       token.value = ''
       userInfo.value = null
+      tenantId.value = null
+      tenantName.value = ''
       roles.value = []
       permissions.value = []
       removeToken()
@@ -54,6 +58,8 @@ export const useUserStore = defineStore('user', () => {
   function resetToken() {
     token.value = ''
     userInfo.value = null
+    tenantId.value = null
+    tenantName.value = ''
     roles.value = []
     permissions.value = []
     removeToken()
@@ -71,7 +77,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   return {
-    token, _userId, userInfo, tenantId, roles, permissions,
+    token, _userId, userInfo, tenantId, tenantName, roles, permissions,
     isLogin, userId, username, nickname, avatar,
     login, getInfo, logout, resetToken, hasPermission, hasRole
   }

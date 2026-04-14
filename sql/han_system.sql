@@ -339,7 +339,26 @@ CREATE TABLE sys_notice (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知公告表';
 
 -- ----------------------------
--- 16. 操作日志表
+-- 16. 用户通知已读状态表
+-- ----------------------------
+DROP TABLE IF EXISTS sys_notice_read;
+CREATE TABLE sys_notice_read (
+    id              BIGINT          NOT NULL                    COMMENT '主键ID',
+    tenant_id       BIGINT          DEFAULT NULL                COMMENT '租户ID',
+    notice_id       BIGINT          NOT NULL                    COMMENT '公告ID',
+    user_id         BIGINT          NOT NULL                    COMMENT '用户ID',
+    read_time       DATETIME        DEFAULT CURRENT_TIMESTAMP   COMMENT '已读时间',
+    create_time     DATETIME        DEFAULT CURRENT_TIMESTAMP   COMMENT '创建时间',
+    update_time     DATETIME        DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    del_flag        TINYINT         DEFAULT 0                   COMMENT '删除标志(0存在 1删除)',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_notice_user (tenant_id, notice_id, user_id),
+    KEY idx_notice_user (tenant_id, user_id, del_flag),
+    KEY idx_notice_id (tenant_id, notice_id, del_flag)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户通知已读状态表';
+
+-- ----------------------------
+-- 17. 操作日志表
 -- ----------------------------
 DROP TABLE IF EXISTS sys_oper_log;
 CREATE TABLE sys_oper_log (

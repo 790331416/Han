@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS sys_user (
     status          INT DEFAULT 0,
     login_ip        VARCHAR(128),
     login_time      TIMESTAMP,
+    pwd_update_time TIMESTAMP,
+    pwd_reset_flag  INT DEFAULT 0,
+    totp_secret     VARCHAR(200),
+    totp_enabled    INT DEFAULT 0,
     create_by       BIGINT,
     create_name     VARCHAR(50),
     update_by       BIGINT,
@@ -130,7 +134,7 @@ CREATE TABLE IF NOT EXISTS sys_dept (
     sort            INT DEFAULT 0,
     dept_name       VARCHAR(50),
     order_num       INT DEFAULT 0,
-    leader          VARCHAR(50),
+    leader_id       BIGINT,
     phone           VARCHAR(20),
     email           VARCHAR(100),
     status          INT DEFAULT 0,
@@ -278,24 +282,52 @@ CREATE TABLE IF NOT EXISTS sys_notice (
 COMMENT ON TABLE sys_notice IS '通知公告表';
 
 -- =============================================
+-- 用户通知已读状态表
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS sys_notice_read (
+    id              BIGSERIAL PRIMARY KEY,
+    tenant_id       BIGINT,
+    notice_id       BIGINT          NOT NULL,
+    user_id         BIGINT          NOT NULL,
+    read_time       TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP,
+    del_flag        INT             DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_sys_notice_read_notice_user
+    ON sys_notice_read (tenant_id, notice_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_sys_notice_read_user
+    ON sys_notice_read (tenant_id, user_id, del_flag);
+
+CREATE INDEX IF NOT EXISTS idx_sys_notice_read_notice
+    ON sys_notice_read (tenant_id, notice_id, del_flag);
+
+COMMENT ON TABLE sys_notice_read IS '用户通知已读状态表';
+
+-- =============================================
 -- 操作日志表
 -- =============================================
 
 CREATE TABLE IF NOT EXISTS sys_oper_log (
-    id              BIGSERIAL PRIMARY KEY,
+    id              BIGINT PRIMARY KEY,
     tenant_id       BIGINT,
-    title           VARCHAR(50),
-    business_type   INT DEFAULT 0,
-    method          VARCHAR(200),
-    request_method  VARCHAR(10),
-    oper_name       VARCHAR(50),
-    oper_url        VARCHAR(500),
-    oper_ip         VARCHAR(128),
+    module          VARCHAR(50) DEFAULT '',
+    oper_type       INT DEFAULT 0,
+    oper_name       VARCHAR(50) DEFAULT '',
+    oper_user_id    BIGINT,
+    dept_name       VARCHAR(50) DEFAULT '',
+    oper_url        VARCHAR(500) DEFAULT '',
+    oper_ip         VARCHAR(128) DEFAULT '',
+    request_method  VARCHAR(10) DEFAULT '',
     oper_param      TEXT,
     json_result     TEXT,
     status          INT DEFAULT 0,
     error_msg       TEXT,
-    oper_time       TIMESTAMP
+    cost_time       BIGINT DEFAULT 0,
+    oper_time       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON TABLE sys_oper_log IS '操作日志记录';
@@ -308,12 +340,13 @@ CREATE TABLE IF NOT EXISTS sys_login_log (
     id              BIGSERIAL PRIMARY KEY,
     tenant_id       BIGINT,
     username        VARCHAR(50),
-    ipaddr          VARCHAR(128),
+    ip_addr         VARCHAR(128),
     login_location  VARCHAR(255),
+    client_type     VARCHAR(20) DEFAULT '',
     browser         VARCHAR(50),
     os              VARCHAR(50),
     status          INT DEFAULT 0,
-    msg             VARCHAR(255),
+    message         VARCHAR(255),
     login_time      TIMESTAMP
 );
 
@@ -336,9 +369,11 @@ CREATE TABLE IF NOT EXISTS sys_job (
     create_by       VARCHAR(50),
     create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_by       VARCHAR(50),
-    update_time     TIMESTAMP
+    update_time     TIMESTAMP,
+    tenant_id       BIGINT DEFAULT 0
 );
 
+CREATE INDEX IF NOT EXISTS idx_job_tenant ON sys_job(tenant_id);
 COMMENT ON TABLE sys_job IS '定时任务调度表';
 
 CREATE TABLE IF NOT EXISTS sys_job_log (
@@ -352,11 +387,35 @@ CREATE TABLE IF NOT EXISTS sys_job_log (
     exception_info  TEXT,
     start_time      TIMESTAMP,
     stop_time       TIMESTAMP,
-    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    tenant_id       BIGINT DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_job_log_trace_id ON sys_job_log(trace_id);
 CREATE INDEX IF NOT EXISTS idx_job_log_job_name ON sys_job_log(job_name);
+CREATE INDEX IF NOT EXISTS idx_job_log_tenant ON sys_job_log(tenant_id);
+
+-- =============================================
+-- 租户配额表
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS sys_tenant_quota (
+    quota_id        BIGSERIAL PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL,
+    user_limit      INTEGER DEFAULT -1,
+    storage_limit   BIGINT DEFAULT -1,
+    api_limit       BIGINT DEFAULT -1,
+    user_used       INTEGER DEFAULT 0,
+    storage_used    BIGINT DEFAULT 0,
+    api_used        BIGINT DEFAULT 0,
+    reset_cycle     VARCHAR(20) DEFAULT 'monthly',
+    last_reset_time TIMESTAMP,
+    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_quota_tid ON sys_tenant_quota(tenant_id);
+COMMENT ON TABLE sys_tenant_quota IS '租户配额表';
 
 -- =============================================
 -- 租户表

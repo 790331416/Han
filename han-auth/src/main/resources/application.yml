@@ -12,12 +12,21 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:han}
+        namespace: ${NACOS_NAMESPACE:}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
-        namespace: ${NACOS_NAMESPACE:han}
+        namespace: ${NACOS_NAMESPACE:}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
+
+han:
+  deploy:
+    tier: ${HAN_DEPLOY_TIER:medium}
+  security:
+    inner-auth:
+      enabled: ${HAN_INNER_AUTH_ENABLED:true}
+      secret: ${HAN_INNER_AUTH_SECRET:han-cloud-inner-auth}
+      clock-skew-seconds: ${HAN_INNER_AUTH_CLOCK_SKEW_SECONDS:300}

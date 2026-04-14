@@ -1,5 +1,6 @@
 package com.han.tenant.controller;
 
+import com.han.api.system.SystemServiceClient;
 import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.RequiresPermission;
@@ -25,6 +26,7 @@ public class TenantController {
 
     private final ITenantService tenantService;
     private final ITenantQuotaService tenantQuotaService;
+    private final SystemServiceClient systemServiceClient;
 
     @RequiresPermission("tenant:list")
     @GetMapping("/list")
@@ -95,6 +97,12 @@ public class TenantController {
     @GetMapping("/checkUserLimit/{tenantId}")
     public R<Boolean> checkUserLimit(@PathVariable Long tenantId) {
         return R.ok(tenantService.checkUserLimit(tenantId));
+    }
+
+    @RequiresPermission("tenant:query")
+    @GetMapping("/adminUser")
+    public R<Long> getAdminUser(@RequestParam Long tenantId) {
+        return systemServiceClient.getTenantAdminUserId(tenantId);
     }
 
     // ==================== 配额管理 ====================

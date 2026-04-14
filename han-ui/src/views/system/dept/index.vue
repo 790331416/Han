@@ -32,18 +32,18 @@
 
       <el-table v-loading="loading" :data="deptList" row-key="id" :default-expand-all="isExpand" :tree-props="{ children: 'children' }">
         <el-table-column label="部门名称" prop="deptName" min-width="200" />
-        <el-table-column label="负责人" prop="leaderName" width="120">
+        <el-table-column label="负责人" prop="leaderName" min-width="120">
           <template #default="{ row }">{{ row.leaderName || '—' }}</template>
         </el-table-column>
-        <el-table-column label="联系电话" prop="phone" width="150" />
+        <el-table-column label="联系电话" prop="phone" min-width="150" />
         <el-table-column label="排序" prop="sort" width="70" align="center" />
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 0 ? 'success' : 'danger'" size="small">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" prop="createTime" width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
+        <el-table-column label="操作" min-width="220">
           <template #default="{ row }">
             <el-button type="primary" link :icon="Plus" @click="handleAdd(row.id)">新增</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -54,7 +54,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="上级部门">
           <el-tree-select v-model="form.parentId" :data="deptOptions" node-key="id"

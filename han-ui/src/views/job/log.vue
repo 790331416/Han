@@ -51,7 +51,6 @@
       <!-- 数据表格 -->
       <el-table v-loading="loading" :data="logList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="日志ID" prop="jobLogId" width="80" align="center" />
         <el-table-column label="任务名称" prop="jobName" min-width="150" show-overflow-tooltip />
         <el-table-column label="任务组" prop="jobGroup" width="100" align="center">
           <template #default="{ row }">
@@ -70,8 +69,8 @@
           </template>
         </el-table-column>
         <el-table-column label="耗时(ms)" prop="costTime" width="100" align="center" />
-        <el-table-column label="开始时间" prop="startTime" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="开始时间" prop="startTime" min-width="180" />
+        <el-table-column label="操作" min-width="100">
           <template #default="{ row }">
             <el-button type="primary" link :icon="View" @click="handleDetail(row)">详情</el-button>
           </template>
@@ -93,7 +92,7 @@
     </el-card>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="日志详情" width="700px">
+    <el-dialog v-model="detailVisible" title="日志详情" width="65%" class="dialog-lg">
       <el-descriptions :column="2" border>
         <el-descriptions-item label="日志ID">{{ detailData.jobLogId }}</el-descriptions-item>
         <el-descriptions-item label="任务名称">{{ detailData.jobName }}</el-descriptions-item>

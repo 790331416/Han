@@ -2,9 +2,9 @@
   <div class="sidebar">
     <div class="logo">
       <div class="logo-icon">H</div>
-      <span class="logo-text" v-if="appStore.sidebar.opened">HAN Cloud</span>
+      <span v-if="appStore.sidebar.opened" class="logo-text">HAN Cloud</span>
     </div>
-    
+
     <el-scrollbar>
       <el-menu
         :default-active="activeMenu"
@@ -26,7 +26,7 @@
               <el-icon v-if="menuMeta(route).icon"><component :is="menuMeta(route).icon" /></el-icon>
               <template #title>{{ menuMeta(route).title }}</template>
             </el-menu-item>
-            
+
             <el-sub-menu v-else :index="route.path">
               <template #title>
                 <el-icon v-if="route.meta?.icon"><component :is="route.meta.icon" /></el-icon>
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, type RouteRecordRaw } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
@@ -59,29 +59,48 @@ const route = useRoute()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
+const TIER_LEVEL: Record<string, number> = { small: 0, medium: 1, full: 2 }
+const currentTierLevel = computed(() => TIER_LEVEL[appStore.deployTier || import.meta.env.VITE_DEPLOY_TIER || 'full'] ?? 2)
+
+onMounted(() => {
+  if (!appStore.capabilitiesLoaded) {
+    appStore.loadRuntimeCapabilities()
+  }
+})
+
+function isTierAvailable(tier?: string): boolean {
+  return (TIER_LEVEL[tier || 'small'] ?? 0) <= currentTierLevel.value
+}
+
 function hasPermission(route: RouteRecordRaw): boolean {
   if (!route.meta?.permission) return true
   return userStore.hasPermission(route.meta.permission as string)
 }
 
 function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
-  return routes.filter(r => {
-    if (r.path === '/login' || r.path === '/404') return false
-    if (!hasPermission(r) && !r.children?.some(c => hasPermission(c))) return false
-    return true
-  }).map(r => {
-    if (r.children) {
-      return { ...r, children: r.children.filter(c => hasPermission(c)) }
-    }
-    return r
-  })
+  return routes
+    .filter((r) => {
+      if (r.path === '/login' || r.path === '/404') return false
+      if (!isTierAvailable(r.meta?.tier as string)) return false
+      if (!hasPermission(r) && !r.children?.some((c) => hasPermission(c))) return false
+      return true
+    })
+    .map((r) => {
+      if (r.children) {
+        return {
+          ...r,
+          children: r.children.filter((c) => isTierAvailable(c.meta?.tier as string) && hasPermission(c))
+        }
+      }
+      return r
+    })
 }
 
 const routes = computed(() => filterRoutes(constantRoutes))
 const activeMenu = computed(() => route.path)
 
 function visibleChildren(route: RouteRecordRaw) {
-  return (route.children || []).filter(c => !c.meta?.hidden)
+  return (route.children || []).filter((c) => !c.meta?.hidden)
 }
 
 function menuMeta(route: RouteRecordRaw) {
@@ -113,7 +132,7 @@ function resolvePath(parentPath: string, childPath?: string) {
   padding: 0 16px;
   gap: 12px;
   border-bottom: 1px solid #f3f4f6;
-  
+
   .logo-icon {
     width: 32px;
     height: 32px;
@@ -127,7 +146,7 @@ function resolvePath(parentPath: string, childPath?: string) {
     font-size: 16px;
     flex-shrink: 0;
   }
-  
+
   .logo-text {
     color: #111827;
     font-size: 15px;
@@ -140,7 +159,7 @@ function resolvePath(parentPath: string, childPath?: string) {
 :deep(.el-menu) {
   border-right: none !important;
   padding: 8px;
-  
+
   .el-menu-item,
   .el-sub-menu__title {
     height: 40px;
@@ -150,26 +169,53 @@ function resolvePath(parentPath: string, childPath?: string) {
     font-size: 14px;
     font-weight: 500;
     transition: all 0.15s ease;
-    
+
     &:hover {
       background-color: #f3f4f6 !important;
       color: #111827 !important;
     }
   }
-  
+
   .el-menu-item.is-active {
     background-color: #eff6ff !important;
     color: #2563eb !important;
     font-weight: 600;
   }
-  
+
   .el-sub-menu .el-menu-item {
     padding-left: 48px !important;
     font-weight: 400;
   }
-  
+
   .el-icon {
     font-size: 18px;
+  }
+}
+
+html.dark {
+  .logo {
+    border-bottom-color: #1f2937;
+
+    .logo-text {
+      color: #f9fafb;
+    }
+  }
+
+  :deep(.el-menu) {
+    .el-menu-item,
+    .el-sub-menu__title {
+      color: #9ca3af !important;
+
+      &:hover {
+        background-color: #1f2937 !important;
+        color: #f9fafb !important;
+      }
+    }
+
+    .el-menu-item.is-active {
+      background-color: #172554 !important;
+      color: #3b82f6 !important;
+    }
   }
 }
 </style>
