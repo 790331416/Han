@@ -56,7 +56,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Job',
     component: () => import('@/layout/index.vue'),
     redirect: '/job/list',
-    meta: { title: '任务调度', icon: 'Timer', tier: 'medium' },
+    meta: { title: '任务调度', icon: 'Timer', tier: 'small', module: 'job' },
     children: [
       {
         path: 'list',
@@ -77,7 +77,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Workflow',
     component: () => import('@/layout/index.vue'),
     redirect: '/workflow/definition',
-    meta: { title: '工作流', icon: 'Connection', tier: 'full' },
+    meta: { title: '工作流', icon: 'Connection', tier: 'medium', module: 'workflow', feature: 'workflow' },
     children: [
       {
         path: 'definition',
@@ -164,19 +164,19 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'tenant',
         name: 'Tenant',
         component: () => import('@/views/system/tenant/index.vue'),
-        meta: { title: '租户管理', icon: 'Coin', permission: 'tenant:list', tier: 'medium' }
+        meta: { title: '租户管理', icon: 'Coin', permission: 'tenant:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'tenant-package',
         name: 'TenantPackage',
         component: () => import('@/views/system/tenant/package.vue'),
-        meta: { title: '租户套餐', icon: 'ShoppingBag', permission: 'tenant:package:list', tier: 'medium' }
+        meta: { title: '租户套餐', icon: 'ShoppingBag', permission: 'tenant:package:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'tenant-quota',
         name: 'TenantQuota',
         component: () => import('@/views/system/tenant/quota.vue'),
-        meta: { title: '资源配额', icon: 'PieChart', permission: 'tenant:quota:query', tier: 'medium' }
+        meta: { title: '资源配额', icon: 'PieChart', permission: 'tenant:quota:query', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
       },
       {
         path: 'config',
@@ -224,7 +224,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'oss-config',
         name: 'OssConfig',
         component: () => import('@/views/system/oss-config/index.vue'),
-        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'full' }
+        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium', feature: 'ossConfig' }
       }
     ]
   },
@@ -232,9 +232,21 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/ai',
     name: 'AI',
     component: () => import('@/layout/index.vue'),
-    redirect: '/ai/model',
-    meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full' },
+    redirect: '/ai/application',
+    meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full', module: 'ai', feature: 'ai' },
     children: [
+      {
+        path: 'application',
+        name: 'AiApplication',
+        component: () => import('@/views/ai/application/index.vue'),
+        meta: { title: 'AI应用', icon: 'Grid' }
+      },
+      {
+        path: 'application/:type/:id',
+        name: 'AiApplicationDetail',
+        component: () => import('@/views/ai/application/detail.vue'),
+        meta: { title: '应用详情', icon: 'Grid', hidden: true }
+      },
       {
         path: 'model',
         name: 'AiModel',
@@ -302,7 +314,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'Open',
     component: () => import('@/layout/index.vue'),
     redirect: '/open/app',
-    meta: { title: '开放平台', icon: 'Platform', tier: 'medium' },
+    meta: { title: '开放平台', icon: 'Platform', tier: 'medium', module: 'open', feature: 'openPlatform' },
     children: [
       {
         path: 'app',
@@ -312,12 +324,32 @@ export const constantRoutes: RouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/tool',
+    name: 'Tool',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/tool/gen',
+    meta: { title: '开发工具', icon: 'Tools', tier: 'medium', module: 'gen', feature: 'gen' },
+    children: [
+      {
+        path: 'gen',
+        name: 'ToolGen',
+        component: () => import('@/views/tool/gen/index.vue'),
+        meta: { title: '代码生成', icon: 'Tools', permission: 'tool:gen:list' }
+      }
+    ]
+  },
   // {
   //   path: '/embed/chat/:agentId',
   //   name: 'EmbedChat',
   //   component: () => import('@/views/ai/embed/chat.vue'),
   //   meta: { title: 'AI对话' }
-  // }
+  // },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404',
+    meta: { hidden: true }
+  }
 ]
 
 const router = createRouter({

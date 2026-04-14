@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="gen-page">
     <!-- 搜索 -->
     <el-card shadow="never" class="search-form">
       <el-form :inline="true" :model="queryParams">
@@ -18,11 +18,11 @@
       <template #header>
         <div class="card-header">
           <span>代码生成</span>
-          <el-button type="primary" :icon="Upload" @click="showImportDialog = true">导入表</el-button>
+          <el-button type="primary" :icon="Upload" data-testid="gen-import-button" @click="showImportDialog = true">导入表</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="tableList">
+      <el-table v-loading="loading" :data="tableList" data-testid="gen-table">
         <el-table-column label="表名称" prop="tableName" min-width="180" show-overflow-tooltip />
         <el-table-column label="表描述" prop="tableComment" min-width="180" show-overflow-tooltip />
         <el-table-column label="包路径" prop="packageName" min-width="200" show-overflow-tooltip />

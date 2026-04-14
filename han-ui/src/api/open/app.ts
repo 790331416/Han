@@ -51,7 +51,10 @@ export function addOpenApp(data: OpenAppForm) {
 }
 
 export function updateOpenApp(data: OpenAppForm) {
-  return post<void>('/open/app/edit', data)
+  return post<void>('/open/app/edit', {
+    ...data,
+    id: data.appId ?? undefined
+  })
 }
 
 export function deleteOpenApp(id: string | number) {

@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-workflow-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="工作流名称" prop="workflowName">
@@ -21,13 +21,15 @@
       <template #header>
         <div class="card-header">
           <span>AI工作流管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">创建工作流</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-workflow-create-button" @click="handleAdd">
+            创建工作流
+          </el-button>
         </div>
       </template>
 
-      <el-row :gutter="20" v-loading="loading">
+      <el-row :gutter="20" v-loading="loading" data-testid="ai-workflow-list">
         <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="wf in workflowList" :key="wf.workflowId" class="wf-col">
-          <el-card shadow="hover" class="wf-card">
+          <el-card shadow="hover" class="wf-card" data-testid="ai-workflow-card">
             <div class="wf-card-header">
               <el-icon :size="28" :color="wf.published === '1' ? '#67c23a' : '#909399'"><ChatDotRound /></el-icon>
               <div class="wf-card-actions">
@@ -72,7 +74,7 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.workflowId ? '编辑工作流' : '创建工作流'" width="70%" class="dialog-xl" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" data-testid="ai-workflow-form">
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="工作流名称" prop="workflowName">
@@ -149,7 +151,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, ChatDotRound, MoreFilled, Promotion, Loading } from '@element-plus/icons-vue'
 import {
@@ -161,6 +163,7 @@ import {
 } from '@/api/ai'
 import type { FormInstance, FormRules } from 'element-plus'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const workflowList = ref<AiWorkflow[]>([])
@@ -296,6 +299,42 @@ const handleChat = (wf: AiWorkflow) => {
   chatVisible.value = true
 }
 
+async function handleRouteAction() {
+  const action = String(route.query.action || '')
+  if (!action) {
+    return
+  }
+
+  if (action === 'create') {
+    await handleAdd()
+    clearRouteAction()
+    return
+  }
+
+  if (action === 'chat' && route.query.workflowId) {
+    const workflowId = String(route.query.workflowId)
+    const target = workflowList.value.find((item) => String(item.workflowId) === workflowId)
+    if (target) {
+      handleChat(target)
+    } else {
+      try {
+        const res = await getAiWorkflow(workflowId)
+        handleChat(res.data)
+      } catch {
+        // ignore
+      }
+    }
+    clearRouteAction()
+  }
+}
+
+function clearRouteAction() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.action
+  delete nextQuery.workflowId
+  router.replace({ path: route.path, query: nextQuery })
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
     if (chatMessagesRef.value) {
@@ -330,7 +369,10 @@ const handleSendMessage = async () => {
   }
 }
 
-onMounted(() => getList())
+onMounted(async () => {
+  await getList()
+  await handleRouteAction()
+})
 </script>
 
 <style lang="scss" scoped>

@@ -3,7 +3,7 @@
 # 适用: 测试环境 / 小团队生产
 # 硬件: 4核8GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6.0 + Nacos 3.1.1 + RustFS
-# 服务: gateway, auth, system, tenant, job, open
+# 服务: gateway, auth, system, tenant, workflow, job, file, open
 # =============================================
 
 x-db-env: &db-env
@@ -54,7 +54,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/02-ai.sql
+      - ./sql/postgres/init-base-data.sql:/docker-entrypoint-initdb.d/02-base-data.sql
+      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/03-ai.sql
+      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/04-oss.sql
     networks:
       - han-network
     healthcheck:
@@ -149,6 +151,7 @@ services:
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES: .*
       HAN_DEPLOY_TIER: medium
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
       JAVA_OPTS: -Xms256m -Xmx256m -Dio.netty.transport.noNative=true
@@ -191,6 +194,9 @@ services:
     container_name: han-system
     environment:
       <<: *service-env
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
     ports:
       - "9201:9201"
     depends_on:
@@ -258,10 +264,11 @@ services:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
     container_name: han-file
     environment:
-      <<: [*redis-env, *nacos-env]
+      <<: [*db-env, *redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: medium
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: hanadmin
       RUSTFS_SECRET_KEY: han@2026
@@ -270,6 +277,8 @@ services:
     ports:
       - "9207:9207"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       nacos:

@@ -7,6 +7,7 @@ import com.han.gen.domain.GenTable;
 import com.han.gen.service.GenTableService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/gen")
 @RequiredArgsConstructor
+@PreAuthorize("@ss.hasAuthority('tool:gen:list')")
 public class GenController {
 
     private final GenTableService genTableService;

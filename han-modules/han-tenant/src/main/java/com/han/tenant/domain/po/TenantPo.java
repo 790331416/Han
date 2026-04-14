@@ -1,6 +1,7 @@
 package com.han.tenant.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.han.common.mybatis.domain.entity.BizEntity;
 import lombok.Data;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_tenant")
+@JsonIgnoreProperties({"tenantId"})
 public class TenantPo extends BizEntity {
 
     /** 租户名称 */

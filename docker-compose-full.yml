@@ -3,7 +3,7 @@
 # 适用: 生产环境 / 完整功能
 # 硬件: 8核16GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1 + RustFS
-# 服务: gateway, auth, system, tenant, job, open, workflow, file, ai
+# 服务: gateway, auth, system, tenant, job, open, workflow, file, ai, gen
 # =============================================
 
 x-db-env: &db-env
@@ -54,7 +54,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/02-ai.sql
+      - ./sql/postgres/init-base-data.sql:/docker-entrypoint-initdb.d/02-base-data.sql
+      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/03-ai.sql
+      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/04-oss.sql
     networks:
       - han-network
     healthcheck:
@@ -149,6 +151,7 @@ services:
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES: .*
       HAN_DEPLOY_TIER: full
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
       JAVA_OPTS: -Xms256m -Xmx512m -Dio.netty.transport.noNative=true
@@ -191,6 +194,10 @@ services:
     container_name: han-system
     environment:
       <<: *service-env
+      HAN_GEN_ENABLED: "true"
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: hanadmin
+      RUSTFS_SECRET_KEY: han@2026
     ports:
       - "9201:9201"
     depends_on:
@@ -275,10 +282,11 @@ services:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
     container_name: han-file
     environment:
-      <<: [*nacos-env]
+      <<: [*db-env, *redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: full
       HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: hanadmin
       RUSTFS_SECRET_KEY: han@2026
@@ -287,6 +295,10 @@ services:
     ports:
       - "9207:9207"
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       rustfs:
@@ -299,8 +311,40 @@ services:
     container_name: han-ai
     environment:
       <<: *service-env
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      HAN_AI_PROVIDER_QWEN_API_KEY: ${HAN_AI_PROVIDER_QWEN_API_KEY:-}
+      HAN_AI_PROVIDER_DEEPSEEK_API_KEY: ${HAN_AI_PROVIDER_DEEPSEEK_API_KEY:-}
+      HAN_AI_PROVIDER_OPENAI_API_KEY: ${HAN_AI_PROVIDER_OPENAI_API_KEY:-}
+      HAN_AI_PROVIDER_ZHIPU_API_KEY: ${HAN_AI_PROVIDER_ZHIPU_API_KEY:-}
+      HAN_AI_PROVIDER_OLLAMA_API_KEY: ${HAN_AI_PROVIDER_OLLAMA_API_KEY:-}
+      HAN_AI_PROVIDER_AZURE_OPENAI_API_KEY: ${HAN_AI_PROVIDER_AZURE_OPENAI_API_KEY:-}
+      HAN_AI_PROVIDER_ANTHROPIC_API_KEY: ${HAN_AI_PROVIDER_ANTHROPIC_API_KEY:-}
+      HAN_AI_PROVIDER_SILICONFLOW_API_KEY: ${HAN_AI_PROVIDER_SILICONFLOW_API_KEY:-}
+      JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
     ports:
       - "9208:9208"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  gen:
+    image: ${HAN_GEN_IMAGE:-han-gen:latest}
+    container_name: han-gen
+    environment:
+      <<: *service-env
     depends_on:
       postgres:
         condition: service_healthy

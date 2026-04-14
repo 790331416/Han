@@ -9,6 +9,7 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
+  const shouldOpenBrowser = env.VITE_OPEN_BROWSER !== 'false'
   
   return {
     base: env.VITE_PUBLIC_PATH || '/',
@@ -38,7 +39,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: Number(env.VITE_PORT) || 80,
-      open: true,
+      open: shouldOpenBrowser,
       proxy: {
         '/dev-api': {
           target: 'http://10.18.35.95:9090',

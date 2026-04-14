@@ -22,12 +22,13 @@
             <el-menu-item
               v-if="visibleChildren(route).length <= 1"
               :index="resolvePath(route.path, visibleChildren(route)[0]?.path)"
+              :data-testid="menuTestId(route, visibleChildren(route)[0])"
             >
               <el-icon v-if="menuMeta(route).icon"><component :is="menuMeta(route).icon" /></el-icon>
               <template #title>{{ menuMeta(route).title }}</template>
             </el-menu-item>
 
-            <el-sub-menu v-else :index="route.path">
+            <el-sub-menu v-else :index="route.path" :data-testid="menuTestId(route)">
               <template #title>
                 <el-icon v-if="route.meta?.icon"><component :is="route.meta.icon" /></el-icon>
                 <span>{{ route.meta?.title }}</span>
@@ -36,6 +37,7 @@
                 v-for="child in visibleChildren(route)"
                 :key="child.path"
                 :index="resolvePath(route.path, child.path)"
+                :data-testid="menuTestId(route, child)"
               >
                 <el-icon v-if="child.meta?.icon"><component :is="child.meta.icon" /></el-icon>
                 <template #title>{{ child.meta?.title }}</template>
@@ -72,6 +74,31 @@ function isTierAvailable(tier?: string): boolean {
   return (TIER_LEVEL[tier || 'small'] ?? 0) <= currentTierLevel.value
 }
 
+function isModuleEnabled(moduleName?: string): boolean {
+  if (!moduleName) {
+    return true
+  }
+  if (!appStore.capabilitiesLoaded || appStore.enabledModules.length === 0) {
+    return true
+  }
+  return appStore.enabledModules.includes(moduleName)
+}
+
+function isFeatureAvailable(featureName?: string): boolean {
+  if (!featureName) {
+    return true
+  }
+  if (!appStore.capabilitiesLoaded) {
+    return true
+  }
+  return appStore.isFeatureEnabled(featureName)
+}
+
+function isRuntimeAvailable(route: RouteRecordRaw): boolean {
+  return isModuleEnabled(route.meta?.module as string | undefined) &&
+    isFeatureAvailable(route.meta?.feature as string | undefined)
+}
+
 function hasPermission(route: RouteRecordRaw): boolean {
   if (!route.meta?.permission) return true
   return userStore.hasPermission(route.meta.permission as string)
@@ -82,6 +109,7 @@ function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
     .filter((r) => {
       if (r.path === '/login' || r.path === '/404') return false
       if (!isTierAvailable(r.meta?.tier as string)) return false
+      if (!isRuntimeAvailable(r)) return false
       if (!hasPermission(r) && !r.children?.some((c) => hasPermission(c))) return false
       return true
     })
@@ -89,11 +117,16 @@ function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
       if (r.children) {
         return {
           ...r,
-          children: r.children.filter((c) => isTierAvailable(c.meta?.tier as string) && hasPermission(c))
+          children: r.children.filter((c) =>
+            isTierAvailable(c.meta?.tier as string) &&
+            isRuntimeAvailable(c) &&
+            hasPermission(c)
+          )
         }
       }
       return r
     })
+    .filter((r) => !r.children || r.children.length > 0)
 }
 
 const routes = computed(() => filterRoutes(constantRoutes))
@@ -115,6 +148,12 @@ function resolvePath(parentPath: string, childPath?: string) {
   if (!childPath) return parentPath
   if (parentPath === '/') return '/' + childPath
   return parentPath + '/' + childPath
+}
+
+function menuTestId(route: RouteRecordRaw, child?: RouteRecordRaw) {
+  const target = child ?? route
+  const name = typeof target.name === 'string' ? target.name : resolvePath(route.path, child?.path || target.path)
+  return `sidebar-menu-${name.toLowerCase()}`
 }
 </script>
 

@@ -44,27 +44,27 @@
       <NotifyBell />
 
       <!-- 租户切换 -->
-      <div class="tenant-switcher" @click="openTenantDialog" v-if="userStore.tenantName">
+      <div class="tenant-switcher" data-testid="tenant-switcher" @click="openTenantDialog" v-if="userStore.tenantName">
         <el-icon><OfficeBuilding /></el-icon>
         <span class="tenant-name">{{ userStore.tenantName || '默认租户' }}</span>
         <el-icon><ArrowDown /></el-icon>
       </div>
 
       <el-dropdown trigger="click">
-        <div class="avatar-wrapper">
+        <div class="avatar-wrapper" data-testid="navbar-user-menu">
           <el-avatar :size="32" :src="userStore.avatar || defaultAvatar" />
           <span class="username">{{ userStore.nickname || userStore.username }}</span>
           <el-icon><ArrowDown /></el-icon>
         </div>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="router.push('/')">
+            <el-dropdown-item data-testid="navbar-home" @click="router.push('/')">
               <el-icon><HomeFilled /></el-icon>首页
             </el-dropdown-item>
-            <el-dropdown-item @click="handleProfile">
+            <el-dropdown-item data-testid="navbar-profile" @click="handleProfile">
               <el-icon><User /></el-icon>个人中心
             </el-dropdown-item>
-            <el-dropdown-item divided @click="handleLogout">
+            <el-dropdown-item divided data-testid="navbar-logout" @click="handleLogout">
               <el-icon><SwitchButton /></el-icon>退出登录
             </el-dropdown-item>
           </el-dropdown-menu>

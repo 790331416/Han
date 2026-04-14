@@ -1,12 +1,12 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="tenant-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" :inline="true">
         <el-form-item label="租户名称" prop="tenantName">
-          <el-input v-model="queryParams.tenantName" placeholder="请输入" clearable @keyup.enter="handleQuery" />
+          <el-input v-model="queryParams.tenantName" placeholder="请输入租户名称" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="联系人" prop="contactName">
-          <el-input v-model="queryParams.contactName" placeholder="请输入" clearable @keyup.enter="handleQuery" />
+          <el-input v-model="queryParams.contactName" placeholder="请输入联系人" clearable @keyup.enter="handleQuery" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="queryParams.status">
@@ -26,11 +26,11 @@
       <template #header>
         <div class="card-header">
           <span>租户列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增租户</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="tenant-add-button" @click="handleAdd">新增租户</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="tenantList">
+      <el-table v-loading="loading" :data="tenantList" data-testid="tenant-table">
         <el-table-column label="租户名称" prop="tenantName" min-width="180" show-overflow-tooltip />
         <el-table-column label="联系人" prop="contactName" min-width="120" show-overflow-tooltip />
         <el-table-column label="联系电话" prop="contactPhone" min-width="140" />
@@ -49,9 +49,9 @@
         <el-table-column label="创建时间" prop="createTime" min-width="180" />
         <el-table-column label="操作" min-width="260">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="warning" link :icon="Key" @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link :icon="Edit" :data-testid="`tenant-edit-button-${row.tenantId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="warning" link :icon="Key" :data-testid="`tenant-reset-pwd-button-${row.tenantId}`" @click="handleResetPwd(row)">重置密码</el-button>
+            <el-button type="danger" link :icon="Delete" :data-testid="`tenant-delete-button-${row.tenantId}`" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -69,7 +69,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close data-testid="tenant-dialog">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="租户名称" prop="tenantName">
           <el-input v-model="form.tenantName" placeholder="请输入租户名称" />

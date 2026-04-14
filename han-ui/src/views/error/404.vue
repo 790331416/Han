@@ -1,5 +1,5 @@
 <template>
-  <div class="error-page">
+  <div class="error-page" data-testid="error-404-page">
     <div class="error-content">
       <h1 class="error-code">404</h1>
       <p class="error-desc">抱歉，您访问的页面不存在</p>

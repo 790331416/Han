@@ -17,6 +17,10 @@ public class TaskQueryDTO implements Serializable {
      */
     private String processName;
 
+    private String processDefinitionName;
+
+    private String taskName;
+
     /**
      * 流程分类
      */
@@ -27,6 +31,10 @@ public class TaskQueryDTO implements Serializable {
      */
     private String businessKey;
 
+    private String status;
+
+    private String assignee;
+
     /**
      * 当前页
      */
@@ -36,4 +44,11 @@ public class TaskQueryDTO implements Serializable {
      * 每页大小
      */
     private Integer pageSize = 10;
+
+    public String resolveProcessName() {
+        if (processDefinitionName != null && !processDefinitionName.isBlank()) {
+            return processDefinitionName;
+        }
+        return processName;
+    }
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-prompt-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="模板名称" prop="templateName">
@@ -27,11 +27,11 @@
       <template #header>
         <div class="card-header">
           <span>Prompt模板列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增模板</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-prompt-create-button" @click="handleAdd">新增模板</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="templateList">
+      <el-table v-loading="loading" :data="templateList" data-testid="ai-prompt-table">
         <el-table-column label="模板名称" prop="templateName" min-width="150" show-overflow-tooltip />
         <el-table-column label="分类" width="120" align="center">
           <template #default="{ row }">
@@ -64,9 +64,9 @@
         <el-table-column label="创建时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="info" link @click="handlePreview(row)">预览</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
+            <el-button type="info" link data-testid="ai-prompt-preview-button" @click="handlePreview(row)">预览</el-button>
+            <el-button type="primary" link :icon="Edit" data-testid="ai-prompt-edit-button" @click="handleEdit(row)" :disabled="row.builtIn === 1">编辑</el-button>
+            <el-button type="danger" link :icon="Delete" data-testid="ai-prompt-delete-button" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -80,9 +80,9 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.templateId ? '编辑模板' : '新增模板'" width="65%" class="dialog-lg" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" data-testid="ai-prompt-form">
         <el-form-item label="模板名称" prop="templateName">
-          <el-input v-model="form.templateName" placeholder="请输入模板名称" />
+          <el-input v-model="form.templateName" data-testid="ai-prompt-name-input" placeholder="请输入模板名称" />
         </el-form-item>
         <el-form-item label="分类" prop="category">
           <el-select v-model="form.category" placeholder="请选择分类">
@@ -90,10 +90,10 @@
           </el-select>
         </el-form-item>
         <el-form-item label="模板内容" prop="content">
-          <el-input v-model="form.content" type="textarea" :rows="6" placeholder="请输入模板内容，支持 {{变量名}} 占位符" />
+          <el-input v-model="form.content" data-testid="ai-prompt-content-input" type="textarea" :rows="6" placeholder="请输入模板内容，支持 {{变量名}} 占位符" />
         </el-form-item>
         <el-form-item label="变量列表" prop="variables">
-          <el-input v-model="form.variables" placeholder='JSON数组，如 ["name","topic"]（可选）' />
+          <el-input v-model="form.variables" data-testid="ai-prompt-variables-input" placeholder='JSON数组，如 ["name","topic"]（可选）' />
         </el-form-item>
         <el-form-item label="场景说明" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="模板使用场景说明" />
@@ -107,12 +107,13 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitLoading" data-testid="ai-prompt-submit-button" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
 
     <!-- 预览对话框 -->
     <el-dialog v-model="previewVisible" title="模板预览" width="55%" class="dialog-md">
+      <div data-testid="ai-prompt-preview-panel">
       <el-descriptions :column="1" border>
         <el-descriptions-item label="模板名称">{{ previewData.templateName }}</el-descriptions-item>
         <el-descriptions-item label="分类">{{ getCategoryLabel(previewData.category) }}</el-descriptions-item>
@@ -126,14 +127,15 @@
         <div class="preview-label">变量填写：</div>
         <el-form :inline="true" class="var-form">
           <el-form-item v-for="v in parsedVariables" :key="v" :label="v">
-            <el-input v-model="varValues[v]" :placeholder="'请输入 ' + v" size="small" />
+            <el-input v-model="varValues[v]" :data-testid="`ai-prompt-var-input-${v}`" :placeholder="'请输入 ' + v" size="small" />
           </el-form-item>
         </el-form>
-        <el-button type="primary" size="small" @click="handleRender">渲染</el-button>
+        <el-button type="primary" size="small" data-testid="ai-prompt-render-button" @click="handleRender">渲染</el-button>
         <div v-if="renderedContent" class="rendered-content">
           <div class="preview-label">渲染结果：</div>
-          <div class="preview-text rendered">{{ renderedContent }}</div>
+          <div class="preview-text rendered" data-testid="ai-prompt-rendered-content">{{ renderedContent }}</div>
         </div>
+      </div>
       </div>
     </el-dialog>
   </div>

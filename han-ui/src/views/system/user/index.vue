@@ -37,7 +37,7 @@
             <el-option label="停用" :value="1" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="isAdmin" label="租户" prop="tenantId">
+        <el-form-item v-if="canSelectTenant" label="租户" prop="tenantId">
           <el-select v-model="queryParams.tenantId" placeholder="全部租户" clearable style="width: 180px" @change="handleQuery">
             <el-option v-for="t in tenantOptions" :key="t.tenantId" :label="t.tenantName" :value="t.tenantId" />
           </el-select>
@@ -208,13 +208,16 @@ import { listUser, getUser, addUser, updateUser, deleteUser, deleteUsers, change
 import { listAllRoles, type Role } from '@/api/system/role'
 import { getDeptTree, type Dept } from '@/api/system/dept'
 import { listTenant, type Tenant } from '@/api/system/tenant'
+import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
 
+const appStore = useAppStore()
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.roles.includes('admin'))
+const canSelectTenant = computed(() => isAdmin.value && appStore.isFeatureEnabled('tenantSelect'))
 const tenantOptions = ref<Tenant[]>([])
 
 const loading = ref(false)
@@ -477,9 +480,10 @@ const handleImport = () => {
 }
 
 onMounted(async () => {
+  await appStore.loadRuntimeCapabilities()
   getList()
   loadDeptTree()
-  if (isAdmin.value) {
+  if (canSelectTenant.value) {
     try {
       const res = await listTenant({ pageNum: 1, pageSize: 200 })
       const data = (res as any).data

@@ -56,7 +56,10 @@ public class ASysNoticeController {
         return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
     }
 
-    @GetMapping("/{noticeId}")
+    /**
+     * 仅匹配数字 ID，避免与 latest、unreadCount、sse 等固定路径冲突。
+     */
+    @GetMapping("/{noticeId:\\d+}")
     @PreAuthorize("@ss.hasAuthority('system:notice:query')")
     public R<SysNoticePo> getInfo(@PathVariable Long noticeId) {
         return R.ok(noticeMapper.selectById(noticeId));

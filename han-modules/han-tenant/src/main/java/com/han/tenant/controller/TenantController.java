@@ -1,6 +1,7 @@
 package com.han.tenant.controller;
 
-import com.han.api.system.SystemServiceClient;
+import com.han.api.system.SystemClient;
+import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.RequiresPermission;
@@ -26,12 +27,12 @@ public class TenantController {
 
     private final ITenantService tenantService;
     private final ITenantQuotaService tenantQuotaService;
-    private final SystemServiceClient systemServiceClient;
+    private final SystemClient systemClient;
 
     @RequiresPermission("tenant:list")
     @GetMapping("/list")
-    public R<List<TenantDTO>> list(TenantQuery query) {
-        return R.ok(tenantService.selectList(query));
+    public R<PageResult<TenantDTO>> list(TenantQuery query) {
+        return R.ok(tenantService.selectPage(query));
     }
 
     @GetMapping("/all")
@@ -102,7 +103,7 @@ public class TenantController {
     @RequiresPermission("tenant:query")
     @GetMapping("/adminUser")
     public R<Long> getAdminUser(@RequestParam Long tenantId) {
-        return systemServiceClient.getTenantAdminUserId(tenantId);
+        return systemClient.getTenantAdminUserId(tenantId);
     }
 
     // ==================== 配额管理 ====================

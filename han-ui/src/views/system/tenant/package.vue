@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="tenant-package-page">
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
@@ -25,11 +25,11 @@
       <template #header>
         <div class="card-header">
           <span>套餐列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="tenant-package-add-button" @click="handleAdd">新增</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="packageList">
+      <el-table v-loading="loading" :data="packageList" data-testid="tenant-package-table">
         <el-table-column label="套餐名称" prop="packageName" min-width="200" show-overflow-tooltip />
         <el-table-column label="关联租户数" prop="tenantCount" width="120" align="center" />
         <el-table-column label="状态" width="100" align="center">
@@ -45,9 +45,9 @@
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="primary" link :icon="Menu" @click="handleMenus(row)">菜单</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link :icon="Edit" :data-testid="`tenant-package-edit-button-${row.packageId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="primary" link :icon="Menu" :data-testid="`tenant-package-menu-button-${row.packageId}`" @click="handleMenus(row)">菜单</el-button>
+            <el-button type="danger" link :icon="Delete" :data-testid="`tenant-package-delete-button-${row.packageId}`" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -66,7 +66,7 @@
     </el-card>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" class="dialog-sm" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" class="dialog-sm" destroy-on-close data-testid="tenant-package-dialog">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="套餐名称" prop="packageName">
           <el-input v-model="form.packageName" placeholder="请输入套餐名称" />
@@ -88,7 +88,7 @@
     </el-dialog>
 
     <!-- 菜单分配对话框 -->
-    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="60%" class="dialog-lg" destroy-on-close>
+    <el-dialog v-model="menuDialogVisible" title="分配菜单" width="60%" class="dialog-lg" destroy-on-close data-testid="tenant-package-menu-dialog">
       <div style="max-height: 500px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
         <el-tree
           ref="menuTreeRef"

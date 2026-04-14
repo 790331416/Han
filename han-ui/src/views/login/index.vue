@@ -1,12 +1,13 @@
 <template>
-  <div class="login-container">
-    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
+  <div class="login-container" data-testid="login-page">
+    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form" data-testid="login-form">
       <h3 class="title">HAN Cloud</h3>
       <p class="subtitle">企业级多租户微服务平台</p>
       
       <el-form-item v-if="deployTier !== 'small'" prop="tenantId">
         <el-select
           v-model="loginForm.tenantId"
+          data-testid="login-tenant-select"
           placeholder="平台管理员无需选择"
           size="large"
           style="width: 100%"
@@ -22,6 +23,7 @@
       <el-form-item prop="username">
         <el-input
           v-model="loginForm.username"
+          data-testid="login-username"
           placeholder="用户名"
           size="large"
           :prefix-icon="User"
@@ -31,6 +33,7 @@
       <el-form-item prop="password">
         <el-input
           v-model="loginForm.password"
+          data-testid="login-password"
           type="password"
           placeholder="密码"
           size="large"
@@ -44,12 +47,13 @@
         <div class="captcha-row">
           <el-input
             v-model="loginForm.code"
+            data-testid="login-captcha"
             placeholder="验证码"
             size="large"
             :prefix-icon="Key"
             @keyup.enter="handleLogin"
           />
-          <img :src="captchaImg" class="captcha-img" @click="getCaptchaImg" />
+          <img :src="captchaImg" class="captcha-img" data-testid="login-captcha-image" @click="getCaptchaImg" />
         </div>
       </el-form-item>
       
@@ -63,6 +67,7 @@
           size="large"
           :loading="loading"
           class="login-btn"
+          data-testid="login-submit"
           @click="handleLogin"
         >
           登 录
@@ -223,9 +228,6 @@ const loadTenantList = async () => {
   try {
     const res = await get<TenantSimple[]>('/tenant/all', undefined, { silentError: true })
     tenantList.value = (res as any).data || []
-    if (tenantList.value.length === 1) {
-      loginForm.tenantId = tenantList.value[0].tenantId
-    }
   } catch { /* tenant list not available */ } finally {
     tenantLoading.value = false
   }

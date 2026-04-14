@@ -4,8 +4,6 @@ import com.han.job.domain.dto.JobDTO;
 import com.han.job.domain.po.SysJobPo;
 import com.han.job.domain.vo.JobVO;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-
 import java.util.List;
 
 /**

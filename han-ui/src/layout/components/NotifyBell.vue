@@ -1,17 +1,29 @@
 <template>
   <el-popover placement="bottom-end" :width="340" trigger="click" @show="loadNotices">
     <template #reference>
-      <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge">
-        <el-icon class="nav-icon"><Bell /></el-icon>
+      <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge" data-testid="notify-bell-badge">
+        <el-icon class="nav-icon" data-testid="notify-bell-trigger"><Bell /></el-icon>
       </el-badge>
     </template>
 
-    <div class="notify-panel">
+    <div class="notify-panel" data-testid="notify-panel">
       <div class="notify-header">
         <span class="notify-title">通知公告</span>
         <div class="notify-actions">
-          <el-link v-if="unreadCount > 0" type="primary" :underline="false" @click="handleMarkAllRead">全部已读</el-link>
-          <el-link v-if="notices.length && canViewAll" type="primary" :underline="false" @click="goNoticeList">查看全部</el-link>
+          <el-link
+            v-if="unreadCount > 0"
+            type="primary"
+            :underline="false"
+            data-testid="notify-mark-all-read"
+            @click="handleMarkAllRead"
+          >全部已读</el-link>
+          <el-link
+            v-if="notices.length && canViewAll"
+            type="primary"
+            :underline="false"
+            data-testid="notify-view-all"
+            @click="goNoticeList"
+          >查看全部</el-link>
         </div>
       </div>
 
@@ -19,13 +31,15 @@
         <div v-if="loading" class="notify-empty">
           <el-icon class="is-loading"><Loading /></el-icon>
         </div>
-        <div v-else-if="notices.length === 0" class="notify-empty">暂无通知</div>
-        <div v-else>
+        <div v-else-if="notices.length === 0" class="notify-empty" data-testid="notify-empty">暂无通知</div>
+        <div v-else data-testid="notify-list">
           <div
             v-for="item in notices"
             :key="item.id"
             class="notify-item"
             :class="{ 'is-unread': item.read === false }"
+            :data-notice-title="item.noticeTitle"
+            :data-testid="`notify-item-${item.id}`"
             @click="handleOpenNotice(item)"
           >
             <div class="notify-item-header">
@@ -42,12 +56,12 @@
   </el-popover>
 
   <el-dialog v-model="detailVisible" title="通知详情" width="640px" destroy-on-close>
-    <div v-if="currentNotice" class="notice-detail">
+    <div v-if="currentNotice" class="notice-detail" data-testid="notify-detail">
       <div class="notice-detail-header">
         <el-tag :type="currentNotice.noticeType === '1' ? 'primary' : 'warning'" size="small">
           {{ currentNotice.noticeType === '1' ? '通知' : '公告' }}
         </el-tag>
-        <span class="notice-detail-title">{{ currentNotice.noticeTitle }}</span>
+        <span class="notice-detail-title" data-testid="notify-detail-title">{{ currentNotice.noticeTitle }}</span>
       </div>
       <div class="notice-detail-time">{{ formatTime(currentNotice.createTime) }}</div>
       <div class="notice-detail-content" v-html="currentNotice.noticeContent"></div>
@@ -89,7 +103,9 @@ const fetchUnreadCount = async () => {
   try {
     const res = await getUnreadCount()
     unreadCount.value = (res.data as number) || 0
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
 }
 
 const loadNotices = async () => {
@@ -97,7 +113,9 @@ const loadNotices = async () => {
   try {
     const res = await getLatestNotices(5)
     notices.value = (res.data as Notice[]) || []
-  } catch { notices.value = [] } finally {
+  } catch {
+    notices.value = []
+  } finally {
     loading.value = false
   }
 }
@@ -144,13 +162,13 @@ const connectSse = () => {
     eventSource.onerror = () => {
       eventSource?.close()
       eventSource = null
-      // 降级为轮询
+      // SSE 不可用时降级为轮询
       if (!pollTimer) {
         pollTimer = setInterval(refreshNoticeState, 60000)
       }
     }
   } catch {
-    // SSE 不可用，使用轮询
+    // SSE 不可用时降级为轮询
     pollTimer = setInterval(refreshNoticeState, 60000)
   }
 }

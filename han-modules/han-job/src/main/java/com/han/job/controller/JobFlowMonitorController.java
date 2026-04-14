@@ -47,13 +47,23 @@ public class JobFlowMonitorController {
     /**
      * 获取当前调度配置。
      *
-     * @return 调度配置
+     * @return 调度配置快照
      */
     @GetMapping("/config")
     @PreAuthorize("@ss.hasAuthority('job:list')")
-    public JobFlowSchedulerProperties config() {
+    public Map<String, Object> config() {
         log.info("查询 JobFlow 配置: {}", properties);
-        return properties;
+        Map<String, Object> config = new HashMap<>();
+        config.put("threadPoolSize", normalizeNumeric(properties.getThreadPoolSize()));
+        config.put("timeout", normalizeNumeric(properties.getTimeout()));
+        config.put("maxRetry", normalizeNumeric(properties.getMaxRetry()));
+        config.put("connectTimeout", normalizeNumeric(properties.getConnectTimeout()));
+        config.put("readTimeout", normalizeNumeric(properties.getReadTimeout()));
+        config.put("lockTimeout", normalizeNumeric(properties.getLockTimeout()));
+        config.put("compensationEnabled", properties.getCompensationEnabled());
+        config.put("compensationInterval", normalizeNumeric(properties.getCompensationInterval()));
+        config.put("stuckThreshold", normalizeNumeric(properties.getStuckThreshold()));
+        return config;
     }
 
     /**
@@ -72,5 +82,23 @@ public class JobFlowMonitorController {
         metrics.put("version", metadata.getVersion());
         metrics.put("clustered", metadata.isJobStoreClustered());
         return metrics;
+    }
+
+    private Object normalizeNumeric(Object value) {
+        if (value instanceof Long longValue && longValue >= Integer.MIN_VALUE && longValue <= Integer.MAX_VALUE) {
+            return longValue.intValue();
+        }
+        if (value instanceof String text && text.matches("-?\\d+")) {
+            try {
+                long parsed = Long.parseLong(text);
+                if (parsed >= Integer.MIN_VALUE && parsed <= Integer.MAX_VALUE) {
+                    return (int) parsed;
+                }
+                return parsed;
+            } catch (NumberFormatException ex) {
+                log.warn("JobFlow 配置数值转换失败: {}", text, ex);
+            }
+        }
+        return value;
     }
 }

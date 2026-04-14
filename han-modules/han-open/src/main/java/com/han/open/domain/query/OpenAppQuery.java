@@ -31,6 +31,10 @@ public class OpenAppQuery extends BaseQuery {
     @Schema(description = "应用名称")
     private String appName;
 
+    /** 应用类型 */
+    @Schema(description = "应用类型")
+    private String appType;
+
     /** 状态 */
     @Schema(description = "状态(0正常 1停用)")
     private Integer status;

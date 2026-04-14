@@ -11,6 +11,8 @@ export interface AiModel {
   modelCode: string
   baseUrl: string
   apiKey: string
+  credentialConfigured?: boolean
+  credentialSource?: string
   maxTokens: number
   temperature: number
   status: string
@@ -318,6 +320,32 @@ export interface AiChatMessage {
   tokenCount?: number
   sortOrder: number
   createTime?: string
+  knowledgeSources?: AiChatKnowledgeSource[]
+  toolExecutions?: AiChatToolTrace[]
+}
+
+export interface AiChatKnowledgeSource {
+  kbId?: string | number
+  kbName?: string
+  kbType?: string
+  kbStatus?: string
+  documentCount?: number
+  paragraphCount?: number
+  charCount?: number
+  paragraphId?: string | number
+  paragraphTitle?: string
+  hitCount?: number
+  excerpt?: string
+}
+
+export interface AiChatToolTrace {
+  mcpId?: string | number
+  serverName?: string
+  transportType?: string
+  status?: string
+  toolCount?: number
+  toolNames?: string[]
+  summary?: string
 }
 
 export interface ChatRequest {
@@ -331,7 +359,11 @@ export function sendChatMessage(data: ChatRequest) {
   return post<AiChatMessage>('/ai/chat/send', data)
 }
 
-export function listConversations(query: PageQuery) {
+export interface AiConversationQuery extends PageQuery {
+  workflowId?: string | number
+}
+
+export function listConversations(query: AiConversationQuery) {
   return get<PageResult<AiConversation>>('/ai/chat/conversations', query)
 }
 

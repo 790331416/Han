@@ -1,0 +1,1 @@
+import{b as t,p as r}from"./index-23AxupUR.js";function o(){return t("/system/monitor/server")}function s(){return t("/system/monitor/cache")}function a(e){return t("/system/monitor/cache/keys",{pattern:e})}function c(e){return r("/system/monitor/cache/delete",{key:e})}export{s as a,a as b,c as d,o as g};

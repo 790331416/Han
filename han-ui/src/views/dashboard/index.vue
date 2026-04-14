@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard" data-testid="dashboard-page">
     <!-- 欢迎区 -->
     <div class="welcome-section">
       <div>
@@ -35,7 +35,7 @@
 
     <!-- 中间区域：快捷入口 + 系统信息 -->
     <div class="middle-grid">
-      <div class="info-card" v-if="sortedShortcuts.length">
+      <div class="info-card" v-if="sortedShortcuts.length" data-testid="dashboard-shortcuts">
         <div class="card-title">快捷入口</div>
         <div class="shortcut-grid">
           <div class="shortcut-item" v-for="s in sortedShortcuts" :key="s.path" @click="handleShortcutClick(s.path)">
@@ -257,7 +257,8 @@ onMounted(async () => {
 
   // 加载图表数据
   try {
-    const chartRes = await get<any>('/system/dashboard/charts')
+    // 图表数据属于增强信息，接口缺失时首页应静默降级而不是打断用户。
+    const chartRes = await get<any>('/system/dashboard/charts', undefined, { silentError: true })
     const d = (chartRes as any)?.data
     if (d?.loginTrend) chartData.loginTrend = d.loginTrend
     if (d?.operModules) chartData.operModules = d.operModules

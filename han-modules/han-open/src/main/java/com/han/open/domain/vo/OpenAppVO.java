@@ -45,6 +45,11 @@ public class OpenAppVO implements Serializable {
     private String appType;
 
     /**
+     * 登出回调地址
+     */
+    private String logoutUri;
+
+    /**
      * 授权回调地址列表
      */
     private List<String> redirectUris;
@@ -60,6 +65,26 @@ public class OpenAppVO implements Serializable {
     private List<String> grantTypes;
 
     /**
+     * AccessToken 有效期（秒）
+     */
+    private Integer accessTokenTtl;
+
+    /**
+     * RefreshToken 有效期（秒）
+     */
+    private Integer refreshTokenTtl;
+
+    /**
+     * 是否启用 PKCE
+     */
+    private Integer requirePkce;
+
+    /**
+     * 是否自动授权
+     */
+    private Integer autoApprove;
+
+    /**
      * 状态
      */
     private Integer status;
@@ -68,6 +93,21 @@ public class OpenAppVO implements Serializable {
      * 联系人
      */
     private String contactName;
+
+    /**
+     * 联系电话
+     */
+    private String contactPhone;
+
+    /**
+     * 联系邮箱
+     */
+    private String contactEmail;
+
+    /**
+     * 备注
+     */
+    private String remark;
 
     /**
      * 创建时间

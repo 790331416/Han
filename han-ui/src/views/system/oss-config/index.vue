@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="oss-config-page">
     <el-card shadow="never" class="search-form">
       <el-form :inline="true">
         <el-form-item label="配置Key">
@@ -22,11 +22,11 @@
       <template #header>
         <div class="card-header">
           <span>OSS存储配置</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增配置</el-button>
+          <el-button type="primary" :icon="Plus" @click="handleAdd" data-testid="oss-config-add-button">新增配置</el-button>
         </div>
       </template>
 
-      <el-table :data="dataList" v-loading="loading" stripe>
+      <el-table :data="dataList" v-loading="loading" stripe data-testid="oss-config-table">
         <el-table-column prop="configKey" label="配置Key" min-width="120" />
         <el-table-column prop="endpoint" label="访问站点" min-width="180" show-overflow-tooltip />
         <el-table-column prop="bucketName" label="桶名称" min-width="100" />

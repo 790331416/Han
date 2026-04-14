@@ -15,6 +15,7 @@ spring:
     gateway:
       server:
         webflux:
+          trusted-proxies: ${SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES:.*}
           routes:
             - id: han-auth
               uri: lb://han-auth
@@ -31,7 +32,7 @@ spring:
             - id: han-job
               uri: lb://han-job
               predicates:
-                - Path=/job/**
+                - Path=/job/**,/actuator/jobflow/**
             - id: han-open
               uri: lb://han-open
               predicates:
@@ -40,6 +41,14 @@ spring:
               uri: lb://han-file
               predicates:
                 - Path=/file/**
+            - id: han-gen
+              uri: lb://han-gen
+              predicates:
+                - Path=/gen/**
+            - id: han-workflow
+              uri: lb://han-workflow
+              predicates:
+                - Path=/workflow/**
             - id: han-ai
               uri: lb://han-ai
               predicates:

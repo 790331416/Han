@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="ai-mcp-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
         <el-form-item label="服务名称" prop="serverName">
@@ -21,11 +21,11 @@
       <template #header>
         <div class="card-header">
           <span>MCP服务管理</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增MCP服务</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="ai-mcp-create-button" @click="handleAdd">新增MCP服务</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="mcpList">
+      <el-table v-loading="loading" :data="mcpList" data-testid="ai-mcp-table">
         <el-table-column label="服务名称" prop="serverName" min-width="150" show-overflow-tooltip />
         <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ row.description || '-' }}</template>
@@ -56,8 +56,8 @@
         </el-table-column>
         <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
-            <el-button type="success" link @click="handleRefresh(row)">刷新工具</el-button>
-            <el-button type="info" link @click="handleViewTools(row)">查看工具</el-button>
+            <el-button type="success" link data-testid="ai-mcp-refresh-button" @click="handleRefresh(row)">刷新工具</el-button>
+            <el-button type="info" link data-testid="ai-mcp-view-tools-button" @click="handleViewTools(row)">查看工具</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -73,7 +73,7 @@
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="form.mcpId ? '编辑MCP服务' : '新增MCP服务'" width="65%" class="dialog-lg" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" data-testid="ai-mcp-form">
         <el-form-item label="服务名称" prop="serverName">
           <el-input v-model="form.serverName" placeholder="请输入服务名称" />
         </el-form-item>
@@ -118,11 +118,13 @@
 
     <!-- 查看工具对话框 -->
     <el-dialog v-model="toolsVisible" title="MCP工具列表" width="65%" class="dialog-lg">
-      <el-table :data="toolsList" v-if="toolsList.length > 0">
+      <div data-testid="ai-mcp-tools-dialog">
+      <el-table :data="toolsList" v-if="toolsList.length > 0" data-testid="ai-mcp-tools-table">
         <el-table-column label="工具名称" prop="name" width="200" />
         <el-table-column label="描述" prop="description" min-width="300" show-overflow-tooltip />
       </el-table>
       <el-empty v-else description="暂无工具，请先刷新" />
+      </div>
     </el-dialog>
   </div>
 </template>

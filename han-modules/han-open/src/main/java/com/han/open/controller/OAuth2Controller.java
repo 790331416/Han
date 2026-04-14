@@ -36,12 +36,28 @@ public class OAuth2Controller {
      */
     @GetMapping("/authorize")
     @PermissionExempt("OAuth2 授权端点，由登录态和客户端参数共同控制")
-    public R<String> authorize(@Validated OAuth2AuthorizeDTO dto) {
+    public R<String> authorize(@RequestParam("response_type") String responseType,
+                               @RequestParam("client_id") String clientId,
+                               @RequestParam("redirect_uri") String redirectUri,
+                               @RequestParam(value = "scope", required = false) String scope,
+                               @RequestParam(value = "state", required = false) String state,
+                               @RequestParam(value = "code_challenge", required = false) String codeChallenge,
+                               @RequestParam(value = "code_challenge_method", required = false) String codeChallengeMethod,
+                               @RequestParam(value = "nonce", required = false) String nonce) {
         if (!SecurityContextHolder.isLogin()) {
             return R.fail(401, LOGIN_REQUIRED_MESSAGE);
         }
         Long userId = SecurityContextHolder.getUserId();
-        String code = oauth2Service.authorize(dto, userId);
+        String code = oauth2Service.authorize(buildAuthorizeDto(
+                responseType,
+                clientId,
+                redirectUri,
+                scope,
+                state,
+                codeChallenge,
+                codeChallengeMethod,
+                nonce
+        ), userId);
         return R.ok(code);
     }
 
@@ -59,17 +75,36 @@ public class OAuth2Controller {
             return R.fail(401, LOGIN_REQUIRED_MESSAGE);
         }
         Long userId = SecurityContextHolder.getUserId();
-        String code = oauth2Service.authorize(dto, userId);
-        return R.ok(code);
+        return R.ok(oauth2Service.authorize(dto, userId));
     }
 
     /**
-     * Token 端点，支持授权码、客户端凭证与刷新令牌模式。
+     * Form 形式的 Token 端点。
      */
     @PostMapping(value = "/token", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     @PermissionExempt("OAuth2 Token 公开端点，由客户端凭证和业务参数校验控制")
-    public OAuth2TokenVO token(OAuth2TokenDTO dto) {
-        return oauth2Service.token(dto);
+    public OAuth2TokenVO token(@RequestParam("grant_type") String grantType,
+                               @RequestParam(value = "client_id", required = false) String clientId,
+                               @RequestParam(value = "client_secret", required = false) String clientSecret,
+                               @RequestParam(value = "code", required = false) String code,
+                               @RequestParam(value = "redirect_uri", required = false) String redirectUri,
+                               @RequestParam(value = "refresh_token", required = false) String refreshToken,
+                               @RequestParam(value = "scope", required = false) String scope,
+                               @RequestParam(value = "code_verifier", required = false) String codeVerifier,
+                               @RequestParam(value = "username", required = false) String username,
+                               @RequestParam(value = "password", required = false) String password) {
+        return oauth2Service.token(buildTokenDto(
+                grantType,
+                clientId,
+                clientSecret,
+                code,
+                redirectUri,
+                refreshToken,
+                scope,
+                codeVerifier,
+                username,
+                password
+        ));
     }
 
     /**
@@ -77,7 +112,7 @@ public class OAuth2Controller {
      */
     @PostMapping(value = "/token", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PermissionExempt("OAuth2 Token 公开端点，由客户端凭证和业务参数校验控制")
-    public OAuth2TokenVO tokenJson(@RequestBody OAuth2TokenDTO dto) {
+    public OAuth2TokenVO tokenJson(@Validated @RequestBody OAuth2TokenDTO dto) {
         return oauth2Service.token(dto);
     }
 
@@ -118,5 +153,49 @@ public class OAuth2Controller {
     @PermissionExempt("OpenID Connect Discovery 公开端点")
     public R<Object> discovery() {
         return R.ok();
+    }
+
+    private OAuth2AuthorizeDTO buildAuthorizeDto(String responseType,
+                                                 String clientId,
+                                                 String redirectUri,
+                                                 String scope,
+                                                 String state,
+                                                 String codeChallenge,
+                                                 String codeChallengeMethod,
+                                                 String nonce) {
+        OAuth2AuthorizeDTO dto = new OAuth2AuthorizeDTO();
+        dto.setResponseType(responseType);
+        dto.setClientId(clientId);
+        dto.setRedirectUri(redirectUri);
+        dto.setScope(scope);
+        dto.setState(state);
+        dto.setCodeChallenge(codeChallenge);
+        dto.setCodeChallengeMethod(codeChallengeMethod);
+        dto.setNonce(nonce);
+        return dto;
+    }
+
+    private OAuth2TokenDTO buildTokenDto(String grantType,
+                                         String clientId,
+                                         String clientSecret,
+                                         String code,
+                                         String redirectUri,
+                                         String refreshToken,
+                                         String scope,
+                                         String codeVerifier,
+                                         String username,
+                                         String password) {
+        OAuth2TokenDTO dto = new OAuth2TokenDTO();
+        dto.setGrantType(grantType);
+        dto.setClientId(clientId);
+        dto.setClientSecret(clientSecret);
+        dto.setCode(code);
+        dto.setRedirectUri(redirectUri);
+        dto.setRefreshToken(refreshToken);
+        dto.setScope(scope);
+        dto.setCodeVerifier(codeVerifier);
+        dto.setUsername(username);
+        dto.setPassword(password);
+        return dto;
     }
 }

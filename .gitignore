@@ -370,6 +370,8 @@ credentials.json
 *.test.ts
 *.spec.js
 *.spec.ts
+!han-ui/tests/e2e/specs/
+!han-ui/tests/e2e/specs/*.spec.ts
 coverage/
 .nyc_output/
 .jest/
@@ -394,10 +396,13 @@ docs/_build/
 .docker/
 .docker-staging/
 *.dockerignore
+!han-ui/.dockerignore
 
 # Frontend specific (for han-ui module)
 node_modules/
 dist/
+han-ui/output/
+han-ui/vite.config.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -44,6 +44,8 @@ public class TaskVO implements Serializable {
      */
     private String processDefinitionName;
 
+    private String processDefinitionKey;
+
     /**
      * 业务Key
      */
@@ -83,6 +85,8 @@ public class TaskVO implements Serializable {
      * 任务签收时间
      */
     private LocalDateTime claimTime;
+
+    private LocalDateTime dueDate;
 
     /**
      * 任务完成时间

@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-container" data-testid="open-app-page">
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" :inline="true">
         <el-form-item label="应用名称" prop="appName">
@@ -19,8 +19,8 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :icon="Search" @click="handleQuery">搜索</el-button>
-          <el-button :icon="Refresh" @click="resetQuery">重置</el-button>
+          <el-button type="primary" :icon="Search" data-testid="open-app-search-button" @click="handleQuery">搜索</el-button>
+          <el-button :icon="Refresh" data-testid="open-app-reset-button" @click="resetQuery">重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -29,11 +29,11 @@
       <template #header>
         <div class="card-header">
           <span>开放应用列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增应用</el-button>
+          <el-button type="primary" :icon="Plus" data-testid="open-app-add-button" @click="handleAdd">新增应用</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="appList">
+      <el-table v-loading="loading" :data="appList" data-testid="open-app-table">
         <el-table-column label="应用名称" prop="appName" min-width="180" show-overflow-tooltip />
         <el-table-column label="AppKey" prop="appKey" min-width="250" show-overflow-tooltip />
         <el-table-column label="应用类型" prop="appType" width="100" align="center">
@@ -46,15 +46,19 @@
         <el-table-column label="联系人" prop="contactName" min-width="120" show-overflow-tooltip />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-switch :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" />
+            <el-switch
+              :model-value="row.status === 0"
+              :data-testid="`open-app-status-switch-${row.appId}`"
+              @change="(val: any) => handleStatusChange(row, !!val)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="warning" link :icon="RefreshRight" @click="handleResetSecret(row)">重置密钥</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link :icon="Edit" :data-testid="`open-app-edit-button-${row.appId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="warning" link :icon="RefreshRight" :data-testid="`open-app-reset-secret-button-${row.appId}`" @click="handleResetSecret(row)">重置密钥</el-button>
+            <el-button type="danger" link :icon="Delete" :data-testid="`open-app-delete-button-${row.appId}`" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -72,45 +76,45 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close data-testid="open-app-dialog">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
         <el-form-item label="应用名称" prop="appName">
-          <el-input v-model="form.appName" placeholder="请输入应用名称" />
+          <el-input v-model="form.appName" placeholder="请输入应用名称" data-testid="open-app-form-name" />
         </el-form-item>
         <el-form-item label="应用类型" prop="appType">
-          <el-select v-model="form.appType" placeholder="请选择">
+          <el-select v-model="form.appType" placeholder="请选择" data-testid="open-app-form-type">
             <el-option label="Web应用" value="web" />
             <el-option label="移动应用" value="mobile" />
             <el-option label="服务端" value="server" />
           </el-select>
         </el-form-item>
         <el-form-item label="应用描述">
-          <el-input v-model="form.appDesc" type="textarea" placeholder="请输入应用描述" />
+          <el-input v-model="form.appDesc" type="textarea" placeholder="请输入应用描述" data-testid="open-app-form-desc" />
         </el-form-item>
         <el-form-item label="回调地址">
-          <el-input v-model="redirectUrisStr" type="textarea" placeholder="多个地址用换行分隔" :rows="3" />
+          <el-input v-model="redirectUrisStr" type="textarea" placeholder="多个地址用换行分隔" :rows="3" data-testid="open-app-form-redirect-uris" />
         </el-form-item>
         <el-form-item label="联系人">
-          <el-input v-model="form.contactName" placeholder="请输入联系人" />
+          <el-input v-model="form.contactName" placeholder="请输入联系人" data-testid="open-app-form-contact-name" />
         </el-form-item>
         <el-form-item label="AccessToken有效期">
-          <el-input-number v-model="form.accessTokenTtl" :min="60" :step="3600" />
+          <el-input-number v-model="form.accessTokenTtl" :min="60" :step="3600" data-testid="open-app-form-access-token-ttl" />
           <span class="form-hint">秒</span>
         </el-form-item>
         <el-form-item label="RefreshToken有效期">
-          <el-input-number v-model="form.refreshTokenTtl" :min="60" :step="3600" />
+          <el-input-number v-model="form.refreshTokenTtl" :min="60" :step="3600" data-testid="open-app-form-refresh-token-ttl" />
           <span class="form-hint">秒</span>
         </el-form-item>
         <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
+          <el-radio-group v-model="form.status" data-testid="open-app-form-status">
             <el-radio :value="0">正常</el-radio>
             <el-radio :value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitLoading">确定</el-button>
+        <el-button data-testid="open-app-dialog-cancel" @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" data-testid="open-app-dialog-submit" @click="submitForm" :loading="submitLoading">确定</el-button>
       </template>
     </el-dialog>
   </div>

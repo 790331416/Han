@@ -6,15 +6,19 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.mybatis.util.PageHelper;
 import com.han.job.converter.SysJobConverter;
 import com.han.job.domain.dto.JobDTO;
-import com.han.job.domain.query.JobQuery;
 import com.han.job.domain.po.SysJobPo;
+import com.han.job.domain.query.JobQuery;
 import com.han.job.domain.vo.JobVO;
 import com.han.job.mapper.SysJobMapper;
 import com.han.job.service.ISysJobService;
 import com.han.job.util.QuartzJobUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.quartz.*;
+import org.quartz.CronExpression;
+import org.quartz.Scheduler;
+import org.quartz.SchedulerException;
+import org.quartz.Trigger;
+import org.quartz.TriggerKey;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -37,16 +41,13 @@ public class SysJobServiceImpl implements ISysJobService {
     public PageResult<JobDTO> listJob(JobQuery query) {
         Page<SysJobPo> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysJobPo> wrapper = new LambdaQueryWrapper<>();
-        
-        SysJobPo base = query.getBase();
-        if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobPo::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobPo::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJobPo::getStatus, base.getStatus())
-                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJobPo::getInvokeTarget, base.getInvokeTarget());
-        }
-        wrapper.orderByDesc(SysJobPo::getCreateTime);
-        
+
+        wrapper.like(StringUtils.hasText(query.getJobName()), SysJobPo::getJobName, query.getJobName())
+                .eq(StringUtils.hasText(query.getJobGroup()), SysJobPo::getJobGroup, query.getJobGroup())
+                .eq(StringUtils.hasText(query.getStatus()), SysJobPo::getStatus, query.getStatus())
+                .like(StringUtils.hasText(query.getInvokeTarget()), SysJobPo::getInvokeTarget, query.getInvokeTarget())
+                .orderByDesc(SysJobPo::getCreateTime);
+
         Page<SysJobPo> result = jobMapper.selectPage(page, wrapper);
         return PageHelper.build(result, jobConverter::toDto);
     }
@@ -68,8 +69,6 @@ public class SysJobServiceImpl implements ISysJobService {
     public void createJob(JobDTO dto) throws SchedulerException {
         SysJobPo job = jobConverter.toPo(dto);
         jobMapper.insert(job);
-        
-        // 添加到Quartz调度器
         QuartzJobUtils.createScheduleJob(scheduler, job);
         log.info("创建定时任务成功: {}", job.getJobName());
     }
@@ -77,13 +76,12 @@ public class SysJobServiceImpl implements ISysJobService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateJob(JobDTO dto) throws SchedulerException {
-        Long jobId = dto.getBase() != null ? dto.getBase().getJobId() : null;
+        Long jobId = dto.getJobId();
         SysJobPo job = jobMapper.selectById(jobId);
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
-        
-        // 使用MapStruct转换并更新
+
         SysJobPo updated = jobConverter.toPo(dto);
         job.setJobName(updated.getJobName());
         job.setJobGroup(updated.getJobGroup());
@@ -94,8 +92,7 @@ public class SysJobServiceImpl implements ISysJobService {
         job.setStatus(updated.getStatus());
         job.setRemark(updated.getRemark());
         jobMapper.updateById(job);
-        
-        // 更新Quartz调度器
+
         QuartzJobUtils.updateScheduleJob(scheduler, job);
         log.info("更新定时任务成功: {}", job.getJobName());
     }
@@ -107,7 +104,7 @@ public class SysJobServiceImpl implements ISysJobService {
         if (job == null) {
             return;
         }
-        
+
         jobMapper.deleteById(jobId);
         QuartzJobUtils.deleteScheduleJob(scheduler, job);
         log.info("删除定时任务成功: {}", job.getJobName());
@@ -120,7 +117,7 @@ public class SysJobServiceImpl implements ISysJobService {
             deleteJob(jobId);
         }
     }
-    
+
     @Override
     public int deleteByIds(List<Long> ids) {
         try {
@@ -130,39 +127,34 @@ public class SysJobServiceImpl implements ISysJobService {
             throw new RuntimeException("批量删除任务失败", e);
         }
     }
-    
-    // ================ 实现 IBaseService 的其他方法 ================
-    
+
     @Override
     public List<JobDTO> selectListScope(JobQuery query) {
         return selectList(query);
     }
-    
+
     @Override
     public List<JobDTO> selectList(JobQuery query) {
         LambdaQueryWrapper<SysJobPo> wrapper = new LambdaQueryWrapper<>();
-        SysJobPo base = query.getBase();
-        if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobPo::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobPo::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJobPo::getStatus, base.getStatus())
-                    .like(StringUtils.hasText(base.getInvokeTarget()), SysJobPo::getInvokeTarget, base.getInvokeTarget());
-        }
+        wrapper.like(StringUtils.hasText(query.getJobName()), SysJobPo::getJobName, query.getJobName())
+                .eq(StringUtils.hasText(query.getJobGroup()), SysJobPo::getJobGroup, query.getJobGroup())
+                .eq(StringUtils.hasText(query.getStatus()), SysJobPo::getStatus, query.getStatus())
+                .like(StringUtils.hasText(query.getInvokeTarget()), SysJobPo::getInvokeTarget, query.getInvokeTarget());
         List<SysJobPo> jobs = jobMapper.selectList(wrapper);
         return jobConverter.toDtoList(jobs);
     }
-    
+
     @Override
     public JobDTO selectById(Long id) {
         return getJobById(id);
     }
-    
+
     @Override
     public List<JobDTO> selectByIds(List<Long> ids) {
         List<SysJobPo> jobs = jobMapper.selectBatchIds(ids);
         return jobConverter.toDtoList(jobs);
     }
-    
+
     @Override
     public int insert(JobDTO dto) {
         try {
@@ -172,7 +164,7 @@ public class SysJobServiceImpl implements ISysJobService {
             throw new RuntimeException("创建任务失败", e);
         }
     }
-    
+
     @Override
     public int update(JobDTO dto) {
         try {
@@ -182,7 +174,7 @@ public class SysJobServiceImpl implements ISysJobService {
             throw new RuntimeException("更新任务失败", e);
         }
     }
-    
+
     @Override
     public int deleteById(Long id) {
         try {
@@ -199,7 +191,7 @@ public class SysJobServiceImpl implements ISysJobService {
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
-        
+
         job.setStatus("1");
         jobMapper.updateById(job);
         QuartzJobUtils.pauseJob(scheduler, job);
@@ -212,7 +204,7 @@ public class SysJobServiceImpl implements ISysJobService {
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
-        
+
         job.setStatus("0");
         jobMapper.updateById(job);
         QuartzJobUtils.resumeJob(scheduler, job);
@@ -225,7 +217,7 @@ public class SysJobServiceImpl implements ISysJobService {
         if (job == null) {
             throw new RuntimeException("任务不存在");
         }
-        
+
         QuartzJobUtils.runJobNow(scheduler, job);
         log.info("立即执行定时任务: {}", job.getJobName());
     }
@@ -246,8 +238,6 @@ public class SysJobServiceImpl implements ISysJobService {
 
     private JobVO convertToVO(SysJobPo job) {
         JobVO vo = jobConverter.toVo(job);
-        
-        // 获取下次执行时间
         try {
             TriggerKey triggerKey = QuartzJobUtils.getTriggerKey(job);
             Trigger trigger = scheduler.getTrigger(triggerKey);
@@ -258,7 +248,6 @@ public class SysJobServiceImpl implements ISysJobService {
         } catch (SchedulerException e) {
             log.warn("获取任务下次执行时间失败: {}", e.getMessage());
         }
-        
         return vo;
     }
 }

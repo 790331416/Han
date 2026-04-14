@@ -1,6 +1,7 @@
 package com.han.open.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.han.open.domain.po.OpenAppPo;
 import lombok.Data;
@@ -23,6 +24,12 @@ public class OpenAppDTO implements Serializable {
     @JsonUnwrapped
     private OpenAppPo base;
 
+    /**
+     * 兼容前端和文档中的 appId 命名，同时同步到底层 base.id。
+     */
+    @JsonProperty("appId")
+    private Long appId;
+
     // ==================== 扩展字段 ====================
 
     /** 回调地址列表（前端传入） */
@@ -44,13 +51,36 @@ public class OpenAppDTO implements Serializable {
     // ==================== 核心业务字段便捷访问 ====================
 
     public Long getAppId() {
+        if (appId != null) {
+            return appId;
+        }
         return base != null ? base.getId() : null;
     }
 
     public void setAppId(Long appId) {
+        this.appId = appId;
+        ensureBase().setId(appId);
+    }
+
+    public OpenAppPo getBase() {
+        if (base == null) {
+            return null;
+        }
+        if (appId != null && base.getId() == null) {
+            base.setId(appId);
+        }
+        return base;
+    }
+
+    public void setBase(OpenAppPo base) {
+        this.base = base;
+        this.appId = base != null ? base.getId() : null;
+    }
+
+    private OpenAppPo ensureBase() {
         if (base == null) {
             base = new OpenAppPo();
         }
-        base.setId(appId);
+        return base;
     }
 }

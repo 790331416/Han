@@ -7,10 +7,7 @@ import tools.jackson.databind.ValueSerializer;
 import tools.jackson.databind.ser.std.StdSerializer;
 
 /**
- * 数据脱敏 Jackson 3 序列化器
- *
- * <p>通过 {@link Sensitive} 注解上的 {@code @JsonSerialize(using = SensitiveSerializer.class)}
- * 自动绑定到被标注的字段。序列化时根据 {@link SensitiveType} 执行对应脱敏策略。
+ * 基于 Jackson 3 的字段脱敏序列化器。
  */
 public class SensitiveSerializer extends StdSerializer<String> {
 
@@ -35,9 +32,9 @@ public class SensitiveSerializer extends StdSerializer<String> {
     @Override
     public ValueSerializer<?> createContextual(SerializationContext ctxt, BeanProperty property) {
         if (property != null) {
-            Sensitive ann = property.getAnnotation(Sensitive.class);
-            if (ann != null) {
-                return new SensitiveSerializer(ann.value(), ann.prefixKeep(), ann.suffixKeep());
+            Sensitive annotation = property.getAnnotation(Sensitive.class);
+            if (annotation != null) {
+                return new SensitiveSerializer(annotation.value(), annotation.prefixKeep(), annotation.suffixKeep());
             }
         }
         return this;
@@ -53,7 +50,9 @@ public class SensitiveSerializer extends StdSerializer<String> {
     }
 
     private String mask(String value) {
-        if (value.isEmpty()) return value;
+        if (value.isEmpty()) {
+            return value;
+        }
         return switch (type) {
             case PHONE -> maskPhone(value);
             case EMAIL -> maskEmail(value);
@@ -65,50 +64,56 @@ public class SensitiveSerializer extends StdSerializer<String> {
         };
     }
 
-    /** 手机号：138****1234 */
     private static String maskPhone(String phone) {
-        if (phone.length() < 7) return maskCustom(phone, 1, 1);
+        if (phone.length() < 7) {
+            return maskCustom(phone, 1, 1);
+        }
         return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 
-    /** 邮箱：t***@example.com */
     private static String maskEmail(String email) {
-        int atIdx = email.indexOf('@');
-        if (atIdx <= 0) return maskCustom(email, 1, 0);
-        String prefix = email.substring(0, 1);
-        return prefix + "***" + email.substring(atIdx);
+        int atIndex = email.indexOf('@');
+        if (atIndex <= 0) {
+            return maskCustom(email, 1, 0);
+        }
+        return email.substring(0, 1) + "***" + email.substring(atIndex);
     }
 
-    /** 身份证：110***********1234 */
     private static String maskIdCard(String idCard) {
-        if (idCard.length() < 7) return maskCustom(idCard, 1, 1);
+        if (idCard.length() < 7) {
+            return maskCustom(idCard, 1, 1);
+        }
         return idCard.substring(0, 3) + "*".repeat(idCard.length() - 7) + idCard.substring(idCard.length() - 4);
     }
 
-    /** 银行卡：6222 **** **** 1234 */
     private static String maskBankCard(String card) {
-        if (card.length() < 8) return maskCustom(card, 2, 2);
+        if (card.length() < 8) {
+            return maskCustom(card, 2, 2);
+        }
         return card.substring(0, 4) + " **** **** " + card.substring(card.length() - 4);
     }
 
-    /** 姓名：*三 / **三 */
     private static String maskName(String name) {
-        if (name.length() <= 1) return "*";
+        if (name.length() <= 1) {
+            return "*";
+        }
         return "*".repeat(name.length() - 1) + name.charAt(name.length() - 1);
     }
 
-    /** 地址：保留前6个字符 */
     private static String maskAddress(String address) {
-        if (address.length() <= 6) return maskCustom(address, 3, 0);
+        if (address.length() <= 6) {
+            return maskCustom(address, 3, 0);
+        }
         return address.substring(0, 6) + "****";
     }
 
-    /** 自定义：保留前N + 后N，中间用 * 填充 */
     private static String maskCustom(String value, int prefix, int suffix) {
-        int len = value.length();
-        if (prefix + suffix >= len) return "*".repeat(len);
+        int length = value.length();
+        if (prefix + suffix >= length) {
+            return "*".repeat(length);
+        }
         return value.substring(0, prefix)
-                + "*".repeat(len - prefix - suffix)
-                + (suffix > 0 ? value.substring(len - suffix) : "");
+                + "*".repeat(length - prefix - suffix)
+                + (suffix > 0 ? value.substring(length - suffix) : "");
     }
 }
