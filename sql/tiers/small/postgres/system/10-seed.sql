@@ -2,7 +2,7 @@
 -- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 3. 部门
-INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code, sort, status) VALUES
+INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code, post_sort, status) VALUES
 (100, 1, 0, '0', 'han科技', 'HQ', 0, 0),
 (101, 1, 100, '0,100', '研发部门', 'RD', 1, 0),
 (102, 1, 100, '0,100', '产品部门', 'PD', 2, 0),
@@ -16,7 +16,7 @@ INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phon
 (2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- 5. 岗位
-INSERT INTO sys_post (id, tenant_id, post_code, post_name, post_sort, status) VALUES
+INSERT INTO sys_post (id, tenant_id, post_code, post_name, sort, status) VALUES
 (1, 1, 'ceo', '董事长', 1, 0),
 (2, 1, 'cto', '技术总监', 2, 0),
 (3, 1, 'manager', '项目经理', 3, 0),
@@ -186,4 +186,3 @@ INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire
 (4, 'wechat_mp', 'han_mp_secret_2024', 'wechat_mp', 2592000, 7776000, 0, 'kick_old', 0, '微信小程序'),
 (5, 'wechat_oa', 'han_oa_secret_2024', 'wechat_oa', 604800, 2592000, 0, 'kick_old', 0, '微信公众号'),
 (6, 'open_api', 'han_api_secret_2024', 'api', 3600, 86400, 0, 'reject_new', 0, '开放API接口');
-
