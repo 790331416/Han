@@ -58,6 +58,15 @@ ensure_env_file() {
   fi
 }
 
+sync_tier_dir() {
+  local tier="$1"
+  rsync -a --delete \
+    --exclude '.env' \
+    --exclude '.env.local' \
+    "${REPO_DIR}/deploy/${tier}/" \
+    "${TARGET_ROOT}/deploy/${tier}/"
+}
+
 echo "[deploy-95] target root: ${TARGET_ROOT}"
 echo "[deploy-95] repo dir: ${REPO_DIR}"
 
@@ -85,9 +94,9 @@ else
   git clone --branch master "${REPO_REMOTE}" "${REPO_DIR}"
 fi
 
-rsync -a --delete "${REPO_DIR}/deploy/small/" "${TARGET_ROOT}/deploy/small/"
-rsync -a --delete "${REPO_DIR}/deploy/medium/" "${TARGET_ROOT}/deploy/medium/"
-rsync -a --delete "${REPO_DIR}/deploy/full/" "${TARGET_ROOT}/deploy/full/"
+sync_tier_dir small
+sync_tier_dir medium
+sync_tier_dir full
 
 ensure_env_file small
 ensure_env_file medium
