@@ -140,6 +140,11 @@ yarn-debug.log*
 yarn-error.log*
 node_modules/
 /dist
+han-ui/dist/
+.m2/
+.codex-temp/
+.codex-tmp/
+output/playwright/
 .nyc_output
 coverage
 /lib

@@ -1,0 +1,37 @@
+﻿-- AI智能体表
+CREATE TABLE IF NOT EXISTS ai_agent (
+    agent_id       BIGSERIAL PRIMARY KEY,
+    agent_name     VARCHAR(100) NOT NULL,
+    description    TEXT,
+    avatar         VARCHAR(500),
+    system_prompt  TEXT,
+    prologue       TEXT,
+    model_id       BIGINT,
+    knowledge_base_ids TEXT,
+    mcp_server_ids TEXT,
+    temperature    NUMERIC(3,2) DEFAULT 0.7,
+    max_tokens     INT DEFAULT 2048,
+    published      CHAR(1) DEFAULT '0',
+    status         CHAR(1) DEFAULT '0',
+    tenant_id      BIGINT,
+    create_by      VARCHAR(64),
+    create_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_by      VARCHAR(64),
+    update_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted        INT DEFAULT 0
+);
+
+COMMENT ON TABLE ai_agent IS 'AI智能体';
+COMMENT ON COLUMN ai_agent.agent_id IS '智能体ID';
+COMMENT ON COLUMN ai_agent.agent_name IS '智能体名称';
+COMMENT ON COLUMN ai_agent.description IS '描述';
+COMMENT ON COLUMN ai_agent.avatar IS '头像';
+COMMENT ON COLUMN ai_agent.system_prompt IS '系统提示词（角色设定）';
+COMMENT ON COLUMN ai_agent.prologue IS '开场白';
+COMMENT ON COLUMN ai_agent.model_id IS '关联LLM模型ID';
+COMMENT ON COLUMN ai_agent.knowledge_base_ids IS '关联知识库ID列表(JSON)';
+COMMENT ON COLUMN ai_agent.mcp_server_ids IS '关联MCP服务ID列表(JSON)';
+COMMENT ON COLUMN ai_agent.temperature IS '温度参数';
+COMMENT ON COLUMN ai_agent.max_tokens IS '最大Token数';
+COMMENT ON COLUMN ai_agent.published IS '是否发布(0未发布 1已发布)';
+COMMENT ON COLUMN ai_agent.status IS '状态(0正常 1停用)';

@@ -1,1 +1,0 @@
-import{b as n,p as t}from"./index-23AxupUR.js";function s(e){return n("/system/menu/list",e)}function r(){return n("/system/menu/tree")}function m(e){return n(`/system/menu/info/${e}`)}function o(e){return t("/system/menu",e)}function a(e){return t("/system/menu/edit",e)}function i(e){return t(`/system/menu/remove/${e}`)}export{m as a,o as b,i as d,r as g,s as l,a as u};
