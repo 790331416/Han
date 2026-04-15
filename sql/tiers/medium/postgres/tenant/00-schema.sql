@@ -23,7 +23,7 @@ CREATE TABLE sys_tenant (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0
+    del_flag       SMALLINT        DEFAULT 0
 );
 
 -- =============================================
@@ -42,7 +42,7 @@ CREATE TABLE sys_tenant_package (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0
+    del_flag       SMALLINT        DEFAULT 0
 );
 
 -- =============================================

@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS gen_table (
     id BIGINT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 0,
     table_name VARCHAR(200) NOT NULL DEFAULT '',
     table_comment VARCHAR(500) DEFAULT '',
     package_name VARCHAR(200) DEFAULT 'com.han.system',
@@ -26,6 +27,7 @@ COMMENT ON COLUMN gen_table.parent_menu_id IS 'Parent menu ID';
 
 CREATE TABLE IF NOT EXISTS gen_table_column (
     id BIGINT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 0,
     table_id BIGINT NOT NULL,
     column_name VARCHAR(200) NOT NULL,
     column_comment VARCHAR(500) DEFAULT '',

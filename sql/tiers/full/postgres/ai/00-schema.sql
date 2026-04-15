@@ -163,10 +163,12 @@ CREATE TABLE ai_chat_message (
     content         TEXT            NOT NULL,
     token_count     INTEGER         DEFAULT 0,
     sort_order      INTEGER         DEFAULT 0,
+    tenant_id       BIGINT          DEFAULT 0,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 COMMENT ON TABLE ai_chat_message IS 'AI对话消息表';
 CREATE INDEX idx_ai_chat_message_conversation ON ai_chat_message(conversation_id);
+CREATE INDEX idx_ai_chat_message_tenant ON ai_chat_message(tenant_id);
 
 -- =============================================
 -- 31. AI智能体表
