@@ -111,7 +111,7 @@ INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);
 INSERT INTO sys_user_post (user_id, post_id) VALUES (1, 1), (2, 4);
 
 -- 10. 角色菜单关联(超管拥有全部菜单)
-INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE deleted = 0;
+INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE del_flag = 0;
 
 -- 11. 字典类型
 INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES

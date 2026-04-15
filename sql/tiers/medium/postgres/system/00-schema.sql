@@ -23,7 +23,7 @@ CREATE TABLE sys_dept (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -53,7 +53,7 @@ CREATE TABLE sys_user (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500),
     UNIQUE (username, tenant_id)
 );
@@ -75,7 +75,7 @@ CREATE TABLE sys_post (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -99,7 +99,7 @@ CREATE TABLE sys_role (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -130,7 +130,7 @@ CREATE TABLE sys_menu (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -186,7 +186,7 @@ CREATE TABLE sys_dict_type (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -211,7 +211,7 @@ CREATE TABLE sys_dict_data (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -232,7 +232,7 @@ CREATE TABLE sys_config (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
@@ -361,6 +361,6 @@ CREATE TABLE sys_client (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );

@@ -19,6 +19,12 @@ FORBIDDEN_SQL_TOKENS = [
     " AFTER ",
 ]
 
+FORBIDDEN_SYSTEM_TOKENS = [
+    " deleted ",
+    "\tdeleted\t",
+    "\ndeleted ",
+]
+
 
 def main() -> int:
     violations: list[str] = []
@@ -39,6 +45,12 @@ def main() -> int:
             for token in FORBIDDEN_SQL_TOKENS:
                 if token in text:
                     violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {sql_file}")
+            if "/postgres/system/" in sql_file.as_posix():
+                lowered = text.lower()
+                for token in FORBIDDEN_SYSTEM_TOKENS:
+                    if token in lowered:
+                        violations.append(f"system SQL 必须使用 del_flag，不能再写回 deleted: {sql_file}")
+                        break
     if violations:
         print("\n".join(violations))
         return 1
