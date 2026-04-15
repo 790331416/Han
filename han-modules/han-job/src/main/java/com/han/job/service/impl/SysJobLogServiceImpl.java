@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.mybatis.util.PageHelper;
 import com.han.job.converter.SysJobLogConverter;
-import com.han.job.domain.query.JobLogQuery;
 import com.han.job.domain.po.SysJobLogPo;
+import com.han.job.domain.query.JobLogQuery;
 import com.han.job.domain.vo.JobLogVO;
 import com.han.job.mapper.SysJobLogMapper;
 import com.han.job.service.ISysJobLogService;
@@ -17,7 +17,7 @@ import org.springframework.util.StringUtils;
 import java.util.Arrays;
 
 /**
- * 任务日志服务实现
+ * 任务日志服务实现。
  */
 @Service
 @RequiredArgsConstructor
@@ -30,17 +30,14 @@ public class SysJobLogServiceImpl implements ISysJobLogService {
     public PageResult<JobLogVO> listJobLog(JobLogQuery query) {
         Page<SysJobLogPo> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysJobLogPo> wrapper = new LambdaQueryWrapper<>();
-        
-        SysJobLogPo base = query.getBase();
-        if (base != null) {
-            wrapper.like(StringUtils.hasText(base.getJobName()), SysJobLogPo::getJobName, base.getJobName())
-                    .eq(StringUtils.hasText(base.getJobGroup()), SysJobLogPo::getJobGroup, base.getJobGroup())
-                    .eq(StringUtils.hasText(base.getStatus()), SysJobLogPo::getStatus, base.getStatus());
-        }
-        wrapper.ge(query.getBeginTime() != null, SysJobLogPo::getStartTime, query.getBeginTime())
+
+        wrapper.like(StringUtils.hasText(query.getJobName()), SysJobLogPo::getJobName, query.getJobName())
+                .eq(StringUtils.hasText(query.getJobGroup()), SysJobLogPo::getJobGroup, query.getJobGroup())
+                .eq(StringUtils.hasText(query.getStatus()), SysJobLogPo::getStatus, query.getStatus())
+                .ge(query.getBeginTime() != null, SysJobLogPo::getStartTime, query.getBeginTime())
                 .le(query.getEndTime() != null, SysJobLogPo::getStopTime, query.getEndTime())
                 .orderByDesc(SysJobLogPo::getCreateTime);
-        
+
         Page<SysJobLogPo> result = jobLogMapper.selectPage(page, wrapper);
         return PageHelper.build(result, jobLogConvert::toVO);
     }

@@ -18,6 +18,8 @@ declare -A MODULE_MAP=(
   [job]="han-modules/han-job"
   [open]="han-modules/han-open"
   [file]="han-modules/han-file"
+  [ai]="han-modules/han-ai"
+  [gen]="han-modules/han-gen"
   [workflow]="han-modules/han-workflow"
   [monitor]="han-visual/han-monitor"
   [ui]="han-ui"
@@ -31,6 +33,8 @@ declare -A ARTIFACT_MAP=(
   [job]="han-job"
   [open]="han-open"
   [file]="han-file"
+  [ai]="han-ai"
+  [gen]="han-gen"
   [workflow]="han-workflow"
   [monitor]="han-monitor"
 )
@@ -43,20 +47,22 @@ declare -A DOCKERFILE_DIR_MAP=(
   [job]="han-modules/han-job"
   [open]="han-modules/han-open"
   [file]="han-modules/han-file"
+  [ai]="han-modules/han-ai"
+  [gen]="han-modules/han-gen"
   [workflow]="han-modules/han-workflow"
   [monitor]="han-visual/han-monitor"
   [ui]="han-ui"
 )
 
 CORE_SERVICES=(gateway auth system tenant job open)
-ALL_SERVICES=(auth file gateway job monitor open system tenant ui workflow)
+ALL_SERVICES=(ai auth file gateway gen job monitor open system tenant ui workflow)
 
 usage() {
   cat <<'EOF'
 Usage: ./build.sh [service ...] [--all] [--push] [--no-build]
 
 Services:
-  gateway auth system tenant job open file workflow monitor ui
+  gateway auth system tenant job open file ai gen workflow monitor ui
 
 Examples:
   ./build.sh system workflow
