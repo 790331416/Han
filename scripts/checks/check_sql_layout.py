@@ -7,16 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SQL = ROOT / "sql"
 
-EXPECTED = {
-    "small": ["system", "job"],
-    "medium": ["system", "job", "tenant", "workflow", "open", "file"],
-    "full": ["system", "job", "tenant", "workflow", "open", "file", "ai", "gen"],
-}
-
 ALLOWED_SQL_TOP_LEVEL = {
     "README.md",
     "archive",
-    "shared",
     "tiers",
     "upgrades",
 }
@@ -65,32 +58,36 @@ def main() -> int:
         if item not in ALLOWED_SQL_TOP_LEVEL:
             violations.append(f"sql 顶层条目未入白名单: {item}")
 
-    for tier, modules in EXPECTED.items():
-        base = SQL / "tiers" / tier
-        if not (base / "manifest.md").exists():
-            violations.append(f"缺少 manifest: sql/tiers/{tier}/manifest.md")
-        if not (base / "nacos" / "derby-import.sql").exists():
-            violations.append(f"缺少 Nacos 导入脚本: sql/tiers/{tier}/nacos/derby-import.sql")
-        for module in modules:
-            module_dir = base / "postgres" / module
-            if not (module_dir / "00-schema.sql").exists():
-                violations.append(f"缺少 schema: {module_dir / '00-schema.sql'}")
-            if not (module_dir / "10-seed.sql").exists():
-                violations.append(f"缺少 seed: {module_dir / '10-seed.sql'}")
-        for sql_file in base.joinpath("postgres").rglob("*.sql"):
-            text = sql_file.read_text(encoding="utf-8")
+    for tier in ("small", "medium", "full"):
+        tier_dir = SQL / "tiers" / tier
+        init_file = tier_dir / f"{tier}-init.sql"
+        nacos_file = tier_dir / f"{tier}-nacos-derby-import.sql"
+        readme_file = tier_dir / "README.md"
+        if not readme_file.exists():
+            violations.append(f"缺少 tier 说明: {readme_file}")
+        if not init_file.exists():
+            violations.append(f"缺少初始化 SQL: {init_file}")
+        if not nacos_file.exists():
+            violations.append(f"缺少 Nacos 导入 SQL: {nacos_file}")
+        if init_file.exists():
+            text = init_file.read_text(encoding="utf-8")
             for token in FORBIDDEN_SQL_TOKENS:
                 if token in text:
-                    violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {sql_file}")
-            if "/postgres/system/" in sql_file.as_posix():
-                lowered = text.lower()
-                for token in FORBIDDEN_SYSTEM_TOKENS:
-                    if token in lowered:
-                        violations.append(f"system SQL 必须使用 del_flag，不能再写回 deleted: {sql_file}")
-                        break
+                    violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {init_file}")
+            lowered = text.lower()
+            for token in FORBIDDEN_SYSTEM_TOKENS:
+                if token in lowered:
+                    violations.append(f"tier init SQL 必须使用 del_flag，不能再写回 deleted: {init_file}")
+                    break
+        if nacos_file.exists():
+            text = nacos_file.read_text(encoding="utf-8")
+            if "INSERT INTO nacos.config_info" not in text:
+                violations.append(f"Nacos 导入 SQL 缺少 config_info 导入语句: {nacos_file}")
+
     if violations:
         print("\n".join(violations))
         return 1
+
     print("sql layout ok")
     return 0
 

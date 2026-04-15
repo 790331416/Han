@@ -2,29 +2,48 @@
 
 `sql/` 是 Han 仓库唯一正式 SQL 入口。
 
-## 目录结构
+## 当前正式结构
 
-- `shared/`
-  - PostgreSQL 共享基础脚本
-  - Nacos 共享模板
 - `tiers/`
-  - `small`
-  - `medium`
-  - `full`
+  - `small/small-init.sql`
+  - `small/small-nacos-derby-import.sql`
+  - `medium/medium-init.sql`
+  - `medium/medium-nacos-derby-import.sql`
+  - `full/full-init.sql`
+  - `full/full-nacos-derby-import.sql`
 - `upgrades/postgres/`
   - PostgreSQL 正式增量升级脚本
 - `archive/`
-  - 已被新结构吸收的历史 SQL 与旧入口
+  - 已退役的旧 SQL、旧拆分结构与历史母本
 
 ## 使用规则
 
-- 初始化只以 `tiers/<tier>/` 为准
-- 升级只以 `upgrades/postgres/` 为准
-- Nacos 模板只以 `shared/nacos/templates/` 为准
-- 不再从 `sql/` 根目录、`sql/postgres/`、`sql/upgrade/`、`sql/config/` 寻找正式初始化或升级脚本
+- 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- Nacos 导入只认 `sql/tiers/<tier>/<tier>-nacos-derby-import.sql`
+- 增量升级只认 `sql/upgrades/postgres/`
+- 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 
-## 当前口径
+## 三档说明
 
-- `small / medium / full` 的 PostgreSQL 初始化脚本已经固定在 `sql/tiers/`
-- `jobflow-scheduler.yml` 的正式模板位置是 `sql/shared/nacos/templates/jobflow-scheduler.yml`
-- `sql/archive/` 中的内容只用于历史追溯，不再作为正式部署入口
+- `small`
+  - PostgreSQL：`sql/tiers/small/small-init.sql`
+  - Nacos：`sql/tiers/small/small-nacos-derby-import.sql`
+- `medium`
+  - PostgreSQL：`sql/tiers/medium/medium-init.sql`
+  - Nacos：`sql/tiers/medium/medium-nacos-derby-import.sql`
+- `full`
+  - PostgreSQL：`sql/tiers/full/full-init.sql`
+  - Nacos：`sql/tiers/full/full-nacos-derby-import.sql`
+
+## 归档说明
+
+- `sql/archive/legacy-root/`
+  - 根目录旧散装 SQL
+- `sql/archive/postgres-legacy/`
+  - 旧 PostgreSQL 母本
+- `sql/archive/upgrade-legacy/`
+  - 旧升级脚本
+- `sql/archive/tier-modular-legacy/`
+  - 上一轮按模块拆分的 tier SQL
+- `sql/archive/shared-legacy/`
+  - 旧共享模板与共享基础脚本
