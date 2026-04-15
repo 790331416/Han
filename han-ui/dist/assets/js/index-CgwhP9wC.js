@@ -1,1 +1,0 @@
-import{v as n,aB as u,aA as p,k as c}from"./vue-D0J4gfIv.js";const _=n({__name:"index",setup(i){const e=u(),o=p();return c(()=>{const{params:a,query:s}=e,{path:t}=a,r=Array.isArray(t)?"/"+t.join("/"):"/"+t;o.replace({path:r,query:s})}),()=>{}}});export{_ as default};

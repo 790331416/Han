@@ -104,7 +104,7 @@ CREATE TABLE sys_dept (
     ancestors       VARCHAR(500)    DEFAULT '',
     dept_name       VARCHAR(100)    NOT NULL,
     dept_code       VARCHAR(50),
-    leader          VARCHAR(50),
+    leader_id       BIGINT,
     phone           VARCHAR(20),
     email           VARCHAR(100),
     sort            INT             DEFAULT 0,
@@ -346,12 +346,35 @@ CREATE TABLE sys_notice (
     update_by       BIGINT,
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
-    deleted        SMALLINT        DEFAULT 0,
+    del_flag        SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
 
 -- =============================================
--- 16. 操作日志表
+-- 16. 用户通知已读状态表
+-- =============================================
+CREATE TABLE sys_notice_read (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    tenant_id       BIGINT          NOT NULL,
+    notice_id       BIGINT          NOT NULL,
+    user_id         BIGINT          NOT NULL,
+    read_time       TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP,
+    del_flag        SMALLINT        DEFAULT 0
+);
+
+CREATE UNIQUE INDEX uk_sys_notice_read_notice_user
+    ON sys_notice_read (tenant_id, notice_id, user_id);
+
+CREATE INDEX idx_sys_notice_read_user
+    ON sys_notice_read (tenant_id, user_id, del_flag);
+
+CREATE INDEX idx_sys_notice_read_notice
+    ON sys_notice_read (tenant_id, notice_id, del_flag);
+
+-- =============================================
+-- 17. 操作日志表
 -- =============================================
 CREATE TABLE sys_oper_log (
     id              BIGSERIAL       PRIMARY KEY,
@@ -375,7 +398,7 @@ CREATE TABLE sys_oper_log (
 );
 
 -- =============================================
--- 17. 登录日志表
+-- 18. 登录日志表
 -- =============================================
 CREATE TABLE sys_login_log (
     id              BIGSERIAL       PRIMARY KEY,
@@ -384,7 +407,7 @@ CREATE TABLE sys_login_log (
     username        VARCHAR(50)     DEFAULT '',
     client_type     VARCHAR(20)     DEFAULT '',
     device_id       VARCHAR(100)    DEFAULT '',
-    ipaddr          VARCHAR(128)    DEFAULT '',
+    ip_addr         VARCHAR(128)    DEFAULT '',
     login_location  VARCHAR(255)    DEFAULT '',
     browser         VARCHAR(100)    DEFAULT '',
     os              VARCHAR(100)    DEFAULT '',
@@ -403,7 +426,7 @@ CREATE TABLE sys_user_online (
     username        VARCHAR(50)     DEFAULT '',
     client_type     VARCHAR(20)     DEFAULT '',
     device_id       VARCHAR(100)    DEFAULT '',
-    ipaddr          VARCHAR(128)    DEFAULT '',
+    ip_addr         VARCHAR(128)    DEFAULT '',
     login_location  VARCHAR(255)    DEFAULT '',
     browser         VARCHAR(100)    DEFAULT '',
     os              VARCHAR(100)    DEFAULT '',

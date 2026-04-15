@@ -2,6 +2,8 @@ package com.han.system.domain.vo;
 
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.annotation.write.style.ColumnWidth;
+import com.han.common.web.sensitive.Sensitive;
+import com.han.common.web.sensitive.SensitiveType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,10 +36,12 @@ public class UserExportVo {
 
     @ExcelProperty("手机号")
     @ColumnWidth(15)
+    @Sensitive(SensitiveType.PHONE)
     private String phone;
 
     @ExcelProperty("邮箱")
     @ColumnWidth(25)
+    @Sensitive(SensitiveType.EMAIL)
     private String email;
 
     @ExcelProperty("性别")

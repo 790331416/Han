@@ -1,15 +1,16 @@
 package com.han.system.controller.admin;
 
-import com.alibaba.excel.EasyExcel;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.PermissionExempt;
+import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.controller.base.BSysUserController;
 import com.han.system.domain.dto.SysUserDto;
 import com.han.system.domain.query.SysUserQuery;
 import com.han.system.domain.vo.CurrentUserVO;
+import com.han.common.web.excel.ExcelUtil;
 import com.han.system.domain.vo.UserExportVo;
 import com.han.system.domain.vo.UserImportVo;
 import com.han.system.domain.vo.UserVO;
@@ -20,8 +21,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
@@ -53,6 +52,7 @@ public class ASysUserController extends BSysUserController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:user:add')")
     @OperLog(module = "用户管理", type = OperLog.OperType.INSERT)
@@ -61,6 +61,7 @@ public class ASysUserController extends BSysUserController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:user:edit')")
     @OperLog(module = "用户管理", type = OperLog.OperType.UPDATE)
@@ -69,6 +70,7 @@ public class ASysUserController extends BSysUserController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/remove/{userId}")
     @PreAuthorize("@ss.hasAuthority('system:user:remove')")
     @OperLog(module = "用户管理", type = OperLog.OperType.DELETE)
@@ -76,6 +78,7 @@ public class ASysUserController extends BSysUserController {
         return super.remove(userId);
     }
 
+    @RepeatSubmit
     @PostMapping("/remove")
     @PreAuthorize("@ss.hasAuthority('system:user:remove')")
     @OperLog(module = "用户管理", type = OperLog.OperType.DELETE)
@@ -85,6 +88,7 @@ public class ASysUserController extends BSysUserController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/resetPwd")
     @PreAuthorize("@ss.hasAuthority('system:user:resetPwd')")
     @OperLog(module = "用户管理", type = OperLog.OperType.UPDATE, saveParams = false)
@@ -93,6 +97,7 @@ public class ASysUserController extends BSysUserController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/changeStatus")
     @PreAuthorize("@ss.hasAuthority('system:user:edit')")
     @OperLog(module = "用户管理", type = OperLog.OperType.UPDATE)
@@ -153,11 +158,6 @@ public class ASysUserController extends BSysUserController {
     @PreAuthorize("@ss.hasAuthority('system:user:export')")
     @OperLog(module = "用户管理", type = OperLog.OperType.EXPORT)
     public void export(SysUserQuery query, HttpServletResponse response) throws IOException {
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("用户数据", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
-        response.setHeader("Content-disposition", "attachment;filename=" + fileName + ".xlsx");
-
         java.util.List<UserExportVo> list = baseService.selectUserPage(query).getRows().stream()
                 .map(u -> UserExportVo.builder()
                         .userId(String.valueOf(u.getUserId()))
@@ -171,27 +171,22 @@ public class ASysUserController extends BSysUserController {
                         .createTime(u.getCreateTime() != null ? u.getCreateTime().toString() : "")
                         .build())
                 .toList();
-
-        EasyExcel.write(response.getOutputStream(), UserExportVo.class).sheet("用户数据").doWrite(list);
+        ExcelUtil.exportExcel(response, "用户数据", UserExportVo.class, list);
     }
 
     @GetMapping("/importTemplate")
     @PreAuthorize("@ss.hasAuthority('system:user:import')")
     public void importTemplate(HttpServletResponse response) throws IOException {
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("用户导入模板", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
-        response.setHeader("Content-disposition", "attachment;filename=" + fileName + ".xlsx");
-        EasyExcel.write(response.getOutputStream(), UserImportVo.class).sheet("用户导入").doWrite(java.util.List.of());
+        ExcelUtil.exportTemplate(response, "用户导入模板", UserImportVo.class);
     }
 
+    @RepeatSubmit(interval = 10)
     @PostMapping("/import")
     @PreAuthorize("@ss.hasAuthority('system:user:import')")
     @OperLog(module = "用户管理", type = OperLog.OperType.IMPORT)
     public R<String> importData(@RequestParam("file") MultipartFile file,
                                 @RequestParam(value = "updateSupport", defaultValue = "false") boolean updateSupport) throws IOException {
-        java.util.List<UserImportVo> list = EasyExcel.read(file.getInputStream())
-                .head(UserImportVo.class).sheet().doReadSync();
+        java.util.List<UserImportVo> list = ExcelUtil.importExcel(file.getInputStream(), UserImportVo.class);
 
         if (list == null || list.isEmpty()) {
             return R.fail("导入数据为空");

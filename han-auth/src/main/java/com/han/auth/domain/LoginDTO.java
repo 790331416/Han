@@ -32,4 +32,7 @@ public class LoginDTO {
 
     /** 租户ID */
     private Long tenantId;
+
+    /** TOTP 验证码（启用 2FA 时必填） */
+    private String totpCode;
 }

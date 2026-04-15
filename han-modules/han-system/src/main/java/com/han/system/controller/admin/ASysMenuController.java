@@ -4,6 +4,7 @@ import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.PermissionExempt;
+import com.han.common.security.annotation.RepeatSubmit;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.domain.po.SysMenuPo;
 import com.han.system.domain.vo.RouterVO;
@@ -52,6 +53,7 @@ public class ASysMenuController {
         return R.ok(menuService.selectMenuById(menuId));
     }
 
+    @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:menu:add')")
     @OperLog(module = "菜单管理", type = OperLog.OperType.INSERT)
@@ -60,6 +62,7 @@ public class ASysMenuController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:menu:edit')")
     @OperLog(module = "菜单管理", type = OperLog.OperType.UPDATE)
@@ -68,6 +71,7 @@ public class ASysMenuController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/remove/{menuId}")
     @PreAuthorize("@ss.hasAuthority('system:menu:remove')")
     @OperLog(module = "菜单管理", type = OperLog.OperType.DELETE)

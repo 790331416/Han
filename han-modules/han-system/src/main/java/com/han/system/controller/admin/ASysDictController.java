@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.domain.po.SysDictTypePo;
 import com.han.system.mapper.SysDictDataMapper;
@@ -51,6 +52,7 @@ public class ASysDictController {
         return R.ok(dictTypeMapper.selectById(dictId));
     }
 
+    @RepeatSubmit
     @PostMapping("/type")
     @PreAuthorize("@ss.hasAuthority('system:dict:add')")
     public R<Void> addType(@RequestBody SysDictTypePo dictType) {
@@ -58,6 +60,7 @@ public class ASysDictController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/type/edit")
     @PreAuthorize("@ss.hasAuthority('system:dict:edit')")
     public R<Void> editType(@RequestBody SysDictTypePo dictType) {
@@ -65,6 +68,7 @@ public class ASysDictController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/type/remove/{dictId}")
     @PreAuthorize("@ss.hasAuthority('system:dict:remove')")
     public R<Void> removeType(@PathVariable Long dictId) {
@@ -102,6 +106,7 @@ public class ASysDictController {
         return R.ok(dictDataMapper.selectById(dictCode));
     }
 
+    @RepeatSubmit
     @PostMapping("/data")
     @PreAuthorize("@ss.hasAuthority('system:dict:add')")
     public R<Void> addData(@RequestBody SysDictDataPo dictData) {
@@ -109,6 +114,7 @@ public class ASysDictController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/data/edit")
     @PreAuthorize("@ss.hasAuthority('system:dict:edit')")
     public R<Void> editData(@RequestBody SysDictDataPo dictData) {
@@ -116,6 +122,7 @@ public class ASysDictController {
         return R.ok();
     }
 
+    @RepeatSubmit
     @PostMapping("/data/remove/{dictCode}")
     @PreAuthorize("@ss.hasAuthority('system:dict:remove')")
     public R<Void> removeData(@PathVariable Long dictCode) {

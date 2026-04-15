@@ -4,14 +4,19 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.annotation.RepeatSubmit;
+import com.han.common.web.excel.ExcelUtil;
 import com.han.system.controller.base.BSysPostController;
 import com.han.system.domain.dto.SysPostDto;
 import com.han.system.domain.po.SysPostPo;
 import com.han.system.domain.query.SysPostQuery;
+import com.han.system.domain.vo.PostExportVo;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -43,6 +48,7 @@ public class ASysPostController extends BSysPostController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:post:add')")
     @OperLog(module = "岗位管理", type = OperLog.OperType.INSERT)
@@ -51,6 +57,7 @@ public class ASysPostController extends BSysPostController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:post:edit')")
     @OperLog(module = "岗位管理", type = OperLog.OperType.UPDATE)
@@ -59,10 +66,28 @@ public class ASysPostController extends BSysPostController {
     }
 
     @Override
+    @RepeatSubmit
     @PostMapping("/remove/{postId}")
     @PreAuthorize("@ss.hasAuthority('system:post:remove')")
     @OperLog(module = "岗位管理", type = OperLog.OperType.DELETE)
     public R<Void> remove(@PathVariable Long postId) {
         return super.remove(postId);
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("@ss.hasAuthority('system:post:export')")
+    @OperLog(module = "岗位管理", type = OperLog.OperType.EXPORT)
+    public void export(SysPostQuery query, HttpServletResponse response) throws IOException {
+        List<PostExportVo> list = super.list(query).getData().getRows().stream()
+                .map(p -> PostExportVo.builder()
+                        .postId(String.valueOf(p.getId()))
+                        .postCode(p.getPostCode())
+                        .postName(p.getPostName())
+                        .postSort(String.valueOf(p.getPostSort()))
+                        .statusText(p.getStatus() != null && p.getStatus() == 0 ? "正常" : "停用")
+                        .createTime(p.getCreateTime() != null ? p.getCreateTime().toString() : "")
+                        .build())
+                .toList();
+        ExcelUtil.exportExcel(response, "岗位数据", PostExportVo.class, list);
     }
 }
