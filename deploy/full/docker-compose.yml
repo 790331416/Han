@@ -1,22 +1,14 @@
-# =============================================
-# Han Cloud 鍏ㄩ噺閮ㄧ讲锛堝ぇ鍨嬶級
-# 閫傜敤: 鐢熶骇鐜 / 瀹屾暣鍔熻兘
-# 纭欢: 8鏍?6GB
-# 鍩虹璁炬柦: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1 + RustFS
-# 鏈嶅姟: gateway, auth, system, tenant, job, open, workflow, file, ai, gen
-# =============================================
-
 x-db-env: &db-env
   DB_HOST: postgres
   DB_PORT: "5432"
   DB_NAME: han
   DB_USER: han
-  DB_PASSWORD: han@2026
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-han@2026}
 
 x-redis-env: &redis-env
   REDIS_HOST: redis
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: han@2026
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-han@2026}
 
 x-nacos-env: &nacos-env
   NACOS_SERVER_ADDR: nacos:8848
@@ -28,49 +20,46 @@ x-rabbitmq-env: &rabbitmq-env
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_PORT: "5672"
   RABBITMQ_USERNAME: han
-  RABBITMQ_PASSWORD: han@2026
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-han@2026}
 
 x-service-env: &service-env
   <<: [*db-env, *redis-env, *nacos-env, *rabbitmq-env]
   SPRING_PROFILES_ACTIVE: docker
   HAN_DEPLOY_TIER: full
-  HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+  HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
   JAVA_OPTS: -Xms256m -Xmx512m
-  TZ: Asia/Shanghai
+  TZ: ${TZ:-Asia/Shanghai}
 
 services:
-  # ==================== 鍩虹璁炬柦 ====================
-
   postgres:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/postgres:18.1
-    container_name: han-postgres
+    image: ${HAN_POSTGRES_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/postgres:18.1}
     environment:
       POSTGRES_DB: han
       POSTGRES_USER: han
-      POSTGRES_PASSWORD: han@2026
-      TZ: Asia/Shanghai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-han@2026}
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ../../sql/tiers/full/postgres/system/00-schema.sql:/docker-entrypoint-initdb.d/01-system-schema.sql
-      - ../../sql/tiers/full/postgres/system/10-seed.sql:/docker-entrypoint-initdb.d/02-system-seed.sql
-      - ../../sql/tiers/full/postgres/job/00-schema.sql:/docker-entrypoint-initdb.d/03-job-schema.sql
-      - ../../sql/tiers/full/postgres/job/10-seed.sql:/docker-entrypoint-initdb.d/04-job-seed.sql
-      - ../../sql/tiers/full/postgres/job/90-fixup.sql:/docker-entrypoint-initdb.d/05-job-fix.sql
-      - ../../sql/tiers/full/postgres/tenant/00-schema.sql:/docker-entrypoint-initdb.d/06-tenant-schema.sql
-      - ../../sql/tiers/full/postgres/tenant/10-seed.sql:/docker-entrypoint-initdb.d/07-tenant-seed.sql
-      - ../../sql/tiers/full/postgres/tenant/90-fixup.sql:/docker-entrypoint-initdb.d/08-tenant-fix.sql
-      - ../../sql/tiers/full/postgres/workflow/00-schema.sql:/docker-entrypoint-initdb.d/09-workflow-schema.sql
-      - ../../sql/tiers/full/postgres/workflow/10-seed.sql:/docker-entrypoint-initdb.d/10-workflow-seed.sql
-      - ../../sql/tiers/full/postgres/open/00-schema.sql:/docker-entrypoint-initdb.d/11-open-schema.sql
-      - ../../sql/tiers/full/postgres/open/10-seed.sql:/docker-entrypoint-initdb.d/12-open-seed.sql
-      - ../../sql/tiers/full/postgres/file/00-schema.sql:/docker-entrypoint-initdb.d/13-file-schema.sql
-      - ../../sql/tiers/full/postgres/file/10-seed.sql:/docker-entrypoint-initdb.d/14-file-seed.sql
-      - ../../sql/tiers/full/postgres/ai/00-schema.sql:/docker-entrypoint-initdb.d/15-ai-schema.sql
-      - ../../sql/tiers/full/postgres/ai/10-seed.sql:/docker-entrypoint-initdb.d/16-ai-seed.sql
-      - ../../sql/tiers/full/postgres/gen/00-schema.sql:/docker-entrypoint-initdb.d/17-gen-schema.sql
-      - ../../sql/tiers/full/postgres/gen/10-seed.sql:/docker-entrypoint-initdb.d/18-gen-seed.sql
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/system/00-schema.sql:/docker-entrypoint-initdb.d/01-system-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/system/10-seed.sql:/docker-entrypoint-initdb.d/02-system-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/job/00-schema.sql:/docker-entrypoint-initdb.d/03-job-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/job/10-seed.sql:/docker-entrypoint-initdb.d/04-job-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/job/90-fixup.sql:/docker-entrypoint-initdb.d/05-job-fix.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/tenant/00-schema.sql:/docker-entrypoint-initdb.d/06-tenant-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/tenant/10-seed.sql:/docker-entrypoint-initdb.d/07-tenant-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/tenant/90-fixup.sql:/docker-entrypoint-initdb.d/08-tenant-fix.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/workflow/00-schema.sql:/docker-entrypoint-initdb.d/09-workflow-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/workflow/10-seed.sql:/docker-entrypoint-initdb.d/10-workflow-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/open/00-schema.sql:/docker-entrypoint-initdb.d/11-open-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/open/10-seed.sql:/docker-entrypoint-initdb.d/12-open-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/file/00-schema.sql:/docker-entrypoint-initdb.d/13-file-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/file/10-seed.sql:/docker-entrypoint-initdb.d/14-file-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/ai/00-schema.sql:/docker-entrypoint-initdb.d/15-ai-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/ai/10-seed.sql:/docker-entrypoint-initdb.d/16-ai-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/gen/00-schema.sql:/docker-entrypoint-initdb.d/17-gen-schema.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/full/postgres/gen/10-seed.sql:/docker-entrypoint-initdb.d/18-gen-seed.sql:ro
     networks:
       - han-network
     healthcheck:
@@ -80,9 +69,8 @@ services:
       retries: 5
 
   redis:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6.0
-    container_name: han-redis
-    command: redis-server --requirepass han@2026
+    image: ${HAN_REDIS_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6.0}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-han@2026}
     ports:
       - "6379:6379"
     volumes:
@@ -90,14 +78,13 @@ services:
     networks:
       - han-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "han@2026", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-han@2026}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   nacos:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/nacos:v3.1.1
-    container_name: han-nacos
+    image: ${HAN_NACOS_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/nacos:v3.1.1}
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
@@ -106,7 +93,7 @@ services:
       NACOS_AUTH_IDENTITY_VALUE: han2026
       JVM_XMS: 512m
       JVM_XMX: 512m
-      TZ: Asia/Shanghai
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "8848:8848"
       - "9848:9848"
@@ -122,11 +109,10 @@ services:
       retries: 5
 
   rustfs:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/rustfs:1.0.0-alpha.81
-    container_name: han-rustfs
+    image: ${HAN_RUSTFS_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/rustfs:1.0.0-alpha.81}
     environment:
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-han@2026}
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CONSOLE_ADDRESS: ":9001"
     ports:
@@ -138,12 +124,11 @@ services:
       - han-network
 
   rabbitmq:
-    image: rabbitmq:3.13-management
-    container_name: han-rabbitmq
+    image: ${HAN_RABBITMQ_IMAGE:-rabbitmq:3.13-management}
     environment:
       RABBITMQ_DEFAULT_USER: han
-      RABBITMQ_DEFAULT_PASS: han@2026
-      TZ: Asia/Shanghai
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-han@2026}
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -157,19 +142,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # ==================== 搴旂敤鏈嶅姟 ====================
-
   gateway:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-gateway:latest
-    container_name: han-gateway
+    image: ${HAN_GATEWAY_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-gateway:latest}
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES: .*
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
       JAVA_OPTS: -Xms256m -Xmx512m -Dio.netty.transport.noNative=true
-      TZ: Asia/Shanghai
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "9090:8080"
     depends_on:
@@ -181,18 +163,17 @@ services:
       - han-network
 
   auth:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-auth:latest
-    container_name: han-auth
+    image: ${HAN_AUTH_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-auth:latest}
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
       SPRING_AUTOCONFIGURE_EXCLUDE: >-
         org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
       JAVA_OPTS: -Xms256m -Xmx512m
-      TZ: Asia/Shanghai
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "9200:9200"
     depends_on:
@@ -204,14 +185,13 @@ services:
       - han-network
 
   system:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest
-    container_name: han-system
+    image: ${HAN_SYSTEM_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest}
     environment:
       <<: *service-env
       HAN_GEN_ENABLED: "true"
       RUSTFS_ENDPOINT: http://rustfs:9000
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-han@2026}
     ports:
       - "9201:9201"
     depends_on:
@@ -225,8 +205,7 @@ services:
       - han-network
 
   tenant:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-tenant:latest
-    container_name: han-tenant
+    image: ${HAN_TENANT_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-tenant:latest}
     environment:
       <<: *service-env
     ports:
@@ -242,8 +221,7 @@ services:
       - han-network
 
   workflow:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-workflow:latest
-    container_name: han-workflow
+    image: ${HAN_WORKFLOW_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-workflow:latest}
     environment:
       <<: *service-env
     ports:
@@ -259,8 +237,7 @@ services:
       - han-network
 
   job:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-job:latest
-    container_name: han-job
+    image: ${HAN_JOB_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-job:latest}
     environment:
       <<: *service-env
     ports:
@@ -276,8 +253,7 @@ services:
       - han-network
 
   open:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-open:latest
-    container_name: han-open
+    image: ${HAN_OPEN_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-open:latest}
     environment:
       <<: *service-env
     ports:
@@ -293,19 +269,18 @@ services:
       - han-network
 
   file:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
-    container_name: han-file
+    image: ${HAN_FILE_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest}
     environment:
       <<: [*db-env, *redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
       SERVER_FORWARD_HEADERS_STRATEGY: framework
       RUSTFS_ENDPOINT: http://rustfs:9000
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-han@2026}
       JAVA_OPTS: -Xms256m -Xmx512m
-      TZ: Asia/Shanghai
+      TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "9207:9207"
     depends_on:
@@ -321,8 +296,7 @@ services:
       - han-network
 
   ai:
-    image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest
-    container_name: han-ai
+    image: ${HAN_AI_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest}
     environment:
       <<: *service-env
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
@@ -356,7 +330,6 @@ services:
 
   gen:
     image: ${HAN_GEN_IMAGE:-han-gen:latest}
-    container_name: han-gen
     environment:
       <<: *service-env
     depends_on:
@@ -368,6 +341,22 @@ services:
         condition: service_healthy
     networks:
       - han-network
+
+  ui:
+    image: ${HAN_UI_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ui:latest}
+    ports:
+      - "3000:80"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   postgres_data:

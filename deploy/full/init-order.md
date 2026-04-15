@@ -16,3 +16,21 @@
 14. AI
 15. Gen
 16. UI
+
+对外端口：
+
+- PostgreSQL `5432`
+- Redis `6379`
+- Nacos `8848`
+- RustFS `9000`
+- RustFS Console `9001`
+- Gateway `9090`
+- Auth `9200`
+- System `9201`
+- Tenant `9202`
+- Workflow `9203`
+- Job `9204`
+- Open `9205`
+- File `9207`
+- AI `9208`
+- UI `3000`

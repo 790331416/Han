@@ -8,3 +8,14 @@
 6. System
 7. Job
 8. UI
+
+对外端口：
+
+- PostgreSQL `15432`
+- Redis `16379`
+- Nacos `18848`
+- Gateway `19090`
+- Auth `19200`
+- System `19201`
+- Job `19204`
+- UI `3100`
