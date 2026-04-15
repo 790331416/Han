@@ -4,7 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TARGET_ROOT="${HAN_95_ROOT:-/opt/han}"
 REPO_DIR="${TARGET_ROOT}/repo/Han"
-REPO_REMOTE="${HAN_REPO_REMOTE:-$(git -C "${ROOT_DIR}" remote get-url origin 2>/dev/null || true)}"
+if [[ -n "${HAN_REPO_REMOTE:-}" ]]; then
+  REPO_REMOTE="${HAN_REPO_REMOTE}"
+else
+  REPO_REMOTE="$(cd "${ROOT_DIR}" && git remote get-url origin 2>/dev/null || true)"
+fi
 
 ensure_env_file() {
   local tier="$1"
@@ -67,9 +71,12 @@ mkdir -p \
   "${TARGET_ROOT}/backups/pre-rebuild"
 
 if [[ -d "${REPO_DIR}/.git" ]]; then
-  git -C "${REPO_DIR}" fetch origin
-  git -C "${REPO_DIR}" checkout master
-  git -C "${REPO_DIR}" pull --ff-only origin master
+  (
+    cd "${REPO_DIR}"
+    git fetch origin
+    git checkout master
+    git pull --ff-only origin master
+  )
 else
   if [[ -z "${REPO_REMOTE}" ]]; then
     echo "[deploy-95] HAN_REPO_REMOTE is required when repo is absent" >&2

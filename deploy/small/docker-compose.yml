@@ -86,7 +86,7 @@ services:
       test: ["CMD-SHELL", "curl -sf http://localhost:8848/nacos/ || exit 1"]
       interval: 15s
       timeout: 5s
-      start_period: 40s
+      start_period: 120s
       retries: 5
 
   gateway:
