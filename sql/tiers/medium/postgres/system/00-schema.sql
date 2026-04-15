@@ -319,7 +319,7 @@ CREATE TABLE sys_login_log (
     browser         VARCHAR(100)    DEFAULT '',
     os              VARCHAR(100)    DEFAULT '',
     status          SMALLINT        DEFAULT 0,
-    msg             VARCHAR(255)    DEFAULT '',
+    message         VARCHAR(255)    DEFAULT '',
     login_time      TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 
