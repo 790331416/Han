@@ -14,7 +14,6 @@ ALLOWED_TOP_LEVEL = {
     ".windsurfrules",
     ".windsurf",
     "README.md",
-    "BUILD_DEPLOY_GUIDE.md",
     "build.sh",
     "build.bat",
     "build.ps1",

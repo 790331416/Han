@@ -144,6 +144,7 @@ han-ui/dist/
 .m2/
 .codex-temp/
 .codex-tmp/
+_research/
 output/playwright/
 .nyc_output
 coverage

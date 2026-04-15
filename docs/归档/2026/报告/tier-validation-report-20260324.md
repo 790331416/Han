@@ -30,7 +30,7 @@
 
 ### Fresh Deploy 初始化验证
 
-- 使用隔离 PostgreSQL 容器挂载 [init.sql](D:/code/Han/sql/postgres/init.sql) 和 [init-base-data.sql](D:/code/Han/sql/postgres/init-base-data.sql) 完成首次初始化验证。
+- 使用隔离 PostgreSQL 容器挂载 [init.sql](/D:/code/Han/sql/archive/postgres-legacy/init.sql) 和 [init-base-data.sql](/D:/code/Han/sql/archive/postgres-legacy/init-base-data.sql) 完成首次初始化验证。
 - 初始化后结果：
   - `sys_menu = 37`
   - `sys_role_menu(role_id=1) = 37`

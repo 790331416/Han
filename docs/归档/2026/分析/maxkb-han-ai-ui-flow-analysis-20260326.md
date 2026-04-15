@@ -8,7 +8,7 @@
 
 - MaxKB 官方仓库：<https://github.com/1Panel-dev/MaxKB>
 - MaxKB 文档仓库：<https://github.com/1Panel-dev/MaxKB-docs>
-- 本次本地对比源码目录：`D:\code\Han\_research\MaxKB-upstream`
+- 本次本地对比源码目录：`D:\code\Han\_research\MaxKB-upstream`（该临时研究副本已在仓库重整时清理）
 - 本次对比的 MaxKB 源码提交：`b0ba621e010e4347147bae337bcdbf103e5d4e9e`
 
 ## 2. 一眼判断

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +11,14 @@ EXPECTED = {
     "small": ["system", "job"],
     "medium": ["system", "job", "tenant", "workflow", "open", "file"],
     "full": ["system", "job", "tenant", "workflow", "open", "file", "ai", "gen"],
+}
+
+ALLOWED_SQL_TOP_LEVEL = {
+    "README.md",
+    "archive",
+    "shared",
+    "tiers",
+    "upgrades",
 }
 
 FORBIDDEN_SQL_TOKENS = [
@@ -26,8 +35,36 @@ FORBIDDEN_SYSTEM_TOKENS = [
 ]
 
 
+def tracked_sql_paths() -> list[Path]:
+    result = subprocess.run(
+        ["git", "ls-files", "sql"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    paths: list[Path] = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = Path(line)
+        if (ROOT / path).exists():
+            paths.append(path)
+    return paths
+
+
 def main() -> int:
     violations: list[str] = []
+
+    top_levels = {
+        path.parts[1]
+        for path in tracked_sql_paths()
+        if len(path.parts) > 1 and path.parts[0] == "sql"
+    }
+    for item in sorted(top_levels):
+        if item not in ALLOWED_SQL_TOP_LEVEL:
+            violations.append(f"sql 顶层条目未入白名单: {item}")
+
     for tier, modules in EXPECTED.items():
         base = SQL / "tiers" / tier
         if not (base / "manifest.md").exists():

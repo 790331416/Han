@@ -903,9 +903,9 @@ private void recordLoginSuccess(Long userId, String username, ClientType clientT
 - `han-ui/src/router/index.ts` — 取消 online 路由注释
 
 ### SQL
-- `sql/upgrade/phase1_tenant.sql`
-- `sql/upgrade/phase2_user.sql`
-- `sql/upgrade/phase3_security.sql`
+- `sql/upgrades/postgres/phase1_tenant.sql`
+- historical `phase2_user.sql` (retired, no longer kept as a formal script)
+- `sql/upgrades/postgres/phase3_security.sql`
 
 ---
 
@@ -1548,7 +1548,7 @@ public void deletePostById(Long postId) {
 - `router/index.ts` — 添加 authUser 路由
 
 ## SQL
-- `sql/upgrade/phase4_management.sql`
+- `sql/upgrades/postgres/phase4_management.sql`
 
 ## 实施顺序（Phase 4 内部）
 

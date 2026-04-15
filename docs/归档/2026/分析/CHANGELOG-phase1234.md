@@ -67,9 +67,9 @@
 - `views/system/role/authUser.vue` — 角色分配用户页面
 
 ### SQL
-- `sql/upgrade/phase1_tenant.sql`
-- `sql/upgrade/phase3_security.sql`
-- `sql/upgrade/phase4_management.sql`
+- `sql/upgrades/postgres/phase1_tenant.sql`
+- `sql/upgrades/postgres/phase3_security.sql`
+- `sql/upgrades/postgres/phase4_management.sql`
 
 ### 文档
 - `doc/design-phase1-2-3.md` — Phase 1-4 详细设计文档

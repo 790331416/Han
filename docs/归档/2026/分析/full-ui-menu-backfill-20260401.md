@@ -7,7 +7,7 @@ This note captures the 95 environment fixes and validation results for the remai
 ## Findings
 
 1. Existing PostgreSQL volumes on `95` had `sys_menu = 0` in all three databases.
-2. The root cause was not controller logic. `sql/postgres/init-base-data.sql` only runs on fresh PostgreSQL initialization, so old volumes never received the baseline menu seed.
+2. The root cause was not controller logic. `sql/archive/postgres-legacy/init-base-data.sql` only runs on fresh PostgreSQL initialization, so old volumes never received the baseline menu seed.
 3. Full UI on `http://10.18.35.95:3000` was returning `502` for `/system/runtime/capabilities`, `/system/user/current`, `/auth/captcha`, and related API calls.
 4. The `han-ui` nginx config was correct in the image, but nginx had cached an old gateway upstream IP (`172.19.0.7`) while the live `han-gateway` had already moved to `172.19.0.13`.
 
@@ -17,7 +17,7 @@ This note captures the 95 environment fixes and validation results for the remai
    - `han-postgres`
    - `han-medium-postgres`
    - `han-small-postgres`
-2. Added upgrade script [phase9_base_menu_backfill.sql](/D:/code/Han/sql/upgrade/phase9_base_menu_backfill.sql) so this backfill is no longer a one-off manual action.
+2. Added upgrade script [phase9_base_menu_backfill.sql](/D:/code/Han/sql/upgrades/postgres/phase9_base_menu_backfill.sql) so this backfill is no longer a one-off manual action.
 3. Patched [nginx.conf](/D:/code/Han/han-ui/nginx.conf) so `han-ui` resolves `gateway` through Docker DNS at runtime instead of keeping a stale upstream IP forever.
 4. Rebuilt and redeployed `han-ui` on `95` with the nginx resolver fix.
 5. Forced a real `han-gateway` IP change on `95` and verified that `han-ui` recovered without a UI restart after the resolver TTL window.
@@ -65,4 +65,4 @@ Additional diagnosis on `95`:
 
 Until at least one supported provider key is injected into the running `han-ai` service, the `ai-model` full-tier credential validation will continue to fail honestly.
 
-Follow-up operating notes are captured in [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/ai-model-credential-injection-20260401.md).
+Follow-up operating notes are captured in [ai-model-credential-injection-20260401.md](/D:/code/Han/docs/归档/2026/分析/ai-model-credential-injection-20260401.md).

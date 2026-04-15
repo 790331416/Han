@@ -115,7 +115,7 @@ compose 口径：
 
 执行：
 
-- [phase6_notice_center.sql](/D:/code/Han/sql/upgrade/phase6_notice_center.sql)
+- [phase6_notice_center.sql](/D:/code/Han/sql/upgrades/postgres/phase6_notice_center.sql)
 
 ### 5.2 登录日志
 
@@ -126,7 +126,7 @@ compose 口径：
 
 执行：
 
-- [phase7_login_log_alignment.sql](/D:/code/Han/sql/upgrade/phase7_login_log_alignment.sql)
+- [phase7_login_log_alignment.sql](/D:/code/Han/sql/upgrades/postgres/phase7_login_log_alignment.sql)
 
 ### 5.3 Prompt 模板
 
@@ -136,7 +136,7 @@ compose 口径：
 
 执行：
 
-- [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrade/phase8_prompt_template_alignment.sql)
+- [phase8_prompt_template_alignment.sql](/D:/code/Han/sql/upgrades/postgres/phase8_prompt_template_alignment.sql)
 
 ### 5.4 基线菜单
 
@@ -147,7 +147,7 @@ compose 口径：
 
 执行：
 
-- [phase9_base_menu_backfill.sql](/D:/code/Han/sql/upgrade/phase9_base_menu_backfill.sql)
+- [phase9_base_menu_backfill.sql](/D:/code/Han/sql/upgrades/postgres/phase9_base_menu_backfill.sql)
 
 ### 5.5 租户配额
 
@@ -157,7 +157,7 @@ compose 口径：
 
 执行：
 
-- [tenant_quota.sql](/D:/code/Han/sql/tenant_quota.sql)
+- [tenant_quota.sql](/D:/code/Han/sql/archive/legacy-root/tenant_quota.sql)
 
 ## 6. 分档特殊注意项
 
