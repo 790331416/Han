@@ -12,6 +12,13 @@ EXPECTED = {
     "full": ["system", "job", "tenant", "workflow", "open", "file", "ai", "gen"],
 }
 
+FORBIDDEN_SQL_TOKENS = [
+    " COMMENT '",
+    "AUTO_INCREMENT",
+    " ON UPDATE CURRENT_TIMESTAMP",
+    " AFTER ",
+]
+
 
 def main() -> int:
     violations: list[str] = []
@@ -27,6 +34,11 @@ def main() -> int:
                 violations.append(f"缺少 schema: {module_dir / '00-schema.sql'}")
             if not (module_dir / "10-seed.sql").exists():
                 violations.append(f"缺少 seed: {module_dir / '10-seed.sql'}")
+        for sql_file in base.joinpath("postgres").rglob("*.sql"):
+            text = sql_file.read_text(encoding="utf-8")
+            for token in FORBIDDEN_SQL_TOKENS:
+                if token in text:
+                    violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {sql_file}")
     if violations:
         print("\n".join(violations))
         return 1

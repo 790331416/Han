@@ -1,35 +1,48 @@
--- 租户计费表结构
+-- PostgreSQL tenant billing extension tables.
 
--- 租户订阅记录
 CREATE TABLE IF NOT EXISTS sys_tenant_subscription (
-    id              BIGINT PRIMARY KEY,
-    tenant_id       BIGINT NOT NULL COMMENT '租户ID',
-    package_id      BIGINT NOT NULL COMMENT '套餐ID',
-    start_time      TIMESTAMP NOT NULL COMMENT '订阅开始时间',
-    end_time        TIMESTAMP NOT NULL COMMENT '订阅到期时间',
-    status          SMALLINT DEFAULT 0 COMMENT '状态（0正常 1已过期 2已取消）',
-    amount          NUMERIC(10,2) DEFAULT 0 COMMENT '订阅金额',
-    payment_method  VARCHAR(32) DEFAULT NULL COMMENT '支付方式',
-    payment_no      VARCHAR(128) DEFAULT NULL COMMENT '支付单号',
-    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    update_time     TIMESTAMP DEFAULT NULL
+    id BIGINT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    package_id BIGINT NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    status SMALLINT DEFAULT 0,
+    amount NUMERIC(10,2) DEFAULT 0,
+    payment_method VARCHAR(32) DEFAULT NULL,
+    payment_no VARCHAR(128) DEFAULT NULL,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP DEFAULT NULL
 );
 
-COMMENT ON TABLE sys_tenant_subscription IS '租户订阅记录';
-CREATE INDEX IF NOT EXISTS idx_tenant_sub_tenant_id ON sys_tenant_subscription(tenant_id);
+COMMENT ON TABLE sys_tenant_subscription IS 'Tenant subscription record';
+COMMENT ON COLUMN sys_tenant_subscription.tenant_id IS 'Tenant ID';
+COMMENT ON COLUMN sys_tenant_subscription.package_id IS 'Package ID';
+COMMENT ON COLUMN sys_tenant_subscription.start_time IS 'Subscription start time';
+COMMENT ON COLUMN sys_tenant_subscription.end_time IS 'Subscription end time';
+COMMENT ON COLUMN sys_tenant_subscription.status IS '0 active, 1 expired, 2 canceled';
+COMMENT ON COLUMN sys_tenant_subscription.amount IS 'Subscription amount';
+COMMENT ON COLUMN sys_tenant_subscription.payment_method IS 'Payment method';
+COMMENT ON COLUMN sys_tenant_subscription.payment_no IS 'Payment order number';
+CREATE INDEX IF NOT EXISTS idx_tenant_sub_tenant_id ON sys_tenant_subscription (tenant_id);
 
--- 租户账单
 CREATE TABLE IF NOT EXISTS sys_tenant_bill (
-    id              BIGINT PRIMARY KEY,
-    tenant_id       BIGINT NOT NULL COMMENT '租户ID',
-    subscription_id BIGINT COMMENT '关联订阅ID',
-    bill_type       VARCHAR(32) NOT NULL COMMENT '账单类型（subscribe/renew/upgrade）',
-    amount          NUMERIC(10,2) NOT NULL COMMENT '金额',
-    status          SMALLINT DEFAULT 0 COMMENT '状态（0待支付 1已支付 2已取消）',
-    remark          VARCHAR(500) DEFAULT NULL COMMENT '备注',
-    create_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    pay_time        TIMESTAMP DEFAULT NULL COMMENT '支付时间'
+    id BIGINT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    subscription_id BIGINT DEFAULT NULL,
+    bill_type VARCHAR(32) NOT NULL,
+    amount NUMERIC(10,2) NOT NULL,
+    status SMALLINT DEFAULT 0,
+    remark VARCHAR(500) DEFAULT NULL,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pay_time TIMESTAMP DEFAULT NULL
 );
 
-COMMENT ON TABLE sys_tenant_bill IS '租户账单';
-CREATE INDEX IF NOT EXISTS idx_tenant_bill_tenant_id ON sys_tenant_bill(tenant_id);
+COMMENT ON TABLE sys_tenant_bill IS 'Tenant billing record';
+COMMENT ON COLUMN sys_tenant_bill.tenant_id IS 'Tenant ID';
+COMMENT ON COLUMN sys_tenant_bill.subscription_id IS 'Related subscription ID';
+COMMENT ON COLUMN sys_tenant_bill.bill_type IS 'subscribe, renew, upgrade';
+COMMENT ON COLUMN sys_tenant_bill.amount IS 'Bill amount';
+COMMENT ON COLUMN sys_tenant_bill.status IS '0 pending, 1 paid, 2 canceled';
+COMMENT ON COLUMN sys_tenant_bill.remark IS 'Billing note';
+COMMENT ON COLUMN sys_tenant_bill.pay_time IS 'Payment time';
+CREATE INDEX IF NOT EXISTS idx_tenant_bill_tenant_id ON sys_tenant_bill (tenant_id);
