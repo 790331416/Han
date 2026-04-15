@@ -26,6 +26,10 @@ for env_file in \
   fi
 done
 
+if docker image inspect han-gen:latest >/dev/null 2>&1; then
+  docker tag han-gen:latest preserved-han-gen:latest
+fi
+
 docker ps -a --format '{{.Names}}' \
   | awk '/^(han|hansmall|hanmedium|hanfull)/ { print }' \
   | xargs -r docker rm -f

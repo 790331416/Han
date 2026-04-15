@@ -33,6 +33,25 @@ ensure_env_file() {
     }
   ' "${env_file}" > "${tmp_file}"
   mv "${tmp_file}" "${env_file}"
+
+  if [[ "${tier}" == "full" ]] && docker image inspect preserved-han-gen:latest >/dev/null 2>&1; then
+    tmp_file="$(mktemp)"
+    awk -v gen_image="preserved-han-gen:latest" '
+      BEGIN { seen = 0 }
+      /^HAN_GEN_IMAGE=/ {
+        print "HAN_GEN_IMAGE=" gen_image
+        seen = 1
+        next
+      }
+      { print }
+      END {
+        if (!seen) {
+          print "HAN_GEN_IMAGE=" gen_image
+        }
+      }
+    ' "${env_file}" > "${tmp_file}"
+    mv "${tmp_file}" "${env_file}"
+  fi
 }
 
 echo "[deploy-95] target root: ${TARGET_ROOT}"
