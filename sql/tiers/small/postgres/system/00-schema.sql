@@ -14,7 +14,7 @@ CREATE TABLE sys_dept (
     leader_id       BIGINT,
     phone           VARCHAR(20),
     email           VARCHAR(100),
-    sort            INT             DEFAULT 0,
+    post_sort       INT             DEFAULT 0,
     status          SMALLINT        DEFAULT 0,
     create_by       BIGINT,
     create_name     VARCHAR(50),

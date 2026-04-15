@@ -25,6 +25,7 @@ CREATE TABLE sys_job (
 
 CREATE TABLE sys_job_log (
     job_log_id      BIGSERIAL       PRIMARY KEY,
+    tenant_id       BIGINT,
     job_name        VARCHAR(100)    NOT NULL,
     job_group       VARCHAR(64),
     invoke_target   VARCHAR(500),
