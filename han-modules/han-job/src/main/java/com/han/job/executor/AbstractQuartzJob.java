@@ -1,8 +1,8 @@
 package com.han.job.executor;
 
 import com.han.job.context.TraceContext;
-import com.han.job.domain.po.SysJobPo;
 import com.han.job.domain.po.SysJobLogPo;
+import com.han.job.domain.po.SysJobPo;
 import com.han.job.mapper.SysJobLogMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.JobExecutionContext;
@@ -16,8 +16,9 @@ import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 
 /**
- * 任务执行抽象类
- * JobFlow 改造：支持 TraceId 全链路追踪
+ * 任务执行抽象类。
+ *
+ * <p>负责创建 TraceId、执行目标方法并持久化执行日志。</p>
  */
 @Slf4j
 @Component
@@ -39,25 +40,23 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
     @Override
     public void execute(JobExecutionContext context) {
         SysJobPo job = (SysJobPo) context.getMergedJobDataMap().get("JOB_PROPERTIES");
-        
-        // JobFlow 特性：生成 TraceId 并设置到 MDC
+
         String traceId = TraceContext.generateTraceId();
         TraceContext.setTraceId(traceId);
         TraceContext.setJobId(job.getJobId());
-        
+
         SysJobLogPo jobLog = new SysJobLogPo();
+        jobLog.setTenantId(job.getTenantId());
         jobLog.setJobName(job.getJobName());
         jobLog.setJobGroup(job.getJobGroup());
         jobLog.setInvokeTarget(job.getInvokeTarget());
-        jobLog.setTraceId(traceId);  // 设置 TraceId
+        jobLog.setTraceId(traceId);
         jobLog.setStartTime(LocalDateTime.now());
-        
+
         log.info("开始执行任务: {}, traceId={}", job.getJobName(), traceId);
 
         try {
-            // 执行任务
             doExecute(context, job);
-            
             jobLog.setStatus("0");
             jobLog.setJobMessage("执行成功");
             log.info("任务执行成功: {}, traceId={}", job.getJobName(), traceId);
@@ -69,37 +68,31 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
         } finally {
             jobLog.setStopTime(LocalDateTime.now());
             saveJobLog(jobLog);
-            
-            // 清除 MDC 上下文
             TraceContext.clear();
         }
     }
 
     /**
-     * 执行任务(子类实现)
+     * 执行任务，由子类实现具体逻辑。
      */
     protected abstract void doExecute(JobExecutionContext context, SysJobPo job) throws Exception;
 
     /**
-     * 调用目标方法
+     * 调用任务目标方法。
      */
     protected void invokeMethod(SysJobPo job) throws Exception {
         String invokeTarget = job.getInvokeTarget();
-        
-        // 解析Bean名称和方法名
-        // 格式: beanName.methodName 或 beanName.methodName(params)
-        String beanName;
-        String methodName;
-        String params = null;
-        
+
         int methodIndex = invokeTarget.indexOf('.');
         if (methodIndex <= 0) {
             throw new RuntimeException("调用目标格式错误: " + invokeTarget);
         }
-        
-        beanName = invokeTarget.substring(0, methodIndex);
+
+        String beanName = invokeTarget.substring(0, methodIndex);
         String methodPart = invokeTarget.substring(methodIndex + 1);
-        
+        String methodName;
+        String params = null;
+
         int paramIndex = methodPart.indexOf('(');
         if (paramIndex > 0) {
             methodName = methodPart.substring(0, paramIndex);
@@ -107,11 +100,9 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
         } else {
             methodName = methodPart;
         }
-        
-        // 获取Bean并调用方法
+
         Object bean = applicationContext.getBean(beanName);
         Method method;
-        
         if (params != null && !params.isEmpty()) {
             method = bean.getClass().getDeclaredMethod(methodName, String.class);
             method.invoke(bean, params);

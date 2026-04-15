@@ -1,6 +1,10 @@
 package com.han.job.domain.po;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.io.Serial;
@@ -8,7 +12,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 定时任务执行日志持久化对象
+ * 定时任务执行日志持久化对象。
  */
 @Data
 @TableName("sys_job_log")
@@ -17,38 +21,30 @@ public class SysJobLogPo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 日志ID */
     @TableId(type = IdType.AUTO)
     private Long jobLogId;
 
-    /** 任务名称 */
+    @TableField(fill = FieldFill.INSERT)
+    private Long tenantId;
+
     private String jobName;
 
-    /** 任务组名 */
     private String jobGroup;
 
-    /** 调用目标 */
     private String invokeTarget;
 
-    /** 全链路追踪 ID (JobFlow 核心特性) */
     private String traceId;
 
-    /** 日志信息 */
     private String jobMessage;
 
-    /** 执行状态(0成功 1失败) */
     private String status;
 
-    /** 异常信息 */
     private String exceptionInfo;
 
-    /** 开始时间 */
     private LocalDateTime startTime;
 
-    /** 结束时间 */
     private LocalDateTime stopTime;
 
-    /** 创建时间 */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 }
