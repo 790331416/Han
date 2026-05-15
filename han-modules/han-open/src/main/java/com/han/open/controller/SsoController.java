@@ -81,10 +81,10 @@ public class SsoController {
         String key = SSO_TICKET_KEY_PREFIX + ticket;
         Map<Object, Object> payload = redisTemplate.opsForHash().entries(key);
         if (payload == null || payload.isEmpty()) {
-            return R.fail("SSO Ticket 无效或已过期");
+            return R.fail(401, "SSO Ticket 无效或已过期");
         }
         if (!clientId.equals(String.valueOf(payload.get("clientId")))) {
-            return R.fail("SSO Ticket 不属于当前客户端");
+            return R.fail(403, "SSO Ticket 不属于当前客户端");
         }
 
         redisTemplate.delete(key);
