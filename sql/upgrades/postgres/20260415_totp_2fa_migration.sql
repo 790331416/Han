@@ -1,5 +1,6 @@
--- 2FA/TOTP 两步验证字段迁移
--- 为用户表添加 TOTP 密钥和启用标记
+-- TOTP 2FA fields for PostgreSQL.
+ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64) DEFAULT NULL;
+ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_enabled SMALLINT DEFAULT 0;
 
-ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64) DEFAULT NULL COMMENT 'TOTP密钥（2FA绑定后存储）';
-ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_enabled SMALLINT DEFAULT 0 COMMENT '是否启用2FA（0=未启用 1=已启用）';
+COMMENT ON COLUMN sys_user.totp_secret IS 'TOTP secret';
+COMMENT ON COLUMN sys_user.totp_enabled IS '2FA enabled flag, 0 disabled, 1 enabled';

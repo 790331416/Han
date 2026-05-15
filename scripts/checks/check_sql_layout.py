@@ -21,10 +21,19 @@ FORBIDDEN_SQL_TOKENS = [
     " AFTER ",
 ]
 
+FORBIDDEN_POSTGRES_LINE_PREFIXES = [
+    "USE ",
+]
+
 FORBIDDEN_SYSTEM_TOKENS = [
     " deleted ",
     "\tdeleted\t",
     "\ndeleted ",
+]
+
+REQUIRED_SYS_USER_COLUMNS = [
+    "pwd_update_time",
+    "pwd_reset_flag",
 ]
 
 
@@ -44,6 +53,10 @@ def tracked_sql_paths() -> list[Path]:
         if (ROOT / path).exists():
             paths.append(path)
     return paths
+
+
+def read_sql(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def main() -> int:
@@ -70,19 +83,33 @@ def main() -> int:
         if not nacos_file.exists():
             violations.append(f"缺少 Nacos 导入 SQL: {nacos_file}")
         if init_file.exists():
-            text = init_file.read_text(encoding="utf-8")
+            text = read_sql(init_file)
             for token in FORBIDDEN_SQL_TOKENS:
                 if token in text:
                     violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {init_file}")
             lowered = text.lower()
+            for column in REQUIRED_SYS_USER_COLUMNS:
+                if column not in lowered:
+                    violations.append(f"tier init SQL missing sys_user.{column}: {init_file}")
             for token in FORBIDDEN_SYSTEM_TOKENS:
                 if token in lowered:
                     violations.append(f"tier init SQL 必须使用 del_flag，不能再写回 deleted: {init_file}")
                     break
         if nacos_file.exists():
-            text = nacos_file.read_text(encoding="utf-8")
+            text = read_sql(nacos_file)
             if "INSERT INTO nacos.config_info" not in text:
                 violations.append(f"Nacos 导入 SQL 缺少 config_info 导入语句: {nacos_file}")
+
+    for upgrade_file in sorted((SQL / "upgrades" / "postgres").glob("*.sql")):
+        text = read_sql(upgrade_file)
+        for token in FORBIDDEN_SQL_TOKENS:
+            if token in text:
+                violations.append(f"PostgreSQL upgrade SQL contains forbidden token {token!r}: {upgrade_file}")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip().upper()
+            for prefix in FORBIDDEN_POSTGRES_LINE_PREFIXES:
+                if stripped.startswith(prefix):
+                    violations.append(f"PostgreSQL upgrade SQL contains forbidden statement at {upgrade_file}:{lineno}: {line.strip()}")
 
     if violations:
         print("\n".join(violations))
