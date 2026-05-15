@@ -31,7 +31,7 @@ def main() -> int:
             if f"/tiers/{tier}/postgres/" in text:
                 violations.append(f"{compose} references removed split postgres SQL layout")
 
-    for name in ("deploy-95.sh", "cleanup-95.sh", "verify-95.sh"):
+    for name in ("deploy-95.sh", "cleanup-95.sh", "verify-95.sh", "verify-file-service-95.sh"):
         if not (DEPLOY / "scripts" / name).exists():
             violations.append(f"missing deploy script: deploy/scripts/{name}")
 
