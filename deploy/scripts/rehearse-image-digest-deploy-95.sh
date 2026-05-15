@@ -6,19 +6,25 @@ TARGET_ROOT="${HAN_95_ROOT:-/opt/han}"
 TARGET_TIER="all"
 TAG=""
 APPLY=0
+SERVICE_FILTER=""
 
 usage() {
   cat <<'USAGE'
 Usage:
-  rehearse-image-digest-deploy-95.sh --tag <tag> [--target medium|full|all] [--apply]
+  rehearse-image-digest-deploy-95.sh --tag <tag> [--target medium|full|all] [--services <list>] [--apply]
 
 Resolves service image digests from a registry tag and, when --apply is set,
 recreates the matching 95 services with digest-pinned images.
 
 Targets:
+  small:  gateway,auth,system,job,ui
   medium: open,file
   full:   open,file,ai
   all:    medium and full
+
+When --services is passed, the list is filtered by services present in each
+target tier. Use this for broader rehearsals, for example:
+  --services gateway,auth,system,job,tenant,workflow,open,file,ai,gen,ui
 
 Safety:
   This script does not build images, edit .env, delete volumes, clear data,
@@ -57,6 +63,28 @@ env_var_for_service() {
 services_for_tier() {
   local tier="$1"
   case "${tier}" in
+    small)
+      echo "gateway auth system job ui"
+      ;;
+    medium)
+      echo "gateway auth system tenant workflow job open file ui"
+      ;;
+    full)
+      echo "gateway auth system tenant workflow job open file ai gen ui"
+      ;;
+    *)
+      echo "[digest-rehearsal] unsupported tier: ${tier}" >&2
+      return 2
+      ;;
+  esac
+}
+
+default_services_for_tier() {
+  local tier="$1"
+  case "${tier}" in
+    small)
+      echo "gateway auth system job ui"
+      ;;
     medium)
       echo "open file"
       ;;
@@ -68,6 +96,42 @@ services_for_tier() {
       return 2
       ;;
   esac
+}
+
+selected_services_for_tier() {
+  local tier="$1"
+  local item service available
+  declare -a requested=()
+  declare -a selected=()
+  declare -A wants=()
+
+  if [[ -z "${SERVICE_FILTER}" ]]; then
+    default_services_for_tier "${tier}"
+    return
+  fi
+
+  local old_ifs="${IFS}"
+  IFS=","
+  read -r -a requested <<<"${SERVICE_FILTER}"
+  IFS="${old_ifs}"
+  for item in "${requested[@]}"; do
+    item="${item//[[:space:]]/}"
+    item="${item#han-}"
+    [[ -n "${item}" ]] && wants["${item}"]=1
+  done
+
+  for service in $(services_for_tier "${tier}"); do
+    if [[ -n "${wants[${service}]:-}" ]]; then
+      selected+=("${service}")
+    fi
+  done
+
+  if [[ "${#selected[@]}" -eq 0 ]]; then
+    echo "[digest-rehearsal] no selected services for tier ${tier}" >&2
+    return 2
+  fi
+
+  echo "${selected[*]}"
 }
 
 wait_service() {
@@ -117,7 +181,7 @@ run_tier() {
     return 1
   fi
 
-  read -r -a services <<<"$(services_for_tier "${tier}")"
+  read -r -a services <<<"$(selected_services_for_tier "${tier}")"
   echo "[digest-rehearsal] tier: ${tier}"
   echo "[digest-rehearsal] deploy dir: ${deploy_dir}"
 
@@ -157,6 +221,11 @@ while [[ $# -gt 0 ]]; do
       TARGET_TIER="$2"
       shift 2
       ;;
+    --services)
+      [[ $# -ge 2 ]] || { echo "--services requires a value" >&2; exit 2; }
+      SERVICE_FILTER="$2"
+      shift 2
+      ;;
     --registry)
       [[ $# -ge 2 ]] || { echo "--registry requires a value" >&2; exit 2; }
       REGISTRY="$2"
@@ -186,6 +255,7 @@ fi
 echo "[digest-rehearsal] registry: ${REGISTRY}"
 echo "[digest-rehearsal] tag: ${TAG}"
 echo "[digest-rehearsal] target: ${TARGET_TIER}"
+echo "[digest-rehearsal] services: ${SERVICE_FILTER:-<default>}"
 echo "[digest-rehearsal] apply: ${APPLY}"
 
 case "${TARGET_TIER}" in
@@ -196,6 +266,9 @@ case "${TARGET_TIER}" in
     run_tier full
     ;;
   all)
+    if [[ -n "${SERVICE_FILTER}" ]]; then
+      run_tier small
+    fi
     run_tier medium
     run_tier full
     ;;
