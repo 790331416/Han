@@ -42,20 +42,7 @@ services:
       - "25432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/system/00-schema.sql:/docker-entrypoint-initdb.d/01-system-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/system/10-seed.sql:/docker-entrypoint-initdb.d/02-system-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/job/00-schema.sql:/docker-entrypoint-initdb.d/03-job-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/job/10-seed.sql:/docker-entrypoint-initdb.d/04-job-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/job/90-fixup.sql:/docker-entrypoint-initdb.d/05-job-fix.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/tenant/00-schema.sql:/docker-entrypoint-initdb.d/06-tenant-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/tenant/10-seed.sql:/docker-entrypoint-initdb.d/07-tenant-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/tenant/90-fixup.sql:/docker-entrypoint-initdb.d/08-tenant-fix.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/workflow/00-schema.sql:/docker-entrypoint-initdb.d/09-workflow-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/workflow/10-seed.sql:/docker-entrypoint-initdb.d/10-workflow-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/open/00-schema.sql:/docker-entrypoint-initdb.d/11-open-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/open/10-seed.sql:/docker-entrypoint-initdb.d/12-open-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/file/00-schema.sql:/docker-entrypoint-initdb.d/13-file-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/postgres/file/10-seed.sql:/docker-entrypoint-initdb.d/14-file-seed.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/medium/medium-init.sql:/docker-entrypoint-initdb.d/01-medium-init.sql:ro
     networks:
       - han-network
     healthcheck:

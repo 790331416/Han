@@ -36,11 +36,7 @@ services:
       - "15432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/postgres/system/00-schema.sql:/docker-entrypoint-initdb.d/01-system-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/postgres/system/10-seed.sql:/docker-entrypoint-initdb.d/02-system-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/postgres/job/00-schema.sql:/docker-entrypoint-initdb.d/03-job-schema.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/postgres/job/10-seed.sql:/docker-entrypoint-initdb.d/04-job-seed.sql:ro
-      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/postgres/job/90-fixup.sql:/docker-entrypoint-initdb.d/05-job-fix.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/tiers/small/small-init.sql:/docker-entrypoint-initdb.d/01-small-init.sql:ro
     networks:
       - han-network
     healthcheck:
