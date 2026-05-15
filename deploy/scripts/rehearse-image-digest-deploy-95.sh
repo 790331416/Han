@@ -75,7 +75,7 @@ wait_service() {
   local service="$2"
   local cid state
 
-  (
+  if (
     cd "${deploy_dir}"
     for _ in $(seq 1 60); do
       cid="$(docker compose ps -q "${service}" || true)"
@@ -96,7 +96,10 @@ wait_service() {
       sleep 5
     done
     docker compose ps "${service}" || true
-  )
+    exit 1
+  ); then
+    return 0
+  fi
 
   echo "[digest-rehearsal] service not healthy: ${deploy_dir}/${service}" >&2
   return 1
