@@ -71,6 +71,55 @@ CREATE TABLE IF NOT EXISTS sys_login_log (
     login_time      TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_login_log'
+          AND column_name = 'ipaddr'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_login_log'
+          AND column_name = 'ip_addr'
+    ) THEN
+        ALTER TABLE sys_login_log RENAME COLUMN ipaddr TO ip_addr;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_login_log'
+          AND column_name = 'msg'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_login_log'
+          AND column_name = 'message'
+    ) THEN
+        ALTER TABLE sys_login_log RENAME COLUMN msg TO message;
+    END IF;
+END $$;
+
+ALTER TABLE sys_login_log
+    ADD COLUMN IF NOT EXISTS tenant_id BIGINT,
+    ADD COLUMN IF NOT EXISTS user_id BIGINT,
+    ADD COLUMN IF NOT EXISTS username VARCHAR(50) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS device_id VARCHAR(100) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS ip_addr VARCHAR(128) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS login_location VARCHAR(255) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS browser VARCHAR(100) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS os VARCHAR(100) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS status SMALLINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS message VARCHAR(255) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
 COMMENT ON TABLE sys_login_log IS '登录日志表';
 COMMENT ON COLUMN sys_login_log.id IS '日志ID';
 COMMENT ON COLUMN sys_login_log.tenant_id IS '租户ID';
@@ -78,12 +127,12 @@ COMMENT ON COLUMN sys_login_log.user_id IS '用户ID';
 COMMENT ON COLUMN sys_login_log.username IS '用户账号';
 COMMENT ON COLUMN sys_login_log.client_type IS '客户端类型';
 COMMENT ON COLUMN sys_login_log.device_id IS '设备ID';
-COMMENT ON COLUMN sys_login_log.ipaddr IS '登录IP';
+COMMENT ON COLUMN sys_login_log.ip_addr IS '登录IP';
 COMMENT ON COLUMN sys_login_log.login_location IS '登录地点';
 COMMENT ON COLUMN sys_login_log.browser IS '浏览器类型';
 COMMENT ON COLUMN sys_login_log.os IS '操作系统';
 COMMENT ON COLUMN sys_login_log.status IS '登录状态(0成功 1失败)';
-COMMENT ON COLUMN sys_login_log.msg IS '提示消息';
+COMMENT ON COLUMN sys_login_log.message IS '提示消息';
 COMMENT ON COLUMN sys_login_log.login_time IS '登录时间';
 
 CREATE INDEX IF NOT EXISTS idx_login_log_tenant_id ON sys_login_log(tenant_id);
