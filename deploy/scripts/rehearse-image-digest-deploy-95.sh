@@ -5,16 +5,18 @@ REGISTRY="${HAN_IMAGE_REGISTRY:-registry.cn-hangzhou.aliyuncs.com/xzy0112}"
 TARGET_ROOT="${HAN_95_ROOT:-/opt/han}"
 TARGET_TIER="all"
 TAG=""
+MANIFEST=""
 APPLY=0
 SERVICE_FILTER=""
 
 usage() {
   cat <<'USAGE'
 Usage:
-  rehearse-image-digest-deploy-95.sh --tag <tag> [--target medium|full|all] [--services <list>] [--apply]
+  rehearse-image-digest-deploy-95.sh (--tag <tag> | --manifest <path>) [--target small|medium|full|all] [--services <list>] [--apply]
 
-Resolves service image digests from a registry tag and, when --apply is set,
-recreates the matching 95 services with digest-pinned images.
+Resolves service image digests from a registry tag, or reads a verified release
+manifest, and when --apply is set recreates the matching 95 services with
+digest-pinned images.
 
 Targets:
   small:  gateway,auth,system,job,ui
@@ -27,10 +29,10 @@ target tier. Use this for broader rehearsals, for example:
   --services gateway,auth,system,job,tenant,workflow,open,file,ai,gen,ui
 
 Safety:
-  This script does not build images, edit .env, delete volumes, clear data,
-  or read secrets. Without --apply it only prints the resolved digest pins.
-  With --apply it only runs docker compose pull/up for the target services
-  using temporary environment variables.
+  This script does not build images, edit .env, delete volumes, clear data, or
+  read secrets. Without --apply it only prints the resolved digest pins. With
+  --apply it only runs docker compose pull/up for the target services using
+  temporary environment variables.
 USAGE
 }
 
@@ -58,6 +60,37 @@ env_var_for_service() {
   name="${service//-/_}"
   name="$(printf '%s' "${name}" | tr '[:lower:]' '[:upper:]')"
   echo "HAN_${name}_IMAGE"
+}
+
+manifest_value() {
+  local key="$1"
+  local line
+
+  line="$(grep -E "^${key}=" "${MANIFEST}" | tail -n 1 || true)"
+  if [[ -z "${line}" ]]; then
+    return 1
+  fi
+  echo "${line#*=}"
+}
+
+manifest_image_for_service() {
+  local service="$1"
+  local env_var image
+
+  env_var="$(env_var_for_service "${service}")"
+  image="$(manifest_value "${env_var}" || true)"
+
+  if [[ -z "${image}" ]]; then
+    echo "[digest-rehearsal] manifest missing ${env_var}: ${MANIFEST}" >&2
+    return 1
+  fi
+
+  if [[ "${image}" != *@sha256:* ]]; then
+    echo "[digest-rehearsal] manifest value is not digest pinned: ${env_var}=${image}" >&2
+    return 1
+  fi
+
+  echo "${image}"
 }
 
 services_for_tier() {
@@ -186,11 +219,17 @@ run_tier() {
   echo "[digest-rehearsal] deploy dir: ${deploy_dir}"
 
   for service in "${services[@]}"; do
-    image="${REGISTRY}/han-${service}:${TAG}"
-    digest="$(remote_digest "${image}")"
     env_var="$(env_var_for_service "${service}")"
-    env_args+=("${env_var}=${REGISTRY}/han-${service}@${digest}")
-    echo "[digest-rehearsal] ${env_var}=${REGISTRY}/han-${service}@${digest}"
+    if [[ -n "${MANIFEST}" ]]; then
+      image="$(manifest_image_for_service "${service}")"
+      env_args+=("${env_var}=${image}")
+      echo "[digest-rehearsal] ${env_var}=${image}"
+    else
+      image="${REGISTRY}/han-${service}:${TAG}"
+      digest="$(remote_digest "${image}")"
+      env_args+=("${env_var}=${REGISTRY}/han-${service}@${digest}")
+      echo "[digest-rehearsal] ${env_var}=${REGISTRY}/han-${service}@${digest}"
+    fi
   done
 
   if [[ "${APPLY}" -ne 1 ]]; then
@@ -221,6 +260,11 @@ while [[ $# -gt 0 ]]; do
       TARGET_TIER="$2"
       shift 2
       ;;
+    --manifest)
+      [[ $# -ge 2 ]] || { echo "--manifest requires a value" >&2; exit 2; }
+      MANIFEST="$2"
+      shift 2
+      ;;
     --services)
       [[ $# -ge 2 ]] || { echo "--services requires a value" >&2; exit 2; }
       SERVICE_FILTER="$2"
@@ -247,18 +291,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${TAG}" ]]; then
-  echo "--tag is required" >&2
+if [[ -z "${TAG}" && -z "${MANIFEST}" ]]; then
+  echo "--tag or --manifest is required" >&2
   exit 2
 fi
 
+if [[ -n "${MANIFEST}" && ! -f "${MANIFEST}" ]]; then
+  echo "--manifest file not found: ${MANIFEST}" >&2
+  exit 2
+fi
+
+if [[ -z "${TAG}" && -n "${MANIFEST}" ]]; then
+  TAG="$(manifest_value "HAN_RELEASE_TAG" || true)"
+fi
+
 echo "[digest-rehearsal] registry: ${REGISTRY}"
-echo "[digest-rehearsal] tag: ${TAG}"
+echo "[digest-rehearsal] tag: ${TAG:-<manifest>}"
+echo "[digest-rehearsal] manifest: ${MANIFEST:-<none>}"
 echo "[digest-rehearsal] target: ${TARGET_TIER}"
 echo "[digest-rehearsal] services: ${SERVICE_FILTER:-<default>}"
 echo "[digest-rehearsal] apply: ${APPLY}"
 
 case "${TARGET_TIER}" in
+  small)
+    run_tier small
+    ;;
   medium)
     run_tier medium
     ;;
@@ -273,7 +330,7 @@ case "${TARGET_TIER}" in
     run_tier full
     ;;
   *)
-    echo "Usage: $0 --tag <tag> [--target medium|full|all] [--apply]" >&2
+    echo "Usage: $0 (--tag <tag> | --manifest <path>) [--target small|medium|full|all] [--apply]" >&2
     exit 2
     ;;
 esac

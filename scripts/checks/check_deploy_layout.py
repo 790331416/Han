@@ -39,10 +39,17 @@ def main() -> int:
         "rehearse-postgres-upgrades.sh",
         "rehearse-postgres-backup-upgrades.sh",
         "publish-service-images-95.sh",
+        "generate-image-release-manifest-95.sh",
         "rehearse-image-digest-deploy-95.sh",
     ):
         if not (DEPLOY / "scripts" / name).exists():
             violations.append(f"missing deploy script: deploy/scripts/{name}")
+
+    release_manifests = DEPLOY / "release-manifests"
+    if not release_manifests.exists():
+        violations.append("missing deploy release manifest directory: deploy/release-manifests")
+    if not (release_manifests / "README.md").exists():
+        violations.append("missing deploy release manifest README: deploy/release-manifests/README.md")
 
     if violations:
         print("\n".join(violations))
