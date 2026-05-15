@@ -61,8 +61,8 @@ public class AiAgentPo {
     @TableField("published")
     private String publishedRaw;
 
-    @TableField("deleted")
-    private Integer deleted;
+    @TableField("del_flag")
+    private Integer delFlag;
 
     @TableField(exist = false)
     private String welcomeMessage;

@@ -47,7 +47,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         ensureAgentNameUnique(agent.getAgentName(), null);
         normalize(agent);
         fillCreateAudit(agent);
-        agent.setDeleted(0);
+        agent.setDelFlag(0);
         aiAgentMapper.insert(agent);
     }
 
@@ -70,7 +70,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
     @Transactional(rollbackFor = Exception.class)
     public void deleteById(Long agentId) {
         AiAgentPo agent = requireExisting(agentId);
-        agent.setDeleted(1);
+        agent.setDelFlag(1);
         fillUpdateAudit(agent);
         aiAgentMapper.updateById(agent);
     }
@@ -100,7 +100,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
 
     private LambdaQueryWrapper<AiAgentPo> buildQueryWrapper(AiAgentQuery query) {
         LambdaQueryWrapper<AiAgentPo> wrapper = new LambdaQueryWrapper<AiAgentPo>()
-                .eq(AiAgentPo::getDeleted, 0)
+                .eq(AiAgentPo::getDelFlag, 0)
                 .like(StringUtils.hasText(query.getAgentName()), AiAgentPo::getAgentName, query.getAgentName())
                 .eq(query.getPublished() != null, AiAgentPo::getPublishedRaw, Boolean.TRUE.equals(query.getPublished()) ? "1" : "0")
                 .eq(StringUtils.hasText(query.getStatus()), AiAgentPo::getStatus, query.getStatus())
@@ -122,7 +122,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
             throw new BusinessException("智能体ID不能为空");
         }
         AiAgentPo agent = aiAgentMapper.selectById(agentId);
-        if (agent == null || (agent.getDeleted() != null && agent.getDeleted() != 0)) {
+        if (agent == null || (agent.getDelFlag() != null && agent.getDelFlag() != 0)) {
             throw new BusinessException("智能体不存在");
         }
         Long tenantId = currentTenantId();
@@ -162,7 +162,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
 
     private void ensureAgentNameUnique(String agentName, Long excludeId) {
         LambdaQueryWrapper<AiAgentPo> wrapper = new LambdaQueryWrapper<AiAgentPo>()
-                .eq(AiAgentPo::getDeleted, 0)
+                .eq(AiAgentPo::getDelFlag, 0)
                 .eq(AiAgentPo::getAgentName, agentName);
         Long tenantId = currentTenantId();
         if (tenantId != null) {

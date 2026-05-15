@@ -812,7 +812,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             throw new BusinessException("智能体ID不能为空");
         }
         AiAgentPo agent = aiAgentMapper.selectById(agentId);
-        if (agent == null || (agent.getDeleted() != null && agent.getDeleted() != 0)) {
+        if (agent == null || (agent.getDelFlag() != null && agent.getDelFlag() != 0)) {
             throw new BusinessException("智能体不存在");
         }
         return agent;
