@@ -3,9 +3,12 @@ set -euo pipefail
 
 REGISTRY="${HAN_IMAGE_REGISTRY:-registry.cn-hangzhou.aliyuncs.com/xzy0112}"
 TAG="${HAN_IMAGE_TAG:-latest}"
+SOURCE_TAG="${HAN_IMAGE_SOURCE_TAG:-}"
 VERIFY_PULL=0
 CONFIRM=0
 DRY_RUN=0
+RETAG_FROM_SOURCE=0
+declare -a IMAGE_TOKENS=()
 declare -a TARGET_IMAGES=()
 declare -a DEFAULT_SERVICES=("han-open" "han-file" "han-ai")
 
@@ -28,6 +31,9 @@ Options:
   --image <image>       Add one image or service token. Can be repeated.
   --registry <registry> Override registry prefix.
   --tag <tag>           Override tag for service tokens.
+  --source-tag <tag>    Tag from the same image repository with this source tag
+                        when publishing an immutable target tag.
+  --retag-from-source   Always retag the target image from --source-tag before push.
   --verify-pull         Run docker pull after push to prove registry pull path.
   --yes                 Confirm latest-tag push.
   --dry-run             Print selected images without pushing.
@@ -35,15 +41,16 @@ Options:
 
 Safety:
   This script does not build images, restart containers, delete images,
-  delete volumes, or read secrets. It requires local images to already exist.
-  Pushing latest tags is a release action, so --yes or
+  delete volumes, or read secrets. It requires local images to already exist,
+  or to be copied from an existing --source-tag on the same repository.
+  Any registry push is a release action, so --yes or
   HAN_IMAGE_PUBLISH_CONFIRM=1 is required unless --dry-run is used.
 USAGE
 }
 
 add_image_token() {
   local token="$1"
-  local item image
+  local item
 
   token="${token//[[:space:]]/}"
   [[ -z "${token}" ]] && return 0
@@ -65,6 +72,13 @@ add_image_token() {
     return 0
   fi
 
+  IMAGE_TOKENS+=("${token}")
+}
+
+resolve_image_token() {
+  local token="$1"
+  local image
+
   if [[ "${token}" == */* ]]; then
     image="${token}"
     if [[ "${image}" != *":"* ]]; then
@@ -76,7 +90,20 @@ add_image_token() {
     image="${REGISTRY}/han-${token}:${TAG}"
   fi
 
-  TARGET_IMAGES+=("${image}")
+  echo "${image}"
+}
+
+build_target_images() {
+  local token
+
+  if [[ "${#IMAGE_TOKENS[@]}" -eq 0 ]]; then
+    add_image_token "all"
+  fi
+
+  TARGET_IMAGES=()
+  for token in "${IMAGE_TOKENS[@]}"; do
+    TARGET_IMAGES+=("$(resolve_image_token "${token}")")
+  done
 }
 
 dedupe_images() {
@@ -91,6 +118,37 @@ dedupe_images() {
     fi
   done
   TARGET_IMAGES=("${unique_images[@]}")
+}
+
+image_repo() {
+  local image="$1"
+  local tail="${image##*/}"
+
+  if [[ "${tail}" == *":"* ]]; then
+    echo "${image%:*}"
+  else
+    echo "${image}"
+  fi
+}
+
+source_image_for() {
+  local target_image="$1"
+  local repo
+
+  repo="$(image_repo "${target_image}")"
+  echo "${repo}:${SOURCE_TAG}"
+}
+
+env_var_for_image() {
+  local image="$1"
+  local repo name
+
+  repo="$(image_repo "${image}")"
+  name="${repo##*/}"
+  name="${name#han-}"
+  name="${name//-/_}"
+  name="$(printf '%s' "${name}" | tr '[:lower:]' '[:upper:]')"
+  echo "HAN_${name}_IMAGE"
 }
 
 remote_digest() {
@@ -120,6 +178,35 @@ require_local_image() {
   docker image inspect "${image}" --format '{{.Id}}'
 }
 
+ensure_target_image() {
+  local image="$1"
+  local source_image source_id
+
+  if [[ -n "${SOURCE_TAG}" && "${RETAG_FROM_SOURCE}" -eq 1 ]]; then
+    source_image="$(source_image_for "${image}")"
+    echo "[publish-images] retagging source image: ${source_image} -> ${image}"
+    source_id="$(require_local_image "${source_image}")"
+    docker tag "${source_image}" "${image}"
+    echo "[publish-images] source image id: ${source_id}"
+    return 0
+  fi
+
+  if require_local_image "${image}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -n "${SOURCE_TAG}" ]]; then
+    source_image="$(source_image_for "${image}")"
+    echo "[publish-images] target image missing, tagging source image: ${source_image} -> ${image}"
+    source_id="$(require_local_image "${source_image}")"
+    docker tag "${source_image}" "${image}"
+    echo "[publish-images] source image id: ${source_id}"
+    return 0
+  fi
+
+  require_local_image "${image}" >/dev/null
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --images)
@@ -141,6 +228,15 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "--tag requires a value" >&2; exit 2; }
       TAG="$2"
       shift 2
+      ;;
+    --source-tag)
+      [[ $# -ge 2 ]] || { echo "--source-tag requires a value" >&2; exit 2; }
+      SOURCE_TAG="$2"
+      shift 2
+      ;;
+    --retag-from-source)
+      RETAG_FROM_SOURCE=1
+      shift
       ;;
     --verify-pull)
       VERIFY_PULL=1
@@ -166,13 +262,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${#TARGET_IMAGES[@]}" -eq 0 ]]; then
-  add_image_token "all"
+if [[ "${RETAG_FROM_SOURCE}" -eq 1 && -z "${SOURCE_TAG}" ]]; then
+  echo "--retag-from-source requires --source-tag" >&2
+  exit 2
 fi
+
+build_target_images
 dedupe_images
 
 echo "[publish-images] registry: ${REGISTRY}"
 echo "[publish-images] tag: ${TAG}"
+echo "[publish-images] source tag: ${SOURCE_TAG:-<none>}"
+echo "[publish-images] retag from source: ${RETAG_FROM_SOURCE}"
 echo "[publish-images] verify pull: ${VERIFY_PULL}"
 echo "[publish-images] target images:"
 printf '  - %s\n' "${TARGET_IMAGES[@]}"
@@ -183,7 +284,7 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
 fi
 
 if [[ "${CONFIRM}" -ne 1 && "${HAN_IMAGE_PUBLISH_CONFIRM:-0}" != "1" ]]; then
-  echo "[publish-images] refusing to push latest tags without --yes or HAN_IMAGE_PUBLISH_CONFIRM=1" >&2
+  echo "[publish-images] refusing to push registry tags without --yes or HAN_IMAGE_PUBLISH_CONFIRM=1" >&2
   exit 3
 fi
 
@@ -197,6 +298,8 @@ for image in "${TARGET_IMAGES[@]}"; do
   safe_name="${image//[^A-Za-z0-9_.-]/_}"
   before_manifest="${tmp_dir}/${safe_name}.before.json"
   after_manifest="${tmp_dir}/${safe_name}.after.json"
+
+  ensure_target_image "${image}"
 
   echo "[publish-images] inspecting local image: ${image}"
   local_id="$(require_local_image "${image}")"
@@ -213,6 +316,11 @@ for image in "${TARGET_IMAGES[@]}"; do
 
   after_digest="$(remote_digest "${image}" "${after_manifest}")"
   echo "[publish-images] remote after: ${after_digest}"
+  if [[ "${after_digest}" == sha256:* ]]; then
+    repo="$(image_repo "${image}")"
+    env_var="$(env_var_for_image "${image}")"
+    echo "[publish-images] digest pin: ${env_var}=${repo}@${after_digest}"
+  fi
 
   if [[ "${VERIFY_PULL}" -eq 1 ]]; then
     echo "[publish-images] pulling for verification: ${image}"
