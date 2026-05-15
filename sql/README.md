@@ -48,6 +48,15 @@ bash deploy/scripts/rehearse-postgres-upgrades.sh
 - `ai_agent.del_flag`
 - `sys_menu.sort`
 
+针对真实逻辑备份或 95 当前运行库，可执行备份恢复型演练：
+
+```bash
+bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --from-compose-tier full
+bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backup.sql
+```
+
+该脚本只在临时 PostgreSQL 容器中恢复备份并重放 `sql/upgrades/postgres/`，不会写入 `/opt/han/deploy/{small,medium,full}` 的运行库。支持 `.sql`、`.sql.gz`、`.dump`、`.backup`、`.tar` 备份文件。
+
 ## 三档说明
 
 - `small`
