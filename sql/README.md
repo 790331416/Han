@@ -23,7 +23,7 @@
 - 增量升级只认 `sql/upgrades/postgres/`
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 - PostgreSQL 脚本禁止继续使用 MySQL 写法，例如列内 `COMMENT`、`AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`AFTER`、`USE <db>`
-- `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time` 与 `pwd_reset_flag`
+- `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time`、`pwd_reset_flag`、`totp_secret` 与 `totp_enabled`
 
 ## 三档说明
 

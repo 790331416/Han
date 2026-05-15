@@ -53,6 +53,8 @@ CREATE TABLE sys_user (
     login_time      TIMESTAMP,
     pwd_update_time TIMESTAMP,
     pwd_reset_flag  SMALLINT        DEFAULT 0,
+    totp_secret     VARCHAR(64),
+    totp_enabled    SMALLINT        DEFAULT 0,
     create_by       BIGINT,
     create_name     VARCHAR(50),
     create_dept     BIGINT,

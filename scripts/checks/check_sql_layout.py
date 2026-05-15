@@ -34,6 +34,8 @@ FORBIDDEN_SYSTEM_TOKENS = [
 REQUIRED_SYS_USER_COLUMNS = [
     "pwd_update_time",
     "pwd_reset_flag",
+    "totp_secret",
+    "totp_enabled",
 ]
 
 
