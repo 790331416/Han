@@ -49,6 +49,7 @@ class SsoControllerTest {
 
         R<Object> response = controller.validateTicket("ST-test", "app", "bad");
 
-        assertThat(response.getCode()).isNotEqualTo(Constants.SUCCESS);
+        assertThat(response.getCode()).isEqualTo(Constants.UNAUTHORIZED);
+        assertThat(response.getMsg()).isEqualTo("client_id 或 client_secret 无效");
     }
 }

@@ -75,7 +75,7 @@ public class SsoController {
                                     @RequestParam("client_id") String clientId,
                                     @RequestParam("client_secret") String clientSecret) {
         if (!openAppService.validateClient(clientId, clientSecret)) {
-            return R.fail("client_id 或 client_secret 无效");
+            return R.fail(401, "client_id 或 client_secret 无效");
         }
 
         String key = SSO_TICKET_KEY_PREFIX + ticket;
