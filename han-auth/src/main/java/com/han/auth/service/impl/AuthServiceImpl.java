@@ -322,9 +322,19 @@ public class AuthServiceImpl implements IAuthService {
             throw new BusinessException("褰撳墠鐢ㄦ埛鍦ㄧ洰鏍囩鎴蜂笅鏃犲彲鐢ㄨ处鍙?");
         }
 
-        R<Boolean> validResult = tenantServiceClient.checkTenantValid(tenantId);
-        if (validResult == null || validResult.getData() == null || !validResult.getData()) {
+        if (!tenantId.equals(current.getTenantId())) {
+            try {
+                R<Boolean> validResult = tenantServiceClient.checkTenantValid(tenantId);
+                if (validResult == null || validResult.getData() == null || !validResult.getData()) {
             throw new BusinessException("绉熸埛宸插仠鐢ㄦ垨宸茶繃鏈?");
+                }
+
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("切换租户时租户服务不可用: targetTenantId={}", tenantId, e);
+                throw new BusinessException("租户服务不可用，暂时无法切换租户");
+            }
         }
 
         R<UserVO> userResult = systemServiceClient.getUserByUsername(username, tenantId);

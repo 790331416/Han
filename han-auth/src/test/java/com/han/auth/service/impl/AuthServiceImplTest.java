@@ -10,6 +10,7 @@ import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.TotpService;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
+import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import org.junit.jupiter.api.AfterEach;
@@ -22,9 +23,13 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthServiceImplTest {
@@ -95,6 +100,49 @@ class AuthServiceImplTest {
         assertThat(result.refreshToken()).isNotBlank();
         assertThat(result.userInfo().userId()).isEqualTo(2L);
         assertThat(result.userInfo().username()).isEqualTo("admin");
+    }
+
+    @Test
+    void switchTenantSkipsTenantServiceWhenTargetIsCurrentTenant() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder()
+                .userId(1L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.PC)
+                .build());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+        when(systemServiceClient.getUserTenants("admin")).thenReturn(R.ok(List.of(
+                Map.of("tenantId", 1L, "status", 0)
+        )));
+        when(systemServiceClient.getUserByUsername("admin", 1L)).thenReturn(R.ok(user(1L, 1L)));
+        when(systemServiceClient.getPermissionsByUserId(1L)).thenReturn(R.ok(Set.of("system:user:list")));
+        when(systemServiceClient.getDataScopeDeptIds(1L)).thenReturn(R.ok(Set.of(10L)));
+        when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
+
+        LoginVO result = authService.switchTenant(1L, "Bearer old-token");
+
+        assertThat(result.accessToken()).isNotBlank();
+        assertThat(result.userInfo().userId()).isEqualTo(1L);
+        verify(tenantServiceClient, never()).checkTenantValid(anyLong());
+    }
+
+    @Test
+    void switchTenantReportsBusinessErrorWhenTenantServiceUnavailable() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder()
+                .userId(1L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.PC)
+                .build());
+        when(systemServiceClient.getUserTenants("admin")).thenReturn(R.ok(List.of(
+                Map.of("tenantId", 2L, "status", 0)
+        )));
+        when(tenantServiceClient.checkTenantValid(2L)).thenThrow(new IllegalStateException("No instances available"));
+
+        assertThatThrownBy(() -> authService.switchTenant(2L, "Bearer old-token"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("租户服务不可用");
     }
 
     private UserVO user(Long userId, Long tenantId) {
