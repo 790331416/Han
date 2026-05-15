@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
 
@@ -129,6 +130,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public R<Void> handleNoResourceFoundException(NoResourceFoundException e) {
         return R.fail(404, "资源不存在");
+    }
+
+    /**
+     * 显式响应状态异常
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public R<Void> handleResponseStatusException(ResponseStatusException e, HttpServletRequest request) {
+        int status = e.getStatusCode().value();
+        String message = e.getReason();
+        if (status == 404) {
+            message = "资源不存在";
+        } else if (message == null || message.isBlank()) {
+            message = e.getStatusCode().toString();
+        }
+        log.warn("响应状态异常: {} - {} {}", request.getRequestURI(), status, message);
+        return R.fail(status, message);
     }
 
     /**
