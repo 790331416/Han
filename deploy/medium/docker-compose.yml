@@ -105,6 +105,12 @@ services:
       - rustfs_data:/data
     networks:
       - han-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
 
   rabbitmq:
     image: ${HAN_RABBITMQ_IMAGE:-rabbitmq:3.13-management}
@@ -273,7 +279,7 @@ services:
       nacos:
         condition: service_healthy
       rustfs:
-        condition: service_started
+        condition: service_healthy
     networks:
       - han-network
 
