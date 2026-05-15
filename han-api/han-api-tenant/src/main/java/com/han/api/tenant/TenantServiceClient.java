@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
 
+import java.util.List;
+
 /**
  * 租户服务HTTP接口
  */
@@ -29,4 +31,7 @@ public interface TenantServiceClient {
      */
     @GetExchange("/checkUserLimit/{tenantId}")
     R<Boolean> checkUserLimit(@PathVariable("tenantId") Long tenantId);
+
+    @GetExchange("/listAllValid")
+    R<List<TenantVO>> listAllValidTenants();
 }

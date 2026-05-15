@@ -7,10 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_TOP_LEVEL = {
     "AGENTS.md",
+    "niumma-rules.md",
     ".env.example",
     ".gitattributes",
     ".gitignore",
     ".github",
+    ".codex",
     ".trae",
     ".windsurfrules",
     ".windsurf",

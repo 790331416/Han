@@ -142,11 +142,11 @@ docker compose -f deploy/full/docker-compose.yml up -d
 
 | 文档 | 说明 |
 | --- | --- |
-| [01-产品与架构总览](/D:/code/Han/docs/01-产品与架构总览.md) | 产品定位、拓扑、能力矩阵、模块结构 |
-| [02-开发手册](/D:/code/Han/docs/02-开发手册.md) | 本地开发、编码规范、接口边界、模块职责 |
-| [03-部署手册](/D:/code/Han/docs/03-部署手册.md) | 三档部署、环境变量、SQL/Nacos 初始化、回滚 |
+| [01-产品与架构总览](/D:/code/Han/docs/01-产品与架构总览.md) | 产品定位、拓扑、能力矩阵、A/I/B 架构、开放平台能力 |
+| [02-开发手册](/D:/code/Han/docs/02-开发手册.md) | 本地开发、技术栈约束、开发规范、对接口径、安全与测试要求 |
+| [03-部署手册](/D:/code/Han/docs/03-部署手册.md) | 三档部署、本地开发部署、Kubernetes 说明、SQL/Nacos 初始化、回滚与排障 |
 | [04-测试与验收手册](/D:/code/Han/docs/04-测试与验收手册.md) | 测试策略、手测清单、Playwright、当前通过状态 |
-| [05-运维与95环境手册](/D:/code/Han/docs/05-运维与95环境手册.md) | 95 目录、部署、清理、排障、端口与服务映射 |
+| [05-运维与95环境手册](/D:/code/Han/docs/05-运维与95环境手册.md) | 95 目录、发布链路、Nacos / PostgreSQL 运维、清理与排障 |
 | [06-牛马协作总规则](/D:/code/Han/docs/06-牛马协作总规则.md) | 仓库、文档、SQL、部署、发布与验证规则 |
 | [07-仓库整理与重构执行计划](/D:/code/Han/docs/07-仓库整理与重构执行计划.md) | 最终目标结构与执行计划 |
 | [docs/index.md](/D:/code/Han/docs/index.md) | 正式文档索引页 |

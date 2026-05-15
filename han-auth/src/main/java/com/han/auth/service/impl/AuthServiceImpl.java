@@ -4,9 +4,11 @@ import com.han.api.system.SystemServiceClient;
 import com.han.api.system.domain.LoginLogDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.api.tenant.TenantServiceClient;
+import com.han.api.tenant.domain.TenantVO;
 import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
+import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.IAuthService;
 import com.han.auth.service.TotpService;
 import com.han.common.core.constant.CacheConstants;
@@ -21,6 +23,7 @@ import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.XuIdUtil;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.core.util.XuStrUtil;
+import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +31,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -229,6 +235,164 @@ public class AuthServiceImpl implements IAuthService {
 
         redisTemplate.delete(tokenKey);
         log.info("用户登出成功");
+    }
+
+    @Override
+    public List<TenantSimpleVo> getMyTenants() {
+        LoginUser current = requireLoginUser();
+        String username = current.getUsername();
+        List<Map<String, Object>> accounts = loadUserTenantAccounts(username);
+        if (accounts.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, TenantVO> tenants = loadValidTenantMap();
+        Long currentTenantId = current.getTenantId();
+        return accounts.stream()
+                .map(account -> {
+                    Long tenantId = toLong(account.get("tenantId"));
+                    Integer accountStatus = toInteger(account.get("status"));
+                    TenantVO tenant = tenantId != null ? tenants.get(tenantId) : null;
+                    if (tenant == null && tenantId != null) {
+                        tenant = loadTenantById(tenantId);
+                    }
+                    Integer tenantStatus = tenant != null ? tenant.getStatus() : 1;
+                    return TenantSimpleVo.builder()
+                            .tenantId(tenantId)
+                            .tenantName(tenant != null && XuStrUtil.isNotBlank(tenant.getTenantName())
+                                    ? tenant.getTenantName()
+                                    : "tenant-" + tenantId)
+                            .status(accountStatus != null && accountStatus == 0 && tenantStatus != null && tenantStatus == 0 ? 0 : 1)
+                            .current(tenantId != null && tenantId.equals(currentTenantId))
+                            .build();
+                })
+                .toList();
+    }
+
+    @Override
+    public LoginVO switchTenant(Long tenantId, String authorization) {
+        if (tenantId == null) {
+            throw new BusinessException("绉熸埛ID涓嶈兘涓虹┖");
+        }
+
+        LoginUser current = requireLoginUser();
+        UserVO targetUser = requireSwitchTargetUser(current, tenantId);
+        ClientType clientType = current.getClientType() != null ? current.getClientType() : ClientType.PC;
+
+        R<Set<String>> permsResult = systemServiceClient.getPermissionsByUserId(targetUser.getUserId());
+        Set<String> permissions = permsResult != null ? permsResult.getData() : Set.of();
+        R<Set<Long>> dataScopeDeptIdsResult = systemServiceClient.getDataScopeDeptIds(targetUser.getUserId());
+        Set<Long> dataScopeDeptIds = dataScopeDeptIdsResult != null ? dataScopeDeptIdsResult.getData() : null;
+
+        LoginUser loginUser = buildLoginUser(targetUser, clientType, permissions, dataScopeDeptIds);
+        String accessToken = generateToken();
+        String refreshToken = generateToken();
+        Duration tokenExpire = getTokenExpire(clientType);
+        Duration refreshExpire = getRefreshExpire(clientType);
+        loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
+
+        handleMultiLogin(targetUser.getUserId(), clientType);
+
+        redisTemplate.opsForValue().set(CacheConstants.TOKEN_KEY + accessToken, XuJsonUtil.toJsonString(loginUser), tokenExpire);
+        redisTemplate.opsForValue().set(CacheConstants.REFRESH_TOKEN_KEY + refreshToken, accessToken, refreshExpire);
+        redisTemplate.opsForValue().set(CacheConstants.LOGIN_USER_KEY + targetUser.getUserId() + ":" + clientType.getCode(),
+                accessToken, tokenExpire);
+
+        logout(authorization);
+        recordLoginSuccess(targetUser.getUserId(), targetUser.getUsername(), clientType);
+
+        return buildLoginVO(accessToken, refreshToken, tokenExpire, false, targetUser.getUserId(),
+                targetUser.getUsername(), targetUser.getNickname(), targetUser.getAvatar(), targetUser.getPhone());
+    }
+
+    private LoginUser requireLoginUser() {
+        LoginUser current = SecurityContextHolder.getLoginUser();
+        if (current == null || current.getUserId() == null || XuStrUtil.isBlank(current.getUsername())) {
+            throw new UnauthorizedException("鐧诲綍宸茶繃鏈燂紝璇烽噸鏂扮櫥褰?");
+        }
+        return current;
+    }
+
+    private UserVO requireSwitchTargetUser(LoginUser current, Long tenantId) {
+        String username = current.getUsername();
+        boolean hasAccount = loadUserTenantAccounts(username).stream()
+                .anyMatch(account -> tenantId.equals(toLong(account.get("tenantId")))
+                        && Integer.valueOf(0).equals(toInteger(account.get("status"))));
+        if (!hasAccount) {
+            throw new BusinessException("褰撳墠鐢ㄦ埛鍦ㄧ洰鏍囩鎴蜂笅鏃犲彲鐢ㄨ处鍙?");
+        }
+
+        R<Boolean> validResult = tenantServiceClient.checkTenantValid(tenantId);
+        if (validResult == null || validResult.getData() == null || !validResult.getData()) {
+            throw new BusinessException("绉熸埛宸插仠鐢ㄦ垨宸茶繃鏈?");
+        }
+
+        R<UserVO> userResult = systemServiceClient.getUserByUsername(username, tenantId);
+        if (userResult == null || userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
+            throw new BusinessException("鐩爣绉熸埛鐢ㄦ埛涓嶅瓨鍦?");
+        }
+        UserVO user = userResult.getData();
+        if (user.getStatus() == null || user.getStatus() != 0) {
+            throw new BusinessException("鐩爣绉熸埛鐢ㄦ埛宸插仠鐢?");
+        }
+        return user;
+    }
+
+    private List<Map<String, Object>> loadUserTenantAccounts(String username) {
+        R<List<Map<String, Object>>> result = systemServiceClient.getUserTenants(username);
+        if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
+            return List.of();
+        }
+        return result.getData();
+    }
+
+    private Map<Long, TenantVO> loadValidTenantMap() {
+        Map<Long, TenantVO> tenants = new HashMap<>();
+        try {
+            R<List<TenantVO>> result = tenantServiceClient.listAllValidTenants();
+            if (result != null && result.getCode() == Constants.SUCCESS && result.getData() != null) {
+                for (TenantVO tenant : result.getData()) {
+                    if (tenant.getTenantId() != null) {
+                        tenants.put(tenant.getTenantId(), tenant);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("鏌ヨ鏈夋晥绉熸埛鍒楄〃澶辫触锛屽皢鎸夌鎴稩D鍥為€€鏌ヨ", e);
+        }
+        return tenants;
+    }
+
+    private TenantVO loadTenantById(Long tenantId) {
+        try {
+            R<TenantVO> result = tenantServiceClient.getTenantById(tenantId);
+            if (result != null && result.getCode() == Constants.SUCCESS) {
+                return result.getData();
+            }
+        } catch (Exception e) {
+            log.warn("鏌ヨ绉熸埛淇℃伅澶辫触: tenantId={}", tenantId, e);
+        }
+        return null;
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && XuStrUtil.isNotBlank(text)) {
+            return Long.parseLong(text);
+        }
+        return null;
+    }
+
+    private Integer toInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && XuStrUtil.isNotBlank(text)) {
+            return Integer.parseInt(text);
+        }
+        return null;
     }
 
     private void validateCaptcha(String code, String uuid) {

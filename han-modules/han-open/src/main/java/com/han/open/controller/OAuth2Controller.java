@@ -8,6 +8,7 @@ import com.han.open.domain.dto.OAuth2TokenDTO;
 import com.han.open.domain.vo.OAuth2TokenVO;
 import com.han.open.domain.vo.OAuth2UserInfoVO;
 import com.han.open.service.IOAuth2Service;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -18,6 +19,9 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * OAuth2 授权控制器。
@@ -151,8 +155,36 @@ public class OAuth2Controller {
      */
     @GetMapping("/.well-known/openid-configuration")
     @PermissionExempt("OpenID Connect Discovery 公开端点")
-    public R<Object> discovery() {
-        return R.ok();
+    public R<Object> discovery(HttpServletRequest request) {
+        String issuer = resolveIssuer(request);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("issuer", issuer);
+        metadata.put("authorization_endpoint", issuer + "/authorize");
+        metadata.put("token_endpoint", issuer + "/token");
+        metadata.put("userinfo_endpoint", issuer + "/userinfo");
+        metadata.put("revocation_endpoint", issuer + "/revoke");
+        metadata.put("introspection_endpoint", issuer + "/introspect");
+        metadata.put("response_types_supported", new String[]{"code"});
+        metadata.put("grant_types_supported", new String[]{"authorization_code", "refresh_token", "client_credentials"});
+        metadata.put("subject_types_supported", new String[]{"public"});
+        metadata.put("id_token_signing_alg_values_supported", new String[]{"none"});
+        metadata.put("scopes_supported", new String[]{"openid", "profile"});
+        return R.ok(metadata);
+    }
+
+    private String resolveIssuer(HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String requestUri = request.getRequestURI();
+        String path = requestUri.substring(contextPath.length());
+        String prefix = path.contains("/open/oauth2/") ? "/open/oauth2" : "/oauth2";
+        return request.getScheme() + "://" + request.getServerName()
+                + (isDefaultPort(request) ? "" : ":" + request.getServerPort())
+                + contextPath + prefix;
+    }
+
+    private boolean isDefaultPort(HttpServletRequest request) {
+        return ("http".equalsIgnoreCase(request.getScheme()) && request.getServerPort() == 80)
+                || ("https".equalsIgnoreCase(request.getScheme()) && request.getServerPort() == 443);
     }
 
     private OAuth2AuthorizeDTO buildAuthorizeDto(String responseType,

@@ -2,6 +2,7 @@ package com.han.file.controller;
 
 import com.han.api.file.domain.FileDTO;
 import com.han.common.core.domain.R;
+import com.han.common.security.annotation.PermissionExempt;
 import com.han.file.service.FileStorageAccessService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class FileController {
      * 文件上传
      */
     @PostMapping("/upload")
+    @PermissionExempt("文件上传入口由网关 Token 校验和存储服务策略控制")
     public R<FileDTO> upload(@RequestPart("file") MultipartFile file, HttpServletRequest request) {
         try {
             FileStorageAccessService.FileAccessResult result = fileStorageAccessService.upload(file, request);
@@ -50,6 +52,7 @@ public class FileController {
      * 公开文件代理
      */
     @GetMapping("/public/{locator}/{fileName:.+}")
+    @PermissionExempt("公开文件代理入口，仅暴露已生成的公开文件 locator")
     public ResponseEntity<InputStreamResource> publicAccess(@PathVariable String locator, @PathVariable String fileName) {
         FileStorageAccessService.DownloadFileResult result = fileStorageAccessService.download(locator, fileName);
         String encodedName = URLEncoder.encode(result.getName(), StandardCharsets.UTF_8);

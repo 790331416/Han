@@ -14,6 +14,7 @@ import org.springframework.web.service.annotation.HttpExchange;
 import org.springframework.web.service.annotation.PostExchange;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -113,6 +114,9 @@ public interface SystemServiceClient {
      */
     @GetExchange("/user/totp/{userId}")
     R<String> getTotpSecret(@PathVariable("userId") Long userId);
+
+    @GetExchange("/user/tenants")
+    R<List<Map<String, Object>>> getUserTenants(@RequestParam("username") String username);
 
     /**
      * 查询社交账号绑定的系统用户ID
