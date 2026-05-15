@@ -18,8 +18,38 @@ CREATE TABLE IF NOT EXISTS ai_agent (
     create_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_by      VARCHAR(64),
     update_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted        INT DEFAULT 0
+    del_flag       INT DEFAULT 0
 );
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_agent'
+          AND column_name = 'deleted'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_agent'
+          AND column_name = 'del_flag'
+    ) THEN
+        ALTER TABLE ai_agent RENAME COLUMN deleted TO del_flag;
+    ELSIF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_agent'
+          AND column_name = 'del_flag'
+    ) THEN
+        ALTER TABLE ai_agent ADD COLUMN del_flag INT DEFAULT 0;
+    END IF;
+
+    UPDATE ai_agent SET del_flag = COALESCE(del_flag, 0) WHERE del_flag IS NULL;
+    ALTER TABLE ai_agent ALTER COLUMN del_flag SET DEFAULT 0;
+END $$;
 
 COMMENT ON TABLE ai_agent IS 'AI智能体';
 COMMENT ON COLUMN ai_agent.agent_id IS '智能体ID';
@@ -35,3 +65,4 @@ COMMENT ON COLUMN ai_agent.temperature IS '温度参数';
 COMMENT ON COLUMN ai_agent.max_tokens IS '最大Token数';
 COMMENT ON COLUMN ai_agent.published IS '是否发布(0未发布 1已发布)';
 COMMENT ON COLUMN ai_agent.status IS '状态(0正常 1停用)';
+COMMENT ON COLUMN ai_agent.del_flag IS '删除标志(0存在 1删除)';

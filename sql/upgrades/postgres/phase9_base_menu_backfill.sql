@@ -3,10 +3,11 @@
 -- Safe to re-run: inserts only missing baseline menu rows and role mappings.
 -- =============================================
 
-INSERT INTO sys_menu (
+WITH baseline_menu (
     id, tenant_id, menu_name, parent_id, ancestors, sort, order_num, path, component,
     query, menu_type, visible, status, perms, icon, is_frame, is_cache
-) VALUES
+) AS (
+VALUES
     (100, NULL, '系统管理', 0, '0', 1, 1, 'system', NULL, NULL, 'M', 0, 0, NULL, 'setting', 1, 0),
     (200, NULL, '任务调度', 0, '0', 2, 2, 'job', NULL, NULL, 'M', 0, 0, NULL, 'timer', 1, 0),
     (300, NULL, '工作流', 0, '0', 3, 3, 'workflow', NULL, NULL, 'M', 0, 0, NULL, 'connection', 1, 0),
@@ -44,6 +45,15 @@ INSERT INTO sys_menu (
     (515, NULL, 'Prompt模板', 500, '0,500', 6, 6, 'prompt', 'ai/prompt/index', NULL, 'C', 0, 0, 'ai:prompt:list', 'document', 1, 0),
     (516, NULL, 'Token统计', 500, '0,500', 7, 7, 'token', 'ai/token/index', NULL, 'C', 0, 0, 'ai:token:stats', 'data-analysis', 1, 0),
     (517, NULL, 'AI对话', 500, '0,500', 8, 8, 'chat', 'ai/chat/index', NULL, 'C', 0, 0, NULL, 'chat-line-square', 1, 0)
+)
+INSERT INTO sys_menu (
+    id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+    query, menu_type, visible, status, perms, icon, is_frame, is_cache
+)
+SELECT
+    id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+    query, menu_type, visible, status, perms, icon, is_frame, is_cache
+FROM baseline_menu
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO sys_role_menu (role_id, menu_id)
@@ -52,8 +62,12 @@ FROM sys_menu
 WHERE id BETWEEN 100 AND 517
 ON CONFLICT DO NOTHING;
 
-SELECT setval(
-    pg_get_serial_sequence('sys_menu', 'id'),
-    COALESCE((SELECT MAX(id) FROM sys_menu), 1),
-    true
-);
+DO $$
+DECLARE
+    v_sequence TEXT;
+BEGIN
+    SELECT pg_get_serial_sequence('sys_menu', 'id') INTO v_sequence;
+    IF v_sequence IS NOT NULL THEN
+        PERFORM setval(v_sequence, COALESCE((SELECT MAX(id) FROM sys_menu), 1), true);
+    END IF;
+END $$;

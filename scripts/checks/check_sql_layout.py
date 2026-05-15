@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,10 @@ FORBIDDEN_SYSTEM_TOKENS = [
     "\tdeleted\t",
     "\ndeleted ",
 ]
+
+FORBIDDEN_DELETED_COLUMN_RE = re.compile(
+    r"(?im)^\s*(?:deleted\s+(?:smallint|int|integer|bigint|boolean|char|varchar|text)\b|add\s+column\s+(?:if\s+not\s+exists\s+)?deleted\b)"
+)
 
 REQUIRED_SYS_USER_COLUMNS = [
     "pwd_update_time",
@@ -104,6 +109,8 @@ def main() -> int:
 
     for upgrade_file in sorted((SQL / "upgrades" / "postgres").glob("*.sql")):
         text = read_sql(upgrade_file)
+        if FORBIDDEN_DELETED_COLUMN_RE.search(text):
+            violations.append(f"PostgreSQL upgrade SQL 不能创建 deleted 列，必须使用 del_flag: {upgrade_file}")
         for token in FORBIDDEN_SQL_TOKENS:
             if token in text:
                 violations.append(f"PostgreSQL upgrade SQL contains forbidden token {token!r}: {upgrade_file}")

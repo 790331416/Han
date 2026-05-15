@@ -1,10 +1,10 @@
 -- =============================================
--- han Cloud µÚÒ»½×¶ÎÉý¼¶ SQL£¨PostgreSQL£©
--- °üº¬£º²Ù×÷ÈÕÖ¾±í¡¢µÇÂ¼ÈÕÖ¾±í¡¢Í¨Öª¹«¸æ±í
+-- han Cloud ç¬¬ä¸€é˜¶æ®µå‡çº§ SQLï¼ˆPostgreSQLï¼‰
+-- åŒ…å«ï¼šæ“ä½œæ—¥å¿—è¡¨ã€ç™»å½•æ—¥å¿—è¡¨ã€é€šçŸ¥å…¬å‘Šè¡¨
 -- =============================================
 
 -- ----------------------------
--- 1. ²Ù×÷ÈÕÖ¾±í
+-- 1. æ“ä½œæ—¥å¿—è¡¨
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS sys_oper_log (
     id              BIGINT          PRIMARY KEY,
@@ -27,25 +27,25 @@ CREATE TABLE IF NOT EXISTS sys_oper_log (
     cost_time       BIGINT          DEFAULT 0
 );
 
-COMMENT ON TABLE sys_oper_log IS '²Ù×÷ÈÕÖ¾±í';
-COMMENT ON COLUMN sys_oper_log.id IS 'ÈÕÖ¾ID';
-COMMENT ON COLUMN sys_oper_log.tenant_id IS '×â»§ID';
-COMMENT ON COLUMN sys_oper_log.title IS 'Ä£¿é±êÌâ';
-COMMENT ON COLUMN sys_oper_log.business_type IS 'ÒµÎñÀàÐÍ(0ÆäËü 1ÐÂÔö 2ÐÞ¸Ä 3É¾³ý 4²éÑ¯ 5µ¼³ö 6µ¼Èë 7ÊÚÈ¨ 8Ç¿ÍË 9Çå¿Õ)';
-COMMENT ON COLUMN sys_oper_log.method IS '·½·¨Ãû³Æ';
-COMMENT ON COLUMN sys_oper_log.request_method IS 'ÇëÇó·½Ê½';
-COMMENT ON COLUMN sys_oper_log.operator_type IS '²Ù×÷Àà±ð(0ÆäËü 1ºóÌ¨ 2ÊÖ»ú)';
-COMMENT ON COLUMN sys_oper_log.oper_name IS '²Ù×÷ÈËÔ±';
-COMMENT ON COLUMN sys_oper_log.dept_name IS '²¿ÃÅÃû³Æ';
-COMMENT ON COLUMN sys_oper_log.oper_url IS 'ÇëÇóURL';
-COMMENT ON COLUMN sys_oper_log.oper_ip IS '²Ù×÷IP';
-COMMENT ON COLUMN sys_oper_log.oper_location IS '²Ù×÷µØµã';
-COMMENT ON COLUMN sys_oper_log.oper_param IS 'ÇëÇó²ÎÊý';
-COMMENT ON COLUMN sys_oper_log.json_result IS '·µ»Ø²ÎÊý';
-COMMENT ON COLUMN sys_oper_log.status IS '²Ù×÷×´Ì¬(0Õý³£ 1Òì³£)';
-COMMENT ON COLUMN sys_oper_log.error_msg IS '´íÎóÏûÏ¢';
-COMMENT ON COLUMN sys_oper_log.oper_time IS '²Ù×÷Ê±¼ä';
-COMMENT ON COLUMN sys_oper_log.cost_time IS 'ÏûºÄÊ±¼ä(ºÁÃë)';
+COMMENT ON TABLE sys_oper_log IS 'æ“ä½œæ—¥å¿—è¡¨';
+COMMENT ON COLUMN sys_oper_log.id IS 'æ—¥å¿—ID';
+COMMENT ON COLUMN sys_oper_log.tenant_id IS 'ç§Ÿæˆ·ID';
+COMMENT ON COLUMN sys_oper_log.title IS 'æ¨¡å—æ ‡é¢˜';
+COMMENT ON COLUMN sys_oper_log.business_type IS 'ä¸šåŠ¡ç±»åž‹(0å…¶å®ƒ 1æ–°å¢ž 2ä¿®æ”¹ 3åˆ é™¤ 4æŸ¥è¯¢ 5å¯¼å‡º 6å¯¼å…¥ 7æŽˆæƒ 8å¼ºé€€ 9æ¸…ç©º)';
+COMMENT ON COLUMN sys_oper_log.method IS 'æ–¹æ³•åç§°';
+COMMENT ON COLUMN sys_oper_log.request_method IS 'è¯·æ±‚æ–¹å¼';
+COMMENT ON COLUMN sys_oper_log.operator_type IS 'æ“ä½œç±»åˆ«(0å…¶å®ƒ 1åŽå° 2æ‰‹æœº)';
+COMMENT ON COLUMN sys_oper_log.oper_name IS 'æ“ä½œäººå‘˜';
+COMMENT ON COLUMN sys_oper_log.dept_name IS 'éƒ¨é—¨åç§°';
+COMMENT ON COLUMN sys_oper_log.oper_url IS 'è¯·æ±‚URL';
+COMMENT ON COLUMN sys_oper_log.oper_ip IS 'æ“ä½œIP';
+COMMENT ON COLUMN sys_oper_log.oper_location IS 'æ“ä½œåœ°ç‚¹';
+COMMENT ON COLUMN sys_oper_log.oper_param IS 'è¯·æ±‚å‚æ•°';
+COMMENT ON COLUMN sys_oper_log.json_result IS 'è¿”å›žå‚æ•°';
+COMMENT ON COLUMN sys_oper_log.status IS 'æ“ä½œçŠ¶æ€(0æ­£å¸¸ 1å¼‚å¸¸)';
+COMMENT ON COLUMN sys_oper_log.error_msg IS 'é”™è¯¯æ¶ˆæ¯';
+COMMENT ON COLUMN sys_oper_log.oper_time IS 'æ“ä½œæ—¶é—´';
+COMMENT ON COLUMN sys_oper_log.cost_time IS 'æ¶ˆè€—æ—¶é—´(æ¯«ç§’)';
 
 CREATE INDEX IF NOT EXISTS idx_oper_log_tenant_id ON sys_oper_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_oper_log_oper_time ON sys_oper_log(oper_time);
@@ -53,7 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_oper_log_business_type ON sys_oper_log(business_t
 CREATE INDEX IF NOT EXISTS idx_oper_log_status ON sys_oper_log(status);
 
 -- ----------------------------
--- 2. µÇÂ¼ÈÕÖ¾±í
+-- 2. ç™»å½•æ—¥å¿—è¡¨
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS sys_login_log (
     id              BIGINT          PRIMARY KEY,
@@ -71,20 +71,20 @@ CREATE TABLE IF NOT EXISTS sys_login_log (
     login_time      TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE sys_login_log IS 'µÇÂ¼ÈÕÖ¾±í';
-COMMENT ON COLUMN sys_login_log.id IS 'ÈÕÖ¾ID';
-COMMENT ON COLUMN sys_login_log.tenant_id IS '×â»§ID';
-COMMENT ON COLUMN sys_login_log.user_id IS 'ÓÃ»§ID';
-COMMENT ON COLUMN sys_login_log.username IS 'ÓÃ»§ÕËºÅ';
-COMMENT ON COLUMN sys_login_log.client_type IS '¿Í»§¶ËÀàÐÍ';
-COMMENT ON COLUMN sys_login_log.device_id IS 'Éè±¸ID';
-COMMENT ON COLUMN sys_login_log.ipaddr IS 'µÇÂ¼IP';
-COMMENT ON COLUMN sys_login_log.login_location IS 'µÇÂ¼µØµã';
-COMMENT ON COLUMN sys_login_log.browser IS 'ä¯ÀÀÆ÷ÀàÐÍ';
-COMMENT ON COLUMN sys_login_log.os IS '²Ù×÷ÏµÍ³';
-COMMENT ON COLUMN sys_login_log.status IS 'µÇÂ¼×´Ì¬(0³É¹¦ 1Ê§°Ü)';
-COMMENT ON COLUMN sys_login_log.msg IS 'ÌáÊ¾ÏûÏ¢';
-COMMENT ON COLUMN sys_login_log.login_time IS 'µÇÂ¼Ê±¼ä';
+COMMENT ON TABLE sys_login_log IS 'ç™»å½•æ—¥å¿—è¡¨';
+COMMENT ON COLUMN sys_login_log.id IS 'æ—¥å¿—ID';
+COMMENT ON COLUMN sys_login_log.tenant_id IS 'ç§Ÿæˆ·ID';
+COMMENT ON COLUMN sys_login_log.user_id IS 'ç”¨æˆ·ID';
+COMMENT ON COLUMN sys_login_log.username IS 'ç”¨æˆ·è´¦å·';
+COMMENT ON COLUMN sys_login_log.client_type IS 'å®¢æˆ·ç«¯ç±»åž‹';
+COMMENT ON COLUMN sys_login_log.device_id IS 'è®¾å¤‡ID';
+COMMENT ON COLUMN sys_login_log.ipaddr IS 'ç™»å½•IP';
+COMMENT ON COLUMN sys_login_log.login_location IS 'ç™»å½•åœ°ç‚¹';
+COMMENT ON COLUMN sys_login_log.browser IS 'æµè§ˆå™¨ç±»åž‹';
+COMMENT ON COLUMN sys_login_log.os IS 'æ“ä½œç³»ç»Ÿ';
+COMMENT ON COLUMN sys_login_log.status IS 'ç™»å½•çŠ¶æ€(0æˆåŠŸ 1å¤±è´¥)';
+COMMENT ON COLUMN sys_login_log.msg IS 'æç¤ºæ¶ˆæ¯';
+COMMENT ON COLUMN sys_login_log.login_time IS 'ç™»å½•æ—¶é—´';
 
 CREATE INDEX IF NOT EXISTS idx_login_log_tenant_id ON sys_login_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_login_log_user_id ON sys_login_log(user_id);
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_login_log_username ON sys_login_log(username);
 CREATE INDEX IF NOT EXISTS idx_login_log_login_time ON sys_login_log(login_time);
 
 -- ----------------------------
--- 3. Í¨Öª¹«¸æ±í
+-- 3. é€šçŸ¥å…¬å‘Šè¡¨
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS sys_notice (
     id              BIGINT          PRIMARY KEY,
@@ -109,16 +109,15 @@ CREATE TABLE IF NOT EXISTS sys_notice (
     update_name     VARCHAR(50)     DEFAULT NULL,
     update_time     TIMESTAMP       DEFAULT NULL,
     del_flag        SMALLINT        DEFAULT 0,
-    deleted         SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)    DEFAULT NULL
 );
 
-COMMENT ON TABLE sys_notice IS 'Í¨Öª¹«¸æ±í';
-COMMENT ON COLUMN sys_notice.id IS '¹«¸æID';
-COMMENT ON COLUMN sys_notice.tenant_id IS '×â»§ID';
-COMMENT ON COLUMN sys_notice.notice_title IS '¹«¸æ±êÌâ';
-COMMENT ON COLUMN sys_notice.notice_type IS '¹«¸æÀàÐÍ(1Í¨Öª 2¹«¸æ)';
-COMMENT ON COLUMN sys_notice.notice_content IS '¹«¸æÄÚÈÝ';
-COMMENT ON COLUMN sys_notice.status IS '×´Ì¬(0Õý³£ 1¹Ø±Õ)';
+COMMENT ON TABLE sys_notice IS 'é€šçŸ¥å…¬å‘Šè¡¨';
+COMMENT ON COLUMN sys_notice.id IS 'å…¬å‘ŠID';
+COMMENT ON COLUMN sys_notice.tenant_id IS 'ç§Ÿæˆ·ID';
+COMMENT ON COLUMN sys_notice.notice_title IS 'å…¬å‘Šæ ‡é¢˜';
+COMMENT ON COLUMN sys_notice.notice_type IS 'å…¬å‘Šç±»åž‹(1é€šçŸ¥ 2å…¬å‘Š)';
+COMMENT ON COLUMN sys_notice.notice_content IS 'å…¬å‘Šå†…å®¹';
+COMMENT ON COLUMN sys_notice.status IS 'çŠ¶æ€(0æ­£å¸¸ 1å…³é—­)';
 
 CREATE INDEX IF NOT EXISTS idx_notice_tenant_id ON sys_notice(tenant_id);

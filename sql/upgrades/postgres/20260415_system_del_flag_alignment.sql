@@ -11,9 +11,19 @@ BEGIN
         'sys_dict_type',
         'sys_dict_data',
         'sys_config',
+        'sys_notice',
         'sys_client'
     ]
     LOOP
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = v_table_name
+        ) THEN
+            CONTINUE;
+        END IF;
+
         IF EXISTS (
             SELECT 1
             FROM information_schema.columns
