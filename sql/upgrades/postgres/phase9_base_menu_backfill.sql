@@ -51,7 +51,7 @@ INSERT INTO sys_menu (
     query, menu_type, visible, status, perms, icon, is_frame, is_cache
 )
 SELECT
-    id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+    id, tenant_id::BIGINT, menu_name, parent_id, ancestors, sort, path, component,
     query, menu_type, visible, status, perms, icon, is_frame, is_cache
 FROM baseline_menu
 ON CONFLICT (id) DO NOTHING;
