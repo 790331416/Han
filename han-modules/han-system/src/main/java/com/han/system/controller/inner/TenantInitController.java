@@ -110,7 +110,6 @@ public class TenantInitController {
     /**
      * 查询租户管理员用户ID（供重置密码等操作使用）
      */
-    @GetMapping("/adminUser")
     public R<Long> getTenantAdminUserId(@RequestParam("tenantId") Long tenantId) {
         SysUserPo admin = TenantHelper.ignore(() ->
                 userMapper.selectOne(
