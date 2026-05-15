@@ -24,6 +24,29 @@
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 - PostgreSQL 脚本禁止继续使用 MySQL 写法，例如列内 `COMMENT`、`AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`AFTER`、`USE <db>`
 - `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time`、`pwd_reset_flag`、`totp_secret` 与 `totp_enabled`
+- PostgreSQL 增量升级脚本不得新建 `deleted` 列；软删除列统一使用 `del_flag`
+- 修改 `sql/upgrades/postgres/` 后，必须至少执行结构检查；涉及旧库兼容时还要执行升级演练脚本
+
+## 升级演练
+
+95 或其他 Linux/Docker 环境可执行：
+
+```bash
+bash deploy/scripts/rehearse-postgres-upgrades.sh
+```
+
+该脚本使用临时 PostgreSQL 容器验证两类场景：
+
+- `clean_full`：先导入 `sql/tiers/full/full-init.sql`，再按固定顺序重放 `sql/upgrades/postgres/` 升级脚本，验证当前初始化结构上升级脚本可重复执行。
+- `legacy_synthetic`：构造带旧列名和缺列的合成旧库，再执行同一组升级脚本，验证旧库兼容迁移路径。
+
+演练完成后会校验：
+
+- `public` schema 不再残留 `deleted` 列
+- `sys_user.pwd_reset_flag`
+- `sys_user.totp_enabled`
+- `ai_agent.del_flag`
+- `sys_menu.sort`
 
 ## 三档说明
 
