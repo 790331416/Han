@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 import sys
 from pathlib import Path
+from typing import List
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "deploy"
@@ -9,7 +8,7 @@ SQL = ROOT / "sql"
 
 
 def main() -> int:
-    violations: list[str] = []
+    violations = []  # type: List[str]
 
     for tier in ("small", "medium", "full"):
         tier_dir = DEPLOY / tier
