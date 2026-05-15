@@ -38,6 +38,7 @@ def main() -> int:
         "verify-file-service-95.sh",
         "rehearse-postgres-upgrades.sh",
         "rehearse-postgres-backup-upgrades.sh",
+        "publish-service-images-95.sh",
     ):
         if not (DEPLOY / "scripts" / name).exists():
             violations.append(f"missing deploy script: deploy/scripts/{name}")
