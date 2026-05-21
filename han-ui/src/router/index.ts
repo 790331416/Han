@@ -52,6 +52,33 @@ export const constantRoutes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/studio',
+    name: 'Studio',
+    component: () => import('@/views/studio/layout.vue'),
+    redirect: '/studio/projects',
+    meta: { title: 'AI短剧工作台', icon: 'VideoCamera', tier: 'full', module: 'ai', feature: 'ai' },
+    children: [
+      {
+        path: 'projects',
+        name: 'StudioProjects',
+        component: () => import('@/views/studio/projects/index.vue'),
+        meta: { title: '项目列表', icon: 'FolderOpened' }
+      },
+      {
+        path: 'projects/create',
+        name: 'StudioProjectCreate',
+        component: () => import('@/views/studio/projects/create.vue'),
+        meta: { title: '新建项目', icon: 'Plus', hidden: true, activeMenu: '/studio/projects' }
+      },
+      {
+        path: 'projects/:id/workbench',
+        name: 'StudioProjectWorkbench',
+        component: () => import('@/views/studio/projects/workbench.vue'),
+        meta: { title: '创作工作台', icon: 'Operation', hidden: true, activeMenu: '/studio/projects' }
+      }
+    ]
+  },
+  {
     path: '/job',
     name: 'Job',
     component: () => import('@/layout/index.vue'),
@@ -294,6 +321,24 @@ export const constantRoutes: RouteRecordRaw[] = [
         name: 'AiToken',
         component: () => import('@/views/ai/token/index.vue'),
         meta: { title: 'Token统计', icon: 'DataAnalysis', permission: 'ai:token:stats' }
+      },
+      {
+        path: 'aivideo/tasks',
+        name: 'AivideoTasks',
+        component: () => import('@/views/ai/aivideo/tasks/index.vue'),
+        meta: { title: '短剧任务监管', icon: 'VideoCamera', permission: 'ai:aivideo:task:list' }
+      },
+      {
+        path: 'aivideo/tasks/:taskId',
+        name: 'AivideoTaskDetail',
+        component: () => import('@/views/ai/aivideo/tasks/detail.vue'),
+        meta: { title: '短剧任务详情', icon: 'Tickets', hidden: true, activeMenu: '/ai/aivideo/tasks', permission: 'ai:aivideo:task:query' }
+      },
+      {
+        path: 'aivideo/settings',
+        name: 'AivideoSettings',
+        component: () => import('@/views/ai/aivideo/settings/index.vue'),
+        meta: { title: '短剧基础配置', icon: 'Tools', permission: 'ai:aivideo:setting:query' }
       },
       // {
       //   path: 'graph/:kbId',

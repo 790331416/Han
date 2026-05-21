@@ -13,6 +13,7 @@
   - `full/full-nacos-derby-import.sql`
 - `upgrades/postgres/`
   - PostgreSQL 正式增量升级脚本
+  - `20260521_aivideo_mvp0.sql`：AI 短剧 MVP 0 表结构增量脚本
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -68,6 +69,7 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `full`
   - PostgreSQL：`sql/tiers/full/full-init.sql`
   - Nacos：`sql/tiers/full/full-nacos-derby-import.sql`
+  - AI 短剧：MVP 0 表结构只进入 full tier，表名前缀为 `ai_video_`
 
 ## 归档说明
 

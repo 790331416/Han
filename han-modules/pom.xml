@@ -22,6 +22,7 @@
         <module>han-workflow</module>
         <module>han-open</module>
         <module>han-ai</module>
+        <module>han-aivideo</module>
     </modules>
 
     <build>

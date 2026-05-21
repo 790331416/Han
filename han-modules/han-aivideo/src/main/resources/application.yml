@@ -1,0 +1,23 @@
+server:
+  port: 9209
+
+spring:
+  config:
+    import:
+      - "optional:nacos:application-shared.yml"
+      - "optional:nacos:han-aivideo.yml"
+  application:
+    name: han-aivideo
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:}
+        file-extension: yml

@@ -1,0 +1,117 @@
+package com.han.aivideo.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.han.aivideo.domain.dto.AivideoAdminSettingDto;
+import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.vo.AivideoAdminSettingVo;
+import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
+import com.han.aivideo.service.IAivideoSettingService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+@Service
+@RequiredArgsConstructor
+public class AivideoSettingServiceImpl extends AivideoServiceSupport implements IAivideoSettingService {
+
+    private final AiVideoProjectSettingMapper settingMapper;
+
+    @Override
+    public AivideoAdminSettingVo getGlobalSetting() {
+        AiVideoProjectSettingPo setting = selectGlobalSetting();
+        if (setting == null) {
+            setting = defaultGlobalSetting();
+        }
+        return toVo(setting);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveGlobalSetting(AivideoAdminSettingDto dto) {
+        AivideoAdminSettingDto safeDto = dto != null ? dto : new AivideoAdminSettingDto();
+        AiVideoProjectSettingPo setting = selectGlobalSetting();
+        if (setting == null) {
+            setting = new AiVideoProjectSettingPo();
+            setting.setTenantId(resolveTenantIdForWrite());
+            copySettingFields(safeDto, setting);
+            fillCreateAudit(setting);
+            settingMapper.insert(setting);
+            return;
+        }
+        copySettingFields(safeDto, setting);
+        fillUpdateAudit(setting);
+        settingMapper.updateById(setting);
+    }
+
+    private AiVideoProjectSettingPo selectGlobalSetting() {
+        LambdaQueryWrapper<AiVideoProjectSettingPo> wrapper = new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                .isNull(AiVideoProjectSettingPo::getProjectId)
+                .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                .last("limit 1");
+        Long tenantId = currentTenantId();
+        if (tenantId != null) {
+            wrapper.eq(AiVideoProjectSettingPo::getTenantId, tenantId);
+        }
+        return settingMapper.selectOne(wrapper);
+    }
+
+    private AiVideoProjectSettingPo defaultGlobalSetting() {
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultRatio("9:16");
+        setting.setDefaultResolution("720p");
+        setting.setDefaultShotDuration(5);
+        setting.setImageCandidateCount(3);
+        setting.setVideoCandidateCount(1);
+        setting.setPreviewMode(YES);
+        setting.setContentAuditEnabled(YES);
+        setting.setRemark("MVP 0 默认配置，未接真实火山模型");
+        return setting;
+    }
+
+    private void copySettingFields(AivideoAdminSettingDto source, AiVideoProjectSettingPo target) {
+        target.setTextModelId(source.getTextModelId());
+        target.setImageModelId(source.getImageModelId());
+        target.setVideoModelId(source.getVideoModelId());
+        target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
+        target.setDefaultResolution(defaultString(source.getDefaultResolution(), "720p"));
+        target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
+        target.setImageCandidateCount(source.getImageCandidateCount() == null ? 3 : source.getImageCandidateCount());
+        target.setVideoCandidateCount(source.getVideoCandidateCount() == null ? 1 : source.getVideoCandidateCount());
+        target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
+        target.setContentAuditEnabled(defaultString(source.getContentAuditEnabled(), YES));
+        target.setRemark(trimToNull(source.getRemark()));
+    }
+
+    private AivideoAdminSettingVo toVo(AiVideoProjectSettingPo setting) {
+        AivideoAdminSettingVo vo = new AivideoAdminSettingVo();
+        vo.setTextModelId(setting.getTextModelId());
+        vo.setImageModelId(setting.getImageModelId());
+        vo.setVideoModelId(setting.getVideoModelId());
+        vo.setDefaultRatio(setting.getDefaultRatio());
+        vo.setDefaultResolution(setting.getDefaultResolution());
+        vo.setDefaultShotDuration(setting.getDefaultShotDuration());
+        vo.setImageCandidateCount(setting.getImageCandidateCount());
+        vo.setVideoCandidateCount(setting.getVideoCandidateCount());
+        vo.setPreviewMode(setting.getPreviewMode());
+        vo.setContentAuditEnabled(setting.getContentAuditEnabled());
+        vo.setRemark(setting.getRemark());
+        return vo;
+    }
+
+    private String defaultString(String value, String defaultValue) {
+        return StringUtils.hasText(value) ? value.trim() : defaultValue;
+    }
+
+    private void fillCreateAudit(AiVideoProjectSettingPo setting) {
+        setting.setCreateBy(resolveOperator());
+        setting.setCreateTime(now());
+        setting.setUpdateBy(resolveOperator());
+        setting.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoProjectSettingPo setting) {
+        setting.setUpdateBy(resolveOperator());
+        setting.setUpdateTime(now());
+    }
+}
