@@ -55,10 +55,80 @@ export interface AivideoSourceDocument {
   fileName?: string
   rawText?: string
   parsedText?: string
+  chapterJson?: string
   charCount?: number
   parseStatus?: string
   confirmed?: string
   createTime?: string
+}
+
+export interface AivideoContentVersion {
+  versionId: string | number
+  projectId?: string | number
+  documentId?: string | number
+  contentType?: string
+  versionNo?: number
+  title?: string
+  contentText?: string
+  contentJson?: string
+  promptTemplateId?: string | number
+  customPrompt?: string
+  modelId?: string | number
+  taskId?: string | number
+  selected?: string
+  confirmStatus?: string
+  createTime?: string
+}
+
+export interface AivideoCharacter {
+  characterId: string | number
+  characterName?: string
+  gender?: string
+  ageDesc?: string
+  identityDesc?: string
+  personalityTags?: string
+  storyRole?: string
+  appearance?: string
+  promptText?: string
+  confirmStatus?: string
+}
+
+export interface AivideoScene {
+  sceneId: string | number
+  sceneName?: string
+  sceneType?: string
+  episodeNo?: number
+  timeDesc?: string
+  weather?: string
+  atmosphere?: string
+  visualFeatures?: string
+  promptText?: string
+  confirmStatus?: string
+}
+
+export interface AivideoShot {
+  shotId: string | number
+  episodeNo?: number
+  shotNo?: number
+  durationSec?: number
+  sceneId?: string | number
+  characterIds?: string
+  shotType?: string
+  cameraPosition?: string
+  cameraMovement?: string
+  actionDesc?: string
+  dialogue?: string
+  voiceOver?: string
+  emotion?: string
+  promptText?: string
+  confirmStatus?: string
+  generationStatus?: string
+}
+
+export interface AivideoAssetSummary {
+  characters?: AivideoCharacter[]
+  scenes?: AivideoScene[]
+  shots?: AivideoShot[]
 }
 
 export interface AivideoTask {
@@ -112,6 +182,10 @@ export interface AivideoProjectDetail {
   project?: AivideoProject
   setting?: AivideoSetting
   documents?: AivideoSourceDocument[]
+  contentVersions?: AivideoContentVersion[]
+  characters?: AivideoCharacter[]
+  scenes?: AivideoScene[]
+  shots?: AivideoShot[]
   latestTask?: AivideoTask
 }
 
@@ -135,6 +209,67 @@ export function saveAivideoDocument(data: Partial<AivideoSourceDocument>) {
   return post<string | number>('/aivideo/studio/document/save', data)
 }
 
+export function confirmAivideoDocument(data: {
+  projectId: string | number
+  documentId?: string | number
+  parsedText?: string
+  chapterJson?: string
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/document/confirm', data)
+}
+
+export function generateAivideoPolish(data: {
+  projectId: string | number
+  documentId?: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoContentVersion>('/aivideo/studio/text/polish/generate', data)
+}
+
+export function confirmAivideoPolish(data: {
+  projectId: string | number
+  versionId: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/text/polish/confirm', data)
+}
+
+export function generateAivideoScript(data: {
+  projectId: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoContentVersion>('/aivideo/studio/text/script/generate', data)
+}
+
+export function confirmAivideoScript(data: {
+  projectId: string | number
+  versionId: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/text/script/confirm', data)
+}
+
+export function extractAivideoAssets(data: {
+  projectId: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoAssetSummary>('/aivideo/studio/assets/extract', data)
+}
+
+export function getAivideoAssets(projectId: string | number) {
+  return get<AivideoAssetSummary>(`/aivideo/studio/assets/summary/${projectId}`)
+}
+
+export function confirmAivideoAsset(data: {
+  projectId: string | number
+  targetType: string
+  targetId?: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/assets/confirm', data)
+}
+
 export function listAivideoTask(query: AivideoTaskQuery) {
   return get<PageResult<AivideoTask>>('/aivideo/admin/task/list', query)
 }
@@ -154,7 +289,7 @@ export function updateAivideoSetting(data: AivideoSetting) {
 export const aivideoProjectStageOptions = [
   { label: '草稿', value: 'DRAFT' },
   { label: '原文已保存', value: 'DOCUMENT_SAVED' },
-  { label: '文档已解析', value: 'DOCUMENT_PARSED' },
+  { label: '文档已确认', value: 'DOCUMENT_PARSED' },
   { label: '润色已确认', value: 'POLISH_CONFIRMED' },
   { label: '剧本已确认', value: 'SCRIPT_CONFIRMED' },
   { label: '资产已确认', value: 'ASSET_CONFIRMED' },

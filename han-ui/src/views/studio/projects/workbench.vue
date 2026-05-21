@@ -1,70 +1,225 @@
 <template>
   <div class="workbench-page">
     <div class="workbench-header">
-      <div>
+      <div class="title-block">
         <el-button :icon="ArrowLeft" text @click="router.push('/studio/projects')">项目列表</el-button>
         <h2>{{ detail.project?.projectName || '短剧项目' }}</h2>
       </div>
-      <el-tag type="primary" effect="plain">{{ getStageLabel(detail.project?.currentStage) }}</el-tag>
+      <div class="header-actions">
+        <el-tag type="primary" effect="plain">{{ getStageLabel(detail.project?.currentStage) }}</el-tag>
+        <el-button :icon="Refresh" @click="loadDetail">刷新</el-button>
+      </div>
     </div>
 
     <div class="workbench-grid">
       <aside class="flow-panel">
-        <el-steps direction="vertical" :active="activeStep" finish-status="success">
-          <el-step v-for="item in flowSteps" :key="item.value" :title="item.label" />
-        </el-steps>
+        <button
+          v-for="item in flowSteps"
+          :key="item.name"
+          class="flow-item"
+          :class="{ active: activeTab === item.name }"
+          type="button"
+          @click="activeTab = item.name"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
+          <small>{{ item.count }}</small>
+        </button>
       </aside>
 
       <section class="result-panel" v-loading="loading">
-        <div class="section-head">
-          <h3>项目素材</h3>
-          <el-button :icon="Refresh" @click="loadDetail">刷新</el-button>
+        <div v-if="activeTab === 'document'" class="result-section">
+          <div class="section-head">
+            <h3>原文</h3>
+            <el-button
+              type="primary"
+              :icon="DocumentChecked"
+              :disabled="!latestDocument || latestDocument.confirmed === '1'"
+              :loading="submitting"
+              @click="handleConfirmDocument"
+            >
+              确认原文
+            </el-button>
+          </div>
+          <el-empty v-if="!documents.length" description="暂无原文" />
+          <article v-for="doc in documents" :key="doc.documentId" class="text-block">
+            <div class="meta-line">
+              <el-tag>{{ doc.sourceType || 'TEXT' }}</el-tag>
+              <span>{{ doc.charCount || 0 }} 字</span>
+              <span>{{ doc.confirmed === '1' ? '已确认' : '待确认' }}</span>
+              <span>{{ doc.createTime || '-' }}</span>
+            </div>
+            <pre>{{ doc.parsedText || doc.rawText || '' }}</pre>
+          </article>
         </div>
 
-        <el-tabs v-model="activeTab">
-          <el-tab-pane label="原文" name="document">
-            <el-empty v-if="!documents.length" description="暂无原文" />
-            <div v-for="doc in documents" :key="doc.documentId" class="doc-block">
-              <div class="doc-meta">
-                <el-tag>{{ doc.sourceType || 'TEXT' }}</el-tag>
-                <span>{{ doc.charCount || 0 }} 字</span>
-                <span>{{ doc.createTime || '-' }}</span>
-              </div>
-              <pre>{{ doc.rawText || doc.parsedText || '' }}</pre>
+        <div v-if="activeTab === 'polish'" class="result-section">
+          <div class="section-head">
+            <h3>润色稿</h3>
+            <el-button
+              type="primary"
+              :icon="MagicStick"
+              :disabled="!latestDocument"
+              :loading="submitting"
+              @click="handleGeneratePolish"
+            >
+              {{ polishVersions.length ? '重新润色' : '生成润色' }}
+            </el-button>
+          </div>
+          <el-empty v-if="!polishVersions.length" description="暂无润色稿" />
+          <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
+            <div class="meta-line">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
+              <span>{{ item.confirmStatus || 'PENDING' }}</span>
+              <span>{{ item.createTime || '-' }}</span>
+              <el-button
+                size="small"
+                type="success"
+                :icon="Check"
+                :disabled="item.selected === '1'"
+                :loading="submitting"
+                @click="handleConfirmPolish(item.versionId)"
+              >
+                确认
+              </el-button>
             </div>
-          </el-tab-pane>
+            <pre>{{ item.contentText }}</pre>
+          </article>
+        </div>
 
-          <el-tab-pane label="人物/场景/分镜" name="assets">
-            <div class="placeholder-grid">
-              <div v-for="item in assetBlocks" :key="item.title" class="placeholder-block">
-                <el-icon><component :is="item.icon" /></el-icon>
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.status }}</span>
-              </div>
+        <div v-if="activeTab === 'script'" class="result-section">
+          <div class="section-head">
+            <h3>短剧剧本</h3>
+            <el-button
+              type="primary"
+              :icon="Tickets"
+              :disabled="!selectedPolish"
+              :loading="submitting"
+              @click="handleGenerateScript"
+            >
+              {{ scriptVersions.length ? '重新生成剧本' : '生成剧本' }}
+            </el-button>
+          </div>
+          <el-empty v-if="!scriptVersions.length" description="暂无短剧剧本" />
+          <article v-for="item in scriptVersions" :key="item.versionId" class="text-block">
+            <div class="meta-line">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `剧本 v${item.versionNo}` }}</el-tag>
+              <span>{{ item.confirmStatus || 'PENDING' }}</span>
+              <span>{{ item.createTime || '-' }}</span>
+              <el-button
+                size="small"
+                type="success"
+                :icon="Check"
+                :disabled="item.selected === '1'"
+                :loading="submitting"
+                @click="handleConfirmScript(item.versionId)"
+              >
+                确认
+              </el-button>
             </div>
-          </el-tab-pane>
+            <pre>{{ item.contentText }}</pre>
+          </article>
+        </div>
 
-          <el-tab-pane label="生成任务" name="task">
-            <el-descriptions v-if="detail.latestTask" :column="2" border>
-              <el-descriptions-item label="任务ID">{{ detail.latestTask.taskId }}</el-descriptions-item>
-              <el-descriptions-item label="任务类型">{{ detail.latestTask.taskType }}</el-descriptions-item>
-              <el-descriptions-item label="状态">{{ detail.latestTask.taskStatus }}</el-descriptions-item>
-              <el-descriptions-item label="进度">{{ detail.latestTask.progress || 0 }}%</el-descriptions-item>
-            </el-descriptions>
-            <el-empty v-else description="暂无生成任务" />
-          </el-tab-pane>
-        </el-tabs>
+        <div v-if="activeTab === 'assets'" class="result-section">
+          <div class="section-head">
+            <h3>人物 / 场景 / 分镜</h3>
+            <div class="section-actions">
+              <el-button
+                type="primary"
+                :icon="Film"
+                :disabled="!selectedScript"
+                :loading="submitting"
+                @click="handleExtractAssets"
+              >
+                {{ hasAssets ? '重新提取' : '提取资产' }}
+              </el-button>
+              <el-button
+                type="success"
+                :icon="Check"
+                :disabled="!hasAssets"
+                :loading="submitting"
+                @click="handleConfirmAllAssets"
+              >
+                确认全部
+              </el-button>
+            </div>
+          </div>
+
+          <el-tabs model-value="characters">
+            <el-tab-pane label="人物" name="characters">
+              <el-table :data="characters" border>
+                <el-table-column prop="characterName" label="人物" min-width="120" />
+                <el-table-column prop="storyRole" label="角色定位" min-width="120" />
+                <el-table-column prop="appearance" label="外观" min-width="220" show-overflow-tooltip />
+                <el-table-column prop="confirmStatus" label="状态" width="110" />
+                <el-table-column label="操作" width="100">
+                  <template #default="{ row }">
+                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('CHARACTER', row.characterId)">
+                      确认
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="场景" name="scenes">
+              <el-table :data="scenes" border>
+                <el-table-column prop="sceneName" label="场景" min-width="140" />
+                <el-table-column prop="atmosphere" label="氛围" min-width="160" />
+                <el-table-column prop="visualFeatures" label="视觉特征" min-width="240" show-overflow-tooltip />
+                <el-table-column prop="confirmStatus" label="状态" width="110" />
+                <el-table-column label="操作" width="100">
+                  <template #default="{ row }">
+                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('SCENE', row.sceneId)">
+                      确认
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="分镜" name="shots">
+              <el-table :data="shots" border>
+                <el-table-column prop="shotNo" label="镜头" width="90" />
+                <el-table-column prop="durationSec" label="秒数" width="90" />
+                <el-table-column prop="cameraMovement" label="运动" min-width="120" />
+                <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
+                <el-table-column prop="confirmStatus" label="状态" width="110" />
+                <el-table-column label="操作" width="100">
+                  <template #default="{ row }">
+                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('SHOT', row.shotId)">
+                      确认
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+
+        <div v-if="activeTab === 'task'" class="result-section">
+          <div class="section-head">
+            <h3>最近任务</h3>
+          </div>
+          <el-descriptions v-if="detail.latestTask" :column="2" border>
+            <el-descriptions-item label="任务ID">{{ detail.latestTask.taskId }}</el-descriptions-item>
+            <el-descriptions-item label="任务类型">{{ detail.latestTask.taskType }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ detail.latestTask.taskStatus }}</el-descriptions-item>
+            <el-descriptions-item label="进度">{{ detail.latestTask.progress || 0 }}%</el-descriptions-item>
+            <el-descriptions-item label="错误" :span="2">{{ detail.latestTask.errorMessage || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <el-empty v-else description="暂无生成任务" />
+        </div>
       </section>
 
       <aside class="params-panel">
-        <h3>生成参数</h3>
+        <h3>参数</h3>
         <el-form label-position="top">
-          <el-form-item label="默认画幅">
+          <el-form-item label="画幅">
             <el-select v-model="params.defaultRatio" disabled>
               <el-option v-for="item in ratioOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="默认清晰度">
+          <el-form-item label="清晰度">
             <el-input v-model="params.defaultResolution" disabled />
           </el-form-item>
           <el-form-item label="镜头秒数">
@@ -73,15 +228,10 @@
           <el-form-item label="图片候选数">
             <el-input-number v-model="params.imageCandidateCount" disabled />
           </el-form-item>
-          <el-form-item label="预览模式">
-            <el-switch v-model="params.previewMode" active-value="1" inactive-value="0" disabled />
+          <el-form-item label="补充提示词">
+            <el-input v-model="customPrompt" type="textarea" :rows="8" maxlength="1200" show-word-limit />
           </el-form-item>
         </el-form>
-        <div class="action-stack">
-          <el-button type="primary" :icon="MagicStick" disabled>润色原文</el-button>
-          <el-button :icon="Picture" disabled>生成候选图</el-button>
-          <el-button :icon="VideoCamera" disabled>生成单镜头视频</el-button>
-        </div>
       </aside>
     </div>
   </div>
@@ -90,21 +240,31 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Film, MagicStick, Picture, Refresh, UserFilled, VideoCamera } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, UserFilled } from '@element-plus/icons-vue'
 import {
   aivideoProjectStageOptions,
+  confirmAivideoAsset,
+  confirmAivideoDocument,
+  confirmAivideoPolish,
+  confirmAivideoScript,
+  extractAivideoAssets,
+  generateAivideoPolish,
+  generateAivideoScript,
   getAivideoProject,
   ratioOptions,
-  type AivideoProjectDetail,
-  type AivideoSourceDocument
+  type AivideoProjectDetail
 } from '@/api/aivideo'
+
+type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
-const activeTab = ref('document')
+const submitting = ref(false)
+const activeTab = ref<WorkbenchTab>('document')
+const customPrompt = ref('')
 const detail = reactive<AivideoProjectDetail>({})
-const documents = ref<AivideoSourceDocument[]>([])
 
 const params = reactive({
   defaultRatio: '9:16',
@@ -114,38 +274,36 @@ const params = reactive({
   previewMode: '1'
 })
 
-const flowSteps = [
-  { label: '原文', value: 'DOCUMENT_SAVED' },
-  { label: '润色', value: 'POLISH_CONFIRMED' },
-  { label: '剧本', value: 'SCRIPT_CONFIRMED' },
-  { label: '人物/场景/分镜', value: 'ASSET_CONFIRMED' },
-  { label: '单镜头视频', value: 'VIDEO_GENERATING' },
-  { label: '确认成片', value: 'VIDEO_CONFIRMED' }
-]
+const projectId = computed(() => String(route.params.id))
+const documents = computed(() => detail.documents || [])
+const latestDocument = computed(() => documents.value[0])
+const contentVersions = computed(() => detail.contentVersions || [])
+const polishVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'POLISH'))
+const scriptVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'SCRIPT'))
+const selectedPolish = computed(() => polishVersions.value.find((item) => item.selected === '1'))
+const selectedScript = computed(() => scriptVersions.value.find((item) => item.selected === '1'))
+const characters = computed(() => detail.characters || [])
+const scenes = computed(() => detail.scenes || [])
+const shots = computed(() => detail.shots || [])
+const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
 
-const assetBlocks = [
-  { title: '人物', status: 'MVP 1 接入提取与候选图', icon: UserFilled },
-  { title: '场景', status: 'MVP 1 接入场景图', icon: Picture },
-  { title: '分镜', status: 'MVP 1 接入镜头列表', icon: Film }
-]
-
-const activeStep = computed(() => {
-  const stage = detail.project?.currentStage
-  const index = flowSteps.findIndex((item) => item.value === stage)
-  return index < 0 ? 0 : index + 1
-})
+const flowSteps = computed(() => [
+  { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
+  { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
+  { label: '剧本', name: 'script' as WorkbenchTab, icon: Tickets, count: scriptVersions.value.length },
+  { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + shots.value.length },
+  { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
+])
 
 function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
 }
 
 async function loadDetail() {
-  const projectId = String(route.params.id)
   loading.value = true
   try {
-    const res = await getAivideoProject(projectId)
+    const res = await getAivideoProject(projectId.value)
     Object.assign(detail, res.data || {})
-    documents.value = res.data.documents || []
     Object.assign(params, {
       defaultRatio: res.data.setting?.defaultRatio || res.data.project?.defaultRatio || '9:16',
       defaultResolution: res.data.setting?.defaultResolution || '720p',
@@ -156,6 +314,89 @@ async function loadDetail() {
   } finally {
     loading.value = false
   }
+}
+
+async function withSubmit(action: () => Promise<void>, successMessage: string) {
+  submitting.value = true
+  try {
+    await action()
+    ElMessage.success(successMessage)
+    await loadDetail()
+  } finally {
+    submitting.value = false
+  }
+}
+
+function handleConfirmDocument() {
+  const doc = latestDocument.value
+  if (!doc) return
+  withSubmit(
+    () => confirmAivideoDocument({
+      projectId: projectId.value,
+      documentId: doc.documentId,
+      parsedText: doc.parsedText || doc.rawText
+    }).then(() => undefined),
+    '原文已确认'
+  )
+}
+
+function handleGeneratePolish() {
+  withSubmit(
+    () => generateAivideoPolish({
+      projectId: projectId.value,
+      documentId: latestDocument.value?.documentId,
+      customPrompt: customPrompt.value
+    }).then(() => undefined),
+    '润色稿已生成'
+  )
+}
+
+function handleConfirmPolish(versionId: string | number) {
+  withSubmit(
+    () => confirmAivideoPolish({ projectId: projectId.value, versionId }).then(() => undefined),
+    '润色稿已确认'
+  )
+}
+
+function handleGenerateScript() {
+  withSubmit(
+    () => generateAivideoScript({
+      projectId: projectId.value,
+      customPrompt: customPrompt.value
+    }).then(() => undefined),
+    '短剧剧本已生成'
+  )
+}
+
+function handleConfirmScript(versionId: string | number) {
+  withSubmit(
+    () => confirmAivideoScript({ projectId: projectId.value, versionId }).then(() => undefined),
+    '短剧剧本已确认'
+  )
+}
+
+function handleExtractAssets() {
+  withSubmit(
+    () => extractAivideoAssets({
+      projectId: projectId.value,
+      customPrompt: customPrompt.value
+    }).then(() => undefined),
+    '资产已提取'
+  )
+}
+
+function handleConfirmAllAssets() {
+  withSubmit(
+    () => confirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL' }).then(() => undefined),
+    '资产已确认'
+  )
+}
+
+function handleConfirmAsset(targetType: string, targetId: string | number) {
+  withSubmit(
+    () => confirmAivideoAsset({ projectId: projectId.value, targetType, targetId }).then(() => undefined),
+    '资产已确认'
+  )
 }
 
 onMounted(() => {
@@ -172,17 +413,24 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 16px;
+}
 
-  h2 {
-    margin: 8px 0 0;
-    font-size: 22px;
-  }
+.title-block h2 {
+  margin: 8px 0 0;
+  font-size: 22px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  grid-template-columns: 220px minmax(0, 1fr) 300px;
   gap: 16px;
   min-height: calc(100vh - 138px);
 }
@@ -196,18 +444,57 @@ onMounted(() => {
   padding: 16px;
 }
 
+.flow-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.flow-item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+
+  small {
+    color: #6b7280;
+  }
+
+  &.active {
+    border-color: #2563eb;
+    color: #1d4ed8;
+    background: #eff6ff;
+  }
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 
   h3 {
     margin: 0;
+    font-size: 18px;
   }
 }
 
-.doc-block {
+.section-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.text-block {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 12px;
@@ -219,55 +506,42 @@ onMounted(() => {
     word-break: break-word;
     color: #374151;
     line-height: 1.7;
+    font-family: inherit;
   }
 }
 
-.doc-meta {
+.meta-line {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   color: #6b7280;
 }
 
-.placeholder-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.placeholder-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 140px;
-  padding: 18px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  color: #4b5563;
-
-  .el-icon {
-    font-size: 28px;
-    color: #409eff;
-  }
-}
-
 .params-panel h3 {
   margin: 0 0 16px;
-}
-
-.action-stack {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-
-  .el-button {
-    width: 100%;
-    margin-left: 0;
-  }
+  font-size: 18px;
 }
 
 @media (max-width: 1200px) {
   .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-panel {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .workbench-header,
+  .section-head,
+  .section-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .flow-panel {
     grid-template-columns: 1fr;
   }
 }

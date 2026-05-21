@@ -1,0 +1,21 @@
+package com.han.api.ai;
+
+import com.han.api.ai.domain.AiTextGenerateRequest;
+import com.han.api.ai.domain.AiTextGenerateResponse;
+import com.han.common.core.domain.R;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.service.annotation.HttpExchange;
+import org.springframework.web.service.annotation.PostExchange;
+
+/**
+ * AI service HTTP API.
+ */
+@HttpExchange("/inner/ai")
+public interface AiServiceClient {
+
+    /**
+     * Generate text with a configured model.
+     */
+    @PostExchange("/text/generate")
+    R<AiTextGenerateResponse> generateText(@RequestBody AiTextGenerateRequest request);
+}

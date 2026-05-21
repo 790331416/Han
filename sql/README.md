@@ -83,3 +83,6 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
   - 上一轮按模块拆分的 tier SQL
 - `sql/archive/shared-legacy/`
   - 旧共享模板与共享基础脚本
+## AI 短剧 SQL 变更记录
+
+- `sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子，和 `sql/tiers/full/full-init.sql` 保持同步。

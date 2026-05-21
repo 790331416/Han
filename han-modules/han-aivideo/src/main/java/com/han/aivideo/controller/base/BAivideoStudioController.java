@@ -1,20 +1,30 @@
 package com.han.aivideo.controller.base;
 
+import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
+import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
+import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
+import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
+import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
+import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 
 public class BAivideoStudioController {
 
     private final IAivideoProjectService projectService;
+    private final IAivideoTextService textService;
 
-    protected BAivideoStudioController(IAivideoProjectService projectService) {
+    protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService) {
         this.projectService = projectService;
+        this.textService = textService;
     }
 
     protected R<PageResult<AiVideoProjectPo>> listProjects(AivideoProjectQuery query) {
@@ -36,5 +46,41 @@ public class BAivideoStudioController {
 
     protected R<Long> saveDocument(AivideoDocumentSaveDto dto) {
         return R.ok(projectService.saveDocument(dto));
+    }
+
+    protected R<Void> confirmDocument(AivideoDocumentConfirmDto dto) {
+        textService.confirmDocument(dto);
+        return R.ok();
+    }
+
+    protected R<AiVideoContentVersionPo> generatePolish(AivideoTextGenerateDto dto) {
+        return R.ok(textService.generatePolish(dto));
+    }
+
+    protected R<Void> confirmPolish(AivideoContentConfirmDto dto) {
+        textService.confirmPolish(dto);
+        return R.ok();
+    }
+
+    protected R<AiVideoContentVersionPo> generateScript(AivideoTextGenerateDto dto) {
+        return R.ok(textService.generateScript(dto));
+    }
+
+    protected R<Void> confirmScript(AivideoContentConfirmDto dto) {
+        textService.confirmScript(dto);
+        return R.ok();
+    }
+
+    protected R<AivideoAssetSummaryVo> extractAssets(AivideoAssetExtractDto dto) {
+        return R.ok(textService.extractAssets(dto));
+    }
+
+    protected R<AivideoAssetSummaryVo> getAssets(Long projectId) {
+        return R.ok(textService.selectAssetSummary(projectId));
+    }
+
+    protected R<Void> confirmAsset(AivideoAssetConfirmDto dto) {
+        textService.confirmAsset(dto);
+        return R.ok();
     }
 }

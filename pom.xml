@@ -177,6 +177,11 @@
                 <artifactId>han-api-tenant</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.han</groupId>
+                <artifactId>han-api-ai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- ==================== 第三方依赖 ==================== -->
             <!-- Spring Boot Starters (显式声明) -->

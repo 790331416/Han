@@ -4,17 +4,25 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.po.AiVideoCharacterPo;
+import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.po.AiVideoScenePo;
+import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.po.AiVideoSourceDocumentPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.enums.AivideoProjectStage;
 import com.han.aivideo.enums.AivideoProjectStatus;
+import com.han.aivideo.mapper.AiVideoCharacterMapper;
+import com.han.aivideo.mapper.AiVideoContentVersionMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
+import com.han.aivideo.mapper.AiVideoSceneMapper;
+import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.aivideo.mapper.AiVideoSourceDocumentMapper;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.common.core.domain.PageResult;
@@ -34,6 +42,10 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     private final AiVideoProjectSettingMapper settingMapper;
     private final AiVideoSourceDocumentMapper documentMapper;
     private final AiVideoGenerationTaskMapper taskMapper;
+    private final AiVideoContentVersionMapper contentVersionMapper;
+    private final AiVideoCharacterMapper characterMapper;
+    private final AiVideoSceneMapper sceneMapper;
+    private final AiVideoShotMapper shotMapper;
 
     @Override
     public PageResult<AiVideoProjectPo> selectPage(AivideoProjectQuery query) {
@@ -54,6 +66,10 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         vo.setProject(project);
         vo.setSetting(selectSetting(projectId));
         vo.setDocuments(selectDocuments(projectId));
+        vo.setContentVersions(selectContentVersions(projectId));
+        vo.setCharacters(selectCharacters(projectId));
+        vo.setScenes(selectScenes(projectId));
+        vo.setShots(selectShots(projectId));
         vo.setLatestTask(selectLatestTask(projectId));
         return vo;
     }
@@ -185,6 +201,36 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
                 .eq(AiVideoSourceDocumentPo::getDelFlag, DEL_FLAG_NORMAL)
                 .orderByDesc(AiVideoSourceDocumentPo::getUpdateTime)
                 .orderByDesc(AiVideoSourceDocumentPo::getCreateTime));
+    }
+
+    private List<AiVideoContentVersionPo> selectContentVersions(Long projectId) {
+        return contentVersionMapper.selectList(new LambdaQueryWrapper<AiVideoContentVersionPo>()
+                .eq(AiVideoContentVersionPo::getProjectId, projectId)
+                .eq(AiVideoContentVersionPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByDesc(AiVideoContentVersionPo::getCreateTime));
+    }
+
+    private List<AiVideoCharacterPo> selectCharacters(Long projectId) {
+        return characterMapper.selectList(new LambdaQueryWrapper<AiVideoCharacterPo>()
+                .eq(AiVideoCharacterPo::getProjectId, projectId)
+                .eq(AiVideoCharacterPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByAsc(AiVideoCharacterPo::getSortOrder));
+    }
+
+    private List<AiVideoScenePo> selectScenes(Long projectId) {
+        return sceneMapper.selectList(new LambdaQueryWrapper<AiVideoScenePo>()
+                .eq(AiVideoScenePo::getProjectId, projectId)
+                .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByAsc(AiVideoScenePo::getSortOrder));
+    }
+
+    private List<AiVideoShotPo> selectShots(Long projectId) {
+        return shotMapper.selectList(new LambdaQueryWrapper<AiVideoShotPo>()
+                .eq(AiVideoShotPo::getProjectId, projectId)
+                .eq(AiVideoShotPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByAsc(AiVideoShotPo::getEpisodeNo)
+                .orderByAsc(AiVideoShotPo::getShotNo)
+                .orderByAsc(AiVideoShotPo::getSortOrder));
     }
 
     private AiVideoGenerationTaskPo selectLatestTask(Long projectId) {

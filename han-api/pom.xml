@@ -17,6 +17,7 @@
         <module>han-api-system</module>
         <module>han-api-tenant</module>
         <module>han-api-file</module>
+        <module>han-api-ai</module>
     </modules>
 
 </project>
