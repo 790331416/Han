@@ -14,6 +14,7 @@
 - `upgrades/postgres/`
   - PostgreSQL 正式增量升级脚本
   - `20260521_aivideo_mvp0.sql`：AI 短剧 MVP 0 表结构增量脚本
+  - `20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -48,6 +49,8 @@ bash deploy/scripts/rehearse-postgres-upgrades.sh
 - `sys_user.totp_enabled`
 - `ai_agent.del_flag`
 - `sys_menu.sort`
+- `ai_video_project`
+- `aivideo_text` 默认 Prompt 模板
 
 针对真实逻辑备份或 95 当前运行库，可执行备份恢复型演练：
 
@@ -69,7 +72,7 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `full`
   - PostgreSQL：`sql/tiers/full/full-init.sql`
   - Nacos：`sql/tiers/full/full-nacos-derby-import.sql`
-  - AI 短剧：MVP 0 表结构只进入 full tier，表名前缀为 `ai_video_`
+  - AI 短剧：MVP 0 表结构、MVP 1 默认 Prompt 模板和 `han-aivideo.yml` 运行配置只进入 full tier，表名前缀为 `ai_video_`
 
 ## 归档说明
 

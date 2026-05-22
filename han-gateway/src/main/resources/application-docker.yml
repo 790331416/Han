@@ -53,6 +53,10 @@ spring:
               uri: lb://han-ai
               predicates:
                 - Path=/ai/**
+            - id: han-aivideo
+              uri: lb://han-aivideo
+              predicates:
+                - Path=/aivideo/**
   data:
     redis:
       host: ${REDIS_HOST:localhost}

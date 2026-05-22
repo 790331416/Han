@@ -21,12 +21,12 @@ digest-pinned images.
 Targets:
   small:  gateway,auth,system,job,ui
   medium: open,file
-  full:   open,file,ai
+  full:   open,file,ai,aivideo
   all:    medium and full
 
 When --services is passed, the list is filtered by services present in each
 target tier. Use this for broader rehearsals, for example:
-  --services gateway,auth,system,job,tenant,workflow,open,file,ai,gen,ui
+  --services gateway,auth,system,job,tenant,workflow,open,file,ai,aivideo,gen,ui
 
 Safety:
   This script does not build images, edit .env, delete volumes, clear data, or
@@ -103,7 +103,7 @@ services_for_tier() {
       echo "gateway auth system tenant workflow job open file ui"
       ;;
     full)
-      echo "gateway auth system tenant workflow job open file ai gen ui"
+      echo "gateway auth system tenant workflow job open file ai aivideo gen ui"
       ;;
     *)
       echo "[digest-rehearsal] unsupported tier: ${tier}" >&2
@@ -122,7 +122,7 @@ default_services_for_tier() {
       echo "open file"
       ;;
     full)
-      echo "open file ai"
+      echo "open file ai aivideo"
       ;;
     *)
       echo "[digest-rehearsal] unsupported tier: ${tier}" >&2

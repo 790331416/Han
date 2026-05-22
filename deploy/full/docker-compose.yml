@@ -296,6 +296,7 @@ services:
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      VOLCENGINE_ARK_API_KEY: ${VOLCENGINE_ARK_API_KEY:-}
       HAN_AI_PROVIDER_QWEN_API_KEY: ${HAN_AI_PROVIDER_QWEN_API_KEY:-}
       HAN_AI_PROVIDER_DEEPSEEK_API_KEY: ${HAN_AI_PROVIDER_DEEPSEEK_API_KEY:-}
       HAN_AI_PROVIDER_OPENAI_API_KEY: ${HAN_AI_PROVIDER_OPENAI_API_KEY:-}
@@ -313,6 +314,25 @@ services:
       redis:
         condition: service_healthy
       nacos:
+        condition: service_healthy
+    networks:
+      - han-network
+
+  aivideo:
+    image: ${HAN_AIVIDEO_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-aivideo:latest}
+    environment:
+      <<: *service-env
+      JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
+    ports:
+      - "9209:9209"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      ai:
         condition: service_healthy
     networks:
       - han-network

@@ -31,6 +31,8 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260415_totp_2fa_migration.sql"
   "sql/upgrades/postgres/20260415_system_login_log_message_alignment.sql"
   "sql/upgrades/postgres/20260415_system_post_sort_alignment.sql"
+  "sql/upgrades/postgres/20260521_aivideo_mvp0.sql"
+  "sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql"
 )
 
 cleanup() {
@@ -108,6 +110,18 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'sys_menu' AND column_name = 'sort'
     ) THEN
         RAISE EXCEPTION 'sys_menu.sort missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'ai_video_project'
+    ) THEN
+        RAISE EXCEPTION 'ai_video_project missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM ai_prompt_template
+        WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
+    ) THEN
+        RAISE EXCEPTION 'AI short-drama prompt templates missing';
     END IF;
 END $$;
 SQL
