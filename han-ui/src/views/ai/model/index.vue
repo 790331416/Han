@@ -209,8 +209,11 @@
               <el-input
                 v-model="form.modelCode"
                 data-testid="ai-model-code-input"
-                placeholder="如: qwen-plus"
+                :placeholder="currentModelCodePlaceholder"
               />
+              <div v-if="form.provider === 'volcengine'" class="field-tip">
+                火山方舟请填写控制台中的推理接入点 ID，通常以 ep- 开头。
+              </div>
               <div v-if="currentSuggestions.length" class="suggestion-row">
                 <span class="suggestion-label">推荐模型</span>
                 <el-tag
@@ -231,7 +234,7 @@
           <el-input
             v-model="form.baseUrl"
             data-testid="ai-model-base-url-input"
-            placeholder="如: https://dashscope.aliyuncs.com/compatible-mode/v1"
+            :placeholder="currentBaseUrlPlaceholder"
           />
         </el-form-item>
 
@@ -339,6 +342,12 @@ const providerPresets: Record<string, ProviderPreset> = {
     suggestions: ['gpt-4.1', 'gpt-4.1-mini', 'text-embedding-3-large'],
     credentialEnv: 'OPENAI_API_KEY'
   },
+  volcengine: {
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    defaultModelCode: '',
+    suggestions: [],
+    credentialEnv: 'VOLCENGINE_ARK_API_KEY'
+  },
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1',
     defaultModelCode: 'deepseek-chat',
@@ -429,6 +438,12 @@ const rules: FormRules = {
 const currentPreset = computed(() => providerPresets[form.provider || ''] || null)
 const currentSuggestions = computed(() => currentPreset.value?.suggestions || [])
 const currentCredentialEnv = computed(() => currentPreset.value?.credentialEnv || 'HAN_AI_PROVIDER_<PROVIDER>_API_KEY')
+const currentModelCodePlaceholder = computed(() => {
+  return form.provider === 'volcengine' ? '请输入火山方舟推理接入点 ID，如 ep-...' : '如: qwen-plus'
+})
+const currentBaseUrlPlaceholder = computed(() => {
+  return currentPreset.value?.baseUrl ? `如: ${currentPreset.value.baseUrl}` : '如: https://api.example.com/v1'
+})
 const credentialAlertTitle = computed(() => {
   return form.modelId ? '编辑模型时将保留原始密钥' : '新增模型建议优先走环境变量'
 })

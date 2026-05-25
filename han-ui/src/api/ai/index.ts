@@ -459,6 +459,7 @@ export const modelTypeOptions = [
 
 export const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
+  { label: '火山方舟', value: 'volcengine' },
   { label: 'DeepSeek', value: 'deepseek' },
   { label: '通义千问', value: 'qwen' },
   { label: '智谱AI', value: 'zhipu' },

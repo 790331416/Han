@@ -11,6 +11,13 @@ import org.springframework.stereotype.Service;
 public class PermissionService {
 
     /**
+     * 判断当前请求是否已由网关解析出登录用户。
+     */
+    public boolean isLogin() {
+        return SecurityContextHolder.getLoginUser() != null;
+    }
+
+    /**
      * 判断当前用户是否拥有指定权限
      */
     public boolean hasAuthority(String authority) {

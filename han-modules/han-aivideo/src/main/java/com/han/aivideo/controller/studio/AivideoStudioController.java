@@ -36,89 +36,89 @@ public class AivideoStudioController extends BAivideoStudioController {
     }
 
     @GetMapping("/project/list")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<PageResult<AiVideoProjectPo>> list(AivideoProjectQuery query) {
         return listProjects(query);
     }
 
     @GetMapping("/project/{projectId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<AivideoProjectDetailVo> getInfo(@PathVariable Long projectId) {
         return getProject(projectId);
     }
 
     @RepeatSubmit
     @PostMapping("/project")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Long> add(@Valid @RequestBody AivideoProjectDto dto) {
         return createProject(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/project/edit")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Void> edit(@Valid @RequestBody AivideoProjectDto dto) {
         return editProject(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/document/save")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Long> save(@Valid @RequestBody AivideoDocumentSaveDto dto) {
         return saveDocument(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/document/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmSourceDocument(@Valid @RequestBody AivideoDocumentConfirmDto dto) {
         return confirmDocument(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/text/polish/generate")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<AiVideoContentVersionPo> generatePolishText(@Valid @RequestBody AivideoTextGenerateDto dto) {
         return generatePolish(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/text/polish/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmPolishText(@Valid @RequestBody AivideoContentConfirmDto dto) {
         return confirmPolish(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/text/script/generate")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<AiVideoContentVersionPo> generateScriptText(@Valid @RequestBody AivideoTextGenerateDto dto) {
         return generateScript(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/text/script/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmScriptText(@Valid @RequestBody AivideoContentConfirmDto dto) {
         return confirmScript(dto);
     }
 
     @RepeatSubmit
     @PostMapping("/assets/extract")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<AivideoAssetSummaryVo> extractProjectAssets(@Valid @RequestBody AivideoAssetExtractDto dto) {
         return extractAssets(dto);
     }
 
     @GetMapping("/assets/summary/{projectId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<AivideoAssetSummaryVo> assets(@PathVariable Long projectId) {
         return getAssets(projectId);
     }
 
     @RepeatSubmit
     @PostMapping("/assets/confirm")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmProjectAsset(@Valid @RequestBody AivideoAssetConfirmDto dto) {
         return confirmAsset(dto);
     }
