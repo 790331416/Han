@@ -394,7 +394,9 @@ docs/_build/
 # CI/CD #
 #########
 .circleci/config.yml
-.github/workflows/
+.github/workflows/*
+!.github/workflows/repo-guard.yml
+!.github/workflows/aivideo-image.yml
  Jenkinsfile
 
 # Docker #
