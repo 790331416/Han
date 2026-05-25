@@ -1,0 +1,46 @@
+name: rabbitmq-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+      - feature/aivideo-mvp1-text
+    paths:
+      - ".github/workflows/rabbitmq-image.yml"
+
+permissions:
+  contents: read
+
+env:
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_NAMESPACE: xzy0112
+  RABBITMQ_SOURCE_IMAGE: rabbitmq:3.13-management
+  RABBITMQ_TARGET_IMAGE: rabbitmq:3.13-management
+
+jobs:
+  mirror-rabbitmq:
+    name: Mirror RabbitMQ image to ACR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Pull, tag, push RabbitMQ
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_image="${RABBITMQ_SOURCE_IMAGE}"
+          target_image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${RABBITMQ_TARGET_IMAGE}"
+
+          docker pull "${source_image}"
+          docker tag "${source_image}" "${target_image}"
+          docker push "${target_image}"
+          docker manifest inspect "${target_image}" >/dev/null

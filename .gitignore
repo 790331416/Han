@@ -397,6 +397,7 @@ docs/_build/
 .github/workflows/*
 !.github/workflows/repo-guard.yml
 !.github/workflows/aivideo-image.yml
+!.github/workflows/rabbitmq-image.yml
  Jenkinsfile
 
 # Docker #
