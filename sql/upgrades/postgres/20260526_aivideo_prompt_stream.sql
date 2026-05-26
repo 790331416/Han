@@ -158,12 +158,137 @@ $aivideo_script$,
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧剧本生成';
 
+UPDATE ai_prompt_template
+SET content = $aivideo_asset$
+# AI短剧人物 / 场景 / 分镜提取指令
+
+请严格依据下面三组参考提示词规则，从短剧剧本中提取【人物、场景、分镜】。
+必须只输出 JSON 对象，不要输出解释、Markdown 围栏或额外说明。
+JSON key 必须保持英文，所有字段值必须使用中文。
+
+## 角色构建规则
+1. 你是电影级角色概念设计师，需要先解析角色心理画像：代号、生理年龄、性别、社会身份、人格标签、故事功能。
+2. 每个角色必须输出鲜明、可区分的视觉方案：年龄、自然发色、具体发型、眼神神态、服装材质、主色辅色、鞋履配饰。
+3. 多角色必须在主色调、款式剪裁、面料质感上显著区别，严禁视觉雷同。
+4. promptText 要可直接用于角色图生成，包含横向 16:9、纯白极简背景、面部特写、全身正侧背三视图、固定自然站姿等关键信息。
+
+## 电影级纯净场景规则
+1. 场景必须纯净无人，场景描述和 promptText 严禁出现角色姓名、人影或额外人物。
+2. 场景名称必须四个字以上，不能只写单一名词，要通过修饰词增加辨识度。
+3. 场景必须覆盖环境类型、具体时间、空间氛围、视觉主要特征、建议色调和道具元素。
+4. 场景 promptText 必须以“不能出现其他人, 无人, 纯场景,”开头，并融合 no humans、empty、landscape only。
+
+## 剧本分镜规则
+1. 你是顶级影视剧导演与分镜规划专家，需要面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。
+2. 全局禁止出现其他人；画面必须通过单人特写、主观视角或环境遮挡，把视觉重心锁定在当前核心主角。
+3. 严格区分 dialogue 和 voiceOver：角色直接说的话写入 dialogue；旁白、心理活动、环境氛围写入 voiceOver。
+4. 每个分镜必须明确地点；延续场景时在 sceneName 或 actionDesc 中体现“延续上个分镜场景，机位微调”。
+5. 动作要衔接，不能瞬移；镜头需包含微动作、眼神、呼吸、肢体、环境变化等可拍内容。
+6. shotType、cameraPosition、cameraMovement 要优先使用专业运镜词，如极焦特写、近景推轨、环绕摇镜、慢动作/延时、手持震动。
+7. durationSec 使用项目镜头秒数：{{defaultShotDuration}}；如果剧情确实需要短镜头，也不得低于 3 秒。
+
+## 输出 JSON 结构
+{
+  "characters": [
+    {
+      "characterName": "",
+      "gender": "",
+      "ageDesc": "",
+      "identityDesc": "",
+      "personalityTags": [""],
+      "storyRole": "",
+      "relationshipDesc": "",
+      "appearance": "",
+      "hairStyle": "",
+      "costume": "",
+      "colorStyle": "",
+      "negativeTraits": "",
+      "promptText": "",
+      "completeness": "",
+      "missingFields": [""]
+    }
+  ],
+  "scenes": [
+    {
+      "sceneName": "",
+      "sceneType": "",
+      "episodeNo": 1,
+      "timeDesc": "",
+      "weather": "",
+      "atmosphere": "",
+      "visualFeatures": "",
+      "colorTone": "",
+      "props": "",
+      "negativeElements": "",
+      "promptText": "",
+      "completeness": "",
+      "missingFields": [""]
+    }
+  ],
+  "shots": [
+    {
+      "episodeNo": 1,
+      "shotNo": 1,
+      "durationSec": {{defaultShotDuration}},
+      "sceneName": "",
+      "characterNames": [""],
+      "shotType": "",
+      "cameraPosition": "",
+      "cameraMovement": "",
+      "actionDesc": "",
+      "dialogue": "",
+      "voiceOver": "",
+      "emotion": "",
+      "promptText": ""
+    }
+  ]
+}
+
+## 项目信息
+项目：{{projectName}}
+目标平台：{{targetPlatform}}
+画幅：{{ratio}}
+风格：{{style}}
+默认镜头秒数：{{defaultShotDuration}}
+
+## 剧本
+{{scriptText}}
+$aivideo_asset$,
+    variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText"]',
+    description = 'AI短剧人物场景分镜提取默认长模板，来自AIVideo参考材料优化版',
+    built_in = 1,
+    status = '0',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧资产提取';
+
+INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
+SELECT NULL, 'AI短剧资产提取', 'aivideo_text',
+$aivideo_asset$
+# AI短剧人物 / 场景 / 分镜提取指令
+
+请严格依据角色构建、电影级纯净场景、剧本分镜三组参考规则，从短剧剧本中提取人物、场景、分镜。
+必须只输出 JSON 对象；JSON key 必须保持英文，所有字段值必须使用中文。
+角色 promptText 必须可直接用于人物图生成；场景 promptText 必须以“不能出现其他人, 无人, 纯场景,”开头；分镜必须区分 dialogue 与 voiceOver。
+
+项目：{{projectName}}
+目标平台：{{targetPlatform}}
+画幅：{{ratio}}
+风格：{{style}}
+默认镜头秒数：{{defaultShotDuration}}
+
+剧本：
+{{scriptText}}
+$aivideo_asset$,
+'["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText"]', 'AI短剧人物场景分镜提取默认长模板，来自AIVideo参考材料优化版', 1, '0'
+WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧资产提取');
+
 WITH tpl AS (
     SELECT
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
-        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧资产提取') AS asset_id
     FROM ai_prompt_template
-    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成')
+    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成', 'AI短剧资产提取')
 ),
 tenant_ids AS (
     SELECT 0::BIGINT AS tenant_id
@@ -174,11 +299,13 @@ tenant_ids AS (
 )
 INSERT INTO ai_video_project_setting (
     project_id, tenant_id, polish_prompt_template_id, script_prompt_template_id,
+    character_prompt_template_id, scene_prompt_template_id, shot_prompt_template_id,
     default_ratio, default_resolution, default_shot_duration,
     image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled,
     create_by, create_time, update_by, update_time
 )
 SELECT NULL, tenant_ids.tenant_id, tpl.polish_id, tpl.script_id,
+       tpl.asset_id, tpl.asset_id, tpl.asset_id,
        '9:16', '720p', 5, 3, 1, '1', '1',
        'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP
 FROM tenant_ids CROSS JOIN tpl
@@ -191,14 +318,24 @@ WHERE tpl.polish_id IS NOT NULL
 WITH tpl AS (
     SELECT
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
-        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧资产提取') AS asset_id
     FROM ai_prompt_template
-    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成')
+    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成', 'AI短剧资产提取')
 )
 UPDATE ai_video_project_setting s
 SET polish_prompt_template_id = COALESCE(s.polish_prompt_template_id, tpl.polish_id),
     script_prompt_template_id = COALESCE(s.script_prompt_template_id, tpl.script_id),
+    character_prompt_template_id = COALESCE(s.character_prompt_template_id, tpl.asset_id),
+    scene_prompt_template_id = COALESCE(s.scene_prompt_template_id, tpl.asset_id),
+    shot_prompt_template_id = COALESCE(s.shot_prompt_template_id, tpl.asset_id),
     update_time = CURRENT_TIMESTAMP
 FROM tpl
 WHERE tpl.polish_id IS NOT NULL
-  AND (s.polish_prompt_template_id IS NULL OR s.script_prompt_template_id IS NULL);
+  AND (
+      s.polish_prompt_template_id IS NULL
+      OR s.script_prompt_template_id IS NULL
+      OR s.character_prompt_template_id IS NULL
+      OR s.scene_prompt_template_id IS NULL
+      OR s.shot_prompt_template_id IS NULL
+  );

@@ -193,7 +193,7 @@
                   <span v-if="scriptStreamMeta.taskId">任务 {{ scriptStreamMeta.taskId }}</span>
                   <span v-if="scriptStreamMeta.modelCode">{{ scriptStreamMeta.modelCode }}</span>
                 </div>
-                <pre>{{ scriptStreamText }}</pre>
+                <MarkdownViewer :content="scriptStreamText" />
               </article>
               <article v-for="item in scriptVersions" :key="item.versionId" class="text-block">
                 <div class="meta-line">
@@ -211,7 +211,11 @@
                     确认
                   </el-button>
                 </div>
-                <pre>{{ item.contentText }}</pre>
+                <MarkdownViewer :content="item.contentText" />
+                <details class="raw-output">
+                  <summary>查看原始 Markdown</summary>
+                  <pre>{{ item.contentText }}</pre>
+                </details>
               </article>
             </div>
           </div>
@@ -233,8 +237,8 @@
               <el-button
                 type="success"
                 :icon="Check"
-                :disabled="!hasAssets"
-                :loading="submitting"
+                :disabled="!hasAssets || confirmingAssetKeys.size > 0"
+                :loading="confirmingAllAssets"
                 @click="handleConfirmAllAssets"
               >
                 确认全部
@@ -253,7 +257,7 @@
                 <span>{{ selectedScript.contentText?.length || 0 }} 字</span>
                 <span>{{ selectedScript.createTime || '-' }}</span>
               </div>
-              <pre v-if="selectedScript?.contentText" class="source-preview-text">{{ selectedScript.contentText }}</pre>
+              <MarkdownViewer v-if="selectedScript?.contentText" class="source-preview-text" :content="selectedScript.contentText" />
               <el-empty v-else description="请先确认短剧剧本" />
             </aside>
 
@@ -273,7 +277,11 @@
                   <span v-else-if="latestAssetExtract?.taskId">任务 {{ latestAssetExtract.taskId }}</span>
                   <span v-if="assetStreamMeta.modelCode">{{ assetStreamMeta.modelCode }}</span>
                 </div>
-                <pre class="asset-raw-output">{{ assetPreviewText }}</pre>
+                <JsonStructureViewer :content="assetPreviewText" />
+                <details class="raw-output">
+                  <summary>查看原始 Markdown/JSON</summary>
+                  <pre class="asset-raw-output">{{ assetPreviewText }}</pre>
+                </details>
               </article>
             </div>
           </div>
@@ -287,7 +295,12 @@
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
                 <el-table-column label="操作" width="100">
                   <template #default="{ row }">
-                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('CHARACTER', row.characterId)">
+                    <el-button
+                      size="small"
+                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :loading="isAssetConfirming('CHARACTER', row.characterId)"
+                      @click="handleConfirmAsset('CHARACTER', row.characterId)"
+                    >
                       确认
                     </el-button>
                   </template>
@@ -302,7 +315,12 @@
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
                 <el-table-column label="操作" width="100">
                   <template #default="{ row }">
-                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('SCENE', row.sceneId)">
+                    <el-button
+                      size="small"
+                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :loading="isAssetConfirming('SCENE', row.sceneId)"
+                      @click="handleConfirmAsset('SCENE', row.sceneId)"
+                    >
                       确认
                     </el-button>
                   </template>
@@ -318,7 +336,12 @@
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
                 <el-table-column label="操作" width="100">
                   <template #default="{ row }">
-                    <el-button size="small" :disabled="row.confirmStatus === 'APPROVED'" @click="handleConfirmAsset('SHOT', row.shotId)">
+                    <el-button
+                      size="small"
+                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :loading="isAssetConfirming('SHOT', row.shotId)"
+                      @click="handleConfirmAsset('SHOT', row.shotId)"
+                    >
                       确认
                     </el-button>
                   </template>
@@ -391,6 +414,8 @@ import {
   saveAivideoDocument,
   type AivideoProjectDetail
 } from '@/api/aivideo'
+import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
+import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
 import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
 import { useUserStore } from '@/stores/user'
 
@@ -413,6 +438,8 @@ const assetStreaming = ref(false)
 const assetStreamText = ref('')
 const assetStreamMeta = ref<AiStreamMetaPayload>({})
 const assetPromptPreviewText = ref('')
+const confirmingAllAssets = ref(false)
+const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
 const sourceFileInputRef = ref<HTMLInputElement>()
@@ -748,18 +775,51 @@ async function handleExtractAssets() {
   }
 }
 
-function handleConfirmAllAssets() {
-  withSubmit(
-    () => confirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL' }).then(() => undefined),
-    '资产已确认'
-  )
+async function handleConfirmAllAssets() {
+  if (confirmingAllAssets.value) {
+    return
+  }
+  confirmingAllAssets.value = true
+  try {
+    await confirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL' })
+    ElMessage.success('资产已确认')
+    await loadDetail()
+  } finally {
+    confirmingAllAssets.value = false
+  }
 }
 
-function handleConfirmAsset(targetType: string, targetId: string | number) {
-  withSubmit(
-    () => confirmAivideoAsset({ projectId: projectId.value, targetType, targetId }).then(() => undefined),
-    '资产已确认'
-  )
+async function handleConfirmAsset(targetType: string, targetId: string | number) {
+  const key = assetConfirmKey(targetType, targetId)
+  if (confirmingAssetKeys.value.has(key)) {
+    return
+  }
+  setAssetConfirming(key, true)
+  try {
+    await confirmAivideoAsset({ projectId: projectId.value, targetType, targetId })
+    ElMessage.success('资产已确认')
+    await loadDetail()
+  } finally {
+    setAssetConfirming(key, false)
+  }
+}
+
+function isAssetConfirming(targetType: string, targetId: string | number) {
+  return confirmingAssetKeys.value.has(assetConfirmKey(targetType, targetId))
+}
+
+function assetConfirmKey(targetType: string, targetId: string | number) {
+  return `${targetType}:${targetId}`
+}
+
+function setAssetConfirming(key: string, confirming: boolean) {
+  const next = new Set(confirmingAssetKeys.value)
+  if (confirming) {
+    next.add(key)
+  } else {
+    next.delete(key)
+  }
+  confirmingAssetKeys.value = next
 }
 
 onMounted(() => {
@@ -976,6 +1036,17 @@ onBeforeUnmount(() => {
     color: #374151;
     line-height: 1.7;
     font-family: inherit;
+  }
+}
+
+.raw-output {
+  margin-top: 12px;
+
+  summary {
+    cursor: pointer;
+    color: #2563eb;
+    font-size: 13px;
+    font-weight: 600;
   }
 }
 

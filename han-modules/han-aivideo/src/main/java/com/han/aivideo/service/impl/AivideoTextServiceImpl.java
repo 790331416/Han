@@ -286,10 +286,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AiVideoProjectPo project = requireProject(dto.getProjectId());
         AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
-        String prompt = buildAssetPrompt(project, script.getContentText());
+        String prompt = buildAssetPrompt(project, setting, script.getContentText());
         Map<String, String> variables = baseVariables(project);
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
+        variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
 
         AiVideoGenerationTaskPo task = createTask(project, TASK_ASSET, TARGET_CONTENT, script.getVersionId(),
                 setting != null ? setting.getTextModelId() : null,
@@ -322,10 +323,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
         Long promptTemplateId = firstTemplateId(setting);
-        String fallbackPrompt = buildAssetPrompt(project, script.getContentText());
+        String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
         Map<String, String> variables = baseVariables(project);
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
+        variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
         String taskPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         AiVideoGenerationTaskPo task = createTask(project, TASK_ASSET, TARGET_CONTENT, script.getVersionId(),
                 setting != null ? setting.getTextModelId() : null, promptTemplateId, taskPrompt, dto.getCustomPrompt(), variables);
@@ -346,10 +348,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
         Long promptTemplateId = firstTemplateId(setting);
-        String fallbackPrompt = buildAssetPrompt(project, script.getContentText());
+        String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
         Map<String, String> variables = baseVariables(project);
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
+        variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
         String userPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
 
         AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
@@ -1073,17 +1076,43 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "\n\n润色文本：\n" + polishedText;
     }
 
-    private String buildAssetPrompt(AiVideoProjectPo project, String scriptText) {
-        return "请从短剧剧本中提取人物、场景、分镜，必须只输出 JSON 对象，不要输出解释。JSON 结构："
+    private String buildAssetPrompt(AiVideoProjectPo project, AiVideoProjectSettingPo setting, String scriptText) {
+        int duration = defaultShotDuration(setting);
+        return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【人物、场景、分镜】。"
+                + "必须只输出 JSON 对象，不要输出解释、Markdown 围栏或额外说明。JSON key 必须保持英文，所有字段值必须使用中文。\n\n"
+                + "【角色构建规则】\n"
+                + "1. 你是电影级角色概念设计师，需要先解析角色心理画像：代号、生理年龄、性别、社会身份、人格标签、故事功能。\n"
+                + "2. 每个角色必须输出鲜明、可区分的视觉方案：年龄、自然发色、具体发型、眼神神态、服装材质、主色辅色、鞋履配饰。\n"
+                + "3. 多角色必须在主色调、款式剪裁、面料质感上显著区别，严禁视觉雷同。\n"
+                + "4. promptText 要可直接用于角色图生成，包含横向 16:9、纯白极简背景、面部特写、全身正侧背三视图、固定自然站姿等关键信息。\n\n"
+                + "【电影级纯净场景规则】\n"
+                + "1. 场景必须纯净无人，场景描述和 promptText 严禁出现角色姓名、人影或额外人物。\n"
+                + "2. 场景名称必须四个字以上，不能只写单一名词，要通过修饰词增加辨识度。\n"
+                + "3. 场景必须覆盖环境类型、具体时间、空间氛围、视觉主要特征、建议色调和道具元素。\n"
+                + "4. 场景 promptText 必须以“不能出现其他人, 无人, 纯场景,”开头，并融合 no humans、empty、landscape only。\n\n"
+                + "【剧本分镜规则】\n"
+                + "1. 你是顶级影视剧导演与分镜规划专家，需要面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。\n"
+                + "2. 全局禁止出现其他人；画面必须通过单人特写、主观视角或环境遮挡，把视觉重心锁定在当前核心主角。\n"
+                + "3. 严格区分 dialogue 和 voiceOver：角色直接说的话写入 dialogue；旁白、心理活动、环境氛围写入 voiceOver。\n"
+                + "4. 每个分镜必须明确地点；延续场景时在 sceneName 或 actionDesc 中体现“延续上个分镜场景，机位微调”。\n"
+                + "5. 动作要衔接，不能瞬移；镜头需包含微动作、眼神、呼吸、肢体、环境变化等可拍内容。\n"
+                + "6. shotType、cameraPosition、cameraMovement 要优先使用专业运镜词，如极焦特写、近景推轨、环绕摇镜、慢动作/延时、手持震动。\n"
+                + "7. durationSec 使用项目镜头秒数：" + duration + "；如果剧情确实需要短镜头，也不得低于 3 秒。\n\n"
+                + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","
                 + "\"negativeTraits\":\"\",\"promptText\":\"\",\"completeness\":\"\",\"missingFields\":[\"\"]}],"
                 + "\"scenes\":[{\"sceneName\":\"\",\"sceneType\":\"\",\"episodeNo\":1,\"timeDesc\":\"\",\"weather\":\"\",\"atmosphere\":\"\","
                 + "\"visualFeatures\":\"\",\"colorTone\":\"\",\"props\":\"\",\"negativeElements\":\"\",\"promptText\":\"\",\"completeness\":\"\","
                 + "\"missingFields\":[\"\"]}],"
-                + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":5,\"sceneName\":\"\",\"characterNames\":[\"\"],"
+                + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":" + duration + ",\"sceneName\":\"\",\"characterNames\":[\"\"],"
                 + "\"shotType\":\"\",\"cameraPosition\":\"\",\"cameraMovement\":\"\",\"actionDesc\":\"\",\"dialogue\":\"\",\"voiceOver\":\"\","
-                + "\"emotion\":\"\",\"promptText\":\"\"}]}。\n\n项目：" + project.getProjectName() + "\n\n剧本：\n" + scriptText;
+                + "\"emotion\":\"\",\"promptText\":\"\"}]}\n\n"
+                + "项目：" + project.getProjectName()
+                + "\n目标平台：" + safeValue(project.getTargetPlatform())
+                + "\n画幅：" + safeValue(project.getDefaultRatio())
+                + "\n风格：" + safeValue(project.getDefaultStyle())
+                + "\n\n剧本：\n" + scriptText;
     }
 
     private Long firstTemplateId(AiVideoProjectSettingPo setting) {
@@ -1097,6 +1126,10 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             return setting.getScenePromptTemplateId();
         }
         return setting.getShotPromptTemplateId();
+    }
+
+    private int defaultShotDuration(AiVideoProjectSettingPo setting) {
+        return setting != null && setting.getDefaultShotDuration() != null ? setting.getDefaultShotDuration() : 15;
     }
 
     private Map<String, String> baseVariables(AiVideoProjectPo project) {
