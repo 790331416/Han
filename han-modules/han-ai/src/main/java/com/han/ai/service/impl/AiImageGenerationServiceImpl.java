@@ -27,6 +27,7 @@ import java.util.Map;
 public class AiImageGenerationServiceImpl extends AiServiceSupport implements IAiImageGenerationService {
 
     private static final String MODEL_TYPE_IMAGE = "IMAGE";
+    private static final String DEFAULT_IMAGE_SIZE = "2048x2048";
 
     private final AiModelMapper aiModelMapper;
     private final IAiPromptTemplateService promptTemplateService;
@@ -111,11 +112,11 @@ public class AiImageGenerationServiceImpl extends AiServiceSupport implements IA
         }
         String ratio = request.getRatio() == null ? "" : request.getRatio().trim();
         return switch (ratio) {
-            case "9:16" -> "720x1280";
-            case "16:9" -> "1280x720";
-            case "3:4" -> "768x1024";
-            case "4:3" -> "1024x768";
-            default -> "1024x1024";
+            case "9:16" -> "1440x2560";
+            case "16:9" -> "2560x1440";
+            case "3:4" -> "1920x2560";
+            case "4:3" -> "2560x1920";
+            default -> DEFAULT_IMAGE_SIZE;
         };
     }
 

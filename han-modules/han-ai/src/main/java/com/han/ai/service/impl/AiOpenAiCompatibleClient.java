@@ -52,7 +52,7 @@ class AiOpenAiCompatibleClient {
 
     String testImageGeneration(AiModelPo model, String apiKey) {
         ImageGenerationResult result = imageGeneration(model, apiKey,
-                "纯净无人室内空间，白色墙面，自然光，empty room, no humans", 1, "1024x1024");
+                "纯净无人室内空间，白色墙面，自然光，empty room, no humans", 1, "2048x2048");
         if (result == null || result.images().isEmpty()) {
             throw new BusinessException("图片模型连通性测试未返回有效图片");
         }
@@ -177,7 +177,7 @@ class AiOpenAiCompatibleClient {
         request.model = model.getModelCode();
         request.prompt = prompt;
         request.n = candidateCount == null || candidateCount < 1 ? 1 : Math.min(candidateCount, 4);
-        request.size = StringUtils.hasText(size) ? size.trim() : "1024x1024";
+        request.size = StringUtils.hasText(size) ? size.trim() : "2048x2048";
         return request;
     }
 

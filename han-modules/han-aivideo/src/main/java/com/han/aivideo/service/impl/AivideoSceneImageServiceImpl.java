@@ -94,12 +94,19 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     @Override
     public SseEmitter generateSceneImagesStream(AivideoSceneImageGenerateDto dto) {
-        RequestContext context = buildContext(dto, true);
-        if (hasRunningSceneImageTask(context.project().getProjectId(), context.scene().getSceneId())) {
-            throw new BusinessException("该场景已有图片生成任务执行中，请稍后刷新候选图");
-        }
-        AiVideoGenerationTaskPo task = createTask(context);
         SseEmitter emitter = new SseEmitter(300_000L);
+        RequestContext context;
+        AiVideoGenerationTaskPo task;
+        try {
+            context = buildContext(dto, true);
+            if (hasRunningSceneImageTask(context.project().getProjectId(), context.scene().getSceneId())) {
+                throw new BusinessException("该场景已有图片生成任务执行中，请稍后刷新候选图");
+            }
+            task = createTask(context);
+        } catch (Exception exception) {
+            completeWithError(emitter, exception.getMessage());
+            return emitter;
+        }
         CompletableFuture.runAsync(() -> runSceneImageStream(context, task, emitter));
         return emitter;
     }
