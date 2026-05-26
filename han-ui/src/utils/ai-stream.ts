@@ -1,3 +1,5 @@
+import { getToken, removeRefreshToken, removeToken } from '@/utils/auth'
+
 export interface AiStreamRequestOptions {
   baseUrl: string
   path: string
@@ -40,9 +42,15 @@ export interface AiStreamMetaPayload {
  * Send an AI streaming request and aggregate SSE chunks into the final content.
  */
 export async function requestAiStream(options: AiStreamRequestOptions): Promise<string> {
+  const token = getToken() || options.token
+  if (!token) {
+    handleUnauthorizedStream()
+    throw new Error('登录状态已过期，请重新登录')
+  }
+
   const response = await fetch(resolveUrl(options.baseUrl, options.path), {
     method: 'POST',
-    headers: buildHeaders(options.token, options.tenantId, options.body !== undefined),
+    headers: buildHeaders(token, options.tenantId, options.body !== undefined),
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     signal: options.signal
   })
@@ -55,6 +63,11 @@ export async function requestAiStream(options: AiStreamRequestOptions): Promise<
  */
 export async function consumeAiStreamResponse(response: Response, options: AiStreamConsumeOptions = {}): Promise<string> {
   if (!response.ok) {
+    if (response.status === 401) {
+      handleUnauthorizedStream()
+      options.onError?.('登录状态已过期，请重新登录')
+      throw new Error('登录状态已过期，请重新登录')
+    }
     throw new Error(`请求失败: ${response.status}`)
   }
 
@@ -196,6 +209,14 @@ function buildHeaders(token: string, tenantId?: string | number | null, includeJ
     headers['X-Tenant-Id'] = String(tenantId)
   }
   return headers
+}
+
+function handleUnauthorizedStream(): void {
+  removeToken()
+  removeRefreshToken()
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
 }
 
 function normalizeLineBreaks(content: string): string {
