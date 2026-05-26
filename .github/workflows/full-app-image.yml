@@ -1,5 +1,7 @@
 name: full-app-image
 
+# Release trigger note: MVP2 scene image workflow requires fresh han-file and han-ui images.
+
 on:
   workflow_dispatch:
     inputs:

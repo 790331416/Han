@@ -1,5 +1,7 @@
 name: aivideo-image
 
+# Release trigger note: MVP2 scene image workflow requires a fresh han-aivideo image.
+
 on:
   workflow_dispatch:
     inputs:
