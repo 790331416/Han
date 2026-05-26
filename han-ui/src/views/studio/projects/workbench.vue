@@ -41,7 +41,41 @@
               确认原文
             </el-button>
           </div>
-          <el-empty v-if="!documents.length" description="暂无原文" />
+          <div v-if="!documents.length" class="document-editor">
+            <div class="editor-toolbar">
+              <el-select v-model="sourceDraft.sourceType" class="source-type-select">
+                <el-option label="纯文本" value="TEXT" />
+                <el-option label="Markdown" value="MARKDOWN" />
+              </el-select>
+              <el-button :icon="Upload" @click="triggerSourceFileSelect">导入 TXT/Markdown</el-button>
+              <input
+                ref="sourceFileInputRef"
+                class="source-file-input"
+                type="file"
+                accept=".txt,.md,.markdown,text/plain,text/markdown"
+                @change="handleSourceFileChange"
+              />
+            </div>
+            <el-input
+              v-model="sourceDraft.rawText"
+              type="textarea"
+              :rows="18"
+              maxlength="200000"
+              show-word-limit
+              placeholder="粘贴小说、文档、剧情梗概或 Markdown，保存后再确认原文。"
+            />
+            <div class="editor-actions">
+              <span class="editor-tip">保存后会生成一条待确认原文，用于后续润色和剧本生成。</span>
+              <div class="editor-buttons">
+                <el-button :disabled="!hasSourceDraftText" :loading="submitting" @click="handleSaveDocument(false)">
+                  保存原文
+                </el-button>
+                <el-button type="primary" :disabled="!hasSourceDraftText" :loading="submitting" @click="handleSaveDocument(true)">
+                  保存并确认原文
+                </el-button>
+              </div>
+            </div>
+          </div>
           <article v-for="doc in documents" :key="doc.documentId" class="text-block">
             <div class="meta-line">
               <el-tag>{{ doc.sourceType || 'TEXT' }}</el-tag>
@@ -241,7 +275,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, UserFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
 import {
   aivideoProjectStageOptions,
   confirmAivideoAsset,
@@ -253,6 +287,7 @@ import {
   generateAivideoScript,
   getAivideoProject,
   ratioOptions,
+  saveAivideoDocument,
   type AivideoProjectDetail
 } from '@/api/aivideo'
 
@@ -264,7 +299,14 @@ const loading = ref(false)
 const submitting = ref(false)
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
+const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
+
+const sourceDraft = reactive({
+  sourceType: 'TEXT',
+  fileName: '',
+  rawText: ''
+})
 
 const params = reactive({
   defaultRatio: '9:16',
@@ -277,6 +319,7 @@ const params = reactive({
 const projectId = computed(() => String(route.params.id))
 const documents = computed(() => detail.documents || [])
 const latestDocument = computed(() => documents.value[0])
+const hasSourceDraftText = computed(() => sourceDraft.rawText.trim().length > 0)
 const contentVersions = computed(() => detail.contentVersions || [])
 const polishVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'POLISH'))
 const scriptVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'SCRIPT'))
@@ -337,6 +380,55 @@ function handleConfirmDocument() {
       parsedText: doc.parsedText || doc.rawText
     }).then(() => undefined),
     '原文已确认'
+  )
+}
+
+function triggerSourceFileSelect() {
+  sourceFileInputRef.value?.click()
+}
+
+async function handleSourceFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!/\.(txt|md|markdown)$/i.test(file.name)) {
+    ElMessage.warning('仅支持 TXT、Markdown 文件')
+    input.value = ''
+    return
+  }
+  const text = await file.text()
+  sourceDraft.rawText = text
+  sourceDraft.fileName = file.name
+  sourceDraft.sourceType = /\.(md|markdown)$/i.test(file.name) ? 'MARKDOWN' : 'TEXT'
+  input.value = ''
+}
+
+function handleSaveDocument(confirmAfterSave: boolean) {
+  if (!hasSourceDraftText.value) {
+    ElMessage.warning('请先填写原文内容')
+    return
+  }
+  const rawText = sourceDraft.rawText.trim()
+  withSubmit(
+    async () => {
+      const res = await saveAivideoDocument({
+        projectId: projectId.value,
+        sourceType: sourceDraft.sourceType,
+        fileName: sourceDraft.fileName,
+        rawText
+      })
+      if (confirmAfterSave) {
+        await confirmAivideoDocument({
+          projectId: projectId.value,
+          documentId: res.data,
+          parsedText: rawText
+        })
+      }
+      sourceDraft.fileName = ''
+      sourceDraft.rawText = ''
+      sourceDraft.sourceType = 'TEXT'
+    },
+    confirmAfterSave ? '原文已保存并确认' : '原文已保存'
   )
 }
 
@@ -494,6 +586,40 @@ onMounted(() => {
   gap: 10px;
 }
 
+.document-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.editor-toolbar,
+.editor-actions,
+.editor-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-toolbar {
+  justify-content: flex-start;
+}
+
+.source-type-select {
+  width: 132px;
+}
+
+.source-file-input {
+  display: none;
+}
+
+.editor-actions {
+  justify-content: space-between;
+}
+
+.editor-tip {
+  color: #6b7280;
+  font-size: 13px;
+}
+
 .text-block {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -536,9 +662,20 @@ onMounted(() => {
 @media (max-width: 760px) {
   .workbench-header,
   .section-head,
-  .section-actions {
+  .section-actions,
+  .editor-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .editor-toolbar,
+  .editor-buttons {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-type-select {
+    width: 100%;
   }
 
   .flow-panel {
