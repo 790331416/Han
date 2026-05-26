@@ -11,11 +11,13 @@ import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
+import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 public class BAivideoStudioController {
 
@@ -55,6 +57,14 @@ public class BAivideoStudioController {
 
     protected R<AiVideoContentVersionPo> generatePolish(AivideoTextGenerateDto dto) {
         return R.ok(textService.generatePolish(dto));
+    }
+
+    protected SseEmitter generatePolishStream(AivideoTextGenerateDto dto) {
+        return textService.generatePolishStream(dto);
+    }
+
+    protected R<AivideoPromptPreviewVo> previewPolishPrompt(AivideoTextGenerateDto dto) {
+        return R.ok(textService.previewPolishPrompt(dto));
     }
 
     protected R<Void> confirmPolish(AivideoContentConfirmDto dto) {

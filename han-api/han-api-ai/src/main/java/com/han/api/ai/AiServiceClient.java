@@ -18,4 +18,10 @@ public interface AiServiceClient {
      */
     @PostExchange("/text/generate")
     R<AiTextGenerateResponse> generateText(@RequestBody AiTextGenerateRequest request);
+
+    /**
+     * Render the effective user prompt with a configured prompt template.
+     */
+    @PostExchange("/text/prompt/render")
+    R<String> renderTextPrompt(@RequestBody AiTextGenerateRequest request);
 }

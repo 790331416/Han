@@ -93,8 +93,8 @@
             <el-button
               type="primary"
               :icon="MagicStick"
-              :disabled="!latestDocument"
-              :loading="submitting"
+              :disabled="!latestDocument || polishStreaming"
+              :loading="submitting || polishStreaming"
               @click="handleGeneratePolish"
             >
               {{ polishVersions.length ? '重新润色' : '生成润色' }}
@@ -120,9 +120,17 @@
             <div class="polish-output-panel">
               <details class="prompt-preview">
                 <summary>查看本次润色提示词</summary>
-                <pre>{{ polishPromptPreview }}</pre>
+                <pre>{{ polishPromptPreviewText || '暂无可预览提示词' }}</pre>
               </details>
-              <el-empty v-if="!polishVersions.length" description="暂无润色稿" />
+              <el-empty v-if="!polishVersions.length && !polishStreamText" description="暂无润色稿" />
+              <article v-if="polishStreamText" class="text-block stream-block">
+                <div class="meta-line">
+                  <el-tag type="warning">{{ polishStreaming ? '生成中' : '最新生成' }}</el-tag>
+                  <span v-if="polishStreamMeta.taskId">任务 {{ polishStreamMeta.taskId }}</span>
+                  <span v-if="polishStreamMeta.modelCode">{{ polishStreamMeta.modelCode }}</span>
+                </div>
+                <pre>{{ polishStreamText }}</pre>
+              </article>
               <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
                 <div class="meta-line">
                   <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
@@ -296,35 +304,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
 import {
+  AIVIDEO_POLISH_STREAM_PATH,
   aivideoProjectStageOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
   confirmAivideoPolish,
   confirmAivideoScript,
   extractAivideoAssets,
-  generateAivideoPolish,
   generateAivideoScript,
   getAivideoProject,
+  previewAivideoPolishPrompt,
   ratioOptions,
   saveAivideoDocument,
   type AivideoProjectDetail
 } from '@/api/aivideo'
+import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
+import { useUserStore } from '@/stores/user'
 
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
+const polishStreaming = ref(false)
+const polishStreamText = ref('')
+const polishStreamMeta = ref<AiStreamMetaPayload>({})
+const polishPromptPreviewText = ref('')
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
+let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -354,34 +371,6 @@ const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
 const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
-const polishSystemPrompt = '你是专业短剧编剧和影视前期策划助手。请严格按用户要求输出，避免添加无法落地的空泛描述。'
-const polishPromptPreview = computed(() => {
-  const projectName = detail.project?.projectName || '短剧项目'
-  const style = detail.project?.defaultStyle || '未填写'
-  const sourceText = latestSourceText.value || '暂无原文'
-  const basePrompt = `请将以下原文润色为适合 AI 短剧改编的文本。要求：保留主线与核心冲突，强化人物动机、情绪转折和画面感；语言清晰可拍，避免过度文学化；输出完整润色稿。
-
-项目：${projectName}
-风格：${style}
-
-原文：
-${sourceText}`
-  return customPrompt.value.trim()
-    ? `系统提示词：
-${polishSystemPrompt}
-
-用户提示词：
-${basePrompt}
-
-补充要求：
-${customPrompt.value.trim()}`
-    : `系统提示词：
-${polishSystemPrompt}
-
-用户提示词：
-${basePrompt}`
-})
-
 const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
@@ -406,9 +395,37 @@ async function loadDetail() {
       imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 3,
       previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1'
     })
+    await refreshPolishPromptPreview()
   } finally {
     loading.value = false
   }
+}
+
+async function refreshPolishPromptPreview() {
+  const doc = latestDocument.value
+  if (!doc) {
+    polishPromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoPolishPrompt({
+      projectId: projectId.value,
+      documentId: doc.documentId,
+      customPrompt: customPrompt.value
+    })
+    polishPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    polishPromptPreviewText.value = ''
+  }
+}
+
+function schedulePolishPromptPreview() {
+  if (promptPreviewTimer) {
+    clearTimeout(promptPreviewTimer)
+  }
+  promptPreviewTimer = setTimeout(() => {
+    refreshPolishPromptPreview()
+  }, 350)
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {
@@ -484,15 +501,44 @@ function handleSaveDocument(confirmAfterSave: boolean) {
   )
 }
 
-function handleGeneratePolish() {
-  withSubmit(
-    () => generateAivideoPolish({
-      projectId: projectId.value,
-      documentId: latestDocument.value?.documentId,
-      customPrompt: customPrompt.value
-    }).then(() => undefined),
-    '润色稿已生成'
-  )
+async function handleGeneratePolish() {
+  if (!latestDocument.value) {
+    ElMessage.warning('请先保存并确认原文')
+    return
+  }
+  polishStreaming.value = true
+  submitting.value = true
+  polishStreamText.value = ''
+  polishStreamMeta.value = {}
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_POLISH_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        documentId: latestDocument.value.documentId,
+        customPrompt: customPrompt.value
+      },
+      onDelta: ({ fullContent }) => {
+        polishStreamText.value = fullContent
+      },
+      onMeta: (payload) => {
+        polishStreamMeta.value = payload
+      },
+      onError: (message) => {
+        ElMessage.error(message || '润色生成失败')
+      }
+    })
+    ElMessage.success('润色稿已生成')
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '润色生成失败')
+  } finally {
+    polishStreaming.value = false
+    submitting.value = false
+  }
 }
 
 function handleConfirmPolish(versionId: string | number) {
@@ -545,6 +591,16 @@ function handleConfirmAsset(targetType: string, targetId: string | number) {
 
 onMounted(() => {
   loadDetail()
+})
+
+watch(customPrompt, () => {
+  schedulePolishPromptPreview()
+})
+
+onBeforeUnmount(() => {
+  if (promptPreviewTimer) {
+    clearTimeout(promptPreviewTimer)
+  }
 })
 </script>
 

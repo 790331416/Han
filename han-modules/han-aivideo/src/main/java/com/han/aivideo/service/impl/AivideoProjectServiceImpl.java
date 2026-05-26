@@ -266,17 +266,43 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     }
 
     private AiVideoProjectSettingPo buildSettingSnapshot(Long projectId, AivideoProjectDto dto) {
+        AiVideoProjectSettingPo global = selectGlobalSetting(resolveTenantIdForWrite());
         AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
         setting.setProjectId(projectId);
         setting.setTenantId(resolveTenantIdForWrite());
-        setting.setDefaultRatio(defaultString(dto.getDefaultRatio(), "9:16"));
-        setting.setDefaultResolution("720p");
-        setting.setDefaultShotDuration(dto.getDefaultShotDuration() == null ? 5 : dto.getDefaultShotDuration());
-        setting.setImageCandidateCount(dto.getCandidateImageCount() == null ? 3 : dto.getCandidateImageCount());
-        setting.setVideoCandidateCount(1);
-        setting.setPreviewMode(defaultString(dto.getPreviewMode(), YES));
-        setting.setContentAuditEnabled(YES);
+        setting.setTextModelId(global != null ? global.getTextModelId() : null);
+        setting.setImageModelId(global != null ? global.getImageModelId() : null);
+        setting.setVideoModelId(global != null ? global.getVideoModelId() : null);
+        setting.setPolishPromptTemplateId(global != null ? global.getPolishPromptTemplateId() : null);
+        setting.setScriptPromptTemplateId(global != null ? global.getScriptPromptTemplateId() : null);
+        setting.setCharacterPromptTemplateId(global != null ? global.getCharacterPromptTemplateId() : null);
+        setting.setScenePromptTemplateId(global != null ? global.getScenePromptTemplateId() : null);
+        setting.setShotPromptTemplateId(global != null ? global.getShotPromptTemplateId() : null);
+        setting.setDefaultRatio(defaultString(dto.getDefaultRatio(), defaultString(global != null ? global.getDefaultRatio() : null, "9:16")));
+        setting.setDefaultResolution(defaultString(global != null ? global.getDefaultResolution() : null, "720p"));
+        setting.setDefaultShotDuration(dto.getDefaultShotDuration() == null
+                ? defaultInteger(global != null ? global.getDefaultShotDuration() : null, 5)
+                : dto.getDefaultShotDuration());
+        setting.setImageCandidateCount(dto.getCandidateImageCount() == null
+                ? defaultInteger(global != null ? global.getImageCandidateCount() : null, 3)
+                : dto.getCandidateImageCount());
+        setting.setVideoCandidateCount(defaultInteger(global != null ? global.getVideoCandidateCount() : null, 1));
+        setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(global != null ? global.getPreviewMode() : null, YES)));
+        setting.setContentAuditEnabled(defaultString(global != null ? global.getContentAuditEnabled() : null, YES));
         return setting;
+    }
+
+    private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {
+        LambdaQueryWrapper<AiVideoProjectSettingPo> wrapper = new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                .isNull(AiVideoProjectSettingPo::getProjectId)
+                .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                .last("limit 1");
+        if (tenantId != null && tenantId > 0) {
+            wrapper.and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, tenantId)
+                    .or().eq(AiVideoProjectSettingPo::getTenantId, 0L)
+                    .or().isNull(AiVideoProjectSettingPo::getTenantId));
+        }
+        return settingMapper.selectOne(wrapper);
     }
 
     private java.math.BigDecimal defaultCost(java.math.BigDecimal cost) {
@@ -285,6 +311,10 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
 
     private String defaultString(String value, String defaultValue) {
         return StringUtils.hasText(value) ? value.trim() : defaultValue;
+    }
+
+    private Integer defaultInteger(Integer value, Integer defaultValue) {
+        return value == null ? defaultValue : value;
     }
 
     private void fillCreateAudit(AiVideoProjectPo project) {

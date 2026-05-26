@@ -25,9 +25,15 @@ interface ParsedAiStreamEvent {
 
 export interface AiStreamMetaPayload {
   messageId?: string | number
+  versionId?: string | number
+  taskId?: string | number
+  modelId?: string | number
+  provider?: string
+  modelCode?: string
   tokenCount?: number
   knowledgeSources?: unknown
   toolExecutions?: unknown
+  [key: string]: unknown
 }
 
 /**
@@ -60,6 +66,7 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
   const decoder = new TextDecoder()
   let pending = ''
   let fullContent = ''
+  let streamError = ''
 
   while (true) {
     const { done, value } = await reader.read()
@@ -75,11 +82,15 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
         continue
       }
       if (event.done) {
+        if (streamError) {
+          throw new Error(streamError)
+        }
         return fullContent
       }
       if (event.error) {
+        streamError = event.error
         options.onError?.(event.error)
-        continue
+        throw new Error(event.error)
       }
       if (event.meta) {
         options.onMeta?.(event.meta)
@@ -95,7 +106,9 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
       if (pending.trim()) {
         const tailEvent = parseAiStreamEvent(pending)
         if (tailEvent?.error) {
+          streamError = tailEvent.error
           options.onError?.(tailEvent.error)
+          throw new Error(tailEvent.error)
         }
         if (tailEvent?.meta) {
           options.onMeta?.(tailEvent.meta)
@@ -104,6 +117,9 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
           fullContent += tailEvent.delta
           options.onDelta?.({ chunk: tailEvent.delta, fullContent })
         }
+      }
+      if (streamError) {
+        throw new Error(streamError)
       }
       return fullContent
     }
@@ -170,7 +186,8 @@ function resolveUrl(baseUrl: string, path: string): string {
 
 function buildHeaders(token: string, tenantId?: string | number | null, includeJson = false): HeadersInit {
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`
+    Authorization: `Bearer ${token}`,
+    Accept: 'text/event-stream'
   }
   if (includeJson) {
     headers['Content-Type'] = 'application/json'

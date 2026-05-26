@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * OpenAI-compatible text generation implementation.
@@ -63,6 +64,47 @@ public class AiTextGenerationServiceImpl extends AiServiceSupport implements IAi
         response.setProvider(model.getProvider());
         response.setModelCode(model.getModelCode());
         return response;
+    }
+
+    @Override
+    public AiTextGenerateResponse stream(AiTextGenerateRequest request, Consumer<String> deltaConsumer) {
+        if (request == null) {
+            throw new BusinessException("文本生成请求不能为空");
+        }
+        AiModelPo model = request.getModelId() != null
+                ? requireModel(request.getModelId(), request.getTenantId())
+                : selectDefaultTextModel(request.getTenantId());
+        if (!STATUS_ENABLED.equals(model.getStatus())) {
+            throw new BusinessException("文本模型未启用");
+        }
+
+        String apiKey = credentialResolver.resolveApiKey(model);
+        if (!StringUtils.hasText(apiKey)) {
+            throw new BusinessException("文本模型 API Key 未配置，请先配置环境变量或模型凭据");
+        }
+
+        String prompt = resolvePrompt(request);
+        List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
+        if (StringUtils.hasText(request.getSystemPrompt())) {
+            messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(request.getSystemPrompt().trim()));
+        }
+        messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(prompt));
+
+        String content = openAiCompatibleClient.chatCompletionStream(model, apiKey, messages, request.getMaxTokens(), deltaConsumer);
+        AiTextGenerateResponse response = new AiTextGenerateResponse();
+        response.setContent(content);
+        response.setModelId(model.getModelId());
+        response.setProvider(model.getProvider());
+        response.setModelCode(model.getModelCode());
+        return response;
+    }
+
+    @Override
+    public String renderPrompt(AiTextGenerateRequest request) {
+        if (request == null) {
+            throw new BusinessException("文本生成请求不能为空");
+        }
+        return resolvePrompt(request);
     }
 
     private String resolvePrompt(AiTextGenerateRequest request) {

@@ -1776,6 +1776,82 @@ JSON 结构：
 '["projectName","scriptText"]', 'AI短剧人物场景分镜提取默认模板', 1, '0'
 WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧资产提取');
 
+-- 17.2 AI短剧 Prompt 模板长提示词与全局默认配置
+UPDATE ai_prompt_template
+SET content = $aivideo_polish$
+# 顶级小说推文改文指令（纯文案版）
+
+你是一个顶级的小说推文改文专家。你的唯一任务是将小说原文改写为适合短视频配音的“第一人称解说文案”。要求全程紧扣完播率、转粉率两大核心，生成的文案需自带情绪、自带画面、自带悬念，可直接用于抖音/快手等短视频平台的小说推文配音与制作。
+
+## 爆款开头重构
+1. 严禁套用原文第一句，必须从原文核心冲突中重构开头。
+2. 开头单段 30-50 字，严禁超过 55 字。
+3. 1 秒抓住注意力，3 秒内抛出核心冲突或悬念。
+4. 爽文/反套路文优先使用经典反转钩、极致反差钩、身份错位钩；悬疑/灵异文优先使用猎奇悬疑钩、夸张反常钩、结局先行钩；虐恋/情感文优先使用人性抉择钩、荒诞现实钩。
+
+## 转换密度与节奏
+1. 每 1000 字原文重构 38-40 段，误差不超过 5%。
+2. 单段字数不超过 50 字，严禁出现 60 字以上长句。
+3. 高潮、反转、情绪爆发段可以拆成 2 段；过渡段压缩至 15-20 字。
+
+## 角色、台词与视角
+1. 主角优先改为第一人称“我”，配角使用全名或昵称，避免他/她混淆。
+2. 台词格式必须为：角色名说（情绪提示）：“台词内容”。
+3. 情绪提示必须具体、具象，例如轻蔑地嗤笑、颤抖着嘶吼、温柔低吟、冷漠冰冷。
+
+## 五感与画面落地
+1. 先感知，后行动：人物动作、对话、内心活动前，优先加入视觉、听觉、触觉或嗅觉触发。
+2. 每 3 段至少出现 1 种五感细节。
+3. 每段至少包含 1 个可具象化的画面或动作细节，适配视频剪辑。
+
+## 禁忌
+1. 不要输出分析过程、解释、BGM、音效、剪辑说明或视频制作备注。
+2. 不得输出“以下是改写”之类的开场说明，直接输出正文。
+3. 不得混用视角，不得重复关联词，不得堆砌无意义语气词。
+
+## 输出格式
+1. 首段必须是重构后的爆款开头，单独成行。
+2. 段与段之间空一行。
+3. 台词按“角色名说（情绪提示）：“台词内容””格式单独成行。
+4. 最后一段必须抛出追剧悬念，引导继续观看，但不要写生硬营销口号。
+
+项目：{{projectName}}
+风格：{{style}}
+目标平台：{{targetPlatform}}
+
+原文：
+{{rawText}}
+$aivideo_polish$,
+    variables = '["projectName","style","targetPlatform","rawText"]',
+    description = 'AI短剧原文润色默认长模板，来自AIVideo参考材料优化版',
+    built_in = 1,
+    status = '0',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧原文润色';
+
+WITH tpl AS (
+    SELECT
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id
+    FROM ai_prompt_template
+    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成')
+)
+INSERT INTO ai_video_project_setting (
+    project_id, tenant_id, polish_prompt_template_id, script_prompt_template_id,
+    default_ratio, default_resolution, default_shot_duration,
+    image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled,
+    create_by, create_time, update_by, update_time
+)
+SELECT NULL, 0, tpl.polish_id, tpl.script_id,
+       '9:16', '720p', 5, 3, 1, '1', '1',
+       'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP
+FROM tpl
+WHERE tpl.polish_id IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM ai_video_project_setting s
+      WHERE s.project_id IS NULL AND COALESCE(s.tenant_id, 0) = 0
+  );
+
 
 -- ============================================================
 -- source: postgres\gen\00-schema.sql

@@ -14,6 +14,16 @@ public class AivideoAdminSettingDto {
 
     private Long videoModelId;
 
+    private Long polishPromptTemplateId;
+
+    private Long scriptPromptTemplateId;
+
+    private Long characterPromptTemplateId;
+
+    private Long scenePromptTemplateId;
+
+    private Long shotPromptTemplateId;
+
     private String defaultRatio;
 
     private String defaultResolution;

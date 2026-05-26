@@ -12,6 +12,7 @@ import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
+import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoTextService;
@@ -20,12 +21,14 @@ import com.han.common.core.domain.R;
 import com.han.common.security.annotation.RepeatSubmit;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController("aivideoStudioController")
 @RequestMapping("/aivideo/studio")
@@ -80,6 +83,18 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<AiVideoContentVersionPo> generatePolishText(@Valid @RequestBody AivideoTextGenerateDto dto) {
         return generatePolish(dto);
+    }
+
+    @PostMapping(value = "/text/polish/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter generatePolishTextStream(@Valid @RequestBody AivideoTextGenerateDto dto) {
+        return generatePolishStream(dto);
+    }
+
+    @PostMapping("/text/polish/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewPolishTextPrompt(@Valid @RequestBody AivideoTextGenerateDto dto) {
+        return previewPolishPrompt(dto);
     }
 
     @RepeatSubmit

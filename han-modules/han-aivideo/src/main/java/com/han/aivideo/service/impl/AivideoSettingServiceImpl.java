@@ -73,6 +73,11 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setTextModelId(source.getTextModelId());
         target.setImageModelId(source.getImageModelId());
         target.setVideoModelId(source.getVideoModelId());
+        target.setPolishPromptTemplateId(source.getPolishPromptTemplateId());
+        target.setScriptPromptTemplateId(source.getScriptPromptTemplateId());
+        target.setCharacterPromptTemplateId(source.getCharacterPromptTemplateId());
+        target.setScenePromptTemplateId(source.getScenePromptTemplateId());
+        target.setShotPromptTemplateId(source.getShotPromptTemplateId());
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultResolution(defaultString(source.getDefaultResolution(), "720p"));
         target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
@@ -88,6 +93,11 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setTextModelId(setting.getTextModelId());
         vo.setImageModelId(setting.getImageModelId());
         vo.setVideoModelId(setting.getVideoModelId());
+        vo.setPolishPromptTemplateId(setting.getPolishPromptTemplateId());
+        vo.setScriptPromptTemplateId(setting.getScriptPromptTemplateId());
+        vo.setCharacterPromptTemplateId(setting.getCharacterPromptTemplateId());
+        vo.setScenePromptTemplateId(setting.getScenePromptTemplateId());
+        vo.setShotPromptTemplateId(setting.getShotPromptTemplateId());
         vo.setDefaultRatio(setting.getDefaultRatio());
         vo.setDefaultResolution(setting.getDefaultResolution());
         vo.setDefaultShotDuration(setting.getDefaultShotDuration());

@@ -11,8 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -21,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Minimal OpenAI-compatible client used for model connectivity checks and chat requests.
@@ -30,6 +33,7 @@ import java.util.List;
 class AiOpenAiCompatibleClient {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration STREAM_REQUEST_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String CURL_STATUS_MARKER = "__CURL_STATUS__:";
@@ -64,6 +68,25 @@ class AiOpenAiCompatibleClient {
         } catch (IOException e) {
             log.warn("AI provider request IO error, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
             throw new BusinessException("模型调用失败: " + e.getMessage());
+        }
+    }
+
+    String chatCompletionStream(AiModelPo model, String apiKey, List<ProviderMessage> messages,
+                                Integer maxTokensOverride, Consumer<String> deltaConsumer) {
+        validateArguments(model, apiKey, messages);
+        ChatCompletionRequest payload = buildRequest(model, messages, maxTokensOverride);
+        payload.stream = true;
+        URI requestUri = buildChatCompletionUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
+        try {
+            String content = executeStreamingRequest(requestUri, apiKey, requestBody, deltaConsumer);
+            if (!StringUtils.hasText(content)) {
+                throw new BusinessException("模型未返回有效文本内容");
+            }
+            return content.trim();
+        } catch (IOException e) {
+            log.warn("AI provider streaming request IO error, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
+            throw new BusinessException("模型流式调用失败: " + e.getMessage());
         }
     }
 
@@ -137,6 +160,84 @@ class AiOpenAiCompatibleClient {
             if (connection != null) {
                 connection.disconnect();
             }
+        }
+    }
+
+    private String executeStreamingRequest(URI requestUri, String apiKey, String requestBody,
+                                           Consumer<String> deltaConsumer) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) requestUri.toURL().openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+            connection.setReadTimeout((int) STREAM_REQUEST_TIMEOUT.toMillis());
+            connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
+            connection.setRequestProperty(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+            connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
+            byte[] bodyBytes = requestBody.getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(bodyBytes.length);
+            try (var outputStream = connection.getOutputStream()) {
+                outputStream.write(bodyBytes);
+            }
+
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                String responseBody = readBody(connection.getErrorStream());
+                throw new BusinessException(buildErrorMessage(responseBody, statusCode));
+            }
+
+            StringBuilder content = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (isStreamDoneLine(line)) {
+                        break;
+                    }
+                    String delta = parseStreamLine(line);
+                    if (delta == null) {
+                        continue;
+                    }
+                    content.append(delta);
+                    if (deltaConsumer != null) {
+                        deltaConsumer.accept(delta);
+                    }
+                }
+            }
+            return content.toString();
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private boolean isStreamDoneLine(String line) {
+        if (!StringUtils.hasText(line)) {
+            return false;
+        }
+        String trimmed = line.trim();
+        return trimmed.startsWith("data:") && "[DONE]".equals(trimmed.substring("data:".length()).trim());
+    }
+
+    private String parseStreamLine(String line) {
+        if (!StringUtils.hasText(line)) {
+            return null;
+        }
+        String trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) {
+            return null;
+        }
+        String payload = trimmed.substring("data:".length()).trim();
+        if (!StringUtils.hasText(payload) || "[DONE]".equals(payload)) {
+            return null;
+        }
+        try {
+            ChatCompletionStreamResponse response = XuJsonUtil.parseObject(payload, ChatCompletionStreamResponse.class);
+            return extractDelta(response);
+        } catch (RuntimeException exception) {
+            log.debug("Ignore unparsable provider stream chunk: {}", payload, exception);
+            return null;
         }
     }
 
@@ -249,6 +350,21 @@ class AiOpenAiCompatibleClient {
         return null;
     }
 
+    private String extractDelta(ChatCompletionStreamResponse response) {
+        if (response == null || response.choices == null || response.choices.isEmpty()) {
+            return null;
+        }
+        for (StreamChoice choice : response.choices) {
+            if (choice == null || choice.delta == null) {
+                continue;
+            }
+            if (StringUtils.hasText(choice.delta.content)) {
+                return choice.delta.content;
+            }
+        }
+        return null;
+    }
+
     private String buildErrorMessage(String body, int statusCode) {
         try {
             ErrorEnvelope envelope = XuJsonUtil.parseObject(body, ErrorEnvelope.class);
@@ -323,6 +439,18 @@ class AiOpenAiCompatibleClient {
     static class Choice {
         @JsonProperty("message")
         public ChatMessage message;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ChatCompletionStreamResponse {
+        @JsonProperty("choices")
+        public List<StreamChoice> choices;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class StreamChoice {
+        @JsonProperty("delta")
+        public ChatMessage delta;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

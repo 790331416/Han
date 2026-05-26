@@ -15,6 +15,7 @@
   - PostgreSQL 正式增量升级脚本
   - `20260521_aivideo_mvp0.sql`：AI 短剧 MVP 0 表结构增量脚本
   - `20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子
+  - `20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt、Prompt 配置继承与流式生成配套升级
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -89,3 +90,4 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 ## AI 短剧 SQL 变更记录
 
 - `sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子，和 `sql/tiers/full/full-init.sql` 保持同步。
+- `sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt 入库、项目/全局 Prompt 模板 ID 补齐，并配合润色流式生成链路。

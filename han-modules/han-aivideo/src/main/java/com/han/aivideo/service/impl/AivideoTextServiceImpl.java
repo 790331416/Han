@@ -18,6 +18,7 @@ import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.po.AiVideoSourceDocumentPo;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
+import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.enums.AivideoProjectStage;
 import com.han.aivideo.enums.AivideoTaskStatus;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
@@ -40,7 +41,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +70,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static final String TASK_POLISH = "TEXT_POLISH";
     private static final String TASK_SCRIPT = "TEXT_SCRIPT";
     private static final String TASK_ASSET = "ASSET_EXTRACT";
+    private static final String TEXT_SYSTEM_PROMPT = "你是专业短剧编剧和影视前期策划助手。请严格按用户要求输出，避免添加无法落地的空泛描述。";
     private static final String TARGET_DOCUMENT = "DOCUMENT";
     private static final String TARGET_CONTENT = "CONTENT_VERSION";
     private static final String TARGET_CHARACTER = "CHARACTER";
@@ -84,6 +89,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private final AiVideoShotMapper shotMapper;
     private final AiVideoReviewRecordMapper reviewRecordMapper;
     private final AiServiceClient aiServiceClient;
+    private final AivideoAiStreamClient aiStreamClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -132,6 +138,62 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
         return runTextTask(project, document.getDocumentId(), CONTENT_POLISH, TASK_POLISH, promptTemplateId,
                 dto.getCustomPrompt(), prompt, variables, "润色稿", setting);
+    }
+
+    @Override
+    public SseEmitter generatePolishStream(AivideoTextGenerateDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoSourceDocumentPo document = requireDocument(project.getProjectId(), dto.getDocumentId());
+        String sourceText = firstText(document.getParsedText(), document.getRawText());
+        if (!StringUtils.hasText(sourceText)) {
+            throw new BusinessException("原文内容不能为空");
+        }
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = setting != null ? setting.getPolishPromptTemplateId() : null;
+        String fallbackPrompt = buildPolishPrompt(project, sourceText);
+        Map<String, String> variables = baseVariables(project);
+        variables.put("rawText", sourceText);
+        variables.put("style", safeValue(project.getDefaultStyle()));
+        String taskPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        AiVideoGenerationTaskPo task = createTask(project, TASK_POLISH, TARGET_DOCUMENT, document.getDocumentId(),
+                setting != null ? setting.getTextModelId() : null, promptTemplateId, taskPrompt, dto.getCustomPrompt(), variables);
+        String operator = resolveOperator();
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+        CompletableFuture.runAsync(() -> runPolishStream(project, document, setting, promptTemplateId,
+                dto.getCustomPrompt(), fallbackPrompt, variables, task, operator, emitter));
+        return emitter;
+    }
+
+    @Override
+    public AivideoPromptPreviewVo previewPolishPrompt(AivideoTextGenerateDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoSourceDocumentPo document = requireDocument(project.getProjectId(), dto.getDocumentId());
+        String sourceText = firstText(document.getParsedText(), document.getRawText());
+        if (!StringUtils.hasText(sourceText)) {
+            throw new BusinessException("原文内容不能为空");
+        }
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = setting != null ? setting.getPolishPromptTemplateId() : null;
+        String fallbackPrompt = buildPolishPrompt(project, sourceText);
+        Map<String, String> variables = baseVariables(project);
+        variables.put("rawText", sourceText);
+        variables.put("style", safeValue(project.getDefaultStyle()));
+        String userPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+
+        AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
+        vo.setPromptTemplateId(promptTemplateId);
+        vo.setSystemPrompt(TEXT_SYSTEM_PROMPT);
+        vo.setUserPrompt(userPrompt);
+        vo.setCustomPrompt(dto.getCustomPrompt());
+        vo.setEffectivePrompt("系统提示词：\n" + TEXT_SYSTEM_PROMPT + "\n\n用户提示词：\n" + userPrompt);
+        return vo;
     }
 
     @Override
@@ -270,7 +332,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         request.setUserPrompt(userPrompt);
         request.setCustomPrompt(customPrompt);
         request.setVariables(variables);
-        request.setSystemPrompt("你是专业短剧编剧和影视前期策划助手。请严格按用户要求输出，避免添加无法落地的空泛描述。");
+        request.setSystemPrompt(TEXT_SYSTEM_PROMPT);
         R<AiTextGenerateResponse> result = aiServiceClient.generateText(request);
         if (result == null || result.isFail()) {
             throw new BusinessException(result == null ? "AI 文本生成服务无响应" : result.getMsg());
@@ -279,6 +341,97 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("AI 文本生成结果为空");
         }
         return result.getData();
+    }
+
+    private void runPolishStream(AiVideoProjectPo project, AiVideoSourceDocumentPo document,
+                                 AiVideoProjectSettingPo setting, Long promptTemplateId, String customPrompt,
+                                 String userPrompt, Map<String, String> variables, AiVideoGenerationTaskPo task,
+                                 String operator, SseEmitter emitter) {
+        try {
+            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
+                    customPrompt, userPrompt, variables);
+            AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
+                    chunk -> sendSse(emitter, "delta", chunk));
+            if (!StringUtils.hasText(result.content())) {
+                throw new BusinessException("AI 文本生成结果为空");
+            }
+            AiVideoContentVersionPo version = buildContentVersion(project, document.getDocumentId(), CONTENT_POLISH,
+                    "润色稿 v" + nextVersionNo(project.getProjectId(), CONTENT_POLISH),
+                    result.content(), null, promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+            version.setCreateBy(operator);
+            version.setUpdateBy(operator);
+            contentVersionMapper.insert(version);
+            markTaskSuccess(task, version.getModelId(), null);
+            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            meta.put("versionId", version.getVersionId());
+            meta.put("taskId", task.getTaskId());
+            sendSse(emitter, "meta", meta);
+            emitter.send(SseEmitter.event().data("[DONE]"));
+            emitter.complete();
+        } catch (Exception exception) {
+            markTaskFailed(task, exception.getMessage());
+            completeWithError(emitter, exception.getMessage());
+        }
+    }
+
+    private String renderUserPrompt(AiVideoProjectPo project, Long promptTemplateId, String customPrompt,
+                                    String userPrompt, Map<String, String> variables) {
+        AiTextGenerateRequest request = buildTextGenerateRequest(project, null, promptTemplateId, customPrompt, userPrompt, variables);
+        R<String> result = aiServiceClient.renderTextPrompt(request);
+        if (result == null || result.isFail()) {
+            throw new BusinessException(result == null ? "AI Prompt 渲染服务无响应" : result.getMsg());
+        }
+        if (!StringUtils.hasText(result.getData())) {
+            throw new BusinessException("AI Prompt 渲染结果为空");
+        }
+        return result.getData();
+    }
+
+    private AiTextGenerateRequest buildTextGenerateRequest(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
+                                                           Long promptTemplateId, String customPrompt,
+                                                           String userPrompt, Map<String, String> variables) {
+        AiTextGenerateRequest request = new AiTextGenerateRequest();
+        request.setTenantId(project.getTenantId());
+        request.setModelId(setting != null ? setting.getTextModelId() : null);
+        request.setPromptTemplateId(promptTemplateId);
+        request.setUserPrompt(userPrompt);
+        request.setCustomPrompt(customPrompt);
+        request.setVariables(variables);
+        request.setSystemPrompt(TEXT_SYSTEM_PROMPT);
+        return request;
+    }
+
+    private void sendSse(SseEmitter emitter, String type, Object content) {
+        try {
+            emitter.send(SseEmitter.event().data(XuJsonUtil.toJsonString(Map.of(
+                    "type", type,
+                    "content", content == null ? "" : content
+            ))));
+        } catch (IOException exception) {
+            throw new IllegalStateException("SSE send failed", exception);
+        }
+    }
+
+    private void completeWithError(SseEmitter emitter, String message) {
+        try {
+            sendSse(emitter, "error", StringUtils.hasText(message) ? message : "AI 文本生成失败");
+        } finally {
+            emitter.complete();
+        }
+    }
+
+    private Long resolveLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private void confirmContent(AivideoContentConfirmDto dto, String contentType, AivideoProjectStage targetStage) {

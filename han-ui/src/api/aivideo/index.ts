@@ -168,6 +168,11 @@ export interface AivideoSetting {
   textModelId?: string | number
   imageModelId?: string | number
   videoModelId?: string | number
+  polishPromptTemplateId?: string | number
+  scriptPromptTemplateId?: string | number
+  characterPromptTemplateId?: string | number
+  scenePromptTemplateId?: string | number
+  shotPromptTemplateId?: string | number
   defaultRatio?: string
   defaultResolution?: string
   imageCandidateCount?: number
@@ -188,6 +193,16 @@ export interface AivideoProjectDetail {
   shots?: AivideoShot[]
   latestTask?: AivideoTask
 }
+
+export interface AivideoPromptPreview {
+  promptTemplateId?: string | number
+  systemPrompt?: string
+  userPrompt?: string
+  customPrompt?: string
+  effectivePrompt?: string
+}
+
+export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
@@ -225,6 +240,14 @@ export function generateAivideoPolish(data: {
   customPrompt?: string
 }) {
   return post<AivideoContentVersion>('/aivideo/studio/text/polish/generate', data)
+}
+
+export function previewAivideoPolishPrompt(data: {
+  projectId: string | number
+  documentId?: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/text/polish/prompt-preview', data, { silentError: true })
 }
 
 export function confirmAivideoPolish(data: {
