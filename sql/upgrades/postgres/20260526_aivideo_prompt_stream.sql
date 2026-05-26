@@ -1,6 +1,16 @@
 -- AI short-drama prompt streaming upgrade.
 -- Idempotent. No API keys or secrets are stored here.
 
+ALTER TABLE ai_prompt_template
+    ADD COLUMN IF NOT EXISTS create_by VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS update_by VARCHAR(64);
+
+UPDATE ai_prompt_template
+SET create_by = COALESCE(create_by, 'system'),
+    update_by = COALESCE(update_by, 'system')
+WHERE create_by IS NULL
+   OR update_by IS NULL;
+
 UPDATE ai_prompt_template
 SET content = $aivideo_polish$
 # 顶级小说推文改文指令（纯文案版）
