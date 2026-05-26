@@ -224,8 +224,8 @@
               <el-button
                 type="primary"
                 :icon="Film"
-                :disabled="!selectedScript"
-                :loading="submitting"
+                :disabled="!selectedScript || assetStreaming"
+                :loading="submitting || assetStreaming"
                 @click="handleExtractAssets"
               >
                 {{ hasAssets ? '重新提取' : '提取资产' }}
@@ -239,6 +239,42 @@
               >
                 确认全部
               </el-button>
+            </div>
+          </div>
+
+          <div class="content-compare-grid asset-workspace-grid">
+            <aside class="source-preview-panel">
+              <div class="panel-title-row">
+                <h4>已确认短剧剧本</h4>
+                <el-tag v-if="selectedScript" type="success">已确认</el-tag>
+              </div>
+              <div v-if="selectedScript" class="meta-line">
+                <el-tag>{{ selectedScript.title || `剧本 v${selectedScript.versionNo}` }}</el-tag>
+                <span>{{ selectedScript.contentText?.length || 0 }} 字</span>
+                <span>{{ selectedScript.createTime || '-' }}</span>
+              </div>
+              <pre v-if="selectedScript?.contentText" class="source-preview-text">{{ selectedScript.contentText }}</pre>
+              <el-empty v-else description="请先确认短剧剧本" />
+            </aside>
+
+            <div class="asset-output-panel">
+              <details class="prompt-preview">
+                <summary>查看本次资产提取提示词</summary>
+                <pre>{{ assetPromptPreviewText || '暂无可预览提示词' }}</pre>
+              </details>
+              <el-empty v-if="!assetPreviewText && !hasAssets" description="暂无资产提取输出" />
+              <article v-if="assetPreviewText" class="text-block stream-block">
+                <div class="meta-line">
+                  <el-tag :type="assetStreaming ? 'warning' : 'success'">
+                    {{ assetStreaming ? '生成中' : (latestAssetExtract?.title || 'Markdown/JSON 输出') }}
+                  </el-tag>
+                  <el-tag type="info" effect="plain">原始输出</el-tag>
+                  <span v-if="assetStreamMeta.taskId">任务 {{ assetStreamMeta.taskId }}</span>
+                  <span v-else-if="latestAssetExtract?.taskId">任务 {{ latestAssetExtract.taskId }}</span>
+                  <span v-if="assetStreamMeta.modelCode">{{ assetStreamMeta.modelCode }}</span>
+                </div>
+                <pre class="asset-raw-output">{{ assetPreviewText }}</pre>
+              </article>
             </div>
           </div>
 
@@ -339,6 +375,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
 import {
+  AIVIDEO_ASSET_STREAM_PATH,
   AIVIDEO_POLISH_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
   aivideoProjectStageOptions,
@@ -346,8 +383,8 @@ import {
   confirmAivideoDocument,
   confirmAivideoPolish,
   confirmAivideoScript,
-  extractAivideoAssets,
   getAivideoProject,
+  previewAivideoAssetPrompt,
   previewAivideoPolishPrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
@@ -372,6 +409,10 @@ const scriptStreaming = ref(false)
 const scriptStreamText = ref('')
 const scriptStreamMeta = ref<AiStreamMetaPayload>({})
 const scriptPromptPreviewText = ref('')
+const assetStreaming = ref(false)
+const assetStreamText = ref('')
+const assetStreamMeta = ref<AiStreamMetaPayload>({})
+const assetPromptPreviewText = ref('')
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
 const sourceFileInputRef = ref<HTMLInputElement>()
@@ -400,8 +441,11 @@ const hasSourceDraftText = computed(() => sourceDraft.rawText.trim().length > 0)
 const contentVersions = computed(() => detail.contentVersions || [])
 const polishVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'POLISH'))
 const scriptVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'SCRIPT'))
+const assetExtractVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'ASSET_EXTRACT'))
 const selectedPolish = computed(() => polishVersions.value.find((item) => item.selected === '1'))
 const selectedScript = computed(() => scriptVersions.value.find((item) => item.selected === '1'))
+const latestAssetExtract = computed(() => assetExtractVersions.value[0])
+const assetPreviewText = computed(() => assetStreamText.value || latestAssetExtract.value?.contentText || '')
 const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
@@ -432,6 +476,7 @@ async function loadDetail() {
     })
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
+    await refreshAssetPromptPreview()
   } finally {
     loading.value = false
   }
@@ -462,6 +507,7 @@ function schedulePolishPromptPreview() {
   promptPreviewTimer = setTimeout(() => {
     refreshPolishPromptPreview()
     refreshScriptPromptPreview()
+    refreshAssetPromptPreview()
   }, 350)
 }
 
@@ -478,6 +524,22 @@ async function refreshScriptPromptPreview() {
     scriptPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
     scriptPromptPreviewText.value = ''
+  }
+}
+
+async function refreshAssetPromptPreview() {
+  if (!selectedScript.value) {
+    assetPromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoAssetPrompt({
+      projectId: projectId.value,
+      customPrompt: customPrompt.value
+    })
+    assetPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    assetPromptPreviewText.value = ''
   }
 }
 
@@ -647,14 +709,43 @@ function handleConfirmScript(versionId: string | number) {
   )
 }
 
-function handleExtractAssets() {
-  withSubmit(
-    () => extractAivideoAssets({
-      projectId: projectId.value,
-      customPrompt: customPrompt.value
-    }).then(() => undefined),
-    '资产已提取'
-  )
+async function handleExtractAssets() {
+  if (!selectedScript.value) {
+    ElMessage.warning('请先确认短剧剧本')
+    return
+  }
+  assetStreaming.value = true
+  submitting.value = true
+  assetStreamText.value = ''
+  assetStreamMeta.value = {}
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_ASSET_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        customPrompt: customPrompt.value
+      },
+      onDelta: ({ fullContent }) => {
+        assetStreamText.value = fullContent
+      },
+      onMeta: (payload) => {
+        assetStreamMeta.value = payload
+      },
+      onError: (message) => {
+        ElMessage.error(message || '资产提取失败')
+      }
+    })
+    ElMessage.success('资产已提取')
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '资产提取失败')
+  } finally {
+    assetStreaming.value = false
+    submitting.value = false
+  }
 }
 
 function handleConfirmAllAssets() {
@@ -785,8 +876,13 @@ onBeforeUnmount(() => {
 
 .source-preview-panel,
 .polish-output-panel,
-.script-output-panel {
+.script-output-panel,
+.asset-output-panel {
   min-width: 0;
+}
+
+.asset-workspace-grid {
+  margin-bottom: 14px;
 }
 
 .source-preview-panel {
@@ -884,6 +980,7 @@ onBeforeUnmount(() => {
 }
 
 .source-preview-text,
+.asset-raw-output,
 .prompt-preview pre {
   margin: 12px 0 0;
   white-space: pre-wrap;

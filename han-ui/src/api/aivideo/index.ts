@@ -204,6 +204,7 @@ export interface AivideoPromptPreview {
 
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
+export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
@@ -286,6 +287,13 @@ export function extractAivideoAssets(data: {
   customPrompt?: string
 }) {
   return post<AivideoAssetSummary>('/aivideo/studio/assets/extract', data)
+}
+
+export function previewAivideoAssetPrompt(data: {
+  projectId: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/assets/prompt-preview', data, { silentError: true })
 }
 
 export function getAivideoAssets(projectId: string | number) {

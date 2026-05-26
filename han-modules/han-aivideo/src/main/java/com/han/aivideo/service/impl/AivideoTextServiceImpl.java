@@ -40,6 +40,7 @@ import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -90,6 +91,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private final AiVideoReviewRecordMapper reviewRecordMapper;
     private final AiServiceClient aiServiceClient;
     private final AivideoAiStreamClient aiStreamClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -312,6 +314,54 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     @Override
+    public SseEmitter extractAssetsStream(AivideoAssetExtractDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = firstTemplateId(setting);
+        String fallbackPrompt = buildAssetPrompt(project, script.getContentText());
+        Map<String, String> variables = baseVariables(project);
+        variables.put("scriptText", script.getContentText());
+        variables.put("rawText", script.getContentText());
+        String taskPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        AiVideoGenerationTaskPo task = createTask(project, TASK_ASSET, TARGET_CONTENT, script.getVersionId(),
+                setting != null ? setting.getTextModelId() : null, promptTemplateId, taskPrompt, dto.getCustomPrompt(), variables);
+        String operator = resolveOperator();
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+        CompletableFuture.runAsync(() -> runAssetStream(project, setting, promptTemplateId,
+                dto.getCustomPrompt(), fallbackPrompt, variables, task, operator, emitter));
+        return emitter;
+    }
+
+    @Override
+    public AivideoPromptPreviewVo previewAssetPrompt(AivideoAssetExtractDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = firstTemplateId(setting);
+        String fallbackPrompt = buildAssetPrompt(project, script.getContentText());
+        Map<String, String> variables = baseVariables(project);
+        variables.put("scriptText", script.getContentText());
+        variables.put("rawText", script.getContentText());
+        String userPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+
+        AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
+        vo.setPromptTemplateId(promptTemplateId);
+        vo.setSystemPrompt(TEXT_SYSTEM_PROMPT);
+        vo.setUserPrompt(userPrompt);
+        vo.setCustomPrompt(dto.getCustomPrompt());
+        vo.setEffectivePrompt("系统提示词：\n" + TEXT_SYSTEM_PROMPT + "\n\n用户提示词：\n" + userPrompt);
+        return vo;
+    }
+
+    @Override
     public AivideoAssetSummaryVo selectAssetSummary(Long projectId) {
         requireProject(projectId);
         AivideoAssetSummaryVo vo = new AivideoAssetSummaryVo();
@@ -443,6 +493,47 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             markTaskSuccess(task, version.getModelId(), null);
             Map<String, Object> meta = new LinkedHashMap<>(result.meta());
             meta.put("versionId", version.getVersionId());
+            meta.put("taskId", task.getTaskId());
+            sendSse(emitter, "meta", meta);
+            emitter.send(SseEmitter.event().data("[DONE]"));
+            emitter.complete();
+        } catch (Exception exception) {
+            markTaskFailed(task, exception.getMessage());
+            completeWithError(emitter, exception.getMessage());
+        }
+    }
+
+    private void runAssetStream(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
+                                Long promptTemplateId, String customPrompt, String userPrompt,
+                                Map<String, String> variables, AiVideoGenerationTaskPo task,
+                                String operator, SseEmitter emitter) {
+        try {
+            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
+                    customPrompt, userPrompt, variables);
+            AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
+                    chunk -> sendSse(emitter, "delta", chunk));
+            if (!StringUtils.hasText(result.content())) {
+                throw new BusinessException("AI 文本生成结果为空");
+            }
+            AssetPayload payload = parseAssetPayload(result.content());
+            AiVideoContentVersionPo assetVersion = transactionTemplate.execute(status -> {
+                softDeletePendingAssets(project.getProjectId());
+                insertAssets(project, payload, setting);
+
+                AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
+                        "结构化资产", result.content(), extractJsonBlock(result.content()),
+                        promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+                version.setCreateBy(operator);
+                version.setUpdateBy(operator);
+                contentVersionMapper.insert(version);
+                markTaskSuccess(task, version.getModelId(), null);
+                return version;
+            });
+            if (assetVersion == null) {
+                throw new BusinessException("资产提取结果保存失败");
+            }
+            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            meta.put("versionId", assetVersion.getVersionId());
             meta.put("taskId", task.getTaskId());
             sendSse(emitter, "meta", meta);
             emitter.send(SseEmitter.event().data("[DONE]"));

@@ -93,6 +93,14 @@ public class BAivideoStudioController {
         return R.ok(textService.extractAssets(dto));
     }
 
+    protected SseEmitter extractAssetsStream(AivideoAssetExtractDto dto) {
+        return textService.extractAssetsStream(dto);
+    }
+
+    protected R<AivideoPromptPreviewVo> previewAssetPrompt(AivideoAssetExtractDto dto) {
+        return R.ok(textService.previewAssetPrompt(dto));
+    }
+
     protected R<AivideoAssetSummaryVo> getAssets(Long projectId) {
         return R.ok(textService.selectAssetSummary(projectId));
     }

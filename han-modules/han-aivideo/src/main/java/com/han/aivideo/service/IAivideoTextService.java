@@ -35,6 +35,10 @@ public interface IAivideoTextService {
 
     AivideoAssetSummaryVo extractAssets(AivideoAssetExtractDto dto);
 
+    SseEmitter extractAssetsStream(AivideoAssetExtractDto dto);
+
+    AivideoPromptPreviewVo previewAssetPrompt(AivideoAssetExtractDto dto);
+
     AivideoAssetSummaryVo selectAssetSummary(Long projectId);
 
     void confirmAsset(AivideoAssetConfirmDto dto);

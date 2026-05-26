@@ -137,6 +137,18 @@ public class AivideoStudioController extends BAivideoStudioController {
         return extractAssets(dto);
     }
 
+    @PostMapping(value = "/assets/extract/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter extractProjectAssetsStream(@Valid @RequestBody AivideoAssetExtractDto dto) {
+        return extractAssetsStream(dto);
+    }
+
+    @PostMapping("/assets/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewProjectAssetPrompt(@Valid @RequestBody AivideoAssetExtractDto dto) {
+        return previewAssetPrompt(dto);
+    }
+
     @GetMapping("/assets/summary/{projectId}")
     @PreAuthorize("@ss.isLogin()")
     public R<AivideoAssetSummaryVo> assets(@PathVariable Long projectId) {
