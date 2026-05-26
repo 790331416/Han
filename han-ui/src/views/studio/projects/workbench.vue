@@ -100,25 +100,49 @@
               {{ polishVersions.length ? '重新润色' : '生成润色' }}
             </el-button>
           </div>
-          <el-empty v-if="!polishVersions.length" description="暂无润色稿" />
-          <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
-            <div class="meta-line">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
-              <span>{{ item.confirmStatus || 'PENDING' }}</span>
-              <span>{{ item.createTime || '-' }}</span>
-              <el-button
-                size="small"
-                type="success"
-                :icon="Check"
-                :disabled="item.selected === '1'"
-                :loading="submitting"
-                @click="handleConfirmPolish(item.versionId)"
-              >
-                确认
-              </el-button>
+          <div class="polish-compare-grid">
+            <aside class="source-preview-panel">
+              <div class="panel-title-row">
+                <h4>待润色原文</h4>
+                <el-tag v-if="latestDocument" :type="latestDocument.confirmed === '1' ? 'success' : 'warning'">
+                  {{ latestDocument.confirmed === '1' ? '已确认' : '待确认' }}
+                </el-tag>
+              </div>
+              <div v-if="latestDocument" class="meta-line">
+                <el-tag>{{ latestDocument.sourceType || 'TEXT' }}</el-tag>
+                <span>{{ latestDocument.charCount || latestSourceText.length }} 字</span>
+                <span>{{ latestDocument.createTime || '-' }}</span>
+              </div>
+              <pre v-if="latestSourceText" class="source-preview-text">{{ latestSourceText }}</pre>
+              <el-empty v-else description="暂无可润色原文" />
+            </aside>
+
+            <div class="polish-output-panel">
+              <details class="prompt-preview">
+                <summary>查看本次润色提示词</summary>
+                <pre>{{ polishPromptPreview }}</pre>
+              </details>
+              <el-empty v-if="!polishVersions.length" description="暂无润色稿" />
+              <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
+                <div class="meta-line">
+                  <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
+                  <span>{{ item.confirmStatus || 'PENDING' }}</span>
+                  <span>{{ item.createTime || '-' }}</span>
+                  <el-button
+                    size="small"
+                    type="success"
+                    :icon="Check"
+                    :disabled="item.selected === '1'"
+                    :loading="submitting"
+                    @click="handleConfirmPolish(item.versionId)"
+                  >
+                    确认
+                  </el-button>
+                </div>
+                <pre>{{ item.contentText }}</pre>
+              </article>
             </div>
-            <pre>{{ item.contentText }}</pre>
-          </article>
+          </div>
         </div>
 
         <div v-if="activeTab === 'script'" class="result-section">
@@ -319,6 +343,7 @@ const params = reactive({
 const projectId = computed(() => String(route.params.id))
 const documents = computed(() => detail.documents || [])
 const latestDocument = computed(() => documents.value[0])
+const latestSourceText = computed(() => latestDocument.value?.parsedText || latestDocument.value?.rawText || '')
 const hasSourceDraftText = computed(() => sourceDraft.rawText.trim().length > 0)
 const contentVersions = computed(() => detail.contentVersions || [])
 const polishVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'POLISH'))
@@ -329,6 +354,33 @@ const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
 const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
+const polishSystemPrompt = '你是专业短剧编剧和影视前期策划助手。请严格按用户要求输出，避免添加无法落地的空泛描述。'
+const polishPromptPreview = computed(() => {
+  const projectName = detail.project?.projectName || '短剧项目'
+  const style = detail.project?.defaultStyle || '未填写'
+  const sourceText = latestSourceText.value || '暂无原文'
+  const basePrompt = `请将以下原文润色为适合 AI 短剧改编的文本。要求：保留主线与核心冲突，强化人物动机、情绪转折和画面感；语言清晰可拍，避免过度文学化；输出完整润色稿。
+
+项目：${projectName}
+风格：${style}
+
+原文：
+${sourceText}`
+  return customPrompt.value.trim()
+    ? `系统提示词：
+${polishSystemPrompt}
+
+用户提示词：
+${basePrompt}
+
+补充要求：
+${customPrompt.value.trim()}`
+    : `系统提示词：
+${polishSystemPrompt}
+
+用户提示词：
+${basePrompt}`
+})
 
 const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
@@ -586,6 +638,62 @@ onMounted(() => {
   gap: 10px;
 }
 
+.polish-compare-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.source-preview-panel,
+.polish-output-panel {
+  min-width: 0;
+}
+
+.source-preview-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f9fafb;
+}
+
+.panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+
+  h4 {
+    margin: 0;
+    font-size: 15px;
+  }
+}
+
+.source-preview-text {
+  max-height: calc(100vh - 300px);
+  overflow: auto;
+}
+
+.prompt-preview {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #eff6ff;
+
+  summary {
+    color: #1d4ed8;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  pre {
+    max-height: 300px;
+    overflow: auto;
+  }
+}
+
 .document-editor {
   display: grid;
   gap: 12px;
@@ -636,6 +744,16 @@ onMounted(() => {
   }
 }
 
+.source-preview-text,
+.prompt-preview pre {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #374151;
+  line-height: 1.7;
+  font-family: inherit;
+}
+
 .meta-line {
   display: flex;
   flex-wrap: wrap;
@@ -651,6 +769,10 @@ onMounted(() => {
 
 @media (max-width: 1200px) {
   .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .polish-compare-grid {
     grid-template-columns: 1fr;
   }
 
