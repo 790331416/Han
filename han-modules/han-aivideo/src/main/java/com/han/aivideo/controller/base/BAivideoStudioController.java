@@ -5,15 +5,19 @@ import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
+import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
+import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
+import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -23,10 +27,13 @@ public class BAivideoStudioController {
 
     private final IAivideoProjectService projectService;
     private final IAivideoTextService textService;
+    private final IAivideoSceneImageService sceneImageService;
 
-    protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService) {
+    protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
+                                       IAivideoSceneImageService sceneImageService) {
         this.projectService = projectService;
         this.textService = textService;
+        this.sceneImageService = sceneImageService;
     }
 
     protected R<PageResult<AiVideoProjectPo>> listProjects(AivideoProjectQuery query) {
@@ -107,6 +114,23 @@ public class BAivideoStudioController {
 
     protected R<Void> confirmAsset(AivideoAssetConfirmDto dto) {
         textService.confirmAsset(dto);
+        return R.ok();
+    }
+
+    protected R<AivideoPromptPreviewVo> previewSceneImagePrompt(AivideoSceneImageGenerateDto dto) {
+        return R.ok(sceneImageService.previewSceneImagePrompt(dto));
+    }
+
+    protected SseEmitter generateSceneImages(AivideoSceneImageGenerateDto dto) {
+        return sceneImageService.generateSceneImagesStream(dto);
+    }
+
+    protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {
+        return R.ok(sceneImageService.listMedia(projectId, assetType, bizType, bizId));
+    }
+
+    protected R<Void> selectMedia(AivideoMediaSelectDto dto) {
+        sceneImageService.selectMedia(dto);
         return R.ok();
     }
 }

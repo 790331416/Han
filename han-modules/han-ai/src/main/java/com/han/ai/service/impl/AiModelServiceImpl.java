@@ -23,6 +23,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AiModelServiceImpl extends AiServiceSupport implements IAiModelService {
 
+    private static final String MODEL_TYPE_IMAGE = "IMAGE";
+
     private final AiModelMapper aiModelMapper;
     private final AiModelCredentialResolver credentialResolver;
     private final AiOpenAiCompatibleClient openAiCompatibleClient;
@@ -105,6 +107,9 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         AiModelPo model = requireExisting(modelId);
         if (!STATUS_ENABLED.equals(model.getStatus())) {
             throw new BusinessException("当前模型已停用，无法测试");
+        }
+        if (MODEL_TYPE_IMAGE.equalsIgnoreCase(model.getModelType())) {
+            return openAiCompatibleClient.testImageGeneration(model, credentialResolver.resolveApiKey(model));
         }
         return openAiCompatibleClient.testConnection(model, credentialResolver.resolveApiKey(model));
     }

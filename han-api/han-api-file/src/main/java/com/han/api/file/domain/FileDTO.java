@@ -10,6 +10,8 @@ public class FileDTO implements Serializable {
      */
     private String name;
 
+    private Long id;
+
     /**
      * 文件URL
      */
@@ -22,12 +24,26 @@ public class FileDTO implements Serializable {
         this.url = url;
     }
 
+    public FileDTO(Long id, String name, String url) {
+        this.id = id;
+        this.name = name;
+        this.url = url;
+    }
+
     public String getName() {
         return name;
     }
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getUrl() {

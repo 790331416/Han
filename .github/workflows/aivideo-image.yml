@@ -26,6 +26,7 @@ on:
       - feature/aivideo-mvp1-text
     paths:
       - "han-api/han-api-ai/**"
+      - "han-api/han-api-file/**"
       - "han-common/**"
       - "han-modules/pom.xml"
       - "han-modules/han-aivideo/**"

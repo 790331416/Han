@@ -22,6 +22,8 @@ public class AivideoAdminSettingDto {
 
     private Long scenePromptTemplateId;
 
+    private Long sceneImagePromptTemplateId;
+
     private Long shotPromptTemplateId;
 
     private String defaultRatio;

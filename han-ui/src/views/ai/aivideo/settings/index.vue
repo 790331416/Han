@@ -52,7 +52,7 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="图片候选数">
-              <el-input-number v-model="form.imageCandidateCount" :min="1" :max="6" />
+              <el-input-number v-model="form.imageCandidateCount" :min="1" :max="4" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -68,6 +68,14 @@
           <el-col :span="4">
             <el-form-item label="内容审核">
               <el-switch v-model="form.contentAuditEnabled" active-value="1" inactive-value="0" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="场景图 Prompt">
+              <el-input v-model="form.sceneImagePromptTemplateId" placeholder="Prompt模板ID" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -92,7 +100,7 @@ const submitting = ref(false)
 const form = reactive<AivideoSetting>({
   defaultRatio: '9:16',
   defaultResolution: '720p',
-  imageCandidateCount: 3,
+  imageCandidateCount: 2,
   videoCandidateCount: 1,
   defaultShotDuration: 5,
   previewMode: '1',

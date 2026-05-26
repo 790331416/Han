@@ -1306,12 +1306,13 @@ CREATE TABLE IF NOT EXISTS ai_video_project_setting (
     script_prompt_template_id BIGINT,
     character_prompt_template_id BIGINT,
     scene_prompt_template_id BIGINT,
+    scene_image_prompt_template_id BIGINT,
     shot_prompt_template_id BIGINT,
     video_prompt_template_id BIGINT,
     default_ratio VARCHAR(20) DEFAULT '9:16',
     default_resolution VARCHAR(50) DEFAULT '720p',
     default_shot_duration INT DEFAULT 5,
-    image_candidate_count INT DEFAULT 3,
+    image_candidate_count INT DEFAULT 2,
     video_candidate_count INT DEFAULT 1,
     preview_mode CHAR(1) DEFAULT '1',
     content_audit_enabled CHAR(1) DEFAULT '1',
@@ -1879,24 +1880,58 @@ $aivideo_asset$,
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧资产提取';
 
+INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
+SELECT NULL, 'AI短剧场景图生成', 'aivideo_image',
+$$# AI短剧电影级纯净场景图生成
+
+请基于以下场景信息生成一张短剧可用的电影级纯净场景图。
+
+## 强制规则
+1. 纯场景、无人、无人物、无人物剪影、无脸、无身体部位，不出现任何角色。
+2. 画面必须可作为后续分镜视频背景，空间关系清晰，主体环境明确。
+3. 保留场景气氛、时间、天气、色调、道具和视觉特征。
+4. 必须包含 no humans, empty scene, landscape only。
+5. 不输出解释，只输出可直接用于图片模型的中文提示词。
+
+项目：{{projectName}}
+目标平台：{{targetPlatform}}
+风格：{{style}}
+画幅：{{ratio}}
+清晰度：{{resolution}}
+
+场景名称：{{sceneName}}
+场景类型：{{sceneType}}
+时间：{{timeDesc}}
+天气：{{weather}}
+氛围：{{atmosphere}}
+视觉特征：{{visualFeatures}}
+色调：{{colorTone}}
+道具：{{props}}
+禁用元素：{{negativeElements}}
+原始场景提示词：{{scenePromptText}}$$,
+'["projectName","targetPlatform","style","ratio","resolution","sceneName","sceneType","timeDesc","weather","atmosphere","visualFeatures","colorTone","props","negativeElements","scenePromptText"]',
+'AI短剧场景图生成默认模板，强制纯场景无人，服务于 MVP2 单场景候选图', 1, '0'
+WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧场景图生成');
+
 WITH tpl AS (
     SELECT
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id,
-        MAX(template_id) FILTER (WHERE template_name = 'AI短剧资产提取') AS asset_id
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧资产提取') AS asset_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id
     FROM ai_prompt_template
-    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成', 'AI短剧资产提取')
+    WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成', 'AI短剧资产提取', 'AI短剧场景图生成')
 )
 INSERT INTO ai_video_project_setting (
     project_id, tenant_id, polish_prompt_template_id, script_prompt_template_id,
-    character_prompt_template_id, scene_prompt_template_id, shot_prompt_template_id,
+    character_prompt_template_id, scene_prompt_template_id, scene_image_prompt_template_id, shot_prompt_template_id,
     default_ratio, default_resolution, default_shot_duration,
     image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled,
     create_by, create_time, update_by, update_time
 )
 SELECT NULL, 0, tpl.polish_id, tpl.script_id,
-       tpl.asset_id, tpl.asset_id, tpl.asset_id,
-       '9:16', '720p', 5, 3, 1, '1', '1',
+       tpl.asset_id, tpl.asset_id, tpl.scene_image_id, tpl.asset_id,
+       '9:16', '720p', 5, 2, 1, '1', '1',
        'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP
 FROM tpl
 WHERE tpl.polish_id IS NOT NULL

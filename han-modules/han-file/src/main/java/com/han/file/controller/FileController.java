@@ -40,6 +40,7 @@ public class FileController {
         try {
             FileStorageAccessService.FileAccessResult result = fileStorageAccessService.upload(file, request);
             FileDTO fileDTO = new FileDTO();
+            fileDTO.setId(result.getId());
             fileDTO.setName(result.getName());
             fileDTO.setUrl(result.getUrl());
             return R.ok(fileDTO);

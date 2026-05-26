@@ -258,7 +258,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultStyle(trimToNull(source.getDefaultStyle()));
         target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
-        target.setCandidateImageCount(source.getCandidateImageCount() == null ? 3 : source.getCandidateImageCount());
+        target.setCandidateImageCount(source.getCandidateImageCount() == null ? 2 : source.getCandidateImageCount());
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
         target.setBudgetLimit(source.getBudgetLimit());
         target.setSummary(trimToNull(source.getSummary()));
@@ -277,6 +277,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setScriptPromptTemplateId(global != null ? global.getScriptPromptTemplateId() : null);
         setting.setCharacterPromptTemplateId(global != null ? global.getCharacterPromptTemplateId() : null);
         setting.setScenePromptTemplateId(global != null ? global.getScenePromptTemplateId() : null);
+        setting.setSceneImagePromptTemplateId(global != null ? global.getSceneImagePromptTemplateId() : null);
         setting.setShotPromptTemplateId(global != null ? global.getShotPromptTemplateId() : null);
         setting.setDefaultRatio(defaultString(dto.getDefaultRatio(), defaultString(global != null ? global.getDefaultRatio() : null, "9:16")));
         setting.setDefaultResolution(defaultString(global != null ? global.getDefaultResolution() : null, "720p"));
@@ -284,7 +285,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
                 ? defaultInteger(global != null ? global.getDefaultShotDuration() : null, 5)
                 : dto.getDefaultShotDuration());
         setting.setImageCandidateCount(dto.getCandidateImageCount() == null
-                ? defaultInteger(global != null ? global.getImageCandidateCount() : null, 3)
+                ? defaultInteger(global != null ? global.getImageCandidateCount() : null, 2)
                 : dto.getCandidateImageCount());
         setting.setVideoCandidateCount(defaultInteger(global != null ? global.getVideoCandidateCount() : null, 1));
         setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(global != null ? global.getPreviewMode() : null, YES)));

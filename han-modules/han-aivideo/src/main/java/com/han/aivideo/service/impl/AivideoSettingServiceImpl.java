@@ -61,7 +61,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         setting.setDefaultRatio("9:16");
         setting.setDefaultResolution("720p");
         setting.setDefaultShotDuration(5);
-        setting.setImageCandidateCount(3);
+        setting.setImageCandidateCount(2);
         setting.setVideoCandidateCount(1);
         setting.setPreviewMode(YES);
         setting.setContentAuditEnabled(YES);
@@ -77,11 +77,12 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setScriptPromptTemplateId(source.getScriptPromptTemplateId());
         target.setCharacterPromptTemplateId(source.getCharacterPromptTemplateId());
         target.setScenePromptTemplateId(source.getScenePromptTemplateId());
+        target.setSceneImagePromptTemplateId(source.getSceneImagePromptTemplateId());
         target.setShotPromptTemplateId(source.getShotPromptTemplateId());
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultResolution(defaultString(source.getDefaultResolution(), "720p"));
         target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
-        target.setImageCandidateCount(source.getImageCandidateCount() == null ? 3 : source.getImageCandidateCount());
+        target.setImageCandidateCount(source.getImageCandidateCount() == null ? 2 : source.getImageCandidateCount());
         target.setVideoCandidateCount(source.getVideoCandidateCount() == null ? 1 : source.getVideoCandidateCount());
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
         target.setContentAuditEnabled(defaultString(source.getContentAuditEnabled(), YES));
@@ -97,6 +98,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setScriptPromptTemplateId(setting.getScriptPromptTemplateId());
         vo.setCharacterPromptTemplateId(setting.getCharacterPromptTemplateId());
         vo.setScenePromptTemplateId(setting.getScenePromptTemplateId());
+        vo.setSceneImagePromptTemplateId(setting.getSceneImagePromptTemplateId());
         vo.setShotPromptTemplateId(setting.getShotPromptTemplateId());
         vo.setDefaultRatio(setting.getDefaultRatio());
         vo.setDefaultResolution(setting.getDefaultResolution());

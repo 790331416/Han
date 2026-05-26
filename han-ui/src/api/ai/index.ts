@@ -451,6 +451,7 @@ export function hitTestKnowledgeBase(kbId: string | number, query: string) {
 
 export const modelTypeOptions = [
   { label: '大语言模型', value: 'LLM' },
+  { label: '图片生成模型', value: 'IMAGE' },
   { label: '向量模型', value: 'EMBEDDING' },
   { label: '重排模型', value: 'RERANK' },
   { label: '语音合成', value: 'TTS' },

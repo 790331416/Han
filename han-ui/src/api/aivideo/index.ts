@@ -103,6 +103,7 @@ export interface AivideoScene {
   atmosphere?: string
   visualFeatures?: string
   promptText?: string
+  lockedMediaId?: string | number
   confirmStatus?: string
 }
 
@@ -172,6 +173,7 @@ export interface AivideoSetting {
   scriptPromptTemplateId?: string | number
   characterPromptTemplateId?: string | number
   scenePromptTemplateId?: string | number
+  sceneImagePromptTemplateId?: string | number
   shotPromptTemplateId?: string | number
   defaultRatio?: string
   defaultResolution?: string
@@ -202,9 +204,30 @@ export interface AivideoPromptPreview {
   effectivePrompt?: string
 }
 
+export interface AivideoMediaAsset {
+  mediaId: string | number
+  projectId?: string | number
+  assetType?: string
+  bizType?: string
+  bizId?: string | number
+  fileId?: string | number
+  fileUrl?: string
+  thumbnailFileId?: string | number
+  promptText?: string
+  negativePrompt?: string
+  modelId?: string | number
+  taskId?: string | number
+  paramsJson?: string
+  candidateNo?: number
+  selected?: string
+  assetStatus?: string
+  createTime?: string
+}
+
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
 export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
+export const AIVIDEO_SCENE_IMAGE_STREAM_PATH = '/aivideo/studio/media/scene/generate/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
@@ -307,6 +330,38 @@ export function confirmAivideoAsset(data: {
   comment?: string
 }) {
   return post<void>('/aivideo/studio/assets/confirm', data)
+}
+
+export function previewAivideoSceneImagePrompt(data: {
+  projectId: string | number
+  sceneId: string | number
+  candidateCount?: number
+  modelId?: string | number
+  ratio?: string
+  resolution?: string
+  size?: string
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/media/scene/prompt-preview', data, { silentError: true })
+}
+
+export function listAivideoMedia(query: {
+  projectId: string | number
+  assetType?: string
+  bizType?: string
+  bizId?: string | number
+}) {
+  return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query)
+}
+
+export function selectAivideoMedia(data: {
+  projectId: string | number
+  mediaId: string | number
+  bizType?: string
+  bizId?: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/media/select', data)
 }
 
 export function listAivideoTask(query: AivideoTaskQuery) {

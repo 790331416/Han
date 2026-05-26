@@ -6,15 +6,19 @@ import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
+import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
+import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
+import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -27,15 +31,19 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
 
 @RestController("aivideoStudioController")
 @RequestMapping("/aivideo/studio")
 public class AivideoStudioController extends BAivideoStudioController {
 
-    public AivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService) {
-        super(projectService, textService);
+    public AivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
+                                   IAivideoSceneImageService sceneImageService) {
+        super(projectService, textService, sceneImageService);
     }
 
     @GetMapping("/project/list")
@@ -155,10 +163,36 @@ public class AivideoStudioController extends BAivideoStudioController {
         return getAssets(projectId);
     }
 
-    @RepeatSubmit
     @PostMapping("/assets/confirm")
     @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmProjectAsset(@Valid @RequestBody AivideoAssetConfirmDto dto) {
         return confirmAsset(dto);
+    }
+
+    @PostMapping("/media/scene/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewSceneImage(@Valid @RequestBody AivideoSceneImageGenerateDto dto) {
+        return previewSceneImagePrompt(dto);
+    }
+
+    @PostMapping(value = "/media/scene/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter generateSceneImageStream(@Valid @RequestBody AivideoSceneImageGenerateDto dto) {
+        return generateSceneImages(dto);
+    }
+
+    @GetMapping("/media/list")
+    @PreAuthorize("@ss.isLogin()")
+    public R<List<AivideoMediaAssetVo>> mediaList(@RequestParam Long projectId,
+                                                  @RequestParam(required = false) String assetType,
+                                                  @RequestParam(required = false) String bizType,
+                                                  @RequestParam(required = false) Long bizId) {
+        return listMedia(projectId, assetType, bizType, bizId);
+    }
+
+    @PostMapping("/media/select")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> selectProjectMedia(@Valid @RequestBody AivideoMediaSelectDto dto) {
+        return selectMedia(dto);
     }
 }

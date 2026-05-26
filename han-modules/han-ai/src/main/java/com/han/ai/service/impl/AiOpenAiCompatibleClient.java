@@ -36,6 +36,7 @@ class AiOpenAiCompatibleClient {
     private static final Duration STREAM_REQUEST_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
+    private static final String IMAGE_GENERATIONS_PATH = "/images/generations";
     private static final String CURL_STATUS_MARKER = "__CURL_STATUS__:";
 
     String testConnection(AiModelPo model, String apiKey) {
@@ -47,6 +48,16 @@ class AiOpenAiCompatibleClient {
             throw new BusinessException("模型连通性测试未返回有效内容");
         }
         return "模型真实连通成功: " + model.getProvider() + "/" + model.getModelCode() + " -> " + content.trim();
+    }
+
+    String testImageGeneration(AiModelPo model, String apiKey) {
+        ImageGenerationResult result = imageGeneration(model, apiKey,
+                "纯净无人室内空间，白色墙面，自然光，empty room, no humans", 1, "1024x1024");
+        if (result == null || result.images().isEmpty()) {
+            throw new BusinessException("图片模型连通性测试未返回有效图片");
+        }
+        return "图片模型真实连通成功: " + model.getProvider() + "/" + model.getModelCode()
+                + " -> " + result.images().size() + " 张候选图";
     }
 
     String chatCompletion(AiModelPo model, String apiKey, List<ProviderMessage> messages, Integer maxTokensOverride) {
@@ -90,6 +101,28 @@ class AiOpenAiCompatibleClient {
         }
     }
 
+    ImageGenerationResult imageGeneration(AiModelPo model, String apiKey, String prompt, Integer candidateCount, String size) {
+        validateImageArguments(model, apiKey, prompt);
+        ImageGenerationRequest payload = buildImageRequest(model, prompt, candidateCount, size);
+        URI requestUri = buildImageGenerationUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
+        try {
+            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
+            }
+            ImageGenerationResponse generation = XuJsonUtil.parseObject(response.body(), ImageGenerationResponse.class);
+            List<GeneratedImage> images = extractImages(generation);
+            if (images.isEmpty()) {
+                throw new BusinessException("图片模型未返回有效图片");
+            }
+            return new ImageGenerationResult(images);
+        } catch (IOException e) {
+            log.warn("AI image provider request IO error, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
+            throw new BusinessException("图片模型调用失败: " + e.getMessage());
+        }
+    }
+
     private void validateArguments(AiModelPo model, String apiKey, List<ProviderMessage> messages) {
         if (model == null) {
             throw new BusinessException("模型配置不能为空");
@@ -108,6 +141,24 @@ class AiOpenAiCompatibleClient {
         }
     }
 
+    private void validateImageArguments(AiModelPo model, String apiKey, String prompt) {
+        if (model == null) {
+            throw new BusinessException("图片模型配置不能为空");
+        }
+        if (!StringUtils.hasText(model.getBaseUrl())) {
+            throw new BusinessException("图片模型 Base URL 未配置");
+        }
+        if (!StringUtils.hasText(model.getModelCode())) {
+            throw new BusinessException("图片模型标识未配置");
+        }
+        if (!StringUtils.hasText(apiKey)) {
+            throw new BusinessException("未找到可用的图片模型 API Key");
+        }
+        if (!StringUtils.hasText(prompt)) {
+            throw new BusinessException("图片生成提示词不能为空");
+        }
+    }
+
     private ChatCompletionRequest buildRequest(AiModelPo model, List<ProviderMessage> messages, Integer maxTokensOverride) {
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.model = model.getModelCode();
@@ -121,12 +172,29 @@ class AiOpenAiCompatibleClient {
         return request;
     }
 
+    private ImageGenerationRequest buildImageRequest(AiModelPo model, String prompt, Integer candidateCount, String size) {
+        ImageGenerationRequest request = new ImageGenerationRequest();
+        request.model = model.getModelCode();
+        request.prompt = prompt;
+        request.n = candidateCount == null || candidateCount < 1 ? 1 : Math.min(candidateCount, 4);
+        request.size = StringUtils.hasText(size) ? size.trim() : "1024x1024";
+        return request;
+    }
+
     private URI buildChatCompletionUri(String baseUrl) {
         String normalizedBaseUrl = baseUrl.trim();
         if (normalizedBaseUrl.endsWith("/")) {
             normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
         }
         return URI.create(normalizedBaseUrl + CHAT_COMPLETIONS_PATH);
+    }
+
+    private URI buildImageGenerationUri(String baseUrl) {
+        String normalizedBaseUrl = baseUrl.trim();
+        if (normalizedBaseUrl.endsWith("/")) {
+            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
+        }
+        return URI.create(normalizedBaseUrl + IMAGE_GENERATIONS_PATH);
     }
 
     private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody) throws IOException {
@@ -365,6 +433,24 @@ class AiOpenAiCompatibleClient {
         return null;
     }
 
+    private List<GeneratedImage> extractImages(ImageGenerationResponse response) {
+        List<GeneratedImage> images = new ArrayList<>();
+        if (response == null || response.data == null) {
+            return images;
+        }
+        for (int i = 0; i < response.data.size(); i++) {
+            ImageData data = response.data.get(i);
+            if (data == null) {
+                continue;
+            }
+            if (StringUtils.hasText(data.url) || StringUtils.hasText(data.base64Json)) {
+                images.add(new GeneratedImage(i + 1, data.url, data.base64Json,
+                        StringUtils.hasText(data.mimeType) ? data.mimeType : "image/png", data.revisedPrompt));
+            }
+        }
+        return images;
+    }
+
     private String buildErrorMessage(String body, int statusCode) {
         try {
             ErrorEnvelope envelope = XuJsonUtil.parseObject(body, ErrorEnvelope.class);
@@ -413,6 +499,20 @@ class AiOpenAiCompatibleClient {
         public Boolean stream;
     }
 
+    static class ImageGenerationRequest {
+        @JsonProperty("model")
+        public String model;
+
+        @JsonProperty("prompt")
+        public String prompt;
+
+        @JsonProperty("n")
+        public Integer n;
+
+        @JsonProperty("size")
+        public String size;
+    }
+
     static class ChatMessage {
         @JsonProperty("role")
         public String role;
@@ -448,6 +548,27 @@ class AiOpenAiCompatibleClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ImageGenerationResponse {
+        @JsonProperty("data")
+        public List<ImageData> data;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ImageData {
+        @JsonProperty("url")
+        public String url;
+
+        @JsonProperty("b64_json")
+        public String base64Json;
+
+        @JsonProperty("mime_type")
+        public String mimeType;
+
+        @JsonProperty("revised_prompt")
+        public String revisedPrompt;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     static class StreamChoice {
         @JsonProperty("delta")
         public ChatMessage delta;
@@ -466,5 +587,11 @@ class AiOpenAiCompatibleClient {
     }
 
     record HttpResponsePayload(int statusCode, String body) {
+    }
+
+    record GeneratedImage(int index, String url, String base64Data, String mimeType, String revisedPrompt) {
+    }
+
+    record ImageGenerationResult(List<GeneratedImage> images) {
     }
 }

@@ -312,8 +312,14 @@
                 <el-table-column prop="sceneName" label="场景" min-width="140" />
                 <el-table-column prop="atmosphere" label="氛围" min-width="160" />
                 <el-table-column prop="visualFeatures" label="视觉特征" min-width="240" show-overflow-tooltip />
+                <el-table-column label="场景图" width="120">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
+                    <el-tag v-else type="info">未选</el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="100">
+                <el-table-column label="操作" width="190">
                   <template #default="{ row }">
                     <el-button
                       size="small"
@@ -322,6 +328,9 @@
                       @click="handleConfirmAsset('SCENE', row.sceneId)"
                     >
                       确认
+                    </el-button>
+                    <el-button size="small" type="primary" plain @click="openSceneImageDrawer(row)">
+                      场景图
                     </el-button>
                   </template>
                 </el-table-column>
@@ -389,6 +398,58 @@
         </el-form>
       </aside>
     </div>
+
+    <el-drawer v-model="sceneImageDrawerVisible" size="680px" :title="sceneImageDrawerTitle">
+      <div v-if="selectedSceneForImage" class="scene-image-drawer">
+        <details class="prompt-preview" open>
+          <summary>查看本次场景图提示词</summary>
+          <pre>{{ sceneImagePromptPreviewText || '暂无可预览提示词' }}</pre>
+        </details>
+
+        <div class="scene-image-actions">
+          <el-button
+            type="primary"
+            :icon="MagicStick"
+            :loading="sceneImageGenerating"
+            :disabled="sceneImageGenerating"
+            @click="handleGenerateSceneImages"
+          >
+            生成 {{ params.imageCandidateCount || 2 }} 张候选图
+          </el-button>
+          <el-button :icon="Refresh" :disabled="sceneImageGenerating" @click="loadSceneImageCandidates">
+            刷新候选
+          </el-button>
+        </div>
+
+        <el-empty v-if="!sceneImageCandidates.length && !sceneImageGenerating" description="暂无场景候选图" />
+        <div v-else class="scene-image-grid">
+          <article
+            v-for="item in sceneImageCandidates"
+            :key="item.mediaId"
+            class="scene-image-card"
+            :class="{ selected: item.selected === '1' }"
+          >
+            <div class="scene-image-thumb">
+              <img v-if="item.fileUrl" :src="item.fileUrl" alt="场景候选图" />
+              <el-empty v-else description="无图片" />
+            </div>
+            <div class="scene-image-meta">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
+            </div>
+            <el-button
+              type="success"
+              size="small"
+              :disabled="item.selected === '1'"
+              :loading="sceneImageSelectingIds.has(String(item.mediaId))"
+              @click="handleSelectSceneImage(item)"
+            >
+              选择这张
+            </el-button>
+          </article>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -400,6 +461,7 @@ import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, 
 import {
   AIVIDEO_ASSET_STREAM_PATH,
   AIVIDEO_POLISH_STREAM_PATH,
+  AIVIDEO_SCENE_IMAGE_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
   aivideoProjectStageOptions,
   confirmAivideoAsset,
@@ -407,12 +469,17 @@ import {
   confirmAivideoPolish,
   confirmAivideoScript,
   getAivideoProject,
+  listAivideoMedia,
   previewAivideoAssetPrompt,
   previewAivideoPolishPrompt,
+  previewAivideoSceneImagePrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
   saveAivideoDocument,
-  type AivideoProjectDetail
+  selectAivideoMedia,
+  type AivideoMediaAsset,
+  type AivideoProjectDetail,
+  type AivideoScene
 } from '@/api/aivideo'
 import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
 import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
@@ -438,6 +505,12 @@ const assetStreaming = ref(false)
 const assetStreamText = ref('')
 const assetStreamMeta = ref<AiStreamMetaPayload>({})
 const assetPromptPreviewText = ref('')
+const sceneImageDrawerVisible = ref(false)
+const selectedSceneForImage = ref<AivideoScene>()
+const sceneImagePromptPreviewText = ref('')
+const sceneImageGenerating = ref(false)
+const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
+const sceneImageSelectingIds = ref<Set<string>>(new Set())
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
@@ -456,7 +529,7 @@ const params = reactive({
   defaultRatio: '9:16',
   defaultResolution: '720p',
   defaultShotDuration: 5,
-  imageCandidateCount: 3,
+  imageCandidateCount: 2,
   previewMode: '1'
 })
 
@@ -477,6 +550,9 @@ const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
 const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
+const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneName
+  ? `场景图候选：${selectedSceneForImage.value.sceneName}`
+  : '场景图候选')
 const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
@@ -498,7 +574,7 @@ async function loadDetail() {
       defaultRatio: res.data.setting?.defaultRatio || res.data.project?.defaultRatio || '9:16',
       defaultResolution: res.data.setting?.defaultResolution || '720p',
       defaultShotDuration: res.data.setting?.defaultShotDuration || res.data.project?.defaultShotDuration || 5,
-      imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 3,
+      imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 2,
       previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1'
     })
     await refreshPolishPromptPreview()
@@ -535,6 +611,7 @@ function schedulePolishPromptPreview() {
     refreshPolishPromptPreview()
     refreshScriptPromptPreview()
     refreshAssetPromptPreview()
+    refreshSceneImagePromptPreview()
   }, 350)
 }
 
@@ -568,6 +645,49 @@ async function refreshAssetPromptPreview() {
   } catch (_error) {
     assetPromptPreviewText.value = ''
   }
+}
+
+async function refreshSceneImagePromptPreview() {
+  const scene = selectedSceneForImage.value
+  if (!scene) {
+    sceneImagePromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoSceneImagePrompt({
+      projectId: projectId.value,
+      sceneId: scene.sceneId,
+      candidateCount: params.imageCandidateCount || 2,
+      ratio: params.defaultRatio,
+      resolution: params.defaultResolution,
+      customPrompt: customPrompt.value
+    })
+    sceneImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    sceneImagePromptPreviewText.value = ''
+  }
+}
+
+async function openSceneImageDrawer(scene: AivideoScene) {
+  selectedSceneForImage.value = scene
+  sceneImageDrawerVisible.value = true
+  await refreshSceneImagePromptPreview()
+  await loadSceneImageCandidates()
+}
+
+async function loadSceneImageCandidates() {
+  const scene = selectedSceneForImage.value
+  if (!scene) {
+    sceneImageCandidates.value = []
+    return
+  }
+  const res = await listAivideoMedia({
+    projectId: projectId.value,
+    assetType: 'SCENE_IMAGE',
+    bizType: 'SCENE',
+    bizId: scene.sceneId
+  })
+  sceneImageCandidates.value = res.data || []
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {
@@ -804,6 +924,74 @@ async function handleConfirmAsset(targetType: string, targetId: string | number)
   }
 }
 
+async function handleGenerateSceneImages() {
+  const scene = selectedSceneForImage.value
+  if (!scene || sceneImageGenerating.value) {
+    return
+  }
+  sceneImageGenerating.value = true
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_SCENE_IMAGE_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        sceneId: scene.sceneId,
+        candidateCount: params.imageCandidateCount || 2,
+        ratio: params.defaultRatio,
+        resolution: params.defaultResolution,
+        customPrompt: customPrompt.value
+      },
+      onMeta: (payload) => {
+        if (payload.event === 'candidate' && payload.asset) {
+          const asset = payload.asset as AivideoMediaAsset
+          sceneImageCandidates.value = [
+            asset,
+            ...sceneImageCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+          ]
+        }
+      },
+      onError: (message) => {
+        ElMessage.error(message || '场景图生成失败')
+      }
+    })
+    ElMessage.success('场景图候选已生成')
+    await loadSceneImageCandidates()
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '场景图生成失败')
+  } finally {
+    sceneImageGenerating.value = false
+  }
+}
+
+async function handleSelectSceneImage(item: AivideoMediaAsset) {
+  const key = String(item.mediaId)
+  if (sceneImageSelectingIds.value.has(key)) {
+    return
+  }
+  const next = new Set(sceneImageSelectingIds.value)
+  next.add(key)
+  sceneImageSelectingIds.value = next
+  try {
+    await selectAivideoMedia({
+      projectId: projectId.value,
+      mediaId: item.mediaId,
+      bizType: 'SCENE',
+      bizId: item.bizId
+    })
+    ElMessage.success('场景图已选定')
+    await loadSceneImageCandidates()
+    await loadDetail()
+  } finally {
+    const done = new Set(sceneImageSelectingIds.value)
+    done.delete(key)
+    sceneImageSelectingIds.value = done
+  }
+}
+
 function isAssetConfirming(targetType: string, targetId: string | number) {
   return confirmingAssetKeys.value.has(assetConfirmKey(targetType, targetId))
 }
@@ -987,6 +1175,62 @@ onBeforeUnmount(() => {
     max-height: 300px;
     overflow: auto;
   }
+}
+
+.scene-image-drawer {
+  display: grid;
+  gap: 14px;
+}
+
+.scene-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scene-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.scene-image-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+
+  &.selected {
+    border-color: #67c23a;
+    background: #f0f9eb;
+  }
+}
+
+.scene-image-thumb {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 6px;
+  background: #f3f4f6;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.scene-image-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .document-editor {

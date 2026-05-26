@@ -1,6 +1,8 @@
 package com.han.file.service;
 
 import com.han.common.core.util.FileUploadUtils;
+import com.han.common.core.util.HanIdUtil;
+import com.han.common.security.context.SecurityContextHolder;
 import com.han.starter.storage.StorageProvider;
 import com.han.starter.storage.config.StorageConfigRecord;
 import com.han.starter.storage.config.StorageConfigRepository;
@@ -12,13 +14,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,6 +36,7 @@ public class FileStorageAccessService {
 
     private final StorageProperties storageProperties;
     private final ObjectProvider<StorageConfigRepository> storageConfigRepositoryProvider;
+    private final JdbcTemplate jdbcTemplate;
     private final Map<String, StorageProvider> providerCache = new ConcurrentHashMap<>();
 
     /**
@@ -41,6 +47,7 @@ public class FileStorageAccessService {
      * @return 上传结果
      * @throws IOException 上传失败
      */
+    @Transactional(rollbackFor = Exception.class)
     public FileAccessResult upload(MultipartFile file, HttpServletRequest request) throws IOException {
         StorageConfigRecord record = resolveActiveRecord();
         String name = FileUploadUtils.extractFilename(file);
@@ -50,7 +57,8 @@ public class FileStorageAccessService {
                 .replaceQuery(null)
                 .buildAndExpand(record.getLocator(), name)
                 .toUriString();
-        return new FileAccessResult(name, url);
+        Long fileId = insertFileRecord(file, record, name, url);
+        return new FileAccessResult(fileId, name, url);
     }
 
     /**
@@ -105,16 +113,55 @@ public class FileStorageAccessService {
         return providerCache.computeIfAbsent(runtimeConfig.signature(), key -> new RustFSStorageProvider(runtimeConfig));
     }
 
+    private Long insertFileRecord(MultipartFile file, StorageConfigRecord record, String name, String url) {
+        Long fileId = HanIdUtil.snowflakeId();
+        String contentType = file.getContentType();
+        String extension = "";
+        int dotIndex = name.lastIndexOf('.');
+        if (dotIndex >= 0 && dotIndex < name.length() - 1) {
+            extension = name.substring(dotIndex + 1).toLowerCase();
+        }
+        Long tenantId = SecurityContextHolder.getTenantId();
+        Long userId = SecurityContextHolder.getUserId();
+        jdbcTemplate.update("""
+                        insert into sys_file (
+                          id, tenant_id, file_name, file_path, file_url, file_size, file_type,
+                          mime_type, storage_type, bucket, md5, create_by, create_time, del_flag
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                fileId,
+                tenantId == null ? 0L : tenantId,
+                name,
+                name,
+                url,
+                file.getSize(),
+                extension,
+                contentType == null ? "" : contentType,
+                "rustfs",
+                record.getLocator(),
+                "",
+                userId,
+                LocalDateTime.now(),
+                0);
+        return fileId;
+    }
+
     /**
      * 上传结果。
      */
     public static final class FileAccessResult {
+        private final Long id;
         private final String name;
         private final String url;
 
-        public FileAccessResult(String name, String url) {
+        public FileAccessResult(Long id, String name, String url) {
+            this.id = id;
             this.name = name;
             this.url = url;
+        }
+
+        public Long getId() {
+            return id;
         }
 
         public String getName() {
