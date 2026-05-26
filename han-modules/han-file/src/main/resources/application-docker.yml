@@ -12,6 +12,17 @@ spring:
         namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USER:han}
+    password: ${DB_PASSWORD:han@2026}
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      idle-timeout: 300000
+      connection-timeout: 30000
+      max-lifetime: 1800000
   data:
     redis:
       host: ${REDIS_HOST:localhost}

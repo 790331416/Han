@@ -29,3 +29,9 @@
 - GitHub Actions 是否生成并推送新镜像。
 - `tengx2` 是否拉取新镜像并恢复 healthy。
 - 场景图生成是否能调用 IMAGE 模型、上传到 `han-file`，并在工作台候选图抽屉中 2 选 1。
+
+## 2026-05-26 发布修正
+
+- 发现 `han-file:065cfc3` 启动失败：新增 `JdbcTemplate` 后，Docker 配置缺少 PostgreSQL datasource。
+- 修正方式：给 `han-file` 的 `application-docker.yml` 补充数据库连接配置，保持运行时从 `.env` 注入真实环境变量。
+- 临时处置：线上 `han-file` 已先回滚到本地旧 `latest` 保持健康，其它 `han-ai`、`han-aivideo`、`han-ui` 继续运行 `065cfc3`。
