@@ -27,6 +27,10 @@ public interface IAivideoTextService {
 
     AiVideoContentVersionPo generateScript(AivideoTextGenerateDto dto);
 
+    SseEmitter generateScriptStream(AivideoTextGenerateDto dto);
+
+    AivideoPromptPreviewVo previewScriptPrompt(AivideoTextGenerateDto dto);
+
     void confirmScript(AivideoContentConfirmDto dto);
 
     AivideoAssetSummaryVo extractAssets(AivideoAssetExtractDto dto);

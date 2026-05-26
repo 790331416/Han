@@ -111,6 +111,18 @@ public class AivideoStudioController extends BAivideoStudioController {
         return generateScript(dto);
     }
 
+    @PostMapping(value = "/text/script/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter generateScriptTextStream(@Valid @RequestBody AivideoTextGenerateDto dto) {
+        return generateScriptStream(dto);
+    }
+
+    @PostMapping("/text/script/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewScriptTextPrompt(@Valid @RequestBody AivideoTextGenerateDto dto) {
+        return previewScriptPrompt(dto);
+    }
+
     @RepeatSubmit
     @PostMapping("/text/script/confirm")
     @PreAuthorize("@ss.isLogin()")

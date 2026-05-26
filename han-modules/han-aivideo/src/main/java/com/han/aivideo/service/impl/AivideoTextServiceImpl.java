@@ -222,6 +222,54 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     @Override
+    public SseEmitter generateScriptStream(AivideoTextGenerateDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoContentVersionPo polish = requireSelectedContent(project.getProjectId(), CONTENT_POLISH, "请先确认润色稿");
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = setting != null ? setting.getScriptPromptTemplateId() : null;
+        String fallbackPrompt = buildScriptPrompt(project, polish.getContentText());
+        Map<String, String> variables = baseVariables(project);
+        variables.put("polishedText", polish.getContentText());
+        variables.put("rawText", polish.getContentText());
+        String taskPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        AiVideoGenerationTaskPo task = createTask(project, TASK_SCRIPT, TARGET_CONTENT, polish.getVersionId(),
+                setting != null ? setting.getTextModelId() : null, promptTemplateId, taskPrompt, dto.getCustomPrompt(), variables);
+        String operator = resolveOperator();
+
+        SseEmitter emitter = new SseEmitter(300_000L);
+        CompletableFuture.runAsync(() -> runScriptStream(project, setting, promptTemplateId,
+                dto.getCustomPrompt(), fallbackPrompt, variables, task, operator, emitter));
+        return emitter;
+    }
+
+    @Override
+    public AivideoPromptPreviewVo previewScriptPrompt(AivideoTextGenerateDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoContentVersionPo polish = requireSelectedContent(project.getProjectId(), CONTENT_POLISH, "请先确认润色稿");
+        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
+        Long promptTemplateId = setting != null ? setting.getScriptPromptTemplateId() : null;
+        String fallbackPrompt = buildScriptPrompt(project, polish.getContentText());
+        Map<String, String> variables = baseVariables(project);
+        variables.put("polishedText", polish.getContentText());
+        variables.put("rawText", polish.getContentText());
+        String userPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+
+        AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
+        vo.setPromptTemplateId(promptTemplateId);
+        vo.setSystemPrompt(TEXT_SYSTEM_PROMPT);
+        vo.setUserPrompt(userPrompt);
+        vo.setCustomPrompt(dto.getCustomPrompt());
+        vo.setEffectivePrompt("系统提示词：\n" + TEXT_SYSTEM_PROMPT + "\n\n用户提示词：\n" + userPrompt);
+        return vo;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirmScript(AivideoContentConfirmDto dto) {
         confirmContent(dto, CONTENT_SCRIPT, AivideoProjectStage.SCRIPT_CONFIRMED);
@@ -357,6 +405,37 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             }
             AiVideoContentVersionPo version = buildContentVersion(project, document.getDocumentId(), CONTENT_POLISH,
                     "润色稿 v" + nextVersionNo(project.getProjectId(), CONTENT_POLISH),
+                    result.content(), null, promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+            version.setCreateBy(operator);
+            version.setUpdateBy(operator);
+            contentVersionMapper.insert(version);
+            markTaskSuccess(task, version.getModelId(), null);
+            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            meta.put("versionId", version.getVersionId());
+            meta.put("taskId", task.getTaskId());
+            sendSse(emitter, "meta", meta);
+            emitter.send(SseEmitter.event().data("[DONE]"));
+            emitter.complete();
+        } catch (Exception exception) {
+            markTaskFailed(task, exception.getMessage());
+            completeWithError(emitter, exception.getMessage());
+        }
+    }
+
+    private void runScriptStream(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
+                                 Long promptTemplateId, String customPrompt, String userPrompt,
+                                 Map<String, String> variables, AiVideoGenerationTaskPo task,
+                                 String operator, SseEmitter emitter) {
+        try {
+            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
+                    customPrompt, userPrompt, variables);
+            AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
+                    chunk -> sendSse(emitter, "delta", chunk));
+            if (!StringUtils.hasText(result.content())) {
+                throw new BusinessException("AI 文本生成结果为空");
+            }
+            AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_SCRIPT,
+                    "短剧剧本 v" + nextVersionNo(project.getProjectId(), CONTENT_SCRIPT),
                     result.content(), null, promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
             version.setCreateBy(operator);
             version.setUpdateBy(operator);

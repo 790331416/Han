@@ -203,6 +203,7 @@ export interface AivideoPromptPreview {
 }
 
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
+export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
@@ -263,6 +264,13 @@ export function generateAivideoScript(data: {
   customPrompt?: string
 }) {
   return post<AivideoContentVersion>('/aivideo/studio/text/script/generate', data)
+}
+
+export function previewAivideoScriptPrompt(data: {
+  projectId: string | number
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/text/script/prompt-preview', data, { silentError: true })
 }
 
 export function confirmAivideoScript(data: {

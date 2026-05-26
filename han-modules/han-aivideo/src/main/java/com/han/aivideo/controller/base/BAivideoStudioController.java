@@ -76,6 +76,14 @@ public class BAivideoStudioController {
         return R.ok(textService.generateScript(dto));
     }
 
+    protected SseEmitter generateScriptStream(AivideoTextGenerateDto dto) {
+        return textService.generateScriptStream(dto);
+    }
+
+    protected R<AivideoPromptPreviewVo> previewScriptPrompt(AivideoTextGenerateDto dto) {
+        return R.ok(textService.previewScriptPrompt(dto));
+    }
+
     protected R<Void> confirmScript(AivideoContentConfirmDto dto) {
         textService.confirmScript(dto);
         return R.ok();

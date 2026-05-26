@@ -100,7 +100,7 @@
               {{ polishVersions.length ? '重新润色' : '生成润色' }}
             </el-button>
           </div>
-          <div class="polish-compare-grid">
+          <div class="content-compare-grid">
             <aside class="source-preview-panel">
               <div class="panel-title-row">
                 <h4>待润色原文</h4>
@@ -159,32 +159,62 @@
             <el-button
               type="primary"
               :icon="Tickets"
-              :disabled="!selectedPolish"
-              :loading="submitting"
+              :disabled="!selectedPolish || scriptStreaming"
+              :loading="submitting || scriptStreaming"
               @click="handleGenerateScript"
             >
               {{ scriptVersions.length ? '重新生成剧本' : '生成剧本' }}
             </el-button>
           </div>
-          <el-empty v-if="!scriptVersions.length" description="暂无短剧剧本" />
-          <article v-for="item in scriptVersions" :key="item.versionId" class="text-block">
-            <div class="meta-line">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `剧本 v${item.versionNo}` }}</el-tag>
-              <span>{{ item.confirmStatus || 'PENDING' }}</span>
-              <span>{{ item.createTime || '-' }}</span>
-              <el-button
-                size="small"
-                type="success"
-                :icon="Check"
-                :disabled="item.selected === '1'"
-                :loading="submitting"
-                @click="handleConfirmScript(item.versionId)"
-              >
-                确认
-              </el-button>
+          <div class="content-compare-grid">
+            <aside class="source-preview-panel">
+              <div class="panel-title-row">
+                <h4>已确认润色稿</h4>
+                <el-tag v-if="selectedPolish" type="success">已确认</el-tag>
+              </div>
+              <div v-if="selectedPolish" class="meta-line">
+                <el-tag>{{ selectedPolish.title || `润色稿 v${selectedPolish.versionNo}` }}</el-tag>
+                <span>{{ selectedPolish.contentText?.length || 0 }} 字</span>
+                <span>{{ selectedPolish.createTime || '-' }}</span>
+              </div>
+              <pre v-if="selectedPolish?.contentText" class="source-preview-text">{{ selectedPolish.contentText }}</pre>
+              <el-empty v-else description="请先确认润色稿" />
+            </aside>
+
+            <div class="script-output-panel">
+              <details class="prompt-preview">
+                <summary>查看本次剧本提示词</summary>
+                <pre>{{ scriptPromptPreviewText || '暂无可预览提示词' }}</pre>
+              </details>
+              <el-empty v-if="!scriptVersions.length && !scriptStreamText" description="暂无短剧剧本" />
+              <article v-if="scriptStreamText" class="text-block stream-block">
+                <div class="meta-line">
+                  <el-tag type="warning">{{ scriptStreaming ? '生成中' : '最新生成' }}</el-tag>
+                  <span v-if="scriptStreamMeta.taskId">任务 {{ scriptStreamMeta.taskId }}</span>
+                  <span v-if="scriptStreamMeta.modelCode">{{ scriptStreamMeta.modelCode }}</span>
+                </div>
+                <pre>{{ scriptStreamText }}</pre>
+              </article>
+              <article v-for="item in scriptVersions" :key="item.versionId" class="text-block">
+                <div class="meta-line">
+                  <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `剧本 v${item.versionNo}` }}</el-tag>
+                  <span>{{ item.confirmStatus || 'PENDING' }}</span>
+                  <span>{{ item.createTime || '-' }}</span>
+                  <el-button
+                    size="small"
+                    type="success"
+                    :icon="Check"
+                    :disabled="item.selected === '1'"
+                    :loading="submitting"
+                    @click="handleConfirmScript(item.versionId)"
+                  >
+                    确认
+                  </el-button>
+                </div>
+                <pre>{{ item.contentText }}</pre>
+              </article>
             </div>
-            <pre>{{ item.contentText }}</pre>
-          </article>
+          </div>
         </div>
 
         <div v-if="activeTab === 'assets'" class="result-section">
@@ -310,15 +340,16 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
 import {
   AIVIDEO_POLISH_STREAM_PATH,
+  AIVIDEO_SCRIPT_STREAM_PATH,
   aivideoProjectStageOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
   confirmAivideoPolish,
   confirmAivideoScript,
   extractAivideoAssets,
-  generateAivideoScript,
   getAivideoProject,
   previewAivideoPolishPrompt,
+  previewAivideoScriptPrompt,
   ratioOptions,
   saveAivideoDocument,
   type AivideoProjectDetail
@@ -337,6 +368,10 @@ const polishStreaming = ref(false)
 const polishStreamText = ref('')
 const polishStreamMeta = ref<AiStreamMetaPayload>({})
 const polishPromptPreviewText = ref('')
+const scriptStreaming = ref(false)
+const scriptStreamText = ref('')
+const scriptStreamMeta = ref<AiStreamMetaPayload>({})
+const scriptPromptPreviewText = ref('')
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
 const sourceFileInputRef = ref<HTMLInputElement>()
@@ -396,6 +431,7 @@ async function loadDetail() {
       previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1'
     })
     await refreshPolishPromptPreview()
+    await refreshScriptPromptPreview()
   } finally {
     loading.value = false
   }
@@ -425,7 +461,24 @@ function schedulePolishPromptPreview() {
   }
   promptPreviewTimer = setTimeout(() => {
     refreshPolishPromptPreview()
+    refreshScriptPromptPreview()
   }, 350)
+}
+
+async function refreshScriptPromptPreview() {
+  if (!selectedPolish.value) {
+    scriptPromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoScriptPrompt({
+      projectId: projectId.value,
+      customPrompt: customPrompt.value
+    })
+    scriptPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    scriptPromptPreviewText.value = ''
+  }
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {
@@ -548,14 +601,43 @@ function handleConfirmPolish(versionId: string | number) {
   )
 }
 
-function handleGenerateScript() {
-  withSubmit(
-    () => generateAivideoScript({
-      projectId: projectId.value,
-      customPrompt: customPrompt.value
-    }).then(() => undefined),
-    '短剧剧本已生成'
-  )
+async function handleGenerateScript() {
+  if (!selectedPolish.value) {
+    ElMessage.warning('请先确认润色稿')
+    return
+  }
+  scriptStreaming.value = true
+  submitting.value = true
+  scriptStreamText.value = ''
+  scriptStreamMeta.value = {}
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_SCRIPT_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        customPrompt: customPrompt.value
+      },
+      onDelta: ({ fullContent }) => {
+        scriptStreamText.value = fullContent
+      },
+      onMeta: (payload) => {
+        scriptStreamMeta.value = payload
+      },
+      onError: (message) => {
+        ElMessage.error(message || '短剧剧本生成失败')
+      }
+    })
+    ElMessage.success('短剧剧本已生成')
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '短剧剧本生成失败')
+  } finally {
+    scriptStreaming.value = false
+    submitting.value = false
+  }
 }
 
 function handleConfirmScript(versionId: string | number) {
@@ -694,7 +776,7 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.polish-compare-grid {
+.content-compare-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
@@ -702,7 +784,8 @@ onBeforeUnmount(() => {
 }
 
 .source-preview-panel,
-.polish-output-panel {
+.polish-output-panel,
+.script-output-panel {
   min-width: 0;
 }
 
@@ -828,7 +911,7 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .polish-compare-grid {
+  .content-compare-grid {
     grid-template-columns: 1fr;
   }
 
