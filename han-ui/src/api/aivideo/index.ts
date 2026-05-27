@@ -125,6 +125,9 @@ export interface AivideoShot {
   promptText?: string
   confirmStatus?: string
   generationStatus?: string
+  referenceMediaIds?: string
+  keyframeMediaId?: string | number
+  videoMediaId?: string | number
 }
 
 export interface AivideoAssetSummary {
@@ -177,6 +180,7 @@ export interface AivideoSetting {
   characterImagePromptTemplateId?: string | number
   sceneImagePromptTemplateId?: string | number
   shotPromptTemplateId?: string | number
+  videoPromptTemplateId?: string | number
   defaultRatio?: string
   defaultResolution?: string
   imageCandidateCount?: number
@@ -232,6 +236,7 @@ export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/
 export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
 export const AIVIDEO_CHARACTER_IMAGE_STREAM_PATH = '/aivideo/studio/media/character/generate/stream'
 export const AIVIDEO_SCENE_IMAGE_STREAM_PATH = '/aivideo/studio/media/scene/generate/stream'
+export const AIVIDEO_SHOT_VIDEO_STREAM_PATH = '/aivideo/studio/media/shot/video/generate/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
@@ -360,6 +365,19 @@ export function previewAivideoCharacterImagePrompt(data: {
   customPrompt?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/character/prompt-preview', data, { silentError: true })
+}
+
+export function previewAivideoShotVideoPrompt(data: {
+  projectId: string | number
+  shotId: string | number
+  candidateCount?: number
+  modelId?: string | number
+  ratio?: string
+  resolution?: string
+  durationSec?: number
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
 }
 
 export function listAivideoMedia(query: {

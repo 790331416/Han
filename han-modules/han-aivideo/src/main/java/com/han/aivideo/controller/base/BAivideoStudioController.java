@@ -9,6 +9,7 @@ import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
+import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
@@ -20,6 +21,7 @@ import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
+import com.han.aivideo.service.IAivideoShotVideoService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -36,12 +38,15 @@ public class BAivideoStudioController {
     private final IAivideoProjectService projectService;
     private final IAivideoTextService textService;
     private final IAivideoSceneImageService sceneImageService;
+    private final IAivideoShotVideoService shotVideoService;
 
     protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
-                                       IAivideoSceneImageService sceneImageService) {
+                                       IAivideoSceneImageService sceneImageService,
+                                       IAivideoShotVideoService shotVideoService) {
         this.projectService = projectService;
         this.textService = textService;
         this.sceneImageService = sceneImageService;
+        this.shotVideoService = shotVideoService;
     }
 
     protected R<PageResult<AiVideoProjectPo>> listProjects(AivideoProjectQuery query) {
@@ -139,6 +144,14 @@ public class BAivideoStudioController {
 
     protected SseEmitter generateCharacterImages(AivideoCharacterImageGenerateDto dto) {
         return sceneImageService.generateCharacterImagesStream(dto);
+    }
+
+    protected R<AivideoPromptPreviewVo> previewShotVideoPrompt(AivideoShotVideoGenerateDto dto) {
+        return R.ok(shotVideoService.previewShotVideoPrompt(dto));
+    }
+
+    protected SseEmitter generateShotVideos(AivideoShotVideoGenerateDto dto) {
+        return shotVideoService.generateShotVideosStream(dto);
     }
 
     protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {

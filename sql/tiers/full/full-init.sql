@@ -2216,6 +2216,61 @@ $aivideo_character_image$,
 'AI短剧角色图生成默认模板，来自AIVideo角色构建参考提示词优化版', 1, '0'
 WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧角色图生成');
 
+INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
+SELECT NULL, 'AI短剧分镜视频生成', 'aivideo_video',
+$aivideo_shot_video$
+# AI短剧单分镜视频生成默认模板
+
+你是电影级短剧分镜视频导演。请基于已经确认的场景图和单条分镜信息，生成适合视频模型的图生视频提示词。
+
+## 核心目标
+1. 只生成当前单个镜头，不生成整剧，不跨镜头扩写。
+2. 必须保持参考场景图的空间关系、时间、天气、色调和主体环境稳定。
+3. 以“可拍摄、可剪辑、可复现”为优先，动作、运镜、情绪和光影要清晰。
+4. 不生成字幕、水印、logo、花字、说明文字或与剧情无关的元素。
+5. 若参考图是纯场景，允许根据分镜描述加入必要角色运动；若只需要空镜，明确“保持无人纯场景”。
+
+## 视频生成要求
+- 画幅：{{ratio}}
+- 清晰度：{{resolution}}
+- 时长：{{durationSec}} 秒
+- 参考图：{{referenceImageUrl}}
+- 项目：{{projectName}}
+- 目标平台：{{targetPlatform}}
+- 整体风格：{{style}}
+
+## 分镜信息
+- 集数：{{episodeNo}}
+- 镜头号：{{shotNo}}
+- 场景名称：{{sceneName}}
+- 场景类型：{{sceneType}}
+- 时间：{{sceneTime}}
+- 天气：{{weather}}
+- 氛围：{{atmosphere}}
+- 视觉特征：{{visualFeatures}}
+- 出场角色：{{characterNames}}
+- 景别/镜头类型：{{shotType}}
+- 机位：{{cameraPosition}}
+- 运镜：{{cameraMovement}}
+- 动作：{{actionDesc}}
+- 对白：{{dialogue}}
+- 旁白：{{voiceOver}}
+- 情绪：{{emotion}}
+- 原始分镜提示词：{{shotPromptText}}
+
+## 输出格式
+请直接输出一段视频模型可用的中文提示词。结构建议：
+1. 参考图保持要求。
+2. 镜头起始画面。
+3. 角色或环境动作。
+4. 运镜方式。
+5. 光影、氛围和情绪。
+6. 负面约束：无字幕、无水印、无 logo、无花字、无无关文字。
+$aivideo_shot_video$,
+'["projectName","targetPlatform","style","ratio","resolution","durationSec","episodeNo","shotNo","sceneName","sceneType","sceneTime","weather","atmosphere","visualFeatures","characterNames","shotType","cameraPosition","cameraMovement","actionDesc","dialogue","voiceOver","emotion","shotPromptText","referenceImageUrl"]',
+'AI短剧分镜视频生成默认模板，服务于 MVP3 单分镜图生视频', 1, '0'
+WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧分镜视频生成');
+
 WITH tpl AS (
     SELECT
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
@@ -2224,21 +2279,22 @@ WITH tpl AS (
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景设计') AS scene_id,
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧分镜提取') AS shot_id,
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧角色图生成') AS character_image_id,
-        MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧分镜视频生成') AS video_prompt_id
     FROM ai_prompt_template
     WHERE template_name IN ('AI短剧原文润色', 'AI短剧剧本生成', 'AI短剧角色构建', 'AI短剧场景设计',
-                            'AI短剧分镜提取', 'AI短剧角色图生成', 'AI短剧场景图生成')
+                            'AI短剧分镜提取', 'AI短剧角色图生成', 'AI短剧场景图生成', 'AI短剧分镜视频生成')
 )
 INSERT INTO ai_video_project_setting (
     project_id, tenant_id, polish_prompt_template_id, script_prompt_template_id,
     character_prompt_template_id, scene_prompt_template_id, character_image_prompt_template_id,
-    scene_image_prompt_template_id, shot_prompt_template_id,
+    scene_image_prompt_template_id, shot_prompt_template_id, video_prompt_template_id,
     default_ratio, default_resolution, default_shot_duration,
     image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled, media_access_policy,
     create_by, create_time, update_by, update_time
 )
 SELECT NULL, 0, tpl.polish_id, tpl.script_id,
-       tpl.character_id, tpl.scene_id, tpl.character_image_id, tpl.scene_image_id, tpl.shot_id,
+       tpl.character_id, tpl.scene_id, tpl.character_image_id, tpl.scene_image_id, tpl.shot_id, tpl.video_prompt_id,
        '9:16', '720p', 5, 2, 1, '1', '1', 'PRIVATE',
        'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP
 FROM tpl
@@ -2249,6 +2305,7 @@ WHERE tpl.polish_id IS NOT NULL
   AND tpl.character_image_id IS NOT NULL
   AND tpl.scene_image_id IS NOT NULL
   AND tpl.shot_id IS NOT NULL
+  AND tpl.video_prompt_id IS NOT NULL
   AND NOT EXISTS (
       SELECT 1 FROM ai_video_project_setting s
       WHERE s.project_id IS NULL AND COALESCE(s.tenant_id, 0) = 0

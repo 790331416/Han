@@ -28,6 +28,8 @@ public class AivideoAdminSettingVo {
 
     private Long shotPromptTemplateId;
 
+    private Long videoPromptTemplateId;
+
     private String defaultRatio;
 
     private String defaultResolution;

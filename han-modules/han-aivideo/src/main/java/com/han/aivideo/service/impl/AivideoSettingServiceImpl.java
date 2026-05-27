@@ -87,6 +87,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setCharacterImagePromptTemplateId(source.getCharacterImagePromptTemplateId());
         target.setSceneImagePromptTemplateId(source.getSceneImagePromptTemplateId());
         target.setShotPromptTemplateId(source.getShotPromptTemplateId());
+        target.setVideoPromptTemplateId(source.getVideoPromptTemplateId());
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultResolution(defaultString(source.getDefaultResolution(), "720p"));
         target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
@@ -110,6 +111,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setCharacterImagePromptTemplateId(setting.getCharacterImagePromptTemplateId());
         vo.setSceneImagePromptTemplateId(setting.getSceneImagePromptTemplateId());
         vo.setShotPromptTemplateId(setting.getShotPromptTemplateId());
+        vo.setVideoPromptTemplateId(setting.getVideoPromptTemplateId());
         vo.setDefaultRatio(setting.getDefaultRatio());
         vo.setDefaultResolution(setting.getDefaultResolution());
         vo.setDefaultShotDuration(setting.getDefaultShotDuration());

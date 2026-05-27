@@ -246,7 +246,23 @@
             </div>
           </div>
 
-          <div class="content-compare-grid asset-workspace-grid">
+          <div class="asset-context-toggle">
+            <div>
+              <strong>已确认剧本与提示词</strong>
+              <el-tag v-if="selectedScript" type="success" effect="plain">剧本已确认</el-tag>
+              <el-tag v-if="hasAssets" type="success" effect="plain">资产已提取</el-tag>
+            </div>
+            <el-button
+              text
+              type="primary"
+              :icon="assetContextCollapsed ? ArrowDown : ArrowUp"
+              @click="assetContextCollapsed = !assetContextCollapsed"
+            >
+              {{ assetContextCollapsed ? '展开上下文' : '收起上下文' }}
+            </el-button>
+          </div>
+
+          <div v-show="!assetContextCollapsed || assetStreaming" class="content-compare-grid asset-workspace-grid">
             <aside class="source-preview-panel">
               <div class="panel-title-row">
                 <h4>已确认短剧剧本</h4>
@@ -351,8 +367,14 @@
                 <el-table-column prop="durationSec" label="秒数" width="90" />
                 <el-table-column prop="cameraMovement" label="运动" min-width="120" />
                 <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
+                <el-table-column label="视频" width="120">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.videoMediaId" type="success">已选 #{{ row.videoMediaId }}</el-tag>
+                    <el-tag v-else type="info">未选</el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="100">
+                <el-table-column label="操作" width="190">
                   <template #default="{ row }">
                     <el-button
                       size="small"
@@ -361,6 +383,9 @@
                       @click="handleConfirmAsset('SHOT', row.shotId)"
                     >
                       确认
+                    </el-button>
+                    <el-button size="small" type="primary" plain :icon="VideoCamera" @click="openShotVideoDrawer(row)">
+                      视频
                     </el-button>
                   </template>
                 </el-table-column>
@@ -400,6 +425,9 @@
           </el-form-item>
           <el-form-item label="图片候选数">
             <el-input-number v-model="params.imageCandidateCount" disabled />
+          </el-form-item>
+          <el-form-item label="视频候选数">
+            <el-input-number v-model="params.videoCandidateCount" disabled />
           </el-form-item>
           <el-form-item label="补充提示词">
             <el-input v-model="customPrompt" type="textarea" :rows="8" maxlength="1200" show-word-limit />
@@ -519,6 +547,63 @@
         </div>
       </div>
     </el-drawer>
+
+    <el-drawer v-model="shotVideoDrawerVisible" size="760px" :title="shotVideoDrawerTitle">
+      <div v-if="selectedShotForVideo" class="scene-image-drawer">
+        <details class="prompt-preview" open>
+          <summary>查看本次分镜视频提示词</summary>
+          <pre>{{ shotVideoPromptPreviewText || '暂无可预览提示词' }}</pre>
+        </details>
+
+        <div class="scene-image-actions">
+          <el-button
+            type="primary"
+            :icon="VideoCamera"
+            :loading="shotVideoGenerating"
+            :disabled="shotVideoGenerating"
+            @click="handleGenerateShotVideos"
+          >
+            生成 {{ params.videoCandidateCount || 1 }} 条候选视频
+          </el-button>
+          <el-button :icon="Refresh" :disabled="shotVideoGenerating" @click="loadShotVideoCandidates">
+            刷新候选
+          </el-button>
+        </div>
+
+        <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating" description="暂无分镜视频候选" />
+        <div v-else class="scene-image-grid">
+          <article
+            v-for="item in shotVideoCandidates"
+            :key="item.mediaId"
+            class="scene-image-card"
+            :class="{ selected: item.selected === '1' }"
+          >
+            <div class="scene-image-thumb">
+              <video
+                v-if="shotVideoPreviewUrls[String(item.mediaId)]"
+                :src="shotVideoPreviewUrls[String(item.mediaId)]"
+                controls
+                playsinline
+              />
+              <el-empty v-else description="视频加载中" />
+            </div>
+            <div class="scene-image-meta">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
+            </div>
+            <el-button
+              type="success"
+              size="small"
+              :disabled="item.selected === '1'"
+              :loading="shotVideoSelectingIds.has(String(item.mediaId))"
+              @click="handleSelectShotVideo(item)"
+            >
+              选择这条
+            </el-button>
+          </article>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -526,13 +611,14 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowUp, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled, VideoCamera } from '@element-plus/icons-vue'
 import {
   AIVIDEO_ASSET_STREAM_PATH,
   AIVIDEO_CHARACTER_IMAGE_STREAM_PATH,
   AIVIDEO_POLISH_STREAM_PATH,
   AIVIDEO_SCENE_IMAGE_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
+  AIVIDEO_SHOT_VIDEO_STREAM_PATH,
   aivideoProjectStageOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
@@ -545,6 +631,7 @@ import {
   previewAivideoCharacterImagePrompt,
   previewAivideoPolishPrompt,
   previewAivideoSceneImagePrompt,
+  previewAivideoShotVideoPrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
   saveAivideoDocument,
@@ -552,7 +639,8 @@ import {
   type AivideoCharacter,
   type AivideoMediaAsset,
   type AivideoProjectDetail,
-  type AivideoScene
+  type AivideoScene,
+  type AivideoShot
 } from '@/api/aivideo'
 import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
 import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
@@ -592,10 +680,18 @@ const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
 const sceneImagePreviewUrls = ref<Record<string, string>>({})
 const sceneImageSelectingIds = ref<Set<string>>(new Set())
+const shotVideoDrawerVisible = ref(false)
+const selectedShotForVideo = ref<AivideoShot>()
+const shotVideoPromptPreviewText = ref('')
+const shotVideoGenerating = ref(false)
+const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
+const shotVideoPreviewUrls = ref<Record<string, string>>({})
+const shotVideoSelectingIds = ref<Set<string>>(new Set())
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
 const customPrompt = ref('')
+const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
@@ -611,6 +707,7 @@ const params = reactive({
   defaultResolution: '720p',
   defaultShotDuration: 5,
   imageCandidateCount: 2,
+  videoCandidateCount: 1,
   previewMode: '1'
 })
 
@@ -637,6 +734,9 @@ const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneN
 const characterImageDrawerTitle = computed(() => selectedCharacterForImage.value?.characterName
   ? `角色图候选：${selectedCharacterForImage.value.characterName}`
   : '角色图候选')
+const shotVideoDrawerTitle = computed(() => selectedShotForVideo.value
+  ? `分镜视频候选：第 ${selectedShotForVideo.value.episodeNo || 1} 集 / 镜头 ${selectedShotForVideo.value.shotNo || '-'}`
+  : '分镜视频候选')
 const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
@@ -659,6 +759,7 @@ async function loadDetail() {
       defaultResolution: res.data.setting?.defaultResolution || '720p',
       defaultShotDuration: res.data.setting?.defaultShotDuration || res.data.project?.defaultShotDuration || 5,
       imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 2,
+      videoCandidateCount: res.data.setting?.videoCandidateCount || 1,
       previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1'
     })
     await refreshPolishPromptPreview()
@@ -697,6 +798,7 @@ function schedulePolishPromptPreview() {
     refreshAssetPromptPreview()
     refreshCharacterImagePromptPreview()
     refreshSceneImagePromptPreview()
+    refreshShotVideoPromptPreview()
   }, 350)
 }
 
@@ -771,6 +873,28 @@ async function refreshCharacterImagePromptPreview() {
     characterImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
     characterImagePromptPreviewText.value = ''
+  }
+}
+
+async function refreshShotVideoPromptPreview() {
+  const shot = selectedShotForVideo.value
+  if (!shot) {
+    shotVideoPromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoShotVideoPrompt({
+      projectId: projectId.value,
+      shotId: shot.shotId,
+      candidateCount: params.videoCandidateCount || 1,
+      ratio: params.defaultRatio,
+      resolution: params.defaultResolution,
+      durationSec: shot.durationSec || params.defaultShotDuration,
+      customPrompt: customPrompt.value
+    })
+    shotVideoPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    shotVideoPromptPreviewText.value = ''
   }
 }
 
@@ -882,6 +1006,61 @@ async function loadSceneImageCandidates() {
   const candidates = res.data || []
   sceneImageCandidates.value = candidates
   await refreshSceneImagePreviewUrls(candidates)
+}
+
+async function openShotVideoDrawer(shot: AivideoShot) {
+  selectedShotForVideo.value = shot
+  shotVideoDrawerVisible.value = true
+  await refreshShotVideoPromptPreview()
+  await loadShotVideoCandidates()
+}
+
+function revokeShotVideoPreviewUrls() {
+  Object.values(shotVideoPreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  shotVideoPreviewUrls.value = {}
+}
+
+async function loadShotVideoPreviewUrl(asset: AivideoMediaAsset) {
+  const key = String(asset.mediaId)
+  try {
+    const response = await previewAivideoMedia(asset.mediaId)
+    const blob = (response as any).data as Blob
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      return
+    }
+    const objectUrl = URL.createObjectURL(blob)
+    const next = { ...shotVideoPreviewUrls.value }
+    if (next[key]) {
+      URL.revokeObjectURL(next[key])
+    }
+    next[key] = objectUrl
+    shotVideoPreviewUrls.value = next
+  } catch (_error) {
+    // Preview errors are surfaced by the generation/list actions; keep the card placeholder.
+  }
+}
+
+async function refreshShotVideoPreviewUrls(candidates: AivideoMediaAsset[]) {
+  revokeShotVideoPreviewUrls()
+  await Promise.all(candidates.map((item) => loadShotVideoPreviewUrl(item)))
+}
+
+async function loadShotVideoCandidates() {
+  const shot = selectedShotForVideo.value
+  if (!shot) {
+    shotVideoCandidates.value = []
+    revokeShotVideoPreviewUrls()
+    return
+  }
+  const res = await listAivideoMedia({
+    projectId: projectId.value,
+    assetType: 'SHOT_VIDEO',
+    bizType: 'SHOT',
+    bizId: shot.shotId
+  })
+  const candidates = res.data || []
+  shotVideoCandidates.value = candidates
+  await refreshShotVideoPreviewUrls(candidates)
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {
@@ -1045,7 +1224,9 @@ async function handleGenerateScript() {
 
 function handleConfirmScript(versionId: string | number) {
   withSubmit(
-    () => confirmAivideoScript({ projectId: projectId.value, versionId }).then(() => undefined),
+    () => confirmAivideoScript({ projectId: projectId.value, versionId }).then(() => {
+      assetContextCollapsed.value = true
+    }),
     '短剧剧本已确认'
   )
 }
@@ -1097,6 +1278,7 @@ async function handleConfirmAllAssets() {
   try {
     await confirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL' })
     ElMessage.success('资产已确认')
+    assetContextCollapsed.value = true
     await loadDetail()
   } finally {
     confirmingAllAssets.value = false
@@ -1112,6 +1294,7 @@ async function handleConfirmAsset(targetType: string, targetId: string | number)
   try {
     await confirmAivideoAsset({ projectId: projectId.value, targetType, targetId })
     ElMessage.success('资产已确认')
+    assetContextCollapsed.value = true
     await loadDetail()
   } finally {
     setAssetConfirming(key, false)
@@ -1206,6 +1389,51 @@ async function handleGenerateSceneImages() {
   }
 }
 
+async function handleGenerateShotVideos() {
+  const shot = selectedShotForVideo.value
+  if (!shot || shotVideoGenerating.value) {
+    return
+  }
+  shotVideoGenerating.value = true
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_SHOT_VIDEO_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        shotId: shot.shotId,
+        candidateCount: params.videoCandidateCount || 1,
+        ratio: params.defaultRatio,
+        resolution: params.defaultResolution,
+        durationSec: shot.durationSec || params.defaultShotDuration,
+        customPrompt: customPrompt.value
+      },
+      onMeta: (payload) => {
+        if (payload.event === 'candidate' && payload.asset) {
+          const asset = payload.asset as AivideoMediaAsset
+          shotVideoCandidates.value = [
+            asset,
+            ...shotVideoCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+          ]
+          void loadShotVideoPreviewUrl(asset)
+        }
+      },
+      onError: (message) => {
+        ElMessage.error(message || '分镜视频生成失败')
+      }
+    })
+    ElMessage.success('分镜视频候选已生成')
+    await loadShotVideoCandidates()
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '分镜视频生成失败')
+  } finally {
+    shotVideoGenerating.value = false
+  }
+}
+
 async function handleSelectCharacterImage(item: AivideoMediaAsset) {
   const key = String(item.mediaId)
   if (characterImageSelectingIds.value.has(key)) {
@@ -1256,6 +1484,31 @@ async function handleSelectSceneImage(item: AivideoMediaAsset) {
   }
 }
 
+async function handleSelectShotVideo(item: AivideoMediaAsset) {
+  const key = String(item.mediaId)
+  if (shotVideoSelectingIds.value.has(key)) {
+    return
+  }
+  const next = new Set(shotVideoSelectingIds.value)
+  next.add(key)
+  shotVideoSelectingIds.value = next
+  try {
+    await selectAivideoMedia({
+      projectId: projectId.value,
+      mediaId: item.mediaId,
+      bizType: 'SHOT',
+      bizId: item.bizId
+    })
+    ElMessage.success('分镜视频已选定')
+    await loadShotVideoCandidates()
+    await loadDetail()
+  } finally {
+    const done = new Set(shotVideoSelectingIds.value)
+    done.delete(key)
+    shotVideoSelectingIds.value = done
+  }
+}
+
 function isAssetConfirming(targetType: string, targetId: string | number) {
   return confirmingAssetKeys.value.has(assetConfirmKey(targetType, targetId))
 }
@@ -1288,6 +1541,7 @@ onBeforeUnmount(() => {
   }
   revokeCharacterImagePreviewUrls()
   revokeSceneImagePreviewUrls()
+  revokeShotVideoPreviewUrls()
 })
 </script>
 
@@ -1399,6 +1653,26 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
 }
 
+.asset-context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+
+  > div {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
 .source-preview-panel {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -1484,6 +1758,12 @@ onBeforeUnmount(() => {
   background: #f3f4f6;
 
   img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  video {
     width: 100%;
     height: 100%;
     object-fit: cover;

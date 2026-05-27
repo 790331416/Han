@@ -2,6 +2,8 @@ package com.han.ai.service.impl;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.ai.domain.po.AiModelPo;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
@@ -22,7 +24,11 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -37,7 +43,9 @@ class AiOpenAiCompatibleClient {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String IMAGE_GENERATIONS_PATH = "/images/generations";
+    private static final String CONTENT_GENERATIONS_TASKS_PATH = "/contents/generations/tasks";
     private static final String CURL_STATUS_MARKER = "__CURL_STATUS__:";
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     String testConnection(AiModelPo model, String apiKey) {
         String content = chatCompletion(model, apiKey, List.of(
@@ -58,6 +66,12 @@ class AiOpenAiCompatibleClient {
         }
         return "图片模型真实连通成功: " + model.getProvider() + "/" + model.getModelCode()
                 + " -> " + result.images().size() + " 张候选图";
+    }
+
+    String testVideoConfiguration(AiModelPo model, String apiKey) {
+        validateVideoConfig(model, apiKey);
+        return "视频模型配置校验通过: " + model.getProvider() + "/" + model.getModelCode()
+                + "。视频真实生成请在短剧工作台选择分镜后发起，避免配置页测试产生费用。";
     }
 
     String chatCompletion(AiModelPo model, String apiKey, List<ProviderMessage> messages, Integer maxTokensOverride) {
@@ -123,6 +137,54 @@ class AiOpenAiCompatibleClient {
         }
     }
 
+    VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, String referenceImageUrl,
+                                          Integer durationSec, String ratio, String resolution) {
+        validateVideoArguments(model, apiKey, prompt, referenceImageUrl);
+        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, durationSec, ratio, resolution);
+        URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
+        try {
+            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
+            }
+            VideoGenerationResult result = parseVideoGenerationResult(response.body());
+            if (!StringUtils.hasText(result.providerTaskId()) && !StringUtils.hasText(result.videoUrl())) {
+                throw new BusinessException("视频模型未返回任务ID或视频地址");
+            }
+            return result;
+        } catch (IOException e) {
+            log.warn("AI video provider request IO error, provider={}, modelCode={}", model.getProvider(), model.getModelCode(), e);
+            throw new BusinessException("视频模型调用失败: " + e.getMessage());
+        }
+    }
+
+    VideoGenerationResult queryVideoGenerationTask(AiModelPo model, String apiKey, String providerTaskId) {
+        validateVideoConfig(model, apiKey);
+        if (!StringUtils.hasText(providerTaskId)) {
+            throw new BusinessException("视频任务ID不能为空");
+        }
+        URI requestUri = buildContentGenerationTaskQueryUri(model.getBaseUrl(), providerTaskId.trim());
+        try {
+            HttpResponsePayload response = executeGetRequest(requestUri, apiKey);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
+            }
+            VideoGenerationResult result = parseVideoGenerationResult(response.body());
+            return new VideoGenerationResult(
+                    StringUtils.hasText(result.providerTaskId()) ? result.providerTaskId() : providerTaskId.trim(),
+                    result.taskStatus(),
+                    result.progress(),
+                    result.videoUrl(),
+                    result.rawResponse()
+            );
+        } catch (IOException e) {
+            log.warn("AI video provider task query IO error, provider={}, modelCode={}, taskId={}",
+                    model.getProvider(), model.getModelCode(), providerTaskId, e);
+            throw new BusinessException("视频任务查询失败: " + e.getMessage());
+        }
+    }
+
     private void validateArguments(AiModelPo model, String apiKey, List<ProviderMessage> messages) {
         if (model == null) {
             throw new BusinessException("模型配置不能为空");
@@ -159,6 +221,31 @@ class AiOpenAiCompatibleClient {
         }
     }
 
+    private void validateVideoConfig(AiModelPo model, String apiKey) {
+        if (model == null) {
+            throw new BusinessException("视频模型配置不能为空");
+        }
+        if (!StringUtils.hasText(model.getBaseUrl())) {
+            throw new BusinessException("视频模型 Base URL 未配置");
+        }
+        if (!StringUtils.hasText(model.getModelCode())) {
+            throw new BusinessException("视频模型标识未配置");
+        }
+        if (!StringUtils.hasText(apiKey)) {
+            throw new BusinessException("未找到可用的视频模型 API Key");
+        }
+    }
+
+    private void validateVideoArguments(AiModelPo model, String apiKey, String prompt, String referenceImageUrl) {
+        validateVideoConfig(model, apiKey);
+        if (!StringUtils.hasText(prompt)) {
+            throw new BusinessException("视频生成提示词不能为空");
+        }
+        if (!StringUtils.hasText(referenceImageUrl)) {
+            throw new BusinessException("视频生成参考图地址不能为空");
+        }
+    }
+
     private ChatCompletionRequest buildRequest(AiModelPo model, List<ProviderMessage> messages, Integer maxTokensOverride) {
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.model = model.getModelCode();
@@ -181,6 +268,19 @@ class AiOpenAiCompatibleClient {
         return request;
     }
 
+    private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
+                                                     Integer durationSec, String ratio, String resolution) {
+        VideoGenerationRequest request = new VideoGenerationRequest();
+        request.model = model.getModelCode();
+        request.content = new ArrayList<>();
+        request.content.add(VideoContentPart.text(prompt));
+        request.content.add(VideoContentPart.image(referenceImageUrl, "first_frame"));
+        request.duration = durationSec == null || durationSec < 1 ? 5 : Math.min(durationSec, 30);
+        request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
+        request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
+        return request;
+    }
+
     private URI buildChatCompletionUri(String baseUrl) {
         String normalizedBaseUrl = baseUrl.trim();
         if (normalizedBaseUrl.endsWith("/")) {
@@ -197,12 +297,43 @@ class AiOpenAiCompatibleClient {
         return URI.create(normalizedBaseUrl + IMAGE_GENERATIONS_PATH);
     }
 
+    private URI buildContentGenerationTasksUri(String baseUrl) {
+        String normalizedBaseUrl = baseUrl.trim();
+        if (normalizedBaseUrl.endsWith("/")) {
+            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
+        }
+        return URI.create(normalizedBaseUrl + CONTENT_GENERATIONS_TASKS_PATH);
+    }
+
+    private URI buildContentGenerationTaskQueryUri(String baseUrl, String providerTaskId) {
+        return URI.create(buildContentGenerationTasksUri(baseUrl).toString() + "/" + providerTaskId);
+    }
+
     private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody) throws IOException {
         try {
             return executeWithHttpURLConnection(requestUri, apiKey, requestBody);
         } catch (UnknownHostException exception) {
             log.warn("Primary provider request hit DNS resolution issue, falling back to curl, uri={}", requestUri, exception);
             return executeWithCurl(requestUri, apiKey, requestBody);
+        }
+    }
+
+    private HttpResponsePayload executeGetRequest(URI requestUri, String apiKey) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) requestUri.toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+            connection.setReadTimeout((int) REQUEST_TIMEOUT.toMillis());
+            connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
+            connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+            int statusCode = connection.getResponseCode();
+            String responseBody = readBody(statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream());
+            return new HttpResponsePayload(statusCode, responseBody);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -451,6 +582,117 @@ class AiOpenAiCompatibleClient {
         return images;
     }
 
+    private VideoGenerationResult parseVideoGenerationResult(String responseBody) {
+        try {
+            JsonNode root = JSON_MAPPER.readTree(responseBody);
+            String providerTaskId = firstText(root, Set.of("id", "task_id", "taskId", "generation_id", "generationId"));
+            String status = firstText(root, Set.of("status", "task_status", "taskStatus"));
+            Integer progress = firstInteger(root, Set.of("progress", "percent", "percentage"));
+            String videoUrl = findVideoUrl(root);
+            return new VideoGenerationResult(providerTaskId, status, progress, videoUrl, responseBody);
+        } catch (IOException exception) {
+            throw new BusinessException("视频模型返回内容不是有效 JSON");
+        }
+    }
+
+    private String firstText(JsonNode node, Set<String> fieldNames) {
+        if (node == null || node.isNull()) {
+            return "";
+        }
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (fieldNames.contains(field.getKey()) && field.getValue().isValueNode()) {
+                    String value = field.getValue().asText("");
+                    if (StringUtils.hasText(value)) {
+                        return value.trim();
+                    }
+                }
+            }
+            fields = node.fields();
+            while (fields.hasNext()) {
+                String nested = firstText(fields.next().getValue(), fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        } else if (node.isArray()) {
+            for (JsonNode item : node) {
+                String nested = firstText(item, fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        }
+        return "";
+    }
+
+    private Integer firstInteger(JsonNode node, Set<String> fieldNames) {
+        String value = firstText(node, fieldNames);
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.replace("%", "").trim());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private String findVideoUrl(JsonNode node) {
+        String explicit = findNamedUrl(node, Set.of("video_url", "videoUrl", "video", "url"));
+        if (StringUtils.hasText(explicit)) {
+            return explicit;
+        }
+        return "";
+    }
+
+    private String findNamedUrl(JsonNode node, Set<String> fieldNames) {
+        if (node == null || node.isNull()) {
+            return "";
+        }
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (fieldNames.contains(field.getKey()) && field.getValue().isValueNode()) {
+                    String value = field.getValue().asText("");
+                    if (isUsableVideoUrl(field.getKey(), value)) {
+                        return value.trim();
+                    }
+                }
+            }
+            fields = node.fields();
+            while (fields.hasNext()) {
+                String nested = findNamedUrl(fields.next().getValue(), fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        } else if (node.isArray()) {
+            for (JsonNode item : node) {
+                String nested = findNamedUrl(item, fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        }
+        return "";
+    }
+
+    private boolean isUsableVideoUrl(String fieldName, String value) {
+        if (!StringUtils.hasText(value) || !value.startsWith("http")) {
+            return false;
+        }
+        String normalizedField = fieldName == null ? "" : fieldName.toLowerCase();
+        String normalizedValue = value.toLowerCase();
+        return normalizedField.contains("video")
+                || normalizedValue.contains(".mp4")
+                || normalizedValue.contains(".mov")
+                || normalizedValue.contains("video");
+    }
+
     private String buildErrorMessage(String body, int statusCode) {
         try {
             ErrorEnvelope envelope = XuJsonUtil.parseObject(body, ErrorEnvelope.class);
@@ -511,6 +753,53 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("size")
         public String size;
+    }
+
+    static class VideoGenerationRequest {
+        @JsonProperty("model")
+        public String model;
+
+        @JsonProperty("content")
+        public List<VideoContentPart> content;
+
+        @JsonProperty("duration")
+        public Integer duration;
+
+        @JsonProperty("ratio")
+        public String ratio;
+
+        @JsonProperty("resolution")
+        public String resolution;
+    }
+
+    static class VideoContentPart {
+        @JsonProperty("type")
+        public String type;
+
+        @JsonProperty("text")
+        public String text;
+
+        @JsonProperty("image_url")
+        public Map<String, String> imageUrl;
+
+        @JsonProperty("role")
+        public String role;
+
+        static VideoContentPart text(String text) {
+            VideoContentPart part = new VideoContentPart();
+            part.type = "text";
+            part.text = text;
+            return part;
+        }
+
+        static VideoContentPart image(String url, String role) {
+            VideoContentPart part = new VideoContentPart();
+            part.type = "image_url";
+            part.role = role;
+            part.imageUrl = new LinkedHashMap<>();
+            part.imageUrl.put("url", url);
+            return part;
+        }
     }
 
     static class ChatMessage {
@@ -593,5 +882,8 @@ class AiOpenAiCompatibleClient {
     }
 
     record ImageGenerationResult(List<GeneratedImage> images) {
+    }
+
+    record VideoGenerationResult(String providerTaskId, String taskStatus, Integer progress, String videoUrl, String rawResponse) {
     }
 }

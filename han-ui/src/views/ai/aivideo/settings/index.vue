@@ -94,6 +94,11 @@
               <el-input v-model="form.sceneImagePromptTemplateId" placeholder="Prompt模板ID" />
             </el-form-item>
           </el-col>
+          <el-col :span="8">
+            <el-form-item label="视频 Prompt">
+              <el-input v-model="form.videoPromptTemplateId" placeholder="Prompt模板ID" />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <el-form-item label="备注">

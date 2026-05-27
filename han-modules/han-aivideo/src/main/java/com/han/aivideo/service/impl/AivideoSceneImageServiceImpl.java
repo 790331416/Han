@@ -12,6 +12,7 @@ import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
+import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
@@ -23,6 +24,7 @@ import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.mapper.AiVideoReviewRecordMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
+import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.api.ai.AiServiceClient;
 import com.han.api.ai.domain.AiImageCandidate;
@@ -70,8 +72,10 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     private static final String ASSET_SCENE_IMAGE = "SCENE_IMAGE";
     private static final String ASSET_CHARACTER_IMAGE = "CHARACTER_IMAGE";
+    private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
     private static final String BIZ_SCENE = "SCENE";
     private static final String BIZ_CHARACTER = "CHARACTER";
+    private static final String BIZ_SHOT = "SHOT";
     private static final String TASK_SCENE_IMAGE = "SCENE_IMAGE";
     private static final String TASK_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String TARGET_MEDIA = "MEDIA_ASSET";
@@ -105,6 +109,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private final AiVideoProjectSettingMapper settingMapper;
     private final AiVideoSceneMapper sceneMapper;
     private final AiVideoCharacterMapper characterMapper;
+    private final AiVideoShotMapper shotMapper;
     private final AiVideoGenerationTaskMapper taskMapper;
     private final AiVideoMediaAssetMapper mediaAssetMapper;
     private final AiVideoReviewRecordMapper reviewRecordMapper;
@@ -225,8 +230,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         }
         boolean sceneImage = ASSET_SCENE_IMAGE.equals(media.getAssetType()) && BIZ_SCENE.equals(media.getBizType());
         boolean characterImage = ASSET_CHARACTER_IMAGE.equals(media.getAssetType()) && BIZ_CHARACTER.equals(media.getBizType());
-        if (!sceneImage && !characterImage) {
-            throw new BusinessException("当前媒体资产不是支持的候选图");
+        boolean shotVideo = ASSET_SHOT_VIDEO.equals(media.getAssetType()) && BIZ_SHOT.equals(media.getBizType());
+        if (!sceneImage && !characterImage && !shotVideo) {
+            throw new BusinessException("当前媒体资产不是支持的候选媒体");
         }
 
         mediaAssetMapper.update(null, new LambdaUpdateWrapper<AiVideoMediaAssetPo>()
@@ -251,12 +257,19 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             scene.setLockedMediaId(media.getMediaId());
             fillUpdateAudit(scene);
             sceneMapper.updateById(scene);
-        } else {
+        } else if (characterImage) {
             AiVideoCharacterPo character = requireCharacter(project.getProjectId(), media.getBizId());
             before = character.getLockedMediaId();
             character.setLockedMediaId(media.getMediaId());
             fillUpdateAudit(character);
             characterMapper.updateById(character);
+        } else {
+            AiVideoShotPo shot = requireShot(project.getProjectId(), media.getBizId());
+            before = shot.getVideoMediaId();
+            shot.setVideoMediaId(media.getMediaId());
+            shot.setGenerationStatus(STATUS_SELECTED);
+            fillUpdateAudit(shot);
+            shotMapper.updateById(shot);
         }
 
         insertReview(project, TARGET_MEDIA, media.getMediaId(), ACTION_SELECT,
@@ -458,8 +471,10 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         if (media == null || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())) {
             throw new BusinessException("媒体资源不存在");
         }
-        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType()) && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())) {
-            throw new BusinessException("当前媒体不是短剧图片资源");
+        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())
+                && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())
+                && !ASSET_SHOT_VIDEO.equals(media.getAssetType())) {
+            throw new BusinessException("当前媒体不是短剧资源");
         }
         if (!StringUtils.hasText(media.getFileUrl())) {
             throw new BusinessException("媒体资源未归档");
@@ -822,6 +837,15 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return character;
     }
 
+    private AiVideoShotPo requireShot(Long projectId, Long shotId) {
+        AiVideoShotPo shot = shotMapper.selectById(shotId);
+        if (shot == null || !Objects.equals(projectId, shot.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(shot.getDelFlag())) {
+            throw new BusinessException("分镜资产不存在");
+        }
+        return shot;
+    }
+
     private AiVideoProjectSettingPo selectProjectSetting(Long projectId) {
         return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .eq(AiVideoProjectSettingPo::getProjectId, projectId)
@@ -941,6 +965,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private void fillUpdateAudit(AiVideoCharacterPo character) {
         character.setUpdateBy(resolveOperator());
         character.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoShotPo shot) {
+        shot.setUpdateBy(resolveOperator());
+        shot.setUpdateTime(now());
     }
 
     private String extensionFromMime(String mimeType) {

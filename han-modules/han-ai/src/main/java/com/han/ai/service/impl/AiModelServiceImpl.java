@@ -24,6 +24,7 @@ import java.util.List;
 public class AiModelServiceImpl extends AiServiceSupport implements IAiModelService {
 
     private static final String MODEL_TYPE_IMAGE = "IMAGE";
+    private static final String MODEL_TYPE_VIDEO = "VIDEO";
 
     private final AiModelMapper aiModelMapper;
     private final AiModelCredentialResolver credentialResolver;
@@ -110,6 +111,9 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         }
         if (MODEL_TYPE_IMAGE.equalsIgnoreCase(model.getModelType())) {
             return openAiCompatibleClient.testImageGeneration(model, credentialResolver.resolveApiKey(model));
+        }
+        if (MODEL_TYPE_VIDEO.equalsIgnoreCase(model.getModelType())) {
+            return openAiCompatibleClient.testVideoConfiguration(model, credentialResolver.resolveApiKey(model));
         }
         return openAiCompatibleClient.testConnection(model, credentialResolver.resolveApiKey(model));
     }

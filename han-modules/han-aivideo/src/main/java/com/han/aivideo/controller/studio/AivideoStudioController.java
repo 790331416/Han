@@ -10,6 +10,7 @@ import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
+import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
@@ -20,6 +21,7 @@ import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
+import com.han.aivideo.service.IAivideoShotVideoService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -45,8 +47,9 @@ import java.util.List;
 public class AivideoStudioController extends BAivideoStudioController {
 
     public AivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
-                                   IAivideoSceneImageService sceneImageService) {
-        super(projectService, textService, sceneImageService);
+                                   IAivideoSceneImageService sceneImageService,
+                                   IAivideoShotVideoService shotVideoService) {
+        super(projectService, textService, sceneImageService, shotVideoService);
     }
 
     @GetMapping("/project/list")
@@ -194,6 +197,18 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public SseEmitter generateCharacterImageStream(@Valid @RequestBody AivideoCharacterImageGenerateDto dto) {
         return generateCharacterImages(dto);
+    }
+
+    @PostMapping("/media/shot/video/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewShotVideo(@Valid @RequestBody AivideoShotVideoGenerateDto dto) {
+        return previewShotVideoPrompt(dto);
+    }
+
+    @PostMapping(value = "/media/shot/video/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter generateShotVideoStream(@Valid @RequestBody AivideoShotVideoGenerateDto dto) {
+        return generateShotVideos(dto);
     }
 
     @GetMapping("/media/list")
