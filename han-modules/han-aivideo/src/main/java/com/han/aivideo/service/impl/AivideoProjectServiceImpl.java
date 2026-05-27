@@ -295,15 +295,24 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     }
 
     private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {
+        if (tenantId != null && tenantId > 0) {
+            AiVideoProjectSettingPo tenantSetting = settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                    .isNull(AiVideoProjectSettingPo::getProjectId)
+                    .eq(AiVideoProjectSettingPo::getTenantId, tenantId)
+                    .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                    .orderByDesc(AiVideoProjectSettingPo::getSettingId)
+                    .last("limit 1"));
+            if (tenantSetting != null) {
+                return tenantSetting;
+            }
+        }
         LambdaQueryWrapper<AiVideoProjectSettingPo> wrapper = new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .isNull(AiVideoProjectSettingPo::getProjectId)
+                .and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, 0L)
+                        .or().isNull(AiVideoProjectSettingPo::getTenantId))
                 .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                .orderByDesc(AiVideoProjectSettingPo::getSettingId)
                 .last("limit 1");
-        if (tenantId != null && tenantId > 0) {
-            wrapper.and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, tenantId)
-                    .or().eq(AiVideoProjectSettingPo::getTenantId, 0L)
-                    .or().isNull(AiVideoProjectSettingPo::getTenantId));
-        }
         return settingMapper.selectOne(wrapper);
     }
 

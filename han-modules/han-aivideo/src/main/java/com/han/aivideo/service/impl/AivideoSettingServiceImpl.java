@@ -53,6 +53,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         LambdaQueryWrapper<AiVideoProjectSettingPo> wrapper = new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .isNull(AiVideoProjectSettingPo::getProjectId)
                 .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                .orderByDesc(AiVideoProjectSettingPo::getSettingId)
                 .last("limit 1");
         Long tenantId = currentTenantId();
         if (tenantId != null) {
