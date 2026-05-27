@@ -3,6 +3,7 @@ package com.han.aivideo.controller.studio;
 import com.han.aivideo.controller.base.BAivideoStudioController;
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
@@ -181,6 +182,18 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public SseEmitter generateSceneImageStream(@Valid @RequestBody AivideoSceneImageGenerateDto dto) {
         return generateSceneImages(dto);
+    }
+
+    @PostMapping("/media/character/prompt-preview")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoPromptPreviewVo> previewCharacterImage(@Valid @RequestBody AivideoCharacterImageGenerateDto dto) {
+        return previewCharacterImagePrompt(dto);
+    }
+
+    @PostMapping(value = "/media/character/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.isLogin()")
+    public SseEmitter generateCharacterImageStream(@Valid @RequestBody AivideoCharacterImageGenerateDto dto) {
+        return generateCharacterImages(dto);
     }
 
     @GetMapping("/media/list")

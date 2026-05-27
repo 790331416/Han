@@ -1,6 +1,7 @@
 package com.han.aivideo.service;
 
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
+import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
@@ -17,6 +18,10 @@ public interface IAivideoSceneImageService {
     AivideoPromptPreviewVo previewSceneImagePrompt(AivideoSceneImageGenerateDto dto);
 
     SseEmitter generateSceneImagesStream(AivideoSceneImageGenerateDto dto);
+
+    AivideoPromptPreviewVo previewCharacterImagePrompt(AivideoCharacterImageGenerateDto dto);
+
+    SseEmitter generateCharacterImagesStream(AivideoCharacterImageGenerateDto dto);
 
     List<AivideoMediaAssetVo> listMedia(Long projectId, String assetType, String bizType, Long bizId);
 

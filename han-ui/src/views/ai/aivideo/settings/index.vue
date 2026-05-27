@@ -85,6 +85,11 @@
 
         <el-row :gutter="20">
           <el-col :span="8">
+            <el-form-item label="角色图 Prompt">
+              <el-input v-model="form.characterImagePromptTemplateId" placeholder="Prompt模板ID" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
             <el-form-item label="场景图 Prompt">
               <el-input v-model="form.sceneImagePromptTemplateId" placeholder="Prompt模板ID" />
             </el-form-item>

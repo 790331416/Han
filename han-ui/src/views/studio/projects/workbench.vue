@@ -223,7 +223,7 @@
 
         <div v-if="activeTab === 'assets'" class="result-section">
           <div class="section-head">
-            <h3>人物 / 场景 / 分镜</h3>
+            <h3>角色 / 场景 / 分镜</h3>
             <div class="section-actions">
               <el-button
                 type="primary"
@@ -287,13 +287,19 @@
           </div>
 
           <el-tabs model-value="characters">
-            <el-tab-pane label="人物" name="characters">
+            <el-tab-pane label="角色" name="characters">
               <el-table :data="characters" border>
-                <el-table-column prop="characterName" label="人物" min-width="120" />
+                <el-table-column prop="characterName" label="角色名称" min-width="120" />
                 <el-table-column prop="storyRole" label="角色定位" min-width="120" />
-                <el-table-column prop="appearance" label="外观" min-width="220" show-overflow-tooltip />
+                <el-table-column prop="appearance" label="形象描述" min-width="220" show-overflow-tooltip />
+                <el-table-column label="角色图" width="120">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
+                    <el-tag v-else type="info">未选</el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="100">
+                <el-table-column label="操作" width="190">
                   <template #default="{ row }">
                     <el-button
                       size="small"
@@ -302,6 +308,9 @@
                       @click="handleConfirmAsset('CHARACTER', row.characterId)"
                     >
                       确认
+                    </el-button>
+                    <el-button size="small" type="primary" plain @click="openCharacterImageDrawer(row)">
+                      角色图
                     </el-button>
                   </template>
                 </el-table-column>
@@ -454,6 +463,62 @@
         </div>
       </div>
     </el-drawer>
+
+    <el-drawer v-model="characterImageDrawerVisible" size="680px" :title="characterImageDrawerTitle">
+      <div v-if="selectedCharacterForImage" class="scene-image-drawer">
+        <details class="prompt-preview" open>
+          <summary>查看本次角色图提示词</summary>
+          <pre>{{ characterImagePromptPreviewText || '暂无可预览提示词' }}</pre>
+        </details>
+
+        <div class="scene-image-actions">
+          <el-button
+            type="primary"
+            :icon="MagicStick"
+            :loading="characterImageGenerating"
+            :disabled="characterImageGenerating"
+            @click="handleGenerateCharacterImages"
+          >
+            生成 {{ params.imageCandidateCount || 2 }} 张候选图
+          </el-button>
+          <el-button :icon="Refresh" :disabled="characterImageGenerating" @click="loadCharacterImageCandidates">
+            刷新候选
+          </el-button>
+        </div>
+
+        <el-empty v-if="!characterImageCandidates.length && !characterImageGenerating" description="暂无角色候选图" />
+        <div v-else class="scene-image-grid">
+          <article
+            v-for="item in characterImageCandidates"
+            :key="item.mediaId"
+            class="scene-image-card"
+            :class="{ selected: item.selected === '1' }"
+          >
+            <div class="scene-image-thumb">
+              <img
+                v-if="characterImagePreviewUrls[String(item.mediaId)]"
+                :src="characterImagePreviewUrls[String(item.mediaId)]"
+                alt="角色候选图"
+              />
+              <el-empty v-else description="图片加载中" />
+            </div>
+            <div class="scene-image-meta">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
+            </div>
+            <el-button
+              type="success"
+              size="small"
+              :disabled="item.selected === '1'"
+              :loading="characterImageSelectingIds.has(String(item.mediaId))"
+              @click="handleSelectCharacterImage(item)"
+            >
+              选择这张
+            </el-button>
+          </article>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -464,6 +529,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled } from '@element-plus/icons-vue'
 import {
   AIVIDEO_ASSET_STREAM_PATH,
+  AIVIDEO_CHARACTER_IMAGE_STREAM_PATH,
   AIVIDEO_POLISH_STREAM_PATH,
   AIVIDEO_SCENE_IMAGE_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
@@ -476,12 +542,14 @@ import {
   listAivideoMedia,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
+  previewAivideoCharacterImagePrompt,
   previewAivideoPolishPrompt,
   previewAivideoSceneImagePrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
   saveAivideoDocument,
   selectAivideoMedia,
+  type AivideoCharacter,
   type AivideoMediaAsset,
   type AivideoProjectDetail,
   type AivideoScene
@@ -510,6 +578,13 @@ const assetStreaming = ref(false)
 const assetStreamText = ref('')
 const assetStreamMeta = ref<AiStreamMetaPayload>({})
 const assetPromptPreviewText = ref('')
+const characterImageDrawerVisible = ref(false)
+const selectedCharacterForImage = ref<AivideoCharacter>()
+const characterImagePromptPreviewText = ref('')
+const characterImageGenerating = ref(false)
+const characterImageCandidates = ref<AivideoMediaAsset[]>([])
+const characterImagePreviewUrls = ref<Record<string, string>>({})
+const characterImageSelectingIds = ref<Set<string>>(new Set())
 const sceneImageDrawerVisible = ref(false)
 const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
@@ -559,6 +634,9 @@ const hasAssets = computed(() => characters.value.length > 0 || scenes.value.len
 const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneName
   ? `场景图候选：${selectedSceneForImage.value.sceneName}`
   : '场景图候选')
+const characterImageDrawerTitle = computed(() => selectedCharacterForImage.value?.characterName
+  ? `角色图候选：${selectedCharacterForImage.value.characterName}`
+  : '角色图候选')
 const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
@@ -617,6 +695,7 @@ function schedulePolishPromptPreview() {
     refreshPolishPromptPreview()
     refreshScriptPromptPreview()
     refreshAssetPromptPreview()
+    refreshCharacterImagePromptPreview()
     refreshSceneImagePromptPreview()
   }, 350)
 }
@@ -672,6 +751,82 @@ async function refreshSceneImagePromptPreview() {
   } catch (_error) {
     sceneImagePromptPreviewText.value = ''
   }
+}
+
+async function refreshCharacterImagePromptPreview() {
+  const character = selectedCharacterForImage.value
+  if (!character) {
+    characterImagePromptPreviewText.value = ''
+    return
+  }
+  try {
+    const res = await previewAivideoCharacterImagePrompt({
+      projectId: projectId.value,
+      characterId: character.characterId,
+      candidateCount: params.imageCandidateCount || 2,
+      ratio: params.defaultRatio,
+      resolution: params.defaultResolution,
+      customPrompt: customPrompt.value
+    })
+    characterImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
+  } catch (_error) {
+    characterImagePromptPreviewText.value = ''
+  }
+}
+
+async function openCharacterImageDrawer(character: AivideoCharacter) {
+  selectedCharacterForImage.value = character
+  characterImageDrawerVisible.value = true
+  await refreshCharacterImagePromptPreview()
+  await loadCharacterImageCandidates()
+}
+
+function revokeCharacterImagePreviewUrls() {
+  Object.values(characterImagePreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  characterImagePreviewUrls.value = {}
+}
+
+async function loadCharacterImagePreviewUrl(asset: AivideoMediaAsset) {
+  const key = String(asset.mediaId)
+  try {
+    const response = await previewAivideoMedia(asset.mediaId)
+    const blob = (response as any).data as Blob
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      return
+    }
+    const objectUrl = URL.createObjectURL(blob)
+    const next = { ...characterImagePreviewUrls.value }
+    if (next[key]) {
+      URL.revokeObjectURL(next[key])
+    }
+    next[key] = objectUrl
+    characterImagePreviewUrls.value = next
+  } catch (_error) {
+    // Preview errors are surfaced by the generation/list actions; keep the card placeholder.
+  }
+}
+
+async function refreshCharacterImagePreviewUrls(candidates: AivideoMediaAsset[]) {
+  revokeCharacterImagePreviewUrls()
+  await Promise.all(candidates.map((item) => loadCharacterImagePreviewUrl(item)))
+}
+
+async function loadCharacterImageCandidates() {
+  const character = selectedCharacterForImage.value
+  if (!character) {
+    characterImageCandidates.value = []
+    revokeCharacterImagePreviewUrls()
+    return
+  }
+  const res = await listAivideoMedia({
+    projectId: projectId.value,
+    assetType: 'CHARACTER_IMAGE',
+    bizType: 'CHARACTER',
+    bizId: character.characterId
+  })
+  const candidates = res.data || []
+  characterImageCandidates.value = candidates
+  await refreshCharacterImagePreviewUrls(candidates)
 }
 
 async function openSceneImageDrawer(scene: AivideoScene) {
@@ -963,6 +1118,50 @@ async function handleConfirmAsset(targetType: string, targetId: string | number)
   }
 }
 
+async function handleGenerateCharacterImages() {
+  const character = selectedCharacterForImage.value
+  if (!character || characterImageGenerating.value) {
+    return
+  }
+  characterImageGenerating.value = true
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_CHARACTER_IMAGE_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        characterId: character.characterId,
+        candidateCount: params.imageCandidateCount || 2,
+        ratio: params.defaultRatio,
+        resolution: params.defaultResolution,
+        customPrompt: customPrompt.value
+      },
+      onMeta: (payload) => {
+        if (payload.event === 'candidate' && payload.asset) {
+          const asset = payload.asset as AivideoMediaAsset
+          characterImageCandidates.value = [
+            asset,
+            ...characterImageCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+          ]
+          void loadCharacterImagePreviewUrl(asset)
+        }
+      },
+      onError: (message) => {
+        ElMessage.error(message || '角色图生成失败')
+      }
+    })
+    ElMessage.success('角色图候选已生成')
+    await loadCharacterImageCandidates()
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '角色图生成失败')
+  } finally {
+    characterImageGenerating.value = false
+  }
+}
+
 async function handleGenerateSceneImages() {
   const scene = selectedSceneForImage.value
   if (!scene || sceneImageGenerating.value) {
@@ -1004,6 +1203,31 @@ async function handleGenerateSceneImages() {
     ElMessage.error(error?.message || '场景图生成失败')
   } finally {
     sceneImageGenerating.value = false
+  }
+}
+
+async function handleSelectCharacterImage(item: AivideoMediaAsset) {
+  const key = String(item.mediaId)
+  if (characterImageSelectingIds.value.has(key)) {
+    return
+  }
+  const next = new Set(characterImageSelectingIds.value)
+  next.add(key)
+  characterImageSelectingIds.value = next
+  try {
+    await selectAivideoMedia({
+      projectId: projectId.value,
+      mediaId: item.mediaId,
+      bizType: 'CHARACTER',
+      bizId: item.bizId
+    })
+    ElMessage.success('角色图已选定')
+    await loadCharacterImageCandidates()
+    await loadDetail()
+  } finally {
+    const done = new Set(characterImageSelectingIds.value)
+    done.delete(key)
+    characterImageSelectingIds.value = done
   }
 }
 
@@ -1062,6 +1286,7 @@ onBeforeUnmount(() => {
   if (promptPreviewTimer) {
     clearTimeout(promptPreviewTimer)
   }
+  revokeCharacterImagePreviewUrls()
   revokeSceneImagePreviewUrls()
 })
 </script>

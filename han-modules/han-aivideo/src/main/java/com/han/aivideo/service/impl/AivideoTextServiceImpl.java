@@ -286,25 +286,27 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AiVideoProjectPo project = requireProject(dto.getProjectId());
         AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
-        String prompt = buildAssetPrompt(project, setting, script.getContentText());
+        Long promptTemplateId = firstTemplateId(setting);
+        String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
         Map<String, String> variables = baseVariables(project);
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
         variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
+        String prompt = renderAssetUserPrompt(project, setting, dto.getCustomPrompt(), fallbackPrompt, variables);
 
         AiVideoGenerationTaskPo task = createTask(project, TASK_ASSET, TARGET_CONTENT, script.getVersionId(),
                 setting != null ? setting.getTextModelId() : null,
-                firstTemplateId(setting), prompt, dto.getCustomPrompt(), variables);
+                promptTemplateId, prompt, dto.getCustomPrompt(), variables);
         try {
             AiTextGenerateResponse response = invokeTextGeneration(project, setting,
-                    firstTemplateId(setting), dto.getCustomPrompt(), prompt, variables);
+                    null, null, prompt, variables);
             AssetPayload payload = parseAssetPayload(response.getContent());
             softDeletePendingAssets(project.getProjectId());
             insertAssets(project, payload, setting);
 
             AiVideoContentVersionPo assetVersion = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
                     "结构化资产", response.getContent(), extractJsonBlock(response.getContent()),
-                    firstTemplateId(setting), dto.getCustomPrompt(), response.getModelId(), task.getTaskId());
+                    promptTemplateId, dto.getCustomPrompt(), response.getModelId(), task.getTaskId());
             contentVersionMapper.insert(assetVersion);
             markTaskSuccess(task, response.getModelId(), response.getTokenCount());
             return selectAssetSummary(project.getProjectId());
@@ -328,14 +330,14 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
         variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
-        String taskPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        String taskPrompt = renderAssetUserPrompt(project, setting, dto.getCustomPrompt(), fallbackPrompt, variables);
         AiVideoGenerationTaskPo task = createTask(project, TASK_ASSET, TARGET_CONTENT, script.getVersionId(),
                 setting != null ? setting.getTextModelId() : null, promptTemplateId, taskPrompt, dto.getCustomPrompt(), variables);
         String operator = resolveOperator();
 
         SseEmitter emitter = new SseEmitter(300_000L);
         CompletableFuture.runAsync(() -> runAssetStream(project, setting, promptTemplateId,
-                dto.getCustomPrompt(), fallbackPrompt, variables, task, operator, emitter));
+                dto.getCustomPrompt(), taskPrompt, variables, task, operator, emitter));
         return emitter;
     }
 
@@ -353,7 +355,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         variables.put("scriptText", script.getContentText());
         variables.put("rawText", script.getContentText());
         variables.put("defaultShotDuration", String.valueOf(defaultShotDuration(setting)));
-        String userPrompt = renderUserPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        String userPrompt = renderAssetUserPrompt(project, setting, dto.getCustomPrompt(), fallbackPrompt, variables);
 
         AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
         vo.setPromptTemplateId(promptTemplateId);
@@ -511,8 +513,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                                 Map<String, String> variables, AiVideoGenerationTaskPo task,
                                 String operator, SseEmitter emitter) {
         try {
-            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
-                    customPrompt, userPrompt, variables);
+            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, null,
+                    null, userPrompt, variables);
             AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
                     chunk -> sendSse(emitter, "delta", chunk));
             if (!StringUtils.hasText(result.content())) {
@@ -558,6 +560,36 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("AI Prompt 渲染结果为空");
         }
         return result.getData();
+    }
+
+    private String renderAssetUserPrompt(AiVideoProjectPo project, AiVideoProjectSettingPo setting, String customPrompt,
+                                         String fallbackPrompt, Map<String, String> variables) {
+        List<String> promptParts = new ArrayList<>();
+        appendRenderedTemplate(promptParts, project, setting != null ? setting.getCharacterPromptTemplateId() : null,
+                "角色构建参考", variables);
+        appendRenderedTemplate(promptParts, project, setting != null ? setting.getScenePromptTemplateId() : null,
+                "场景设计参考", variables);
+        appendRenderedTemplate(promptParts, project, setting != null ? setting.getShotPromptTemplateId() : null,
+                "分镜拆解参考", variables);
+        if (promptParts.isEmpty()) {
+            return renderUserPrompt(project, null, customPrompt, fallbackPrompt, variables);
+        }
+        String mergedPrompt = "请把以下三组提示词作为资产提取参考规则，但最终必须只输出统一 JSON 对象，不要输出解释、Markdown 围栏或额外说明。"
+                + "JSON key 必须保持英文，所有字段值必须使用中文；如果参考提示词要求先回复确认，请忽略该确认步骤，直接执行提取。\n\n"
+                + String.join("\n\n", promptParts)
+                + "\n\n【统一输出约束与兜底结构】\n" + fallbackPrompt;
+        return renderUserPrompt(project, null, customPrompt, mergedPrompt, variables);
+    }
+
+    private void appendRenderedTemplate(List<String> promptParts, AiVideoProjectPo project, Long promptTemplateId,
+                                        String title, Map<String, String> variables) {
+        if (promptTemplateId == null) {
+            return;
+        }
+        String rendered = renderUserPrompt(project, promptTemplateId, null, "", variables);
+        if (StringUtils.hasText(rendered)) {
+            promptParts.add("【" + title + "】\n" + rendered.trim());
+        }
     }
 
     private AiTextGenerateRequest buildTextGenerateRequest(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
@@ -780,7 +812,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AiVideoCharacterPo character = new AiVideoCharacterPo();
             character.setProjectId(project.getProjectId());
             character.setTenantId(project.getTenantId());
-            character.setCharacterName(defaultString(item.characterName, "人物" + index));
+            character.setCharacterName(defaultString(item.characterName, "角色" + index));
             character.setGender(item.gender);
             character.setAgeDesc(item.ageDesc);
             character.setIdentityDesc(item.identityDesc);
@@ -960,7 +992,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             case TARGET_CHARACTER -> {
                 AiVideoCharacterPo character = characterMapper.selectById(targetId);
                 if (character == null || !Objects.equals(project.getProjectId(), character.getProjectId())) {
-                    throw new BusinessException("人物资产不存在");
+                    throw new BusinessException("角色资产不存在");
                 }
                 String before = character.getConfirmStatus();
                 character.setConfirmStatus(CONFIRM_APPROVED);
@@ -1064,13 +1096,13 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private String buildPolishPrompt(AiVideoProjectPo project, String sourceText) {
-        return "请将以下原文润色为适合 AI 短剧改编的文本。要求：保留主线与核心冲突，强化人物动机、情绪转折和画面感；"
+        return "请将以下原文润色为适合 AI 短剧改编的文本。要求：保留主线与核心冲突，强化角色动机、情绪转折和画面感；"
                 + "语言清晰可拍，避免过度文学化；输出完整润色稿。\n\n项目：" + project.getProjectName()
                 + "\n风格：" + safeValue(project.getDefaultStyle()) + "\n\n原文：\n" + sourceText;
     }
 
     private String buildScriptPrompt(AiVideoProjectPo project, String polishedText) {
-        return "请将以下润色文本改写为短剧剧本。要求：按场次组织，包含人物、场景、动作、对白、旁白和情绪提示；"
+        return "请将以下润色文本改写为短剧剧本。要求：按场次组织，包含角色、场景、动作、对白、旁白和情绪提示；"
                 + "镜头描述要能继续拆分为分镜，避免空泛形容。\n\n项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform()) + "\n画幅：" + safeValue(project.getDefaultRatio())
                 + "\n\n润色文本：\n" + polishedText;
@@ -1078,13 +1110,14 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private String buildAssetPrompt(AiVideoProjectPo project, AiVideoProjectSettingPo setting, String scriptText) {
         int duration = defaultShotDuration(setting);
-        return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【人物、场景、分镜】。"
+        return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【角色、场景、分镜】。"
                 + "必须只输出 JSON 对象，不要输出解释、Markdown 围栏或额外说明。JSON key 必须保持英文，所有字段值必须使用中文。\n\n"
                 + "【角色构建规则】\n"
-                + "1. 你是电影级角色概念设计师，需要先解析角色心理画像：代号、生理年龄、性别、社会身份、人格标签、故事功能。\n"
-                + "2. 每个角色必须输出鲜明、可区分的视觉方案：年龄、自然发色、具体发型、眼神神态、服装材质、主色辅色、鞋履配饰。\n"
-                + "3. 多角色必须在主色调、款式剪裁、面料质感上显著区别，严禁视觉雷同。\n"
-                + "4. promptText 要可直接用于角色图生成，包含横向 16:9、纯白极简背景、面部特写、全身正侧背三视图、固定自然站姿等关键信息。\n\n"
+                + "1. 你是电影级角色概念设计师，需要先解析角色画像：代号、年龄/生命阶段、性别或物种、社会身份或物种身份、人格标签、故事功能。\n"
+                + "2. 每个角色必须输出鲜明、可区分的视觉方案；如果是人类，写清年龄、自然发色、具体发型、眼神神态、服装材质、主色辅色、鞋履配饰。\n"
+                + "3. 如果角色是动物、宠物、怪物、机器人、器物精灵或其他非人类，必须在 identityDesc、appearance、promptText 中保留物种本体，写清品种/体型/毛色/眼睛/标志性特征，禁止改成人类演员。\n"
+                + "4. 多角色必须在色彩、轮廓、材质或身体特征上显著区别，严禁视觉雷同。\n"
+                + "5. promptText 要可直接用于角色图生成，包含单一角色、纯白极简背景、头部/面部特写、全身正侧背三视图、固定自然站姿或动物自然姿态等关键信息。\n\n"
                 + "【电影级纯净场景规则】\n"
                 + "1. 场景必须纯净无人，场景描述和 promptText 严禁出现角色姓名、人影或额外人物。\n"
                 + "2. 场景名称必须四个字以上，不能只写单一名词，要通过修饰词增加辨识度。\n"

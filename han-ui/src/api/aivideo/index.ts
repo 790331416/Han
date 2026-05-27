@@ -90,6 +90,7 @@ export interface AivideoCharacter {
   storyRole?: string
   appearance?: string
   promptText?: string
+  lockedMediaId?: string | number
   confirmStatus?: string
 }
 
@@ -173,6 +174,7 @@ export interface AivideoSetting {
   scriptPromptTemplateId?: string | number
   characterPromptTemplateId?: string | number
   scenePromptTemplateId?: string | number
+  characterImagePromptTemplateId?: string | number
   sceneImagePromptTemplateId?: string | number
   shotPromptTemplateId?: string | number
   defaultRatio?: string
@@ -228,6 +230,7 @@ export interface AivideoMediaAsset {
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
 export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
+export const AIVIDEO_CHARACTER_IMAGE_STREAM_PATH = '/aivideo/studio/media/character/generate/stream'
 export const AIVIDEO_SCENE_IMAGE_STREAM_PATH = '/aivideo/studio/media/scene/generate/stream'
 
 export function listAivideoProject(query: AivideoProjectQuery) {
@@ -344,6 +347,19 @@ export function previewAivideoSceneImagePrompt(data: {
   customPrompt?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/scene/prompt-preview', data, { silentError: true })
+}
+
+export function previewAivideoCharacterImagePrompt(data: {
+  projectId: string | number
+  characterId: string | number
+  candidateCount?: number
+  modelId?: string | number
+  ratio?: string
+  resolution?: string
+  size?: string
+  customPrompt?: string
+}) {
+  return post<AivideoPromptPreview>('/aivideo/studio/media/character/prompt-preview', data, { silentError: true })
 }
 
 export function listAivideoMedia(query: {

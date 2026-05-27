@@ -2,6 +2,7 @@ package com.han.aivideo.controller.base;
 
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
@@ -130,6 +131,14 @@ public class BAivideoStudioController {
 
     protected SseEmitter generateSceneImages(AivideoSceneImageGenerateDto dto) {
         return sceneImageService.generateSceneImagesStream(dto);
+    }
+
+    protected R<AivideoPromptPreviewVo> previewCharacterImagePrompt(AivideoCharacterImageGenerateDto dto) {
+        return R.ok(sceneImageService.previewCharacterImagePrompt(dto));
+    }
+
+    protected SseEmitter generateCharacterImages(AivideoCharacterImageGenerateDto dto) {
+        return sceneImageService.generateCharacterImagesStream(dto);
     }
 
     protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {

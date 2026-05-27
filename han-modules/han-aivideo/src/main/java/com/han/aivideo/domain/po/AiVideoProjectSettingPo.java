@@ -35,6 +35,8 @@ public class AiVideoProjectSettingPo {
 
     private Long scenePromptTemplateId;
 
+    private Long characterImagePromptTemplateId;
+
     private Long sceneImagePromptTemplateId;
 
     private Long shotPromptTemplateId;

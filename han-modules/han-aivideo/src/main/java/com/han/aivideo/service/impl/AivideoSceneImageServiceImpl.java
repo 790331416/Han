@@ -2,8 +2,10 @@ package com.han.aivideo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
+import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
@@ -14,6 +16,7 @@ import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.enums.AivideoTaskStatus;
+import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
@@ -66,8 +69,11 @@ import java.util.concurrent.CompletableFuture;
 public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implements IAivideoSceneImageService {
 
     private static final String ASSET_SCENE_IMAGE = "SCENE_IMAGE";
+    private static final String ASSET_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String BIZ_SCENE = "SCENE";
+    private static final String BIZ_CHARACTER = "CHARACTER";
     private static final String TASK_SCENE_IMAGE = "SCENE_IMAGE";
+    private static final String TASK_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String TARGET_MEDIA = "MEDIA_ASSET";
     private static final String ACTION_SELECT = "SELECT";
     private static final String STATUS_READY = "READY";
@@ -76,7 +82,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String MEDIA_ACCESS_PUBLIC = "PUBLIC";
     private static final int DEFAULT_CANDIDATE_COUNT = 2;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-    private static final String IMAGE_SYSTEM_PROMPT = """
+    private static final String SCENE_IMAGE_SYSTEM_PROMPT = """
             你是电影级纯净场景设计专家（高辨识度版）。
             核心规则：
             1. 绝对真空与匿名：画面中严禁出现任何人影，提示词中严禁出现任何角色人名。
@@ -85,10 +91,20 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             4. Prompt 必须以“不能出现其他人, 无人, 纯场景,”开头。
             5. 不输出解释，只输出可直接用于图片模型的场景图提示词。
             """;
+    private static final String CHARACTER_IMAGE_SYSTEM_PROMPT = """
+            你是电影级角色形象设计专家。
+            核心规则：
+            1. 只生成单一角色形象设定图，不生成群像，不生成无关背景角色。
+            2. 如果角色是动物或非人类，必须保持其物种本体，不要改成人类演员、真人脸或人类身体。
+            3. 画面以角色形象为主体，优先生成清晰的角色概念设定板，便于后续保持一致性。
+            4. 必须体现角色身份、性格气质、外观特征、服饰/毛发/标志性细节。
+            5. 不输出解释，只输出可直接用于图片模型的角色图提示词。
+            """;
 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoProjectSettingMapper settingMapper;
     private final AiVideoSceneMapper sceneMapper;
+    private final AiVideoCharacterMapper characterMapper;
     private final AiVideoGenerationTaskMapper taskMapper;
     private final AiVideoMediaAssetMapper mediaAssetMapper;
     private final AiVideoReviewRecordMapper reviewRecordMapper;
@@ -101,13 +117,13 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     @Override
     public AivideoPromptPreviewVo previewSceneImagePrompt(AivideoSceneImageGenerateDto dto) {
-        RequestContext context = buildContext(dto, false);
+        RequestContext context = buildSceneContext(dto, false);
         AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
         vo.setPromptTemplateId(context.promptTemplateId());
-        vo.setSystemPrompt(IMAGE_SYSTEM_PROMPT);
+        vo.setSystemPrompt(context.systemPrompt());
         vo.setUserPrompt(context.prompt());
         vo.setCustomPrompt(dto.getCustomPrompt());
-        vo.setEffectivePrompt("系统提示词：\n" + IMAGE_SYSTEM_PROMPT + "\n\n用户提示词：\n" + context.prompt());
+        vo.setEffectivePrompt("系统提示词：\n" + context.systemPrompt() + "\n\n用户提示词：\n" + context.prompt());
         return vo;
     }
 
@@ -117,8 +133,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         RequestContext context;
         AiVideoGenerationTaskPo task;
         try {
-            context = buildContext(dto, true);
-            if (hasRunningSceneImageTask(context.project().getProjectId(), context.scene().getSceneId())) {
+            context = buildSceneContext(dto, true);
+            if (hasRunningImageTask(context.project().getProjectId(), context.taskType(), context.bizType(), context.bizId())) {
                 throw new BusinessException("该场景已有图片生成任务执行中，请稍后刷新候选图");
             }
             task = createTask(context);
@@ -126,7 +142,38 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             completeWithError(emitter, exception.getMessage());
             return emitter;
         }
-        CompletableFuture.runAsync(() -> runSceneImageStream(context, task, emitter));
+        CompletableFuture.runAsync(() -> runImageStream(context, task, emitter));
+        return emitter;
+    }
+
+    @Override
+    public AivideoPromptPreviewVo previewCharacterImagePrompt(AivideoCharacterImageGenerateDto dto) {
+        RequestContext context = buildCharacterContext(dto, false);
+        AivideoPromptPreviewVo vo = new AivideoPromptPreviewVo();
+        vo.setPromptTemplateId(context.promptTemplateId());
+        vo.setSystemPrompt(context.systemPrompt());
+        vo.setUserPrompt(context.prompt());
+        vo.setCustomPrompt(dto.getCustomPrompt());
+        vo.setEffectivePrompt("系统提示词：\n" + context.systemPrompt() + "\n\n用户提示词：\n" + context.prompt());
+        return vo;
+    }
+
+    @Override
+    public SseEmitter generateCharacterImagesStream(AivideoCharacterImageGenerateDto dto) {
+        SseEmitter emitter = new SseEmitter(300_000L);
+        RequestContext context;
+        AiVideoGenerationTaskPo task;
+        try {
+            context = buildCharacterContext(dto, true);
+            if (hasRunningImageTask(context.project().getProjectId(), context.taskType(), context.bizType(), context.bizId())) {
+                throw new BusinessException("该角色已有形象图生成任务执行中，请稍后刷新候选图");
+            }
+            task = createTask(context);
+        } catch (Exception exception) {
+            completeWithError(emitter, exception.getMessage());
+            return emitter;
+        }
+        CompletableFuture.runAsync(() -> runImageStream(context, task, emitter));
         return emitter;
     }
 
@@ -176,8 +223,10 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())) {
             throw new BusinessException("媒体资产不存在");
         }
-        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType()) || !BIZ_SCENE.equals(media.getBizType())) {
-            throw new BusinessException("当前媒体资产不是场景候选图");
+        boolean sceneImage = ASSET_SCENE_IMAGE.equals(media.getAssetType()) && BIZ_SCENE.equals(media.getBizType());
+        boolean characterImage = ASSET_CHARACTER_IMAGE.equals(media.getAssetType()) && BIZ_CHARACTER.equals(media.getBizType());
+        if (!sceneImage && !characterImage) {
+            throw new BusinessException("当前媒体资产不是支持的候选图");
         }
 
         mediaAssetMapper.update(null, new LambdaUpdateWrapper<AiVideoMediaAssetPo>()
@@ -195,17 +244,26 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         fillUpdateAudit(media);
         mediaAssetMapper.updateById(media);
 
-        AiVideoScenePo scene = requireScene(project.getProjectId(), media.getBizId());
-        Long before = scene.getLockedMediaId();
-        scene.setLockedMediaId(media.getMediaId());
-        fillUpdateAudit(scene);
-        sceneMapper.updateById(scene);
+        Long before;
+        if (sceneImage) {
+            AiVideoScenePo scene = requireScene(project.getProjectId(), media.getBizId());
+            before = scene.getLockedMediaId();
+            scene.setLockedMediaId(media.getMediaId());
+            fillUpdateAudit(scene);
+            sceneMapper.updateById(scene);
+        } else {
+            AiVideoCharacterPo character = requireCharacter(project.getProjectId(), media.getBizId());
+            before = character.getLockedMediaId();
+            character.setLockedMediaId(media.getMediaId());
+            fillUpdateAudit(character);
+            characterMapper.updateById(character);
+        }
 
         insertReview(project, TARGET_MEDIA, media.getMediaId(), ACTION_SELECT,
                 before == null ? "" : String.valueOf(before), String.valueOf(media.getMediaId()), dto.getComment(), null);
     }
 
-    private void runSceneImageStream(RequestContext context, AiVideoGenerationTaskPo task, SseEmitter emitter) {
+    private void runImageStream(RequestContext context, AiVideoGenerationTaskPo task, SseEmitter emitter) {
         try {
             sendSse(emitter, "meta", Map.of(
                     "event", "task",
@@ -260,7 +318,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         }
     }
 
-    private RequestContext buildContext(AivideoSceneImageGenerateDto dto, boolean requireImageModel) {
+    private RequestContext buildSceneContext(AivideoSceneImageGenerateDto dto, boolean requireImageModel) {
         if (dto == null || dto.getProjectId() == null || dto.getSceneId() == null) {
             throw new BusinessException("项目ID和场景ID不能为空");
         }
@@ -292,8 +350,49 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("size", firstText(dto.getSize(), ""));
-        return new RequestContext(project, scene, setting, modelId, promptTemplateId, candidateCount,
-                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables);
+        return new RequestContext(project, scene, null, setting, modelId, promptTemplateId, candidateCount,
+                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables,
+                SCENE_IMAGE_SYSTEM_PROMPT, ASSET_SCENE_IMAGE, BIZ_SCENE, scene.getSceneId(),
+                TASK_SCENE_IMAGE, "场景图生成失败", "人物, 人影, human, person, face, body, crowd, extra people");
+    }
+
+    private RequestContext buildCharacterContext(AivideoCharacterImageGenerateDto dto, boolean requireImageModel) {
+        if (dto == null || dto.getProjectId() == null || dto.getCharacterId() == null) {
+            throw new BusinessException("项目ID和角色ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoCharacterPo character = requireCharacter(project.getProjectId(), dto.getCharacterId());
+        AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
+        AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
+        AiVideoProjectSettingPo setting = projectSetting != null ? projectSetting : globalSetting;
+        Long modelId = firstLong(dto.getModelId(),
+                projectSetting != null ? projectSetting.getImageModelId() : null,
+                globalSetting != null ? globalSetting.getImageModelId() : null);
+        if (requireImageModel && modelId == null) {
+            throw new BusinessException("图片模型未配置，请先在 AI 模型页新增 model_type=IMAGE 的火山模型，并在 AI短剧基础配置中绑定图片模型ID");
+        }
+        int candidateCount = normalizeCandidateCount(dto.getCandidateCount(), projectSetting, globalSetting);
+        String ratio = firstText(dto.getRatio(),
+                projectSetting != null ? projectSetting.getDefaultRatio() : null,
+                globalSetting != null ? globalSetting.getDefaultRatio() : null,
+                project.getDefaultRatio(), "9:16");
+        String resolution = firstText(dto.getResolution(),
+                projectSetting != null ? projectSetting.getDefaultResolution() : null,
+                globalSetting != null ? globalSetting.getDefaultResolution() : null,
+                "720p");
+        Long promptTemplateId = firstLong(
+                projectSetting != null ? projectSetting.getCharacterImagePromptTemplateId() : null,
+                globalSetting != null ? globalSetting.getCharacterImagePromptTemplateId() : null);
+        Map<String, String> variables = buildCharacterVariables(project, character, ratio, resolution);
+        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution);
+        String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        variables.put("candidateCount", String.valueOf(candidateCount));
+        variables.put("size", firstText(dto.getSize(), ""));
+        return new RequestContext(project, null, character, setting, modelId, promptTemplateId, candidateCount,
+                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables,
+                CHARACTER_IMAGE_SYSTEM_PROMPT, ASSET_CHARACTER_IMAGE, BIZ_CHARACTER, character.getCharacterId(),
+                TASK_CHARACTER_IMAGE, "角色形象图生成失败",
+                "multiple characters, crowd, extra people, watermark, logo, text, signature, human body if animal role");
     }
 
     private AiImageGenerateResponse invokeImageGeneration(RequestContext context, int candidateCount) {
@@ -316,7 +415,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                                               AiImageGenerateResponse response, AiImageCandidate candidate, int index) {
         ImageBytes imageBytes = loadImageBytes(candidate);
         String extension = extensionFromMime(imageBytes.mimeType());
-        String filename = "aivideo-scene-" + context.scene().getSceneId() + "-" + task.getTaskId()
+        String filenamePrefix = ASSET_CHARACTER_IMAGE.equals(context.assetType()) ? "aivideo-character-" : "aivideo-scene-";
+        String filename = filenamePrefix + context.bizId() + "-" + task.getTaskId()
                 + "-" + index + "." + extension;
         Resource resource = new NamedByteArrayResource(imageBytes.bytes(), filename);
         R<FileDTO> uploadResult = fileServiceClient.upload(resource);
@@ -331,13 +431,13 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
         media.setProjectId(context.project().getProjectId());
         media.setTenantId(context.project().getTenantId());
-        media.setAssetType(ASSET_SCENE_IMAGE);
-        media.setBizType(BIZ_SCENE);
-        media.setBizId(context.scene().getSceneId());
+        media.setAssetType(context.assetType());
+        media.setBizType(context.bizType());
+        media.setBizId(context.bizId());
         media.setFileId(file.getId());
         media.setFileUrl(toFilePublicPath(file.getUrl()));
         media.setPromptText(response.getPrompt());
-        media.setNegativePrompt("人物, 人影, human, person, face, body, crowd, extra people");
+        media.setNegativePrompt(context.negativePrompt());
         media.setModelId(response.getModelId());
         media.setTaskId(task.getTaskId());
         media.setParamsJson(XuJsonUtil.toJsonString(context.variables()));
@@ -358,8 +458,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         if (media == null || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())) {
             throw new BusinessException("媒体资源不存在");
         }
-        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())) {
-            throw new BusinessException("当前媒体不是场景图资源");
+        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType()) && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())) {
+            throw new BusinessException("当前媒体不是短剧图片资源");
         }
         if (!StringUtils.hasText(media.getFileUrl())) {
             throw new BusinessException("媒体资源未归档");
@@ -562,6 +662,63 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 safeValue(scene.getPromptText()));
     }
 
+    private Map<String, String> buildCharacterVariables(AiVideoProjectPo project, AiVideoCharacterPo character,
+                                                        String ratio, String resolution) {
+        Map<String, String> variables = new LinkedHashMap<>();
+        variables.put("projectName", safeValue(project.getProjectName()));
+        variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
+        variables.put("style", safeValue(project.getDefaultStyle()));
+        variables.put("ratio", safeValue(ratio));
+        variables.put("resolution", safeValue(resolution));
+        variables.put("characterName", safeValue(character.getCharacterName()));
+        variables.put("gender", safeValue(character.getGender()));
+        variables.put("ageDesc", safeValue(character.getAgeDesc()));
+        variables.put("identityDesc", safeValue(character.getIdentityDesc()));
+        variables.put("personalityTags", safeValue(character.getPersonalityTags()));
+        variables.put("storyRole", safeValue(character.getStoryRole()));
+        variables.put("relationshipDesc", safeValue(character.getRelationshipDesc()));
+        variables.put("appearance", safeValue(character.getAppearance()));
+        variables.put("hairStyle", safeValue(character.getHairStyle()));
+        variables.put("costume", safeValue(character.getCostume()));
+        variables.put("colorStyle", safeValue(character.getColorStyle()));
+        variables.put("negativeTraits", safeValue(character.getNegativeTraits()));
+        variables.put("characterPromptText", safeValue(character.getPromptText()));
+        return variables;
+    }
+
+    private String buildCharacterImagePrompt(AiVideoProjectPo project, AiVideoCharacterPo character,
+                                             String ratio, String resolution) {
+        return """
+                电影级角色形象设定图，单一角色，纯净背景，角色一致性参考图，画幅：%s，清晰度目标：%s。
+                如果该角色是动物、宠物、怪物、机器人、器物精灵或其他非人类，必须保持其物种本体，不要改成人类演员、真人脸或人类身体。
+                画面重点：清晰面部/头部特写 + 全身正面 + 侧面 + 背面，适合作为后续图片和视频生成的角色一致性参考。
+                必须体现身份定位、性格气质、外观轮廓、毛发/发型、服饰/身体特征、颜色风格、标志性细节。
+                只出现该角色本体，不出现其他角色、文字、水印、logo、复杂环境。
+
+                项目：%s
+                风格：%s
+                角色名称：%s
+                性别/物种：%s
+                年龄/阶段：%s
+                身份定位：%s
+                剧情定位：%s
+                性格标签：%s
+                关系描述：%s
+                形象描述：%s
+                毛发/发型：%s
+                服饰/身体特征：%s
+                色彩风格：%s
+                负面特征：%s
+                原始角色提示词：%s
+                """.formatted(
+                safeValue(ratio), safeValue(resolution), safeValue(project.getProjectName()),
+                safeValue(project.getDefaultStyle()), safeValue(character.getCharacterName()), safeValue(character.getGender()),
+                safeValue(character.getAgeDesc()), safeValue(character.getIdentityDesc()), safeValue(character.getStoryRole()),
+                safeValue(character.getPersonalityTags()), safeValue(character.getRelationshipDesc()), safeValue(character.getAppearance()),
+                safeValue(character.getHairStyle()), safeValue(character.getCostume()), safeValue(character.getColorStyle()),
+                safeValue(character.getNegativeTraits()), safeValue(character.getPromptText()));
+    }
+
     private int normalizeCandidateCount(Integer requested, AiVideoProjectSettingPo projectSetting,
                                         AiVideoProjectSettingPo globalSetting) {
         int value = requested != null && requested > 0
@@ -573,12 +730,12 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return Math.max(1, Math.min(4, value));
     }
 
-    private boolean hasRunningSceneImageTask(Long projectId, Long sceneId) {
+    private boolean hasRunningImageTask(Long projectId, String taskType, String bizType, Long bizId) {
         return taskMapper.selectCount(new LambdaQueryWrapper<AiVideoGenerationTaskPo>()
                 .eq(AiVideoGenerationTaskPo::getProjectId, projectId)
-                .eq(AiVideoGenerationTaskPo::getTaskType, TASK_SCENE_IMAGE)
-                .eq(AiVideoGenerationTaskPo::getBizType, BIZ_SCENE)
-                .eq(AiVideoGenerationTaskPo::getBizId, sceneId)
+                .eq(AiVideoGenerationTaskPo::getTaskType, taskType)
+                .eq(AiVideoGenerationTaskPo::getBizType, bizType)
+                .eq(AiVideoGenerationTaskPo::getBizId, bizId)
                 .in(AiVideoGenerationTaskPo::getTaskStatus, AivideoTaskStatus.PENDING.name(), AivideoTaskStatus.RUNNING.name())
                 .eq(AiVideoGenerationTaskPo::getDelFlag, DEL_FLAG_NORMAL)) > 0;
     }
@@ -587,9 +744,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         AiVideoGenerationTaskPo task = new AiVideoGenerationTaskPo();
         task.setProjectId(context.project().getProjectId());
         task.setTenantId(context.project().getTenantId());
-        task.setTaskType(TASK_SCENE_IMAGE);
-        task.setBizType(BIZ_SCENE);
-        task.setBizId(context.scene().getSceneId());
+        task.setTaskType(context.taskType());
+        task.setBizType(context.bizType());
+        task.setBizId(context.bizId());
         task.setModelId(context.modelId());
         task.setPromptTemplateId(context.promptTemplateId());
         task.setPromptText(context.prompt());
@@ -622,7 +779,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private void markTaskFailed(AiVideoGenerationTaskPo task, String message) {
         task.setTaskStatus(AivideoTaskStatus.FAILED.name());
         task.setProgress(100);
-        task.setErrorMessage(message == null ? "场景图生成失败" : message);
+        task.setErrorMessage(message == null ? "图片生成失败" : message);
         task.setFinishedTime(now());
         fillUpdateAudit(task);
         transactionTemplate.executeWithoutResult(status -> taskMapper.updateById(task));
@@ -654,6 +811,15 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             throw new BusinessException("场景资产不存在");
         }
         return scene;
+    }
+
+    private AiVideoCharacterPo requireCharacter(Long projectId, Long characterId) {
+        AiVideoCharacterPo character = characterMapper.selectById(characterId);
+        if (character == null || !Objects.equals(projectId, character.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(character.getDelFlag())) {
+            throw new BusinessException("角色资产不存在");
+        }
+        return character;
     }
 
     private AiVideoProjectSettingPo selectProjectSetting(Long projectId) {
@@ -731,7 +897,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     private void completeWithError(SseEmitter emitter, String message) {
         try {
-            sendSse(emitter, "error", StringUtils.hasText(message) ? message : "场景图生成失败");
+            sendSse(emitter, "error", StringUtils.hasText(message) ? message : "图片生成失败");
         } finally {
             emitter.complete();
         }
@@ -764,6 +930,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private void fillUpdateAudit(AiVideoScenePo scene) {
         scene.setUpdateBy(resolveOperator());
         scene.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoCharacterPo character) {
+        character.setUpdateBy(resolveOperator());
+        character.setUpdateTime(now());
     }
 
     private String extensionFromMime(String mimeType) {
@@ -817,6 +988,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private record RequestContext(
             AiVideoProjectPo project,
             AiVideoScenePo scene,
+            AiVideoCharacterPo character,
             AiVideoProjectSettingPo setting,
             Long modelId,
             Long promptTemplateId,
@@ -826,7 +998,14 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             String size,
             String customPrompt,
             String prompt,
-            Map<String, String> variables
+            Map<String, String> variables,
+            String systemPrompt,
+            String assetType,
+            String bizType,
+            Long bizId,
+            String taskType,
+            String failureMessage,
+            String negativePrompt
     ) {
     }
 

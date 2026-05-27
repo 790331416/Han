@@ -83,6 +83,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setScriptPromptTemplateId(source.getScriptPromptTemplateId());
         target.setCharacterPromptTemplateId(source.getCharacterPromptTemplateId());
         target.setScenePromptTemplateId(source.getScenePromptTemplateId());
+        target.setCharacterImagePromptTemplateId(source.getCharacterImagePromptTemplateId());
         target.setSceneImagePromptTemplateId(source.getSceneImagePromptTemplateId());
         target.setShotPromptTemplateId(source.getShotPromptTemplateId());
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
@@ -105,6 +106,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setScriptPromptTemplateId(setting.getScriptPromptTemplateId());
         vo.setCharacterPromptTemplateId(setting.getCharacterPromptTemplateId());
         vo.setScenePromptTemplateId(setting.getScenePromptTemplateId());
+        vo.setCharacterImagePromptTemplateId(setting.getCharacterImagePromptTemplateId());
         vo.setSceneImagePromptTemplateId(setting.getSceneImagePromptTemplateId());
         vo.setShotPromptTemplateId(setting.getShotPromptTemplateId());
         vo.setDefaultRatio(setting.getDefaultRatio());

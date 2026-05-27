@@ -199,10 +199,22 @@ BEGIN
         RAISE EXCEPTION 'ai_video_project missing';
     END IF;
     IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'ai_video_project_setting' AND column_name = 'character_image_prompt_template_id'
+    ) THEN
+        RAISE EXCEPTION 'ai_video_project_setting.character_image_prompt_template_id missing';
+    END IF;
+    IF NOT EXISTS (
         SELECT 1 FROM ai_prompt_template
         WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
     ) THEN
         RAISE EXCEPTION 'AI short-drama prompt templates missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM ai_prompt_template
+        WHERE category = 'aivideo_image' AND template_name = 'AI短剧角色图生成'
+    ) THEN
+        RAISE EXCEPTION 'AI short-drama character image prompt template missing';
     END IF;
 END $$;
 SQL
