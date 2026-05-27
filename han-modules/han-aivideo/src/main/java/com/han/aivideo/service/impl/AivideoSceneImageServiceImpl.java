@@ -205,15 +205,27 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         }
         AiVideoProjectPo project = requireProject(dto.getProjectId());
         AiVideoScenePo scene = requireScene(project.getProjectId(), dto.getSceneId());
-        AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
-        Long modelId = dto.getModelId() != null ? dto.getModelId() : (setting != null ? setting.getImageModelId() : null);
+        AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
+        AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
+        AiVideoProjectSettingPo setting = projectSetting != null ? projectSetting : globalSetting;
+        Long modelId = firstLong(dto.getModelId(),
+                projectSetting != null ? projectSetting.getImageModelId() : null,
+                globalSetting != null ? globalSetting.getImageModelId() : null);
         if (requireImageModel && modelId == null) {
             throw new BusinessException("图片模型未配置，请先在 AI 模型页新增 model_type=IMAGE 的火山模型，并在 AI短剧基础配置中绑定图片模型ID");
         }
-        int candidateCount = normalizeCandidateCount(dto.getCandidateCount(), setting);
-        String ratio = firstText(dto.getRatio(), setting != null ? setting.getDefaultRatio() : null, project.getDefaultRatio(), "9:16");
-        String resolution = firstText(dto.getResolution(), setting != null ? setting.getDefaultResolution() : null, "720p");
-        Long promptTemplateId = setting != null ? setting.getSceneImagePromptTemplateId() : null;
+        int candidateCount = normalizeCandidateCount(dto.getCandidateCount(), projectSetting, globalSetting);
+        String ratio = firstText(dto.getRatio(),
+                projectSetting != null ? projectSetting.getDefaultRatio() : null,
+                globalSetting != null ? globalSetting.getDefaultRatio() : null,
+                project.getDefaultRatio(), "9:16");
+        String resolution = firstText(dto.getResolution(),
+                projectSetting != null ? projectSetting.getDefaultResolution() : null,
+                globalSetting != null ? globalSetting.getDefaultResolution() : null,
+                "720p");
+        Long promptTemplateId = firstLong(
+                projectSetting != null ? projectSetting.getSceneImagePromptTemplateId() : null,
+                globalSetting != null ? globalSetting.getSceneImagePromptTemplateId() : null);
         Map<String, String> variables = buildSceneVariables(project, scene, ratio, resolution);
         String fallbackPrompt = buildSceneImagePrompt(project, scene, ratio, resolution);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
@@ -395,12 +407,14 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 safeValue(scene.getPromptText()));
     }
 
-    private int normalizeCandidateCount(Integer requested, AiVideoProjectSettingPo setting) {
+    private int normalizeCandidateCount(Integer requested, AiVideoProjectSettingPo projectSetting,
+                                        AiVideoProjectSettingPo globalSetting) {
         int value = requested != null && requested > 0
                 ? requested
-                : (setting != null && setting.getImageCandidateCount() != null
-                ? setting.getImageCandidateCount()
-                : DEFAULT_CANDIDATE_COUNT);
+                : firstInteger(
+                projectSetting != null ? projectSetting.getImageCandidateCount() : null,
+                globalSetting != null ? globalSetting.getImageCandidateCount() : null,
+                DEFAULT_CANDIDATE_COUNT);
         return Math.max(1, Math.min(4, value));
     }
 
@@ -487,9 +501,17 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return scene;
     }
 
-    private AiVideoProjectSettingPo selectSetting(Long projectId) {
+    private AiVideoProjectSettingPo selectProjectSetting(Long projectId) {
         return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .eq(AiVideoProjectSettingPo::getProjectId, projectId)
+                .last("limit 1"));
+    }
+
+    private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {
+        return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                .isNull(AiVideoProjectSettingPo::getProjectId)
+                .eq(tenantId != null, AiVideoProjectSettingPo::getTenantId, tenantId)
+                .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
                 .last("limit 1"));
     }
 
@@ -599,6 +621,30 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             }
         }
         return "";
+    }
+
+    private Long firstLong(Long... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Long value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private int firstInteger(Integer... values) {
+        if (values == null) {
+            return DEFAULT_CANDIDATE_COUNT;
+        }
+        for (Integer value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return DEFAULT_CANDIDATE_COUNT;
     }
 
     private String safeValue(String value) {

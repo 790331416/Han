@@ -1,6 +1,13 @@
 <template>
   <div class="login-container" data-testid="login-page">
-    <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form" data-testid="login-form">
+    <el-form
+      ref="loginFormRef"
+      :model="loginForm"
+      :rules="loginRules"
+      class="login-form"
+      data-testid="login-form"
+      autocomplete="on"
+    >
       <h3 class="title">HAN Cloud</h3>
       <p class="subtitle">企业级多租户微服务平台</p>
       
@@ -27,6 +34,7 @@
           placeholder="用户名"
           size="large"
           :prefix-icon="User"
+          autocomplete="username"
         />
       </el-form-item>
       
@@ -39,6 +47,7 @@
           size="large"
           :prefix-icon="Lock"
           show-password
+          autocomplete="current-password"
           @keyup.enter="handleLogin"
         />
       </el-form-item>
@@ -58,7 +67,7 @@
       </el-form-item>
       
       <el-form-item>
-        <el-checkbox v-model="rememberMe">记住密码</el-checkbox>
+        <el-checkbox v-model="rememberAccount">记住账号</el-checkbox>
       </el-form-item>
       
       <el-form-item>
@@ -130,8 +139,9 @@ const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 const captchaEnabled = ref(true)
 const captchaImg = ref('')
-const rememberMe = ref(false)
+const rememberAccount = ref(false)
 const deployTier = computed(() => appStore.deployTier || import.meta.env.VITE_DEPLOY_TIER || 'full')
+const rememberedAccountKey = 'han-login-account'
 
 const tenantLoading = ref(false)
 const tenantList = ref<TenantSimple[]>([])
@@ -145,7 +155,7 @@ let pendingLoginData: any = null
 const loginForm = reactive({
   tenantId: undefined as string | number | undefined,
   username: 'admin',
-  password: 'admin123',
+  password: '',
   code: '',
   uuid: ''
 })
@@ -195,6 +205,7 @@ const handleLogin = async () => {
 }
 
 const handleLoginSuccess = (loginRes: any) => {
+  persistRememberedAccount()
   if (loginRes.data.forceChangePassword) {
     ElMessage.warning('您的密码需要修改，请先修改密码')
     router.push('/user/profile?tab=password')
@@ -203,6 +214,34 @@ const handleLoginSuccess = (loginRes: any) => {
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   }
+}
+
+const loadRememberedAccount = () => {
+  try {
+    const raw = window.localStorage.getItem(rememberedAccountKey)
+    if (!raw) return
+    const data = JSON.parse(raw)
+    if (data?.username) {
+      loginForm.username = data.username
+      rememberAccount.value = true
+    }
+    if (data?.tenantId !== undefined && data.tenantId !== null && data.tenantId !== '') {
+      loginForm.tenantId = data.tenantId
+    }
+  } catch {
+    window.localStorage.removeItem(rememberedAccountKey)
+  }
+}
+
+const persistRememberedAccount = () => {
+  if (!rememberAccount.value) {
+    window.localStorage.removeItem(rememberedAccountKey)
+    return
+  }
+  window.localStorage.setItem(rememberedAccountKey, JSON.stringify({
+    username: loginForm.username,
+    tenantId: loginForm.tenantId ?? ''
+  }))
 }
 
 const handleTotpVerify = async () => {
@@ -266,6 +305,7 @@ const loadPublicKey = async () => {
 
 onMounted(async () => {
   await appStore.loadRuntimeCapabilities()
+  loadRememberedAccount()
   getCaptchaImg()
   if (deployTier.value !== 'small') {
     loadTenantList()
