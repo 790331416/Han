@@ -24,8 +24,10 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.RepeatSubmit;
 import jakarta.validation.Valid;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -194,5 +196,11 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<Void> selectProjectMedia(@Valid @RequestBody AivideoMediaSelectDto dto) {
         return selectMedia(dto);
+    }
+
+    @GetMapping("/media/{mediaId}/preview")
+    @PreAuthorize("@ss.isLogin()")
+    public ResponseEntity<InputStreamResource> previewProjectMedia(@PathVariable Long mediaId) {
+        return previewMedia(mediaId);
     }
 }

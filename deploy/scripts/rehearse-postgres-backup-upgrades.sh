@@ -44,6 +44,9 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260415_system_post_sort_alignment.sql"
   "sql/upgrades/postgres/20260521_aivideo_mvp0.sql"
   "sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql"
+  "sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql"
+  "sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql"
+  "sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql"
 )
 
 BACKUP_INPUTS=()

@@ -40,5 +40,7 @@ public class AivideoAdminSettingDto {
 
     private String contentAuditEnabled;
 
+    private String mediaAccessPolicy;
+
     private String remark;
 }

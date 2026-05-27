@@ -55,6 +55,8 @@ public class AiVideoProjectSettingPo {
 
     private String contentAuditEnabled;
 
+    private String mediaAccessPolicy;
+
     private String paramsJson;
 
     private String remark;

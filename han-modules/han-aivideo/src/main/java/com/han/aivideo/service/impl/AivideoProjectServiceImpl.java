@@ -290,6 +290,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setVideoCandidateCount(defaultInteger(global != null ? global.getVideoCandidateCount() : null, 1));
         setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(global != null ? global.getPreviewMode() : null, YES)));
         setting.setContentAuditEnabled(defaultString(global != null ? global.getContentAuditEnabled() : null, YES));
+        setting.setMediaAccessPolicy(defaultString(global != null ? global.getMediaAccessPolicy() : null, "PRIVATE"));
         return setting;
     }
 

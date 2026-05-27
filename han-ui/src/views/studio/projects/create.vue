@@ -37,7 +37,7 @@
           </el-col>
           <el-col :span="6">
             <el-form-item label="候选图数">
-              <el-input-number v-model="form.candidateImageCount" :min="1" :max="6" />
+              <el-input-number v-model="form.candidateImageCount" :min="1" :max="4" />
             </el-form-item>
           </el-col>
           <el-col :span="6">
@@ -92,7 +92,7 @@ const form = reactive<AivideoProjectForm>({
   defaultRatio: '9:16',
   defaultStyle: '',
   defaultShotDuration: 5,
-  candidateImageCount: 3,
+  candidateImageCount: 2,
   previewMode: '1',
   sourceType: 'TEXT',
   rawText: ''

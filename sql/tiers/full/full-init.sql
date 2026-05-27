@@ -1316,6 +1316,7 @@ CREATE TABLE IF NOT EXISTS ai_video_project_setting (
     video_candidate_count INT DEFAULT 1,
     preview_mode CHAR(1) DEFAULT '1',
     content_audit_enabled CHAR(1) DEFAULT '1',
+    media_access_policy VARCHAR(20) DEFAULT 'PRIVATE',
     params_json TEXT,
     remark VARCHAR(500),
     create_by VARCHAR(64),
@@ -1926,12 +1927,12 @@ INSERT INTO ai_video_project_setting (
     project_id, tenant_id, polish_prompt_template_id, script_prompt_template_id,
     character_prompt_template_id, scene_prompt_template_id, scene_image_prompt_template_id, shot_prompt_template_id,
     default_ratio, default_resolution, default_shot_duration,
-    image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled,
+    image_candidate_count, video_candidate_count, preview_mode, content_audit_enabled, media_access_policy,
     create_by, create_time, update_by, update_time
 )
 SELECT NULL, 0, tpl.polish_id, tpl.script_id,
        tpl.asset_id, tpl.asset_id, tpl.scene_image_id, tpl.asset_id,
-       '9:16', '720p', 5, 2, 1, '1', '1',
+       '9:16', '720p', 5, 2, 1, '1', '1', 'PRIVATE',
        'system', CURRENT_TIMESTAMP, 'system', CURRENT_TIMESTAMP
 FROM tpl
 WHERE tpl.polish_id IS NOT NULL

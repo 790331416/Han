@@ -11,9 +11,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
+
 @Service
 @RequiredArgsConstructor
 public class AivideoSettingServiceImpl extends AivideoServiceSupport implements IAivideoSettingService {
+
+    private static final String MEDIA_ACCESS_PRIVATE = "PRIVATE";
+    private static final String MEDIA_ACCESS_PUBLIC = "PUBLIC";
 
     private final AiVideoProjectSettingMapper settingMapper;
 
@@ -65,6 +70,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         setting.setVideoCandidateCount(1);
         setting.setPreviewMode(YES);
         setting.setContentAuditEnabled(YES);
+        setting.setMediaAccessPolicy(MEDIA_ACCESS_PRIVATE);
         setting.setRemark("MVP 0 默认配置，未接真实火山模型");
         return setting;
     }
@@ -86,6 +92,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setVideoCandidateCount(source.getVideoCandidateCount() == null ? 1 : source.getVideoCandidateCount());
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
         target.setContentAuditEnabled(defaultString(source.getContentAuditEnabled(), YES));
+        target.setMediaAccessPolicy(normalizeMediaAccessPolicy(source.getMediaAccessPolicy()));
         target.setRemark(trimToNull(source.getRemark()));
     }
 
@@ -107,12 +114,21 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setVideoCandidateCount(setting.getVideoCandidateCount());
         vo.setPreviewMode(setting.getPreviewMode());
         vo.setContentAuditEnabled(setting.getContentAuditEnabled());
+        vo.setMediaAccessPolicy(normalizeMediaAccessPolicy(setting.getMediaAccessPolicy()));
         vo.setRemark(setting.getRemark());
         return vo;
     }
 
     private String defaultString(String value, String defaultValue) {
         return StringUtils.hasText(value) ? value.trim() : defaultValue;
+    }
+
+    private String normalizeMediaAccessPolicy(String value) {
+        if (!StringUtils.hasText(value)) {
+            return MEDIA_ACCESS_PRIVATE;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        return MEDIA_ACCESS_PUBLIC.equals(normalized) ? MEDIA_ACCESS_PUBLIC : MEDIA_ACCESS_PRIVATE;
     }
 
     private void fillCreateAudit(AiVideoProjectSettingPo setting) {

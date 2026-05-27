@@ -430,8 +430,12 @@
             :class="{ selected: item.selected === '1' }"
           >
             <div class="scene-image-thumb">
-              <img v-if="item.fileUrl" :src="item.fileUrl" alt="场景候选图" />
-              <el-empty v-else description="无图片" />
+              <img
+                v-if="sceneImagePreviewUrls[String(item.mediaId)]"
+                :src="sceneImagePreviewUrls[String(item.mediaId)]"
+                alt="场景候选图"
+              />
+              <el-empty v-else description="图片加载中" />
             </div>
             <div class="scene-image-meta">
               <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
@@ -470,6 +474,7 @@ import {
   confirmAivideoScript,
   getAivideoProject,
   listAivideoMedia,
+  previewAivideoMedia,
   previewAivideoAssetPrompt,
   previewAivideoPolishPrompt,
   previewAivideoSceneImagePrompt,
@@ -510,6 +515,7 @@ const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
 const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
+const sceneImagePreviewUrls = ref<Record<string, string>>({})
 const sceneImageSelectingIds = ref<Set<string>>(new Set())
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
@@ -675,10 +681,41 @@ async function openSceneImageDrawer(scene: AivideoScene) {
   await loadSceneImageCandidates()
 }
 
+function revokeSceneImagePreviewUrls() {
+  Object.values(sceneImagePreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  sceneImagePreviewUrls.value = {}
+}
+
+async function loadSceneImagePreviewUrl(asset: AivideoMediaAsset) {
+  const key = String(asset.mediaId)
+  try {
+    const response = await previewAivideoMedia(asset.mediaId)
+    const blob = (response as any).data as Blob
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      return
+    }
+    const objectUrl = URL.createObjectURL(blob)
+    const next = { ...sceneImagePreviewUrls.value }
+    if (next[key]) {
+      URL.revokeObjectURL(next[key])
+    }
+    next[key] = objectUrl
+    sceneImagePreviewUrls.value = next
+  } catch (_error) {
+    // Preview errors are surfaced by the generation/list actions; keep the card placeholder.
+  }
+}
+
+async function refreshSceneImagePreviewUrls(candidates: AivideoMediaAsset[]) {
+  revokeSceneImagePreviewUrls()
+  await Promise.all(candidates.map((item) => loadSceneImagePreviewUrl(item)))
+}
+
 async function loadSceneImageCandidates() {
   const scene = selectedSceneForImage.value
   if (!scene) {
     sceneImageCandidates.value = []
+    revokeSceneImagePreviewUrls()
     return
   }
   const res = await listAivideoMedia({
@@ -687,7 +724,9 @@ async function loadSceneImageCandidates() {
     bizType: 'SCENE',
     bizId: scene.sceneId
   })
-  sceneImageCandidates.value = res.data || []
+  const candidates = res.data || []
+  sceneImageCandidates.value = candidates
+  await refreshSceneImagePreviewUrls(candidates)
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {
@@ -951,6 +990,7 @@ async function handleGenerateSceneImages() {
             asset,
             ...sceneImageCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
           ]
+          void loadSceneImagePreviewUrl(asset)
         }
       },
       onError: (message) => {
@@ -1022,6 +1062,7 @@ onBeforeUnmount(() => {
   if (promptPreviewTimer) {
     clearTimeout(promptPreviewTimer)
   }
+  revokeSceneImagePreviewUrls()
 })
 </script>
 

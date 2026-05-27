@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, request } from '@/utils/request'
 import type { PageQuery, PageResult } from '@/types'
 
 export interface AivideoProject {
@@ -182,6 +182,7 @@ export interface AivideoSetting {
   defaultShotDuration?: number
   previewMode?: string
   contentAuditEnabled?: string
+  mediaAccessPolicy?: string
   remark?: string
 }
 
@@ -352,6 +353,19 @@ export function listAivideoMedia(query: {
   bizId?: string | number
 }) {
   return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query)
+}
+
+export function previewAivideoMedia(mediaId: string | number) {
+  return request<Blob>({
+    url: `/aivideo/studio/media/${mediaId}/preview`,
+    method: 'GET',
+    responseType: 'blob',
+    silentError: true
+  })
+}
+
+export function getPublicAivideoMediaPreviewUrl(mediaId: string | number) {
+  return `/aivideo/public/media/${mediaId}/preview`
 }
 
 export function selectAivideoMedia(data: {

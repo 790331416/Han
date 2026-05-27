@@ -14,6 +14,7 @@ import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
+import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
 import com.han.aivideo.service.IAivideoProjectService;
@@ -21,7 +22,13 @@ import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class BAivideoStudioController {
 
@@ -132,5 +139,21 @@ public class BAivideoStudioController {
     protected R<Void> selectMedia(AivideoMediaSelectDto dto) {
         sceneImageService.selectMedia(dto);
         return R.ok();
+    }
+
+    protected ResponseEntity<InputStreamResource> previewMedia(Long mediaId) {
+        return mediaPreviewResponse(sceneImageService.previewMedia(mediaId));
+    }
+
+    protected ResponseEntity<InputStreamResource> previewPublicMedia(Long mediaId) {
+        return mediaPreviewResponse(sceneImageService.previewPublicMedia(mediaId));
+    }
+
+    protected ResponseEntity<InputStreamResource> mediaPreviewResponse(AivideoMediaPreviewResource resource) {
+        String encodedName = URLEncoder.encode(resource.fileName(), StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedName)
+                .contentType(resource.mediaType())
+                .body(new InputStreamResource(resource.stream()));
     }
 }

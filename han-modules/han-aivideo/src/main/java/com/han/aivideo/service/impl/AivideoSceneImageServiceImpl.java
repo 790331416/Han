@@ -11,6 +11,7 @@ import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
+import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.enums.AivideoTaskStatus;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
@@ -31,16 +32,21 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -66,6 +72,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String ACTION_SELECT = "SELECT";
     private static final String STATUS_READY = "READY";
     private static final String STATUS_SELECTED = "SELECTED";
+    private static final String MEDIA_ACCESS_PRIVATE = "PRIVATE";
+    private static final String MEDIA_ACCESS_PUBLIC = "PUBLIC";
     private static final int DEFAULT_CANDIDATE_COUNT = 2;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final String IMAGE_SYSTEM_PROMPT = "你是电影级纯净场景设计专家。只生成纯场景、无人、无人物、无人物剪影的图片提示词。";
@@ -79,6 +87,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private final AiServiceClient aiServiceClient;
     private final FileServiceClient fileServiceClient;
     private final TransactionTemplate transactionTemplate;
+
+    @Value("${han.aivideo.media.internal-file-origin:http://gateway:8080}")
+    private String internalFileOrigin;
 
     @Override
     public AivideoPromptPreviewVo previewSceneImagePrompt(AivideoSceneImageGenerateDto dto) {
@@ -124,6 +135,25 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 .orderByDesc(AiVideoMediaAssetPo::getCreateTime)
                 .orderByAsc(AiVideoMediaAssetPo::getCandidateNo);
         return mediaAssetMapper.selectList(wrapper).stream().map(this::toVo).toList();
+    }
+
+    @Override
+    public AivideoMediaPreviewResource previewMedia(Long mediaId) {
+        AiVideoMediaAssetPo media = requireMedia(mediaId);
+        assertMediaTenantAllowed(media);
+        return openMediaPreview(media);
+    }
+
+    @Override
+    public AivideoMediaPreviewResource previewPublicMedia(Long mediaId) {
+        AiVideoMediaAssetPo media = requireMedia(mediaId);
+        AiVideoProjectSettingPo globalSetting = selectGlobalSetting(media.getTenantId());
+        String accessPolicy = firstText(globalSetting != null ? globalSetting.getMediaAccessPolicy() : null,
+                MEDIA_ACCESS_PRIVATE);
+        if (!MEDIA_ACCESS_PUBLIC.equalsIgnoreCase(accessPolicy)) {
+            throw new BusinessException("媒体资源未公开");
+        }
+        return openMediaPreview(media);
     }
 
     @Override
@@ -274,7 +304,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         media.setBizType(BIZ_SCENE);
         media.setBizId(context.scene().getSceneId());
         media.setFileId(file.getId());
-        media.setFileUrl(file.getUrl());
+        media.setFileUrl(toFilePublicPath(file.getUrl()));
         media.setPromptText(response.getPrompt());
         media.setNegativePrompt("人物, 人影, human, person, face, body, crowd, extra people");
         media.setModelId(response.getModelId());
@@ -287,6 +317,102 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         fillCreateAudit(media);
         transactionTemplate.executeWithoutResult(status -> mediaAssetMapper.insert(media));
         return toVo(media);
+    }
+
+    private AiVideoMediaAssetPo requireMedia(Long mediaId) {
+        if (mediaId == null) {
+            throw new BusinessException("媒体ID不能为空");
+        }
+        AiVideoMediaAssetPo media = mediaAssetMapper.selectById(mediaId);
+        if (media == null || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())) {
+            throw new BusinessException("媒体资源不存在");
+        }
+        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())) {
+            throw new BusinessException("当前媒体不是场景图资源");
+        }
+        if (!StringUtils.hasText(media.getFileUrl())) {
+            throw new BusinessException("媒体资源未归档");
+        }
+        return media;
+    }
+
+    private void assertMediaTenantAllowed(AiVideoMediaAssetPo media) {
+        Long tenantId = currentTenantId();
+        if (tenantId != null && !Objects.equals(tenantId, media.getTenantId())) {
+            throw new BusinessException("无权访问该媒体资源");
+        }
+    }
+
+    private AivideoMediaPreviewResource openMediaPreview(AiVideoMediaAssetPo media) {
+        String publicPath = toFilePublicPath(media.getFileUrl());
+        String previewUrl = buildInternalFileUrl(publicPath);
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(previewUrl).openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(60_000);
+            connection.setRequestProperty("User-Agent", "Han-AIVideo/1.0");
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                throw new BusinessException("读取媒体资源失败(" + statusCode + ")");
+            }
+            return new AivideoMediaPreviewResource(
+                    fileNameFromPath(publicPath),
+                    safeMediaType(firstText(connection.getContentType(), "image/jpeg")),
+                    new DisconnectingInputStream(connection.getInputStream(), connection)
+            );
+        } catch (IOException exception) {
+            if (connection != null) {
+                connection.disconnect();
+            }
+            throw new BusinessException("读取媒体资源失败: " + exception.getMessage());
+        } catch (RuntimeException exception) {
+            if (connection != null) {
+                connection.disconnect();
+            }
+            throw exception;
+        }
+    }
+
+    private String buildInternalFileUrl(String publicPath) {
+        String origin = firstText(internalFileOrigin, "http://gateway:8080").trim();
+        if (origin.endsWith("/")) {
+            origin = origin.substring(0, origin.length() - 1);
+        }
+        return origin + publicPath;
+    }
+
+    private String toFilePublicPath(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl)) {
+            throw new BusinessException("媒体资源地址为空");
+        }
+        String value = fileUrl.trim();
+        if (value.startsWith("/file/public/")) {
+            return value;
+        }
+        try {
+            URI uri = URI.create(value);
+            String path = uri.getPath();
+            if (StringUtils.hasText(path) && path.startsWith("/file/public/")) {
+                return path;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Fall through to the business error below.
+        }
+        throw new BusinessException("媒体资源地址不是受控文件路径");
+    }
+
+    private String fileNameFromPath(String publicPath) {
+        int slashIndex = publicPath.lastIndexOf('/');
+        return slashIndex >= 0 ? publicPath.substring(slashIndex + 1) : "aivideo-media";
+    }
+
+    private MediaType safeMediaType(String contentType) {
+        try {
+            return MediaType.parseMediaType(contentType);
+        } catch (RuntimeException exception) {
+            return MediaType.IMAGE_JPEG;
+        }
     }
 
     private ImageBytes loadImageBytes(AiImageCandidate candidate) {
@@ -508,11 +634,19 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {
-        return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+        LambdaQueryWrapper<AiVideoProjectSettingPo> wrapper = new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .isNull(AiVideoProjectSettingPo::getProjectId)
-                .eq(tenantId != null, AiVideoProjectSettingPo::getTenantId, tenantId)
                 .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
-                .last("limit 1"));
+                .last("limit 1");
+        if (tenantId != null && tenantId > 0) {
+            wrapper.and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, tenantId)
+                    .or().eq(AiVideoProjectSettingPo::getTenantId, 0L)
+                    .or().isNull(AiVideoProjectSettingPo::getTenantId));
+        } else {
+            wrapper.and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, 0L)
+                    .or().isNull(AiVideoProjectSettingPo::getTenantId));
+        }
+        return settingMapper.selectOne(wrapper);
     }
 
     private AivideoMediaAssetVo toVo(AiVideoMediaAssetPo media) {
@@ -668,6 +802,24 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private record ImageBytes(byte[] bytes, String mimeType) {
+    }
+
+    private static final class DisconnectingInputStream extends FilterInputStream {
+        private final HttpURLConnection connection;
+
+        private DisconnectingInputStream(InputStream source, HttpURLConnection connection) {
+            super(source);
+            this.connection = connection;
+        }
+
+        @Override
+        public void close() throws IOException {
+            try {
+                super.close();
+            } finally {
+                connection.disconnect();
+            }
+        }
     }
 
     private static final class NamedByteArrayResource extends ByteArrayResource {

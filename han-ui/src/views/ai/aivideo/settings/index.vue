@@ -29,6 +29,17 @@
 
         <el-row :gutter="20">
           <el-col :span="8">
+            <el-form-item label="素材访问策略">
+              <el-select v-model="form.mediaAccessPolicy">
+                <el-option label="登录可见" value="PRIVATE" />
+                <el-option label="公开可见" value="PUBLIC" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
             <el-form-item label="默认画幅">
               <el-select v-model="form.defaultRatio">
                 <el-option v-for="item in ratioOptions" :key="item.value" :label="item.label" :value="item.value" />
@@ -105,6 +116,7 @@ const form = reactive<AivideoSetting>({
   defaultShotDuration: 5,
   previewMode: '1',
   contentAuditEnabled: '1',
+  mediaAccessPolicy: 'PRIVATE',
   remark: ''
 })
 
