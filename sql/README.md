@@ -18,6 +18,7 @@
   - `20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt、Prompt 配置继承与流式生成配套升级
   - `20260526_aivideo_mvp2_scene_image.sql`：AI 短剧 MVP 2 单场景纯场景图候选生成配置升级脚本
   - `20260527_aivideo_media_preview_access.sql`：AI 短剧受控媒体预览、素材访问策略和候选图默认值清理升级脚本
+  - `20260527_aivideo_scene_prompt_and_candidate_fill.sql`：AI 短剧场景图默认 Prompt 替换为参考词，并保持默认 2 张候选配置
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -95,3 +96,4 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt 入库、项目/全局 Prompt 模板 ID 补齐，并配合润色流式生成链路。
 - `sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql`：AI 短剧 MVP 2 场景图 Prompt 模板、`scene_image_prompt_template_id` 和默认候选图数量升级脚本，和 `sql/tiers/full/full-init.sql` 保持同步。
 - `sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql`：新增 `media_access_policy`，把历史场景图文件地址归一为受控 `/file/public/...` 路径，并把旧项目候选图数量 3 清理为默认 2。
+- `sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql`：更新 `AI短剧场景图生成` 内置模板为 BOSS 提供的“电影级纯净场景设计专家”默认词，并确保全局配置继续指向默认 2 张候选图。

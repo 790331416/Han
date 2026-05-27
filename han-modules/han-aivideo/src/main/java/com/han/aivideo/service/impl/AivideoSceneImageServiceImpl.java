@@ -76,7 +76,15 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String MEDIA_ACCESS_PUBLIC = "PUBLIC";
     private static final int DEFAULT_CANDIDATE_COUNT = 2;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-    private static final String IMAGE_SYSTEM_PROMPT = "你是电影级纯净场景设计专家。只生成纯场景、无人、无人物、无人物剪影的图片提示词。";
+    private static final String IMAGE_SYSTEM_PROMPT = """
+            你是电影级纯净场景设计专家（高辨识度版）。
+            核心规则：
+            1. 绝对真空与匿名：画面中严禁出现任何人影，提示词中严禁出现任何角色人名。
+            2. 场景名称必须具备辨识度，避免单一名词。
+            3. 场景描述必须完整涵盖环境类型、具体时间、空间氛围、视觉主要特征。
+            4. Prompt 必须以“不能出现其他人, 无人, 纯场景,”开头。
+            5. 不输出解释，只输出可直接用于图片模型的场景图提示词。
+            """;
 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoProjectSettingMapper settingMapper;
@@ -205,21 +213,44 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                     "modelId", context.modelId(),
                     "candidateCount", context.candidateCount()
             ));
-            AiImageGenerateResponse response = invokeImageGeneration(context);
             List<AivideoMediaAssetVo> assets = new ArrayList<>();
-            int total = response.getCandidates() == null ? 0 : response.getCandidates().size();
-            if (total == 0) {
+            AiImageGenerateResponse lastResponse = null;
+            int requested = context.candidateCount();
+            int attempts = 0;
+            int maxAttempts = Math.max(requested * 2, requested);
+            while (assets.size() < requested && attempts < maxAttempts) {
+                attempts++;
+                int nextIndex = assets.size() + 1;
+                sendSse(emitter, "meta", Map.of(
+                        "event", "generating",
+                        "current", nextIndex,
+                        "total", requested,
+                        "attempt", attempts
+                ));
+                AiImageGenerateResponse response = invokeImageGeneration(context, 1);
+                lastResponse = response;
+                List<AiImageCandidate> candidates = response.getCandidates();
+                if (candidates == null || candidates.isEmpty()) {
+                    continue;
+                }
+                for (AiImageCandidate candidate : candidates) {
+                    if (assets.size() >= requested) {
+                        break;
+                    }
+                    int candidateNo = assets.size() + 1;
+                    AivideoMediaAssetVo asset = saveCandidate(context, task, response, candidate, candidateNo);
+                    assets.add(asset);
+                    markTaskProgress(task, Math.min(95, 20 + (assets.size() * 70 / requested)));
+                    sendSse(emitter, "meta", Map.of("event", "candidate", "asset", asset));
+                }
+            }
+            if (assets.isEmpty()) {
                 throw new BusinessException("图片模型未返回候选图");
             }
-            int index = 0;
-            for (AiImageCandidate candidate : response.getCandidates()) {
-                index++;
-                AivideoMediaAssetVo asset = saveCandidate(context, task, response, candidate, index);
-                assets.add(asset);
-                markTaskProgress(task, Math.min(95, 20 + (index * 70 / total)));
-                sendSse(emitter, "meta", Map.of("event", "candidate", "asset", asset));
+            if (assets.size() < requested) {
+                throw new BusinessException("图片模型返回候选图数量不足，已生成 " + assets.size() + " 张，目标 " + requested + " 张，请稍后重试");
             }
-            markTaskSuccess(task, response.getModelId());
+            markTaskSuccess(task, lastResponse != null ? lastResponse.getModelId() : context.modelId());
             sendSse(emitter, "meta", Map.of("event", "done", "taskId", task.getTaskId(), "assets", assets));
             emitter.send(SseEmitter.event().data("[DONE]"));
             emitter.complete();
@@ -265,12 +296,12 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables);
     }
 
-    private AiImageGenerateResponse invokeImageGeneration(RequestContext context) {
+    private AiImageGenerateResponse invokeImageGeneration(RequestContext context, int candidateCount) {
         AiImageGenerateRequest request = new AiImageGenerateRequest();
         request.setTenantId(context.project().getTenantId());
         request.setModelId(context.modelId());
         request.setUserPrompt(context.prompt());
-        request.setCandidateCount(context.candidateCount());
+        request.setCandidateCount(candidateCount);
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
         request.setSize(context.size());
@@ -506,13 +537,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     private String buildSceneImagePrompt(AiVideoProjectPo project, AiVideoScenePo scene, String ratio, String resolution) {
         return """
-                请基于以下场景信息生成一张短剧可用的电影级纯净场景图。
-                强制要求：
-                1. 纯场景、无人、无人物、无人物剪影、无脸、无身体部位，不出现任何角色。
-                2. 画面必须可作为后续分镜视频背景，构图清晰，主体环境明确，避免过度抽象。
-                3. 保留场景气氛、时间、天气、色调、道具和视觉特征。
-                4. 画幅：%s；清晰度目标：%s。
-                5. 提示词中必须包含 no humans, empty scene, landscape only。
+                不能出现其他人, 无人, 纯场景, no humans, empty, landscape only。
+                电影级纯净场景设定图，极高画质，高辨识度，画幅：%s，清晰度目标：%s。
+                严禁出现任何角色、人名、人影、人物剪影、脸、身体部位、crowd、person、human。
+                场景描述必须完整涵盖环境类型、具体时间、空间氛围、视觉主要特征。
+                画面必须可作为后续分镜视频背景，空间关系清晰，主体环境明确，避免过度抽象。
 
                 项目：%s
                 风格：%s

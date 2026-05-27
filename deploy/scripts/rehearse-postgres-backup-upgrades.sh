@@ -47,6 +47,7 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql"
   "sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql"
   "sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql"
+  "sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql"
 )
 
 BACKUP_INPUTS=()
