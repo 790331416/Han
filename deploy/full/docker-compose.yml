@@ -322,6 +322,7 @@ services:
     image: ${HAN_AIVIDEO_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-aivideo:latest}
     environment:
       <<: *service-env
+      HAN_AIVIDEO_MEDIA_PUBLIC_FILE_ORIGIN: ${HAN_AIVIDEO_MEDIA_PUBLIC_FILE_ORIGIN:-}
       JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
     ports:
       - "9209:9209"
