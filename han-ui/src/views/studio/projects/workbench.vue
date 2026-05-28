@@ -565,7 +565,12 @@
           >
             生成 {{ params.videoCandidateCount || 1 }} 条候选视频
           </el-button>
-          <el-button :icon="Refresh" :disabled="shotVideoGenerating" @click="loadShotVideoCandidates">
+          <el-button
+            :icon="Refresh"
+            :loading="shotVideoGenerating"
+            :disabled="shotVideoGenerating"
+            @click="handleRefreshShotVideoCandidates"
+          >
             刷新候选
           </el-button>
         </div>
@@ -1061,6 +1066,61 @@ async function loadShotVideoCandidates() {
   const candidates = res.data || []
   shotVideoCandidates.value = candidates
   await refreshShotVideoPreviewUrls(candidates)
+}
+
+async function handleRefreshShotVideoCandidates() {
+  if (shotVideoGenerating.value) {
+    return
+  }
+  await loadShotVideoCandidates()
+  if (!shotVideoCandidates.value.length) {
+    await recoverShotVideoCandidates()
+  }
+}
+
+async function recoverShotVideoCandidates() {
+  const shot = selectedShotForVideo.value
+  if (!shot || shotVideoGenerating.value) {
+    return
+  }
+  shotVideoGenerating.value = true
+  try {
+    await requestAiStream({
+      baseUrl: import.meta.env.VITE_APP_BASE_API || '',
+      path: AIVIDEO_SHOT_VIDEO_STREAM_PATH,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: {
+        projectId: projectId.value,
+        shotId: shot.shotId,
+        candidateCount: 1,
+        ratio: params.defaultRatio,
+        resolution: params.defaultResolution,
+        durationSec: shot.durationSec || params.defaultShotDuration,
+        customPrompt: customPrompt.value,
+        recoverOnly: true
+      },
+      onMeta: (payload) => {
+        if (payload.event === 'candidate' && payload.asset) {
+          const asset = payload.asset as AivideoMediaAsset
+          shotVideoCandidates.value = [
+            asset,
+            ...shotVideoCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+          ]
+          void loadShotVideoPreviewUrl(asset)
+        }
+      },
+      onError: (message) => {
+        ElMessage.error(message || '续查分镜视频任务失败')
+      }
+    })
+    await loadShotVideoCandidates()
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '续查分镜视频任务失败')
+  } finally {
+    shotVideoGenerating.value = false
+  }
 }
 
 async function withSubmit(action: () => Promise<void>, successMessage: string) {

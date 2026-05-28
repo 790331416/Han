@@ -26,4 +26,9 @@ public class AivideoShotVideoGenerateDto {
     private Integer durationSec;
 
     private String customPrompt;
+
+    /**
+     * Only recover/poll an existing provider task. Used by the workbench refresh action.
+     */
+    private Boolean recoverOnly;
 }
