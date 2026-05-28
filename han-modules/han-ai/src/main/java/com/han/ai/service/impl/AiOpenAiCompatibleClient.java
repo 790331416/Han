@@ -39,6 +39,7 @@ import java.util.function.Consumer;
 class AiOpenAiCompatibleClient {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration VIDEO_REQUEST_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration STREAM_REQUEST_TIMEOUT = Duration.ofSeconds(300);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
@@ -144,7 +145,7 @@ class AiOpenAiCompatibleClient {
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
-            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody);
+            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody, VIDEO_REQUEST_TIMEOUT);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
             }
@@ -310,11 +311,17 @@ class AiOpenAiCompatibleClient {
     }
 
     private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody) throws IOException {
+        return executeRequest(requestUri, apiKey, requestBody, REQUEST_TIMEOUT);
+    }
+
+    private HttpResponsePayload executeRequest(URI requestUri, String apiKey, String requestBody,
+                                               Duration readTimeout) throws IOException {
+        Duration effectiveReadTimeout = readTimeout == null ? REQUEST_TIMEOUT : readTimeout;
         try {
-            return executeWithHttpURLConnection(requestUri, apiKey, requestBody);
+            return executeWithHttpURLConnection(requestUri, apiKey, requestBody, effectiveReadTimeout);
         } catch (UnknownHostException exception) {
             log.warn("Primary provider request hit DNS resolution issue, falling back to curl, uri={}", requestUri, exception);
-            return executeWithCurl(requestUri, apiKey, requestBody);
+            return executeWithCurl(requestUri, apiKey, requestBody, effectiveReadTimeout);
         }
     }
 
@@ -337,14 +344,15 @@ class AiOpenAiCompatibleClient {
         }
     }
 
-    private HttpResponsePayload executeWithHttpURLConnection(URI requestUri, String apiKey, String requestBody) throws IOException {
+    private HttpResponsePayload executeWithHttpURLConnection(URI requestUri, String apiKey, String requestBody,
+                                                            Duration readTimeout) throws IOException {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) requestUri.toURL().openConnection();
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
-            connection.setReadTimeout((int) REQUEST_TIMEOUT.toMillis());
+            connection.setReadTimeout((int) readTimeout.toMillis());
             connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
             connection.setRequestProperty(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             byte[] bodyBytes = requestBody.getBytes(StandardCharsets.UTF_8);
@@ -440,7 +448,8 @@ class AiOpenAiCompatibleClient {
         }
     }
 
-    private HttpResponsePayload executeWithCurl(URI requestUri, String apiKey, String requestBody) throws IOException {
+    private HttpResponsePayload executeWithCurl(URI requestUri, String apiKey, String requestBody,
+                                                Duration readTimeout) throws IOException {
         List<String> command = List.of(
                 "curl",
                 "--silent",
@@ -449,7 +458,7 @@ class AiOpenAiCompatibleClient {
                 "--connect-timeout",
                 String.valueOf(CONNECT_TIMEOUT.toSeconds()),
                 "--max-time",
-                String.valueOf(REQUEST_TIMEOUT.toSeconds()),
+                String.valueOf(readTimeout.toSeconds()),
                 "-X",
                 "POST",
                 requestUri.toString(),
