@@ -115,10 +115,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         AiVideoGenerationTaskPo task;
         try {
             context = buildContext(dto, true);
-            task = findReusableProviderTask(context);
+            boolean recoverOnly = Boolean.TRUE.equals(dto.getRecoverOnly());
+            task = recoverOnly ? findReusableProviderTask(context, true) : null;
             if (task != null) {
                 markTaskRecovering(context, task);
-            } else if (Boolean.TRUE.equals(dto.getRecoverOnly())) {
+            } else if (recoverOnly) {
                 throw new BusinessException("暂无可续查的视频生成任务");
             } else if (hasRunningVideoTask(context.project().getProjectId(), context.shot().getShotId())) {
                 throw new BusinessException("该分镜已有视频生成任务执行中，请稍后刷新候选视频");
@@ -133,6 +134,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         AiVideoGenerationTaskPo streamTask = task;
         CompletableFuture.runAsync(() -> runVideoStream(streamContext, streamTask, emitter));
         return emitter;
+    }
+
+    @Override
+    public List<AiVideoGenerationTaskPo> listShotVideoTasks(Long projectId, Long shotId) {
+        if (projectId == null || shotId == null) {
+            throw new BusinessException("项目ID和分镜ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(projectId);
+        requireShot(project.getProjectId(), shotId);
+        return taskMapper.selectList(new LambdaQueryWrapper<AiVideoGenerationTaskPo>()
+                .eq(AiVideoGenerationTaskPo::getProjectId, project.getProjectId())
+                .eq(AiVideoGenerationTaskPo::getTenantId, project.getTenantId())
+                .eq(AiVideoGenerationTaskPo::getTaskType, TASK_SHOT_VIDEO)
+                .eq(AiVideoGenerationTaskPo::getBizType, BIZ_SHOT)
+                .eq(AiVideoGenerationTaskPo::getBizId, shotId)
+                .eq(AiVideoGenerationTaskPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByDesc(AiVideoGenerationTaskPo::getUpdateTime)
+                .orderByDesc(AiVideoGenerationTaskPo::getTaskId)
+                .last("limit 5"));
     }
 
     private void runVideoStream(RequestContext context, AiVideoGenerationTaskPo task, SseEmitter emitter) {
@@ -182,7 +202,15 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             emitter.complete();
         } catch (ProviderTaskPendingException exception) {
             markTaskPending(task, exception.getMessage());
-            completeWithError(emitter, exception.getMessage());
+            sendSse(emitter, "meta", meta(
+                    "event", "pending",
+                    "taskId", task.getTaskId(),
+                    "providerTaskId", task.getProviderTaskId(),
+                    "status", AivideoTaskStatus.RUNNING.name(),
+                    "progress", task.getProgress(),
+                    "message", exception.getMessage()
+            ));
+            completeWithDone(emitter);
         } catch (Exception exception) {
             markTaskFailed(task, exception.getMessage());
             completeWithError(emitter, exception.getMessage());
@@ -363,7 +391,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return response;
     }
 
-    private AiVideoGenerationTaskPo findReusableProviderTask(RequestContext context) {
+    private AiVideoGenerationTaskPo findReusableProviderTask(RequestContext context, boolean looseMatch) {
         List<AiVideoGenerationTaskPo> tasks = taskMapper.selectList(new LambdaQueryWrapper<AiVideoGenerationTaskPo>()
                 .eq(AiVideoGenerationTaskPo::getProjectId, context.project().getProjectId())
                 .eq(AiVideoGenerationTaskPo::getTenantId, context.project().getTenantId())
@@ -381,9 +409,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 .orderByDesc(AiVideoGenerationTaskPo::getTaskId)
                 .last("limit 10"));
         return tasks.stream()
-                .filter(task -> isReusableProviderTask(context, task))
+                .filter(task -> looseMatch ? isReusableProviderTaskForRefresh(task) : isReusableProviderTask(context, task))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private boolean isReusableProviderTaskForRefresh(AiVideoGenerationTaskPo task) {
+        if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
+            return false;
+        }
+        LocalDateTime taskTime = firstTime(task.getStartedTime(), task.getUpdateTime(), task.getCreateTime());
+        return taskTime == null || !taskTime.isBefore(now().minusHours(PROVIDER_TASK_REUSE_HOURS));
     }
 
     private boolean isReusableProviderTask(RequestContext context, AiVideoGenerationTaskPo task) {
@@ -901,6 +937,16 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private void completeWithError(SseEmitter emitter, String message) {
         try {
             sendSse(emitter, "error", StringUtils.hasText(message) ? message : "视频生成失败");
+        } finally {
+            emitter.complete();
+        }
+    }
+
+    private void completeWithDone(SseEmitter emitter) {
+        try {
+            emitter.send(SseEmitter.event().data("[DONE]"));
+        } catch (IOException exception) {
+            throw new IllegalStateException("SSE send failed", exception);
         } finally {
             emitter.complete();
         }

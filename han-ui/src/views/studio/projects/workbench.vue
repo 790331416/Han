@@ -575,8 +575,28 @@
           </el-button>
         </div>
 
-        <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating" description="暂无分镜视频候选" />
-        <div v-else class="scene-image-grid">
+        <div v-if="shotVideoTasks.length" class="shot-video-task-list">
+          <article v-for="task in shotVideoTasks" :key="task.taskId" class="shot-video-task-card">
+            <div class="shot-video-task-head">
+              <strong>任务 {{ task.taskId }}</strong>
+              <el-tag :type="getTaskStatusTagType(task.taskStatus)" effect="plain">
+                {{ formatTaskStatus(task.taskStatus) }}
+              </el-tag>
+            </div>
+            <div class="shot-video-task-meta">
+              <span v-if="task.providerTaskId">火山任务 {{ task.providerTaskId }}</span>
+              <span v-if="task.updateTime">更新时间 {{ task.updateTime }}</span>
+            </div>
+            <el-progress
+              :percentage="normalizeTaskProgress(task)"
+              :status="task.taskStatus === 'FAILED' ? 'exception' : task.taskStatus === 'SUCCESS' ? 'success' : undefined"
+            />
+            <p v-if="task.errorMessage" class="shot-video-task-message">{{ task.errorMessage }}</p>
+          </article>
+        </div>
+
+        <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating && !shotVideoTasks.length" description="暂无分镜视频候选" />
+        <div v-if="shotVideoCandidates.length || shotVideoGenerating" class="scene-image-grid">
           <article
             v-for="item in shotVideoCandidates"
             :key="item.mediaId"
@@ -631,6 +651,7 @@ import {
   confirmAivideoScript,
   getAivideoProject,
   listAivideoMedia,
+  listAivideoShotVideoTasks,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
   previewAivideoCharacterImagePrompt,
@@ -645,7 +666,8 @@ import {
   type AivideoMediaAsset,
   type AivideoProjectDetail,
   type AivideoScene,
-  type AivideoShot
+  type AivideoShot,
+  type AivideoTask
 } from '@/api/aivideo'
 import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
 import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
@@ -690,6 +712,7 @@ const selectedShotForVideo = ref<AivideoShot>()
 const shotVideoPromptPreviewText = ref('')
 const shotVideoGenerating = ref(false)
 const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
+const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
 const confirmingAllAssets = ref(false)
@@ -1017,6 +1040,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   selectedShotForVideo.value = shot
   shotVideoDrawerVisible.value = true
   await refreshShotVideoPromptPreview()
+  await loadShotVideoTasks()
   await loadShotVideoCandidates()
 }
 
@@ -1068,10 +1092,73 @@ async function loadShotVideoCandidates() {
   await refreshShotVideoPreviewUrls(candidates)
 }
 
+async function loadShotVideoTasks() {
+  const shot = selectedShotForVideo.value
+  if (!shot) {
+    shotVideoTasks.value = []
+    return
+  }
+  const res = await listAivideoShotVideoTasks({
+    projectId: projectId.value,
+    shotId: shot.shotId
+  })
+  shotVideoTasks.value = res.data || []
+}
+
+function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
+  const taskId = payload.taskId
+  if (!taskId) {
+    return
+  }
+  const key = String(taskId)
+  const current = shotVideoTasks.value.find((item) => String(item.taskId) === key)
+  const next: AivideoTask = {
+    ...(current || {}),
+    taskId,
+    projectId: projectId.value,
+    taskType: 'SHOT_VIDEO',
+    bizType: 'SHOT',
+    bizId: selectedShotForVideo.value?.shotId,
+    providerTaskId: String(payload.providerTaskId || current?.providerTaskId || ''),
+    taskStatus: String(payload.status || current?.taskStatus || (payload.event === 'done' ? 'SUCCESS' : 'RUNNING')),
+    progress: Number(payload.progress ?? current?.progress ?? (payload.event === 'done' ? 100 : 15)),
+    errorMessage: String(payload.message || current?.errorMessage || '')
+  }
+  shotVideoTasks.value = [
+    next,
+    ...shotVideoTasks.value.filter((item) => String(item.taskId) !== key)
+  ]
+}
+
+function getTaskStatusTagType(status?: string) {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED') return 'danger'
+  if (status === 'CANCELED') return 'info'
+  return 'warning'
+}
+
+function formatTaskStatus(status?: string) {
+  const statusMap: Record<string, string> = {
+    PENDING: '排队中',
+    RUNNING: '生成中',
+    SUCCESS: '已完成',
+    FAILED: '失败',
+    CANCELED: '已取消'
+  }
+  return statusMap[String(status || 'RUNNING')] || String(status || '生成中')
+}
+
+function normalizeTaskProgress(task: AivideoTask) {
+  const value = Number(task.progress || 0)
+  if (Number.isNaN(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
 async function handleRefreshShotVideoCandidates() {
   if (shotVideoGenerating.value) {
     return
   }
+  await loadShotVideoTasks()
   await loadShotVideoCandidates()
   if (!shotVideoCandidates.value.length) {
     await recoverShotVideoCandidates()
@@ -1084,6 +1171,7 @@ async function recoverShotVideoCandidates() {
     return
   }
   shotVideoGenerating.value = true
+  let streamErrorShown = false
   try {
     await requestAiStream({
       baseUrl: import.meta.env.VITE_APP_BASE_API || '',
@@ -1101,6 +1189,7 @@ async function recoverShotVideoCandidates() {
         recoverOnly: true
       },
       onMeta: (payload) => {
+        mergeShotVideoTaskMeta(payload)
         if (payload.event === 'candidate' && payload.asset) {
           const asset = payload.asset as AivideoMediaAsset
           shotVideoCandidates.value = [
@@ -1109,15 +1198,25 @@ async function recoverShotVideoCandidates() {
           ]
           void loadShotVideoPreviewUrl(asset)
         }
+        if (payload.event === 'pending') {
+          ElMessage.info(String(payload.message || '视频任务仍在生成中，稍后刷新候选'))
+        }
       },
       onError: (message) => {
+        streamErrorShown = true
         ElMessage.error(message || '续查分镜视频任务失败')
       }
     })
+    await loadShotVideoTasks()
     await loadShotVideoCandidates()
     await loadDetail()
   } catch (error: any) {
+    if (streamErrorShown) {
+      await loadShotVideoTasks()
+      return
+    }
     ElMessage.error(error?.message || '续查分镜视频任务失败')
+    await loadShotVideoTasks()
   } finally {
     shotVideoGenerating.value = false
   }
@@ -1455,6 +1554,7 @@ async function handleGenerateShotVideos() {
     return
   }
   shotVideoGenerating.value = true
+  let receivedCandidate = false
   try {
     await requestAiStream({
       baseUrl: import.meta.env.VITE_APP_BASE_API || '',
@@ -1471,7 +1571,9 @@ async function handleGenerateShotVideos() {
         customPrompt: customPrompt.value
       },
       onMeta: (payload) => {
+        mergeShotVideoTaskMeta(payload)
         if (payload.event === 'candidate' && payload.asset) {
+          receivedCandidate = true
           const asset = payload.asset as AivideoMediaAsset
           shotVideoCandidates.value = [
             asset,
@@ -1479,16 +1581,25 @@ async function handleGenerateShotVideos() {
           ]
           void loadShotVideoPreviewUrl(asset)
         }
+        if (payload.event === 'pending') {
+          ElMessage.info(String(payload.message || '视频任务仍在生成中，稍后刷新候选'))
+        }
       },
       onError: (message) => {
         ElMessage.error(message || '分镜视频生成失败')
       }
     })
-    ElMessage.success('分镜视频候选已生成')
+    if (receivedCandidate) {
+      ElMessage.success('分镜视频候选已生成')
+    } else {
+      ElMessage.info('视频任务已提交，稍后点击刷新候选续查结果')
+    }
+    await loadShotVideoTasks()
     await loadShotVideoCandidates()
     await loadDetail()
   } catch (error: any) {
     ElMessage.error(error?.message || '分镜视频生成失败')
+    await loadShotVideoTasks()
   } finally {
     shotVideoGenerating.value = false
   }
@@ -1786,6 +1897,39 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.shot-video-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shot-video-task-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fbff;
+}
+
+.shot-video-task-head,
+.shot-video-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shot-video-task-meta,
+.shot-video-task-message {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.shot-video-task-message {
+  margin: 0;
 }
 
 .scene-image-grid {

@@ -12,6 +12,7 @@ import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
+import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
@@ -32,6 +33,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 public class BAivideoStudioController {
 
@@ -152,6 +154,10 @@ public class BAivideoStudioController {
 
     protected SseEmitter generateShotVideos(AivideoShotVideoGenerateDto dto) {
         return shotVideoService.generateShotVideosStream(dto);
+    }
+
+    protected R<List<AiVideoGenerationTaskPo>> listShotVideoTasks(Long projectId, Long shotId) {
+        return R.ok(shotVideoService.listShotVideoTasks(projectId, shotId));
     }
 
     protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {

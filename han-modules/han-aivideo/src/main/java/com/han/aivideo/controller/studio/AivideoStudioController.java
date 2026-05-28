@@ -13,6 +13,7 @@ import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
+import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
@@ -209,6 +210,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public SseEmitter generateShotVideoStream(@Valid @RequestBody AivideoShotVideoGenerateDto dto) {
         return generateShotVideos(dto);
+    }
+
+    @GetMapping("/media/shot/video/tasks")
+    @PreAuthorize("@ss.isLogin()")
+    public R<List<AiVideoGenerationTaskPo>> listShotVideoTaskHistory(@RequestParam Long projectId,
+                                                                     @RequestParam Long shotId) {
+        return listShotVideoTasks(projectId, shotId);
     }
 
     @GetMapping("/media/list")

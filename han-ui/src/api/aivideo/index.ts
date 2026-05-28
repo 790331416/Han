@@ -380,6 +380,13 @@ export function previewAivideoShotVideoPrompt(data: {
   return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
 }
 
+export function listAivideoShotVideoTasks(query: {
+  projectId: string | number
+  shotId: string | number
+}) {
+  return get<AivideoTask[]>('/aivideo/studio/media/shot/video/tasks', query)
+}
+
 export function listAivideoMedia(query: {
   projectId: string | number
   assetType?: string
