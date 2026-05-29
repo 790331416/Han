@@ -101,6 +101,17 @@ public final class FileUploadUtils {
                 return "application/vnd.ms-excel";
             case "xlsx":
                 return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "mp4":
+            case "m4v":
+                return "video/mp4";
+            case "webm":
+                return "video/webm";
+            case "mov":
+                return "video/quicktime";
+            case "mp3":
+                return "audio/mpeg";
+            case "wav":
+                return "audio/wav";
             default:
                 return "application/octet-stream";
         }
