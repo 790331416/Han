@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -69,7 +70,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final int DEFAULT_VIDEO_CANDIDATE_COUNT = 1;
     private static final int MAX_VIDEO_BYTES = 300 * 1024 * 1024;
     private static final int POLL_INTERVAL_MILLIS = 5_000;
-    private static final int MAX_POLL_TIMES = 3;
+    private static final int MAX_POLL_TIMES = 12;
     private static final int MAX_TRANSIENT_QUERY_FAILURES = 8;
     private static final int PROVIDER_TASK_REUSE_HOURS = 48;
     private static final String SHOT_VIDEO_SYSTEM_PROMPT = """
@@ -215,6 +216,20 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             ));
             completeWithDone(emitter);
         } catch (Exception exception) {
+            if (shouldKeepProviderTaskPending(task, exception)) {
+                String message = buildProviderPendingMessage(exception);
+                markTaskPending(task, message);
+                sendSse(emitter, "meta", meta(
+                        "event", "pending",
+                        "taskId", task.getTaskId(),
+                        "providerTaskId", task.getProviderTaskId(),
+                        "status", AivideoTaskStatus.RUNNING.name(),
+                        "progress", task.getProgress(),
+                        "message", message
+                ));
+                completeWithDone(emitter);
+                return;
+            }
             markTaskFailed(task, exception.getMessage());
             completeWithError(emitter, exception.getMessage());
         }
@@ -434,18 +449,59 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (!StringUtils.hasText(message)) {
             return false;
         }
-        String normalized = message.toLowerCase();
+        return isRecoverableProviderMessage(message);
+    }
+
+    private boolean shouldKeepProviderTaskPending(AiVideoGenerationTaskPo task, Exception exception) {
+        if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
+            return false;
+        }
+        String message = firstText(exception != null ? exception.getMessage() : null);
+        return isRecoverableProviderMessage(message);
+    }
+
+    private boolean isRecoverableProviderMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return false;
+        }
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.contains("供应商状态") || normalized.contains("provider status")
+                || normalized.contains("exceeds maximum permitted size") || normalized.contains("超过 300mb")) {
+            return false;
+        }
         return normalized.contains("sse")
                 || normalized.contains("broken pipe")
                 || normalized.contains("read timed out")
                 || normalized.contains("timeout")
                 || normalized.contains("temporarily unavailable")
+                || normalized.contains("temporary failure")
                 || normalized.contains("connection")
                 || normalized.contains("network")
+                || normalized.contains("busy")
+                || normalized.contains("try again")
+                || normalized.contains("later")
+                || normalized.contains("upload")
+                || normalized.contains("download")
                 || normalized.contains("ioexception")
                 || normalized.contains("超时")
                 || normalized.contains("网络")
-                || normalized.contains("连接");
+                || normalized.contains("连接")
+                || normalized.contains("系统繁忙")
+                || normalized.contains("稍后重试")
+                || normalized.contains("稍后刷新")
+                || normalized.contains("暂未完成")
+                || normalized.contains("文件服务")
+                || normalized.contains("上传")
+                || normalized.contains("下载")
+                || normalized.contains("归档");
+    }
+
+    private String buildProviderPendingMessage(Exception exception) {
+        String message = firstText(exception != null ? exception.getMessage() : null);
+        if (!StringUtils.hasText(message)) {
+            return "视频任务已提交，后续查询或归档暂未完成，请稍后刷新候选视频";
+        }
+        return "视频任务已提交，后续查询或归档暂未完成，请稍后刷新候选视频：" + message;
     }
 
     private boolean isReusableProviderTask(RequestContext context, AiVideoGenerationTaskPo task) {

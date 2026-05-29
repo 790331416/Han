@@ -560,7 +560,7 @@
             type="primary"
             :icon="VideoCamera"
             :loading="shotVideoGenerating"
-            :disabled="shotVideoGenerating"
+            :disabled="shotVideoActionLocked"
             @click="handleGenerateShotVideos"
           >
             生成 {{ params.videoCandidateCount || 1 }} 条候选视频
@@ -573,6 +573,40 @@
           >
             刷新候选
           </el-button>
+        </div>
+
+        <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating && !shotVideoTasks.length && !shotVideoLoading" description="暂无分镜视频候选" />
+        <div v-if="shotVideoCandidates.length || shotVideoGenerating" class="scene-image-grid">
+          <article
+            v-for="item in shotVideoCandidates"
+            :key="item.mediaId"
+            class="scene-image-card"
+            :class="{ selected: item.selected === '1' }"
+          >
+            <div class="scene-image-thumb">
+              <video
+                v-if="shotVideoPreviewUrls[String(item.mediaId)]"
+                :src="shotVideoPreviewUrls[String(item.mediaId)]"
+                controls
+                preload="metadata"
+                playsinline
+              />
+              <el-empty v-else description="视频加载中" />
+            </div>
+            <div class="scene-image-meta">
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
+            </div>
+            <el-button
+              type="success"
+              size="small"
+              :disabled="item.selected === '1'"
+              :loading="shotVideoSelectingIds.has(String(item.mediaId))"
+              @click="handleSelectShotVideo(item)"
+            >
+              选择这条
+            </el-button>
+          </article>
         </div>
 
         <div v-if="shotVideoTasks.length" class="shot-video-task-list">
@@ -592,39 +626,6 @@
               :status="task.taskStatus === 'FAILED' ? 'exception' : task.taskStatus === 'SUCCESS' ? 'success' : undefined"
             />
             <p v-if="task.errorMessage" class="shot-video-task-message">{{ task.errorMessage }}</p>
-          </article>
-        </div>
-
-        <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating && !shotVideoTasks.length" description="暂无分镜视频候选" />
-        <div v-if="shotVideoCandidates.length || shotVideoGenerating" class="scene-image-grid">
-          <article
-            v-for="item in shotVideoCandidates"
-            :key="item.mediaId"
-            class="scene-image-card"
-            :class="{ selected: item.selected === '1' }"
-          >
-            <div class="scene-image-thumb">
-              <video
-                v-if="shotVideoPreviewUrls[String(item.mediaId)]"
-                :src="shotVideoPreviewUrls[String(item.mediaId)]"
-                controls
-                playsinline
-              />
-              <el-empty v-else description="视频加载中" />
-            </div>
-            <div class="scene-image-meta">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
-              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
-            </div>
-            <el-button
-              type="success"
-              size="small"
-              :disabled="item.selected === '1'"
-              :loading="shotVideoSelectingIds.has(String(item.mediaId))"
-              @click="handleSelectShotVideo(item)"
-            >
-              选择这条
-            </el-button>
           </article>
         </div>
       </div>
@@ -710,6 +711,7 @@ const sceneImageSelectingIds = ref<Set<string>>(new Set())
 const shotVideoDrawerVisible = ref(false)
 const selectedShotForVideo = ref<AivideoShot>()
 const shotVideoPromptPreviewText = ref('')
+const shotVideoLoading = ref(false)
 const shotVideoGenerating = ref(false)
 const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
@@ -723,6 +725,7 @@ const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
+const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -772,6 +775,8 @@ const flowSteps = computed(() => [
   { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + shots.value.length },
   { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
 ])
+const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotVideoTaskInFlight))
+const shotVideoActionLocked = computed(() => shotVideoLoading.value || shotVideoGenerating.value || hasRunningShotVideoTask.value)
 
 function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
@@ -910,6 +915,7 @@ async function refreshShotVideoPromptPreview() {
     shotVideoPromptPreviewText.value = ''
     return
   }
+  const shotId = String(shot.shotId)
   try {
     const res = await previewAivideoShotVideoPrompt({
       projectId: projectId.value,
@@ -920,9 +926,14 @@ async function refreshShotVideoPromptPreview() {
       durationSec: shot.durationSec || params.defaultShotDuration,
       customPrompt: customPrompt.value
     })
+    if (!isCurrentShotVideoTarget(shotId)) {
+      return
+    }
     shotVideoPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
-    shotVideoPromptPreviewText.value = ''
+    if (isCurrentShotVideoTarget(shotId)) {
+      shotVideoPromptPreviewText.value = ''
+    }
   }
 }
 
@@ -1039,18 +1050,84 @@ async function loadSceneImageCandidates() {
 async function openShotVideoDrawer(shot: AivideoShot) {
   selectedShotForVideo.value = shot
   shotVideoDrawerVisible.value = true
-  await refreshShotVideoPromptPreview()
-  await loadShotVideoTasks()
-  await loadShotVideoCandidates()
+  resetShotVideoDrawerState()
+  const shotId = String(shot.shotId)
+  shotVideoLoading.value = true
+  try {
+    await Promise.all([
+      refreshShotVideoPromptPreview(),
+      loadShotVideoTasks(),
+      loadShotVideoCandidates()
+    ])
+  } finally {
+    if (isCurrentShotVideoTarget(shotId)) {
+      shotVideoLoading.value = false
+    }
+  }
 }
 
 function revokeShotVideoPreviewUrls() {
-  Object.values(shotVideoPreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  Object.values(shotVideoPreviewUrls.value).forEach((url) => {
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+    }
+  })
   shotVideoPreviewUrls.value = {}
+}
+
+function resetShotVideoDrawerState() {
+  shotVideoPromptPreviewText.value = ''
+  shotVideoTasks.value = []
+  shotVideoCandidates.value = []
+  revokeShotVideoPreviewUrls()
+}
+
+function isCurrentShotVideoTarget(shotId?: string | number) {
+  return !!selectedShotForVideo.value && String(selectedShotForVideo.value.shotId) === String(shotId)
+}
+
+function isShotVideoAssetForShot(asset: AivideoMediaAsset, shotId?: string | number) {
+  return String(asset.bizId) === String(shotId)
+}
+
+function setShotVideoPreviewUrl(key: string, url: string) {
+  const next = { ...shotVideoPreviewUrls.value }
+  if (next[key]?.startsWith('blob:')) {
+    URL.revokeObjectURL(next[key])
+  }
+  next[key] = url
+  shotVideoPreviewUrls.value = next
+}
+
+function resolveShotVideoDirectUrl(asset: AivideoMediaAsset) {
+  const fileUrl = String(asset.fileUrl || '')
+  if (!fileUrl) {
+    return ''
+  }
+  if (fileUrl.startsWith('/file/public/')) {
+    return fileUrl
+  }
+  try {
+    const parsed = new URL(fileUrl)
+    if (parsed.pathname.startsWith('/file/public/')) {
+      return parsed.pathname
+    }
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return fileUrl
+    }
+  } catch (_error) {
+    // Keep blob preview fallback for non-public or malformed URLs.
+  }
+  return ''
 }
 
 async function loadShotVideoPreviewUrl(asset: AivideoMediaAsset) {
   const key = String(asset.mediaId)
+  const directUrl = resolveShotVideoDirectUrl(asset)
+  if (directUrl) {
+    setShotVideoPreviewUrl(key, directUrl)
+    return
+  }
   try {
     const response = await previewAivideoMedia(asset.mediaId)
     const blob = (response as any).data as Blob
@@ -1058,12 +1135,7 @@ async function loadShotVideoPreviewUrl(asset: AivideoMediaAsset) {
       return
     }
     const objectUrl = URL.createObjectURL(blob)
-    const next = { ...shotVideoPreviewUrls.value }
-    if (next[key]) {
-      URL.revokeObjectURL(next[key])
-    }
-    next[key] = objectUrl
-    shotVideoPreviewUrls.value = next
+    setShotVideoPreviewUrl(key, objectUrl)
   } catch (_error) {
     // Preview errors are surfaced by the generation/list actions; keep the card placeholder.
   }
@@ -1081,13 +1153,17 @@ async function loadShotVideoCandidates() {
     revokeShotVideoPreviewUrls()
     return
   }
+  const shotId = String(shot.shotId)
   const res = await listAivideoMedia({
     projectId: projectId.value,
     assetType: 'SHOT_VIDEO',
     bizType: 'SHOT',
     bizId: shot.shotId
   })
-  const candidates = res.data || []
+  if (!isCurrentShotVideoTarget(shotId)) {
+    return
+  }
+  const candidates = (res.data || []).filter((item) => isShotVideoAssetForShot(item, shotId))
   shotVideoCandidates.value = candidates
   await refreshShotVideoPreviewUrls(candidates)
 }
@@ -1098,11 +1174,15 @@ async function loadShotVideoTasks() {
     shotVideoTasks.value = []
     return
   }
+  const shotId = String(shot.shotId)
   const res = await listAivideoShotVideoTasks({
     projectId: projectId.value,
     shotId: shot.shotId
   })
-  shotVideoTasks.value = res.data || []
+  if (!isCurrentShotVideoTarget(shotId)) {
+    return
+  }
+  shotVideoTasks.value = (res.data || []).filter((item) => String(item.bizId) === shotId)
 }
 
 function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
@@ -1128,6 +1208,10 @@ function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
     next,
     ...shotVideoTasks.value.filter((item) => String(item.taskId) !== key)
   ]
+}
+
+function isShotVideoTaskInFlight(task?: AivideoTask) {
+  return inFlightTaskStatuses.has(String(task?.taskStatus || '').toUpperCase())
 }
 
 function getTaskStatusTagType(status?: string) {
@@ -1182,8 +1266,16 @@ async function handleRefreshShotVideoCandidates() {
   if (shotVideoGenerating.value) {
     return
   }
+  const shot = selectedShotForVideo.value
+  if (!shot) {
+    return
+  }
+  const shotId = String(shot.shotId)
   await loadShotVideoTasks()
   await loadShotVideoCandidates()
+  if (!isCurrentShotVideoTarget(shotId)) {
+    return
+  }
   const hasRecoverableTask = shotVideoTasks.value.some(isRecoverableShotVideoTask)
   if (!shotVideoCandidates.value.length && hasRecoverableTask) {
     await recoverShotVideoCandidates()
@@ -1197,6 +1289,7 @@ async function recoverShotVideoCandidates() {
   if (!shot || shotVideoGenerating.value) {
     return
   }
+  const shotId = String(shot.shotId)
   shotVideoGenerating.value = true
   let streamErrorShown = false
   try {
@@ -1216,9 +1309,15 @@ async function recoverShotVideoCandidates() {
         recoverOnly: true
       },
       onMeta: (payload) => {
+        if (!isCurrentShotVideoTarget(shotId)) {
+          return
+        }
         mergeShotVideoTaskMeta(payload)
         if (payload.event === 'candidate' && payload.asset) {
           const asset = payload.asset as AivideoMediaAsset
+          if (!isShotVideoAssetForShot(asset, shotId)) {
+            return
+          }
           shotVideoCandidates.value = [
             asset,
             ...shotVideoCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
@@ -1577,9 +1676,13 @@ async function handleGenerateSceneImages() {
 
 async function handleGenerateShotVideos() {
   const shot = selectedShotForVideo.value
-  if (!shot || shotVideoGenerating.value) {
+  if (!shot || shotVideoActionLocked.value) {
+    if (hasRunningShotVideoTask.value) {
+      ElMessage.info('该分镜已有视频生成任务执行中，请稍后刷新候选视频')
+    }
     return
   }
+  const shotId = String(shot.shotId)
   shotVideoGenerating.value = true
   let receivedCandidate = false
   try {
@@ -1598,10 +1701,16 @@ async function handleGenerateShotVideos() {
         customPrompt: customPrompt.value
       },
       onMeta: (payload) => {
+        if (!isCurrentShotVideoTarget(shotId)) {
+          return
+        }
         mergeShotVideoTaskMeta(payload)
         if (payload.event === 'candidate' && payload.asset) {
-          receivedCandidate = true
           const asset = payload.asset as AivideoMediaAsset
+          if (!isShotVideoAssetForShot(asset, shotId)) {
+            return
+          }
+          receivedCandidate = true
           shotVideoCandidates.value = [
             asset,
             ...shotVideoCandidates.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))

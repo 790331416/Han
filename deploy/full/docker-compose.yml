@@ -268,6 +268,8 @@ services:
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-han@2026}
+      HAN_FILE_MAX_FILE_SIZE: ${HAN_FILE_MAX_FILE_SIZE:-300MB}
+      HAN_FILE_MAX_REQUEST_SIZE: ${HAN_FILE_MAX_REQUEST_SIZE:-320MB}
       JAVA_OPTS: -Xms256m -Xmx512m
       TZ: ${TZ:-Asia/Shanghai}
     ports:
