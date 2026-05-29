@@ -367,10 +367,13 @@
                 <el-table-column prop="durationSec" label="秒数" width="90" />
                 <el-table-column prop="cameraMovement" label="运动" min-width="120" />
                 <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
-                <el-table-column label="视频" width="120">
+                <el-table-column label="视频" width="160">
                   <template #default="{ row }">
                     <el-tag v-if="row.videoMediaId" type="success">已选 #{{ row.videoMediaId }}</el-tag>
                     <el-tag v-else type="info">未选</el-tag>
+                    <el-tag v-if="row.tailFrameMediaId" class="shot-tail-frame-tag" type="success" effect="plain">
+                      尾帧 #{{ row.tailFrameMediaId }}
+                    </el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
@@ -554,6 +557,15 @@
           <summary>查看本次分镜视频提示词</summary>
           <pre>{{ shotVideoPromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
+
+        <el-alert
+          v-if="previousShotVideoRequired"
+          class="shot-video-gate-alert"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="previousShotGateMessage"
+        />
 
         <div class="scene-image-actions">
           <el-button
@@ -776,7 +788,34 @@ const flowSteps = computed(() => [
   { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
 ])
 const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotVideoTaskInFlight))
-const shotVideoActionLocked = computed(() => shotVideoLoading.value || shotVideoGenerating.value || hasRunningShotVideoTask.value)
+const previousShotForVideo = computed(() => {
+  const current = selectedShotForVideo.value
+  if (!current) {
+    return undefined
+  }
+  const currentEpisodeNo = Number(current.episodeNo || 1)
+  const currentShotNo = Number(current.shotNo || 0)
+  if (!currentShotNo) {
+    return undefined
+  }
+  return [...shots.value]
+    .filter((item) => String(item.shotId) !== String(current.shotId))
+    .filter((item) => Number(item.episodeNo || 1) === currentEpisodeNo)
+    .filter((item) => Number(item.shotNo || 0) < currentShotNo)
+    .sort((a, b) => Number(b.shotNo || 0) - Number(a.shotNo || 0))[0]
+})
+const previousShotVideoRequired = computed(() => !!previousShotForVideo.value && !previousShotForVideo.value.videoMediaId)
+const previousShotGateMessage = computed(() => {
+  const previous = previousShotForVideo.value
+  if (!previous) {
+    return ''
+  }
+  return `请先为上一分镜（第 ${previous.episodeNo || 1} 集 / 镜头 ${previous.shotNo || '-'}）选择并确认视频，系统会把它的尾帧作为当前分镜衔接参考`
+})
+const shotVideoActionLocked = computed(() => shotVideoLoading.value
+  || shotVideoGenerating.value
+  || hasRunningShotVideoTask.value
+  || previousShotVideoRequired.value)
 
 function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
@@ -1676,7 +1715,14 @@ async function handleGenerateSceneImages() {
 
 async function handleGenerateShotVideos() {
   const shot = selectedShotForVideo.value
-  if (!shot || shotVideoActionLocked.value) {
+  if (!shot) {
+    return
+  }
+  if (previousShotVideoRequired.value) {
+    ElMessage.warning(previousShotGateMessage.value)
+    return
+  }
+  if (shotVideoActionLocked.value) {
     if (hasRunningShotVideoTask.value) {
       ElMessage.info('该分镜已有视频生成任务执行中，请稍后刷新候选视频')
     }
@@ -2033,6 +2079,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.shot-video-gate-alert {
+  margin-bottom: 12px;
+}
+
+.shot-tail-frame-tag {
+  margin-left: 6px;
 }
 
 .shot-video-task-list {

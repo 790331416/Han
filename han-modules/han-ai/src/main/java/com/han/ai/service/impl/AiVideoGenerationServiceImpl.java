@@ -53,7 +53,7 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         String prompt = resolvePrompt(request);
         AiOpenAiCompatibleClient.VideoGenerationResult result = openAiCompatibleClient.videoGeneration(
                 model, apiKey, prompt, request.getReferenceImageUrl(), request.getDurationSec(),
-                request.getRatio(), request.getResolution());
+                request.getRatio(), request.getResolution(), request.getReturnLastFrame());
 
         AiVideoGenerateResponse response = new AiVideoGenerateResponse();
         response.setModelId(model.getModelId());
@@ -64,6 +64,7 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         response.setTaskStatus(result.taskStatus());
         response.setProgress(result.progress());
         response.setVideoUrl(result.videoUrl());
+        response.setLastFrameUrl(result.lastFrameUrl());
         response.setRawResponse(result.rawResponse());
         return response;
     }
@@ -94,6 +95,7 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         response.setTaskStatus(result.taskStatus());
         response.setProgress(result.progress());
         response.setVideoUrl(result.videoUrl());
+        response.setLastFrameUrl(result.lastFrameUrl());
         response.setRawResponse(result.rawResponse());
         return response;
     }

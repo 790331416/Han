@@ -77,10 +77,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             你是电影级短剧分镜视频导演。
             核心规则：
             1. 基于已确认场景图生成单个短剧镜头视频，不生成整剧，不跨镜头。
-            2. 必须保持参考图的空间关系、时间、天气、色调和主体环境稳定。
-            3. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态。
-            4. 不要生成字幕、水印、logo、花字和无关文字。
-            5. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
+            2. 必须严格执行镜头连续性协议：上一镜头结束姿态就是本镜头起始姿态，不允许跳切、瞬移、突然换姿态。
+            3. 必须保持参考图的空间关系、时间、天气、色调和主体环境稳定；若参考图为上一镜头尾帧，优先继承尾帧中的主体位置和姿态。
+            4. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态，动作必须低幅度、渐进、可剪辑。
+            5. 遇到“悬浮、飞起、变身、倒地、站起”等强动作词，除非分镜明确写高速飞行，否则默认只做缓慢、低幅度、原地附近变化。
+            6. 不要生成字幕、水印、logo、花字和无关文字。
+            7. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
             """;
 
     private final AiVideoProjectMapper projectMapper;
@@ -245,7 +247,13 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (scene.getLockedMediaId() == null) {
             throw new BusinessException("请先为该分镜所属场景生成并选择场景图");
         }
-        AiVideoMediaAssetPo referenceMedia = requireReferenceSceneImage(project.getProjectId(), scene.getLockedMediaId());
+        AiVideoMediaAssetPo sceneReferenceMedia = requireReferenceSceneImage(project.getProjectId(), scene.getLockedMediaId());
+        AiVideoShotPo previousShot = findPreviousShot(project, shot);
+        if (requireVideoModel) {
+            validatePreviousShotReady(previousShot);
+        }
+        AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
+        AiVideoMediaAssetPo referenceMedia = previousTailFrameMedia != null ? previousTailFrameMedia : sceneReferenceMedia;
         AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
         AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
         Long modelId = firstLong(dto.getModelId(),
@@ -272,8 +280,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
         String referenceImageUrl = buildProviderFileUrl(referenceMedia.getFileUrl());
-        Map<String, String> variables = buildVariables(project, scene, shot, referenceImageUrl, ratio, resolution, durationSec);
-        String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, ratio, resolution, durationSec, referenceImageUrl);
+        Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
+                referenceImageUrl, ratio, resolution, durationSec);
+        String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
+                ratio, resolution, durationSec, referenceImageUrl);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
@@ -292,11 +302,60 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setResolution(context.resolution());
         request.setDurationSec(context.durationSec());
         request.setVariables(context.variables());
+        request.setReturnLastFrame(true);
         R<AiVideoGenerateResponse> result = aiServiceClient.generateVideo(request);
         if (result == null || result.isFail() || result.getData() == null) {
             throw new BusinessException(result == null ? "AI服务无响应" : result.getMsg());
         }
         return result.getData();
+    }
+
+    private AiVideoShotPo findPreviousShot(AiVideoProjectPo project, AiVideoShotPo shot) {
+        if (project == null || shot == null) {
+            return null;
+        }
+        LambdaQueryWrapper<AiVideoShotPo> wrapper = new LambdaQueryWrapper<AiVideoShotPo>()
+                .eq(AiVideoShotPo::getProjectId, project.getProjectId())
+                .eq(AiVideoShotPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByDesc(AiVideoShotPo::getShotNo)
+                .orderByDesc(AiVideoShotPo::getSortOrder)
+                .orderByDesc(AiVideoShotPo::getShotId)
+                .last("limit 1");
+        Integer episodeNo = shot.getEpisodeNo();
+        if (episodeNo != null) {
+            wrapper.eq(AiVideoShotPo::getEpisodeNo, episodeNo);
+        }
+        if (shot.getShotNo() != null) {
+            wrapper.lt(AiVideoShotPo::getShotNo, shot.getShotNo());
+        } else if (shot.getSortOrder() != null) {
+            wrapper.lt(AiVideoShotPo::getSortOrder, shot.getSortOrder());
+        } else {
+            wrapper.lt(AiVideoShotPo::getShotId, shot.getShotId());
+        }
+        return shotMapper.selectOne(wrapper);
+    }
+
+    private void validatePreviousShotReady(AiVideoShotPo previousShot) {
+        if (previousShot == null) {
+            return;
+        }
+        if (previousShot.getVideoMediaId() == null) {
+            throw new BusinessException("请先为上一分镜选择并确认视频，系统需要上一分镜结果作为衔接参考");
+        }
+    }
+
+    private AiVideoMediaAssetPo findTailFrameMedia(Long projectId, AiVideoShotPo previousShot) {
+        if (previousShot == null || previousShot.getTailFrameMediaId() == null) {
+            return null;
+        }
+        AiVideoMediaAssetPo media = mediaAssetMapper.selectById(previousShot.getTailFrameMediaId());
+        if (media == null || !Objects.equals(projectId, media.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())
+                || !"SHOT_TAIL_FRAME".equals(media.getAssetType())
+                || !StringUtils.hasText(media.getFileUrl())) {
+            return null;
+        }
+        return media;
     }
 
     private AiVideoTaskQueryResponse waitForCompletion(RequestContext context, AiVideoGenerationTaskPo task,
@@ -377,6 +436,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         params.put("providerTaskId", firstText(submitted.getProviderTaskId(), completed != null ? completed.getProviderTaskId() : ""));
         params.put("providerStatus", firstText(completed != null ? completed.getTaskStatus() : null, submitted.getTaskStatus()));
         params.put("providerVideoUrl", videoUrl);
+        params.put("providerLastFrameUrl", firstText(completed != null ? completed.getLastFrameUrl() : null,
+                submitted.getLastFrameUrl()));
 
         AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
         media.setProjectId(context.project().getProjectId());
@@ -662,6 +723,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private Map<String, String> buildVariables(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
+                                               AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                                String referenceImageUrl, String ratio, String resolution, int durationSec) {
         Map<String, String> variables = new LinkedHashMap<>();
         variables.put("projectName", safeValue(project.getProjectName()));
@@ -688,15 +750,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("emotion", safeValue(shot.getEmotion()));
         variables.put("shotPromptText", safeValue(shot.getPromptText()));
         variables.put("referenceImageUrl", referenceImageUrl);
+        variables.put("referenceFrameType", previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图");
+        variables.put("previousShotNo", previousShot == null ? "无" : String.valueOf(firstInteger(previousShot.getShotNo(), 1)));
+        variables.put("previousShotSummary", buildPreviousShotSummary(previousShot));
+        variables.put("previousEndState", buildPreviousEndState(previousShot));
+        variables.put("previousTailFrameUrl", previousTailFrameMedia == null ? "" : referenceImageUrl);
+        variables.put("currentStartState", buildCurrentStartState(previousShot, previousTailFrameMedia));
+        variables.put("currentEndState", buildCurrentEndState(shot));
+        variables.put("motionBoundary", buildMotionBoundary(shot));
+        variables.put("continuityNegativePrompt", buildContinuityNegativePrompt(shot));
         return variables;
     }
 
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
+                                        AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec, String referenceImageUrl) {
         return """
                 # AI短剧单分镜视频生成
 
-                请基于已选择的场景参考图生成一个短剧单镜头视频。
+                请基于已选择的参考图生成一个短剧单镜头视频。参考图类型：%s。
 
                 ## 输出规格
                 - 画幅：%s
@@ -721,13 +793,24 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 情绪：%s
                 - 原始分镜提示词：%s
 
+                ## 镜头连续性协议
+                - 上一镜头编号：%s
+                - 上一镜头摘要：%s
+                - 上一镜头结束姿态：%s
+                - 本镜头起始姿态：%s
+                - 本镜头结束姿态：%s
+                - 运动边界：%s
+                - 连续性负面约束：%s
+
                 ## 强制规则
                 1. 以参考场景图作为空间与光影基准，保持场景一致，不要跳到其他地点。
                 2. 镜头只表现当前单个分镜，不扩展前后剧情，不生成多个镜头拼接。
-                3. 动作节奏清晰，镜头运动稳定，适合短剧剪辑。
-                4. 不要生成字幕、水印、logo、花字、海报字和无关屏幕文字。
-                5. 角色、动作和情绪以分镜描述为准；缺失信息用克制、自然的影视表达补齐。
+                3. 严格从“本镜头起始姿态”开始，不允许直接跳到动作结果。
+                4. 动作节奏清晰，镜头运动稳定，适合短剧剪辑。
+                5. 不要生成字幕、水印、logo、花字、海报字和无关屏幕文字。
+                6. 角色、动作和情绪以分镜描述为准；缺失信息用克制、自然的影视表达补齐。
                 """.formatted(
+                previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
                 safeValue(project.getProjectName()), safeValue(project.getDefaultStyle()),
                 firstInteger(shot.getEpisodeNo(), 1), firstInteger(shot.getShotNo(), 1),
@@ -736,7 +819,100 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())),
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
                 safeValue(shot.getActionDesc()), safeValue(shot.getDialogue()), safeValue(shot.getVoiceOver()),
-                safeValue(shot.getEmotion()), safeValue(shot.getPromptText()));
+                safeValue(shot.getEmotion()), safeValue(shot.getPromptText()),
+                previousShot == null ? "无" : String.valueOf(firstInteger(previousShot.getShotNo(), 1)),
+                buildPreviousShotSummary(previousShot),
+                buildPreviousEndState(previousShot),
+                buildCurrentStartState(previousShot, previousTailFrameMedia),
+                buildCurrentEndState(shot),
+                buildMotionBoundary(shot),
+                buildContinuityNegativePrompt(shot));
+    }
+
+    private String buildPreviousShotSummary(AiVideoShotPo previousShot) {
+        if (previousShot == null) {
+            return "首镜头，无上一镜头。";
+        }
+        return "第 " + firstInteger(previousShot.getShotNo(), 1) + " 镜头：" + firstText(
+                previousShot.getActionDesc(), previousShot.getPromptText(), "上一镜头已确认。");
+    }
+
+    private String buildPreviousEndState(AiVideoShotPo previousShot) {
+        if (previousShot == null) {
+            return "无上一镜头，按当前参考图自然开场。";
+        }
+        String action = firstText(previousShot.getActionDesc(), previousShot.getPromptText());
+        if (!StringUtils.hasText(action)) {
+            return "上一镜头结束时的主体位置、姿态、表情和光影必须被本镜头继承。";
+        }
+        return "继承上一镜头结束状态：" + action + "。如果上一镜头尾帧可用，以尾帧中的主体位置、姿态和光影作为准绳。";
+    }
+
+    private String buildCurrentStartState(AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia) {
+        if (previousShot == null) {
+            return "首镜头从当前参考场景图自然开场，主体位置和动作按本镜头分镜描述进入。";
+        }
+        if (previousTailFrameMedia != null) {
+            return "必须从上一镜头尾帧参考图开始：主体位置、姿态、朝向、光影和环境保持一致，再缓慢进入本镜头动作。";
+        }
+        return "必须从上一镜头已确认视频的结尾状态开始，不能跳过衔接；如果没有尾帧图，按上一镜头动作描述推断结尾姿态。";
+    }
+
+    private String buildCurrentEndState(AiVideoShotPo shot) {
+        String action = firstText(shot != null ? shot.getActionDesc() : null, shot != null ? shot.getPromptText() : null);
+        if (!StringUtils.hasText(action)) {
+            return "本镜头结束时保持当前分镜动作的自然结果，便于下一镜头继续。";
+        }
+        StringBuilder builder = new StringBuilder("本镜头结束时停留在当前分镜动作的自然结果：").append(action).append("。");
+        if (containsAny(action, "悬浮", "漂浮", "飞起", "飞到", "飞向")) {
+            builder.append(" 若涉及悬浮，默认只允许低空、缓慢、原地附近悬浮，结束时主体仍靠近原位置。");
+        }
+        return builder.toString();
+    }
+
+    private String buildMotionBoundary(AiVideoShotPo shot) {
+        String text = collectShotText(shot);
+        if (containsAny(text, "悬浮", "漂浮")) {
+            return "悬浮必须是缓慢、低空、近地、原地附近变化；默认离地约 5-15 厘米，除非分镜明确写飞向天空。";
+        }
+        if (containsAny(text, "飞起", "飞到", "飞向", "升空")) {
+            return "飞行动作必须有明确起点和终点，速度克制，不能突然冲出画面或改变主体身份。";
+        }
+        if (containsAny(text, "倒地", "趴", "蜷缩", "抽搐")) {
+            return "倒地、趴伏或抽搐动作必须保持低位姿态，动作连续，不要突然站起、跳起或大幅位移。";
+        }
+        return "动作必须单一、连续、可剪辑，主体不要瞬移、跳切、突然换姿态或离开既定空间。";
+    }
+
+    private String buildContinuityNegativePrompt(AiVideoShotPo shot) {
+        String text = collectShotText(shot);
+        String base = "禁止跳切、瞬移、突然换姿态、突然改变主体大小或身份、突然换场景、突然改变天气光线、字幕、水印、logo、花字、无关文字。";
+        if (containsAny(text, "悬浮", "漂浮", "飞起", "飞到", "飞向")) {
+            return base + " 禁止一开始就高空飞行，禁止高速升空，禁止翻滚，禁止离开画面中心区域。";
+        }
+        return base;
+    }
+
+    private String collectShotText(AiVideoShotPo shot) {
+        if (shot == null) {
+            return "";
+        }
+        return firstText(shot.getActionDesc()) + "\n"
+                + firstText(shot.getPromptText()) + "\n"
+                + firstText(shot.getVoiceOver()) + "\n"
+                + firstText(shot.getDialogue());
+    }
+
+    private boolean containsAny(String text, String... keywords) {
+        if (!StringUtils.hasText(text) || keywords == null) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (StringUtils.hasText(keyword) && text.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String renderPrompt(AiVideoProjectPo project, Long promptTemplateId, String customPrompt,

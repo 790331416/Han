@@ -128,6 +128,7 @@ export interface AivideoShot {
   referenceMediaIds?: string
   keyframeMediaId?: string | number
   videoMediaId?: string | number
+  tailFrameMediaId?: string | number
 }
 
 export interface AivideoAssetSummary {

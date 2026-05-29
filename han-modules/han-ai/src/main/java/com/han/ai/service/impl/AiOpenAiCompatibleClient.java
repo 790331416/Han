@@ -139,9 +139,10 @@ class AiOpenAiCompatibleClient {
     }
 
     VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, String referenceImageUrl,
-                                          Integer durationSec, String ratio, String resolution) {
+                                          Integer durationSec, String ratio, String resolution, Boolean returnLastFrame) {
         validateVideoArguments(model, apiKey, prompt, referenceImageUrl);
-        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, durationSec, ratio, resolution);
+        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, durationSec, ratio, resolution,
+                returnLastFrame);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
@@ -177,6 +178,7 @@ class AiOpenAiCompatibleClient {
                     result.taskStatus(),
                     result.progress(),
                     result.videoUrl(),
+                    result.lastFrameUrl(),
                     result.rawResponse()
             );
         } catch (IOException e) {
@@ -270,7 +272,8 @@ class AiOpenAiCompatibleClient {
     }
 
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
-                                                     Integer durationSec, String ratio, String resolution) {
+                                                     Integer durationSec, String ratio, String resolution,
+                                                     Boolean returnLastFrame) {
         VideoGenerationRequest request = new VideoGenerationRequest();
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
@@ -279,6 +282,7 @@ class AiOpenAiCompatibleClient {
         request.duration = durationSec == null || durationSec < 1 ? 5 : Math.min(durationSec, 30);
         request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
         request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
+        request.returnLastFrame = returnLastFrame == null || Boolean.TRUE.equals(returnLastFrame);
         return request;
     }
 
@@ -598,7 +602,8 @@ class AiOpenAiCompatibleClient {
             String status = firstText(root, Set.of("status", "task_status", "taskStatus"));
             Integer progress = firstInteger(root, Set.of("progress", "percent", "percentage"));
             String videoUrl = findVideoUrl(root);
-            return new VideoGenerationResult(providerTaskId, status, progress, videoUrl, responseBody);
+            String lastFrameUrl = findLastFrameUrl(root);
+            return new VideoGenerationResult(providerTaskId, status, progress, videoUrl, lastFrameUrl, responseBody);
         } catch (IOException exception) {
             throw new BusinessException("视频模型返回内容不是有效 JSON");
         }
@@ -657,6 +662,10 @@ class AiOpenAiCompatibleClient {
         return "";
     }
 
+    private String findLastFrameUrl(JsonNode node) {
+        return findNamedHttpUrl(node, Set.of("last_frame_url", "lastFrameUrl", "last_frame", "lastFrame"));
+    }
+
     private String findNamedUrl(JsonNode node, Set<String> fieldNames) {
         if (node == null || node.isNull()) {
             return "";
@@ -682,6 +691,39 @@ class AiOpenAiCompatibleClient {
         } else if (node.isArray()) {
             for (JsonNode item : node) {
                 String nested = findNamedUrl(item, fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        }
+        return "";
+    }
+
+    private String findNamedHttpUrl(JsonNode node, Set<String> fieldNames) {
+        if (node == null || node.isNull()) {
+            return "";
+        }
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (fieldNames.contains(field.getKey()) && field.getValue().isValueNode()) {
+                    String value = field.getValue().asText("");
+                    if (StringUtils.hasText(value) && value.startsWith("http")) {
+                        return value.trim();
+                    }
+                }
+            }
+            fields = node.fields();
+            while (fields.hasNext()) {
+                String nested = findNamedHttpUrl(fields.next().getValue(), fieldNames);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+        } else if (node.isArray()) {
+            for (JsonNode item : node) {
+                String nested = findNamedHttpUrl(item, fieldNames);
                 if (StringUtils.hasText(nested)) {
                     return nested;
                 }
@@ -779,6 +821,9 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("resolution")
         public String resolution;
+
+        @JsonProperty("return_last_frame")
+        public Boolean returnLastFrame;
     }
 
     static class VideoContentPart {
@@ -893,6 +938,7 @@ class AiOpenAiCompatibleClient {
     record ImageGenerationResult(List<GeneratedImage> images) {
     }
 
-    record VideoGenerationResult(String providerTaskId, String taskStatus, Integer progress, String videoUrl, String rawResponse) {
+    record VideoGenerationResult(String providerTaskId, String taskStatus, Integer progress,
+                                  String videoUrl, String lastFrameUrl, String rawResponse) {
     }
 }

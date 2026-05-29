@@ -36,4 +36,6 @@ public class AiVideoGenerateRequest implements Serializable {
     private Integer durationSec;
 
     private String referenceImageUrl;
+
+    private Boolean returnLastFrame;
 }

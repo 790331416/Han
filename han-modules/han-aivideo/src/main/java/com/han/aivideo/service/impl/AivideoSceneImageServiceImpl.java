@@ -73,6 +73,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String ASSET_SCENE_IMAGE = "SCENE_IMAGE";
     private static final String ASSET_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
+    private static final String ASSET_SHOT_TAIL_FRAME = "SHOT_TAIL_FRAME";
     private static final String BIZ_SCENE = "SCENE";
     private static final String BIZ_CHARACTER = "CHARACTER";
     private static final String BIZ_SHOT = "SHOT";
@@ -266,7 +267,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         } else {
             AiVideoShotPo shot = requireShot(project.getProjectId(), media.getBizId());
             before = shot.getVideoMediaId();
+            AiVideoMediaAssetPo tailFrame = saveShotTailFrameIfPossible(project, shot, media);
             shot.setVideoMediaId(media.getMediaId());
+            if (tailFrame != null) {
+                shot.setTailFrameMediaId(tailFrame.getMediaId());
+            }
             shot.setGenerationStatus(STATUS_SELECTED);
             fillUpdateAudit(shot);
             shotMapper.updateById(shot);
@@ -463,6 +468,77 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return toVo(media);
     }
 
+    private AiVideoMediaAssetPo saveShotTailFrameIfPossible(AiVideoProjectPo project, AiVideoShotPo shot,
+                                                            AiVideoMediaAssetPo sourceVideo) {
+        String lastFrameUrl = resolveProviderLastFrameUrl(sourceVideo);
+        if (!StringUtils.hasText(lastFrameUrl)) {
+            return null;
+        }
+        ImageBytes imageBytes = downloadImage(lastFrameUrl);
+        String extension = extensionFromMime(imageBytes.mimeType());
+        String filename = "aivideo-shot-tail-frame-" + shot.getShotId() + "-" + sourceVideo.getMediaId()
+                + "." + extension;
+        Resource resource = new NamedByteArrayResource(imageBytes.bytes(), filename);
+        R<FileDTO> uploadResult = fileServiceClient.upload(resource);
+        if (uploadResult == null || uploadResult.isFail()) {
+            throw new BusinessException(uploadResult == null ? "尾帧参考图上传失败：文件服务无响应"
+                    : "尾帧参考图上传失败：" + uploadResult.getMsg());
+        }
+        FileDTO file = uploadResult.getData();
+        if (file == null || file.getId() == null || !StringUtils.hasText(file.getUrl())) {
+            throw new BusinessException("尾帧参考图上传成功但未返回 fileId/fileUrl");
+        }
+
+        mediaAssetMapper.update(null, new LambdaUpdateWrapper<AiVideoMediaAssetPo>()
+                .eq(AiVideoMediaAssetPo::getProjectId, project.getProjectId())
+                .eq(AiVideoMediaAssetPo::getAssetType, ASSET_SHOT_TAIL_FRAME)
+                .eq(AiVideoMediaAssetPo::getBizType, BIZ_SHOT)
+                .eq(AiVideoMediaAssetPo::getBizId, shot.getShotId())
+                .set(AiVideoMediaAssetPo::getSelected, NO)
+                .set(AiVideoMediaAssetPo::getAssetStatus, STATUS_READY)
+                .set(AiVideoMediaAssetPo::getUpdateBy, resolveOperator())
+                .set(AiVideoMediaAssetPo::getUpdateTime, now()));
+
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("sourceVideoMediaId", String.valueOf(sourceVideo.getMediaId()));
+        params.put("sourceTaskId", sourceVideo.getTaskId() == null ? "" : String.valueOf(sourceVideo.getTaskId()));
+        params.put("providerLastFrameUrl", lastFrameUrl);
+
+        AiVideoMediaAssetPo tailFrame = new AiVideoMediaAssetPo();
+        tailFrame.setProjectId(project.getProjectId());
+        tailFrame.setTenantId(project.getTenantId());
+        tailFrame.setAssetType(ASSET_SHOT_TAIL_FRAME);
+        tailFrame.setBizType(BIZ_SHOT);
+        tailFrame.setBizId(shot.getShotId());
+        tailFrame.setFileId(file.getId());
+        tailFrame.setFileUrl(toFilePublicPath(file.getUrl()));
+        tailFrame.setPromptText("分镜尾帧参考图，来源视频 #" + sourceVideo.getMediaId());
+        tailFrame.setModelId(sourceVideo.getModelId());
+        tailFrame.setTaskId(sourceVideo.getTaskId());
+        tailFrame.setParamsJson(XuJsonUtil.toJsonString(params));
+        tailFrame.setCandidateNo(sourceVideo.getCandidateNo());
+        tailFrame.setSelected(YES);
+        tailFrame.setAssetStatus(STATUS_SELECTED);
+        tailFrame.setDelFlag(DEL_FLAG_NORMAL);
+        fillCreateAudit(tailFrame);
+        mediaAssetMapper.insert(tailFrame);
+        return tailFrame;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String resolveProviderLastFrameUrl(AiVideoMediaAssetPo sourceVideo) {
+        if (sourceVideo == null || !StringUtils.hasText(sourceVideo.getParamsJson())) {
+            return "";
+        }
+        try {
+            Map<String, Object> params = XuJsonUtil.parseObject(sourceVideo.getParamsJson(), Map.class);
+            Object value = params.get("providerLastFrameUrl");
+            return value == null ? "" : String.valueOf(value).trim();
+        } catch (RuntimeException exception) {
+            return "";
+        }
+    }
+
     private AiVideoMediaAssetPo requireMedia(Long mediaId) {
         if (mediaId == null) {
             throw new BusinessException("媒体ID不能为空");
@@ -473,7 +549,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         }
         if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())
                 && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())
-                && !ASSET_SHOT_VIDEO.equals(media.getAssetType())) {
+                && !ASSET_SHOT_VIDEO.equals(media.getAssetType())
+                && !ASSET_SHOT_TAIL_FRAME.equals(media.getAssetType())) {
             throw new BusinessException("当前媒体不是短剧资源");
         }
         if (!StringUtils.hasText(media.getFileUrl())) {

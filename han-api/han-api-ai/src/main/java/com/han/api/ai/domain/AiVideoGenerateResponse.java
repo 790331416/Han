@@ -30,5 +30,7 @@ public class AiVideoGenerateResponse implements Serializable {
 
     private String videoUrl;
 
+    private String lastFrameUrl;
+
     private String rawResponse;
 }

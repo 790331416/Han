@@ -51,6 +51,8 @@ public class AiVideoShotPo {
 
     private Long keyframeMediaId;
 
+    private Long tailFrameMediaId;
+
     private Long videoMediaId;
 
     private String confirmStatus;
