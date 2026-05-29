@@ -69,7 +69,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final int DEFAULT_VIDEO_CANDIDATE_COUNT = 1;
     private static final int MAX_VIDEO_BYTES = 300 * 1024 * 1024;
     private static final int POLL_INTERVAL_MILLIS = 5_000;
-    private static final int MAX_POLL_TIMES = 120;
+    private static final int MAX_POLL_TIMES = 3;
     private static final int MAX_TRANSIENT_QUERY_FAILURES = 8;
     private static final int PROVIDER_TASK_REUSE_HOURS = 48;
     private static final String SHOT_VIDEO_SYSTEM_PROMPT = """
@@ -186,6 +186,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                     sendSse(emitter, "meta", meta("event", "candidate", "asset", existingAsset));
                     continue;
                 }
+                if (!recoveringProviderTask && StringUtils.hasText(submitted.getProviderTaskId())
+                        && !StringUtils.hasText(submitted.getVideoUrl())) {
+                    throw new ProviderTaskPendingException("视频任务已提交，稍后点击刷新候选续查结果");
+                }
                 AiVideoTaskQueryResponse completed = waitForCompletion(context, task, submitted, emitter);
                 String videoUrl = firstText(completed != null ? completed.getVideoUrl() : null, submitted.getVideoUrl());
                 if (!StringUtils.hasText(videoUrl)) {
@@ -198,8 +202,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
             markTaskSuccess(task, context.modelId());
             sendSse(emitter, "meta", meta("event", "done", "taskId", task.getTaskId(), "assets", assets));
-            emitter.send(SseEmitter.event().data("[DONE]"));
-            emitter.complete();
+            completeWithDone(emitter);
         } catch (ProviderTaskPendingException exception) {
             markTaskPending(task, exception.getMessage());
             sendSse(emitter, "meta", meta(
@@ -334,7 +337,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 throw new BusinessException("视频生成失败，供应商状态：" + response.getTaskStatus());
             }
         }
-        throw new ProviderTaskPendingException("video task is still running; refresh candidates later");
+        throw new ProviderTaskPendingException("视频任务仍在生成中，请稍后刷新候选");
     }
 
     private AivideoMediaAssetVo saveCandidate(RequestContext context, AiVideoGenerationTaskPo task,
@@ -923,14 +926,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
     }
 
-    private void sendSse(SseEmitter emitter, String type, Object content) {
+    private boolean sendSse(SseEmitter emitter, String type, Object content) {
         try {
             emitter.send(SseEmitter.event().data(XuJsonUtil.toJsonString(Map.of(
                     "type", type,
                     "content", content == null ? "" : content
             ))));
+            return true;
         } catch (IOException exception) {
-            throw new IllegalStateException("SSE send failed", exception);
+            return false;
+        } catch (IllegalStateException exception) {
+            return false;
         }
     }
 
@@ -946,7 +952,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         try {
             emitter.send(SseEmitter.event().data("[DONE]"));
         } catch (IOException exception) {
-            throw new IllegalStateException("SSE send failed", exception);
+            // Client-side disconnects must not mark the provider task as failed.
+        } catch (IllegalStateException exception) {
+            // Client-side disconnects must not mark the provider task as failed.
         } finally {
             emitter.complete();
         }
