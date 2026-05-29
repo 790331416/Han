@@ -1154,14 +1154,41 @@ function normalizeTaskProgress(task: AivideoTask) {
   return Math.max(0, Math.min(100, value))
 }
 
+function isRecoverableShotVideoTask(task: AivideoTask) {
+  const status = String(task.taskStatus || '').toUpperCase()
+  if (status === 'PENDING' || status === 'RUNNING') {
+    return true
+  }
+  if (status !== 'FAILED' || !task.providerTaskId) {
+    return false
+  }
+  const message = String(task.errorMessage || '').toLowerCase()
+  return [
+    'sse',
+    'broken pipe',
+    'read timed out',
+    'timeout',
+    'temporarily unavailable',
+    'connection',
+    'network',
+    'ioexception',
+    '超时',
+    '网络',
+    '连接'
+  ].some((keyword) => message.includes(keyword))
+}
+
 async function handleRefreshShotVideoCandidates() {
   if (shotVideoGenerating.value) {
     return
   }
   await loadShotVideoTasks()
   await loadShotVideoCandidates()
-  if (!shotVideoCandidates.value.length) {
+  const hasRecoverableTask = shotVideoTasks.value.some(isRecoverableShotVideoTask)
+  if (!shotVideoCandidates.value.length && hasRecoverableTask) {
     await recoverShotVideoCandidates()
+  } else if (!shotVideoCandidates.value.length && shotVideoTasks.value.length) {
+    ElMessage.info('没有可续查的进行中视频任务，需要重新生成候选')
   }
 }
 

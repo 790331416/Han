@@ -421,8 +421,31 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
             return false;
         }
+        if (AivideoTaskStatus.FAILED.name().equals(normalizeStatus(task.getTaskStatus()))
+                && !isRecoverableFailedProviderTask(task)) {
+            return false;
+        }
         LocalDateTime taskTime = firstTime(task.getStartedTime(), task.getUpdateTime(), task.getCreateTime());
         return taskTime == null || !taskTime.isBefore(now().minusHours(PROVIDER_TASK_REUSE_HOURS));
+    }
+
+    private boolean isRecoverableFailedProviderTask(AiVideoGenerationTaskPo task) {
+        String message = firstText(task.getErrorMessage());
+        if (!StringUtils.hasText(message)) {
+            return false;
+        }
+        String normalized = message.toLowerCase();
+        return normalized.contains("sse")
+                || normalized.contains("broken pipe")
+                || normalized.contains("read timed out")
+                || normalized.contains("timeout")
+                || normalized.contains("temporarily unavailable")
+                || normalized.contains("connection")
+                || normalized.contains("network")
+                || normalized.contains("ioexception")
+                || normalized.contains("超时")
+                || normalized.contains("网络")
+                || normalized.contains("连接");
     }
 
     private boolean isReusableProviderTask(RequestContext context, AiVideoGenerationTaskPo task) {
