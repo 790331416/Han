@@ -72,12 +72,25 @@ public class FileStorageAccessService {
         try {
             StorageConfigRecord record = resolveRecord(locator);
             InputStream stream = getProvider(record.getRuntimeConfig()).download(fileName);
-            return new DownloadFileResult(fileName, FileUploadUtils.getContentType(fileName), stream);
+            return new DownloadFileResult(fileName, FileUploadUtils.getContentType(fileName), resolveFileSize(locator, fileName), stream);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Storage locator not found", ex);
         } catch (RuntimeException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found", ex);
         }
+    }
+
+    private Long resolveFileSize(String locator, String fileName) {
+        return jdbcTemplate.query("""
+                        select file_size
+                        from sys_file
+                        where bucket = ? and file_path = ? and del_flag = 0
+                        order by create_time desc
+                        limit 1
+                        """,
+                rs -> rs.next() ? rs.getLong("file_size") : null,
+                locator,
+                fileName);
     }
 
     private StorageConfigRecord resolveActiveRecord() {
@@ -179,11 +192,13 @@ public class FileStorageAccessService {
     public static final class DownloadFileResult {
         private final String name;
         private final String contentType;
+        private final Long contentLength;
         private final InputStream stream;
 
-        public DownloadFileResult(String name, String contentType, InputStream stream) {
+        public DownloadFileResult(String name, String contentType, Long contentLength, InputStream stream) {
             this.name = name;
             this.contentType = contentType;
+            this.contentLength = contentLength;
             this.stream = stream;
         }
 
@@ -193,6 +208,10 @@ public class FileStorageAccessService {
 
         public MediaType getMediaType() {
             return MediaType.parseMediaType(contentType);
+        }
+
+        public Long getContentLength() {
+            return contentLength;
         }
 
         public InputStream getStream() {

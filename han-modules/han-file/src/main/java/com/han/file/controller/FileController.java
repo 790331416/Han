@@ -57,9 +57,12 @@ public class FileController {
     public ResponseEntity<InputStreamResource> publicAccess(@PathVariable String locator, @PathVariable String fileName) {
         FileStorageAccessService.DownloadFileResult result = fileStorageAccessService.download(locator, fileName);
         String encodedName = URLEncoder.encode(result.getName(), StandardCharsets.UTF_8);
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedName)
-                .contentType(result.getMediaType())
-                .body(new InputStreamResource(result.getStream()));
+                .contentType(result.getMediaType());
+        if (result.getContentLength() != null && result.getContentLength() > 0) {
+            builder.contentLength(result.getContentLength());
+        }
+        return builder.body(new InputStreamResource(result.getStream()));
     }
 }
