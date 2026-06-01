@@ -401,6 +401,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AiVideoProjectPo project = requireProject(dto.getProjectId());
         String targetType = dto.getTargetType().trim().toUpperCase();
         if (TARGET_ALL.equals(targetType)) {
+            if (!hasAsset(project.getProjectId())) {
+                throw new BusinessException("暂无可确认资产，请先提取资产并确保结构化入库");
+            }
             approveAllAssets(project.getProjectId());
             insertReview(project, TARGET_ALL, null, ACTION_CONFIRM, CONFIRM_PENDING, CONFIRM_APPROVED, dto.getComment(), null);
             markProjectStage(project, AivideoProjectStage.ASSET_CONFIRMED);
@@ -579,6 +582,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             Map<String, Object> meta = new LinkedHashMap<>(result.meta());
             meta.put("versionId", assetVersion.getVersionId());
             meta.put("taskId", task.getTaskId());
+            meta.put("assetCounts", buildAssetCounts(project.getProjectId()));
             sendSse(emitter, "meta", meta);
             emitter.send(SseEmitter.event().data("[DONE]"));
             emitter.complete();
@@ -1004,9 +1008,47 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         int objectStart = text.indexOf('{');
         int objectEnd = text.lastIndexOf('}');
         if (objectStart < 0 || objectEnd <= objectStart) {
+            String wrappedFragment = wrapJsonObjectFragment(text);
+            if (StringUtils.hasText(wrappedFragment)) {
+                return wrappedFragment;
+            }
             throw new BusinessException("结构化结果缺少 JSON 对象");
         }
         return text.substring(objectStart, objectEnd + 1);
+    }
+
+    private String wrapJsonObjectFragment(String text) {
+        String fragment = text.trim();
+        int keyStart = firstAssetKeyIndex(fragment);
+        if (keyStart < 0) {
+            return null;
+        }
+        fragment = fragment.substring(keyStart).trim();
+        int end = Math.max(fragment.lastIndexOf(']'), fragment.lastIndexOf('}'));
+        if (end < 0) {
+            return null;
+        }
+        fragment = fragment.substring(0, end + 1).trim();
+        return "{" + fragment + "}";
+    }
+
+    private int firstAssetKeyIndex(String text) {
+        int result = -1;
+        for (String key : List.of("\"characters\"", "\"scenes\"", "\"shots\"")) {
+            int index = text.indexOf(key);
+            if (index >= 0 && (result < 0 || index < result)) {
+                result = index;
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Object> buildAssetCounts(Long projectId) {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("characters", characterMapper.selectCount(baseCharacterWrapper(projectId)));
+        counts.put("scenes", sceneMapper.selectCount(baseSceneWrapper(projectId)));
+        counts.put("shots", shotMapper.selectCount(baseShotWrapper(projectId)));
+        return counts;
     }
 
     private void softDeletePendingAssets(Long projectId) {

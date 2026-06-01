@@ -262,15 +262,23 @@
               >
                 {{ hasAssets ? '重新提取' : '提取资产' }}
               </el-button>
-              <el-button
-                type="success"
-                :icon="Check"
-                :disabled="!hasAssets || confirmingAssetKeys.size > 0"
-                :loading="confirmingAllAssets"
-                @click="handleConfirmAllAssets"
+              <el-tooltip
+                :disabled="!assetConfirmDisabledReason"
+                :content="assetConfirmDisabledReason"
+                placement="top"
               >
-                确认全部
-              </el-button>
+                <span class="action-button-wrap">
+                  <el-button
+                    type="success"
+                    :icon="Check"
+                    :disabled="!!assetConfirmDisabledReason"
+                    :loading="confirmingAllAssets"
+                    @click="handleConfirmAllAssets"
+                  >
+                    确认全部
+                  </el-button>
+                </span>
+              </el-tooltip>
               <el-button
                 v-if="hasApprovedAssets"
                 type="warning"
@@ -289,6 +297,9 @@
               <strong>已确认剧本与提示词</strong>
               <el-tag v-if="selectedScript" type="success" effect="plain">剧本已确认</el-tag>
               <el-tag v-if="hasAssets" type="success" effect="plain">资产已提取</el-tag>
+              <el-tag v-if="hasAssets" type="info" effect="plain">
+                角色 {{ assetCounts.characters }} / 场景 {{ assetCounts.scenes }} / 分镜 {{ assetCounts.shots }}
+              </el-tag>
             </div>
             <el-button
               text
@@ -299,6 +310,16 @@
               {{ assetContextCollapsed ? '展开上下文' : '收起上下文' }}
             </el-button>
           </div>
+
+          <el-alert
+            v-if="assetExtractNotStructured"
+            class="asset-status-alert"
+            title="资产提取结果还没有结构化入库，暂时不能确认"
+            description="当前页面只保留了 AI 返回的原始输出，还没有形成可确认的角色、场景、分镜记录。请重新提取资产；系统会兼容缺少外层大括号的 JSON 输出。"
+            type="warning"
+            show-icon
+            :closable="false"
+          />
 
           <div v-show="!assetContextCollapsed || assetStreaming" class="content-compare-grid asset-workspace-grid">
             <aside class="source-preview-panel">
@@ -1026,7 +1047,28 @@ const assetPreviewText = computed(() => assetStreamText.value || latestAssetExtr
 const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
+const assetCounts = computed(() => ({
+  characters: characters.value.length,
+  scenes: scenes.value.length,
+  shots: shots.value.length
+}))
 const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
+const assetExtractNotStructured = computed(() => !!assetPreviewText.value.trim() && !hasAssets.value && !assetStreaming.value)
+const assetConfirmDisabledReason = computed(() => {
+  if (confirmingAssetKeys.value.size > 0) {
+    return '单条资产确认处理中，请稍后再试'
+  }
+  if (assetStreaming.value) {
+    return '资产正在提取中，请等待结构化入库完成'
+  }
+  if (assetExtractNotStructured.value) {
+    return '当前只有原始输出，没有可确认的结构化资产，请重新提取资产'
+  }
+  if (!hasAssets.value) {
+    return '请先提取资产'
+  }
+  return ''
+})
 const hasApprovedAssets = computed(() => [
   ...characters.value,
   ...scenes.value,
@@ -2129,9 +2171,15 @@ async function handleExtractAssets() {
         ElMessage.error(message || '资产提取失败')
       }
     })
-    ElMessage.success('资产已提取')
     await loadDetail()
+    if (hasAssets.value) {
+      ElMessage.success('资产已提取并结构化入库')
+    } else {
+      assetContextCollapsed.value = false
+      ElMessage.warning('资产原始输出已返回，但没有形成可确认的结构化资产，请重新提取')
+    }
   } catch (error: any) {
+    assetContextCollapsed.value = false
     ElMessage.error(error?.message || '资产提取失败')
   } finally {
     assetStreaming.value = false
@@ -2616,6 +2664,10 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+.action-button-wrap {
+  display: inline-flex;
+}
+
 .content-compare-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
@@ -2652,6 +2704,10 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
     gap: 8px;
   }
+}
+
+.asset-status-alert {
+  margin-bottom: 12px;
 }
 
 .source-preview-panel {
