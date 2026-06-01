@@ -132,20 +132,34 @@
                 <pre>{{ polishStreamText }}</pre>
               </article>
               <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
-                <div class="meta-line">
-                  <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
-                  <span>{{ item.confirmStatus || 'PENDING' }}</span>
-                  <span>{{ item.createTime || '-' }}</span>
-                  <el-button
-                    size="small"
-                    type="success"
-                    :icon="Check"
-                    :disabled="item.selected === '1'"
-                    :loading="submitting"
-                    @click="handleConfirmPolish(item.versionId)"
-                  >
-                    确认
-                  </el-button>
+                <div class="content-action-bar">
+                  <div class="meta-line">
+                    <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `润色稿 v${item.versionNo}` }}</el-tag>
+                    <span>{{ item.confirmStatus || 'PENDING' }}</span>
+                    <span>{{ item.createTime || '-' }}</span>
+                  </div>
+                  <div class="content-action-buttons">
+                    <el-button
+                      v-if="item.selected === '1'"
+                      size="small"
+                      type="warning"
+                      plain
+                      :loading="submitting"
+                      @click="handleCancelConfirmPolish(item.versionId)"
+                    >
+                      取消确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="success"
+                      :icon="Check"
+                      :loading="submitting"
+                      @click="handleConfirmPolish(item.versionId)"
+                    >
+                      确认这个润色稿
+                    </el-button>
+                  </div>
                 </div>
                 <pre>{{ item.contentText }}</pre>
               </article>
@@ -196,20 +210,34 @@
                 <MarkdownViewer :content="scriptStreamText" />
               </article>
               <article v-for="item in scriptVersions" :key="item.versionId" class="text-block">
-                <div class="meta-line">
-                  <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `剧本 v${item.versionNo}` }}</el-tag>
-                  <span>{{ item.confirmStatus || 'PENDING' }}</span>
-                  <span>{{ item.createTime || '-' }}</span>
-                  <el-button
-                    size="small"
-                    type="success"
-                    :icon="Check"
-                    :disabled="item.selected === '1'"
-                    :loading="submitting"
-                    @click="handleConfirmScript(item.versionId)"
-                  >
-                    确认
-                  </el-button>
+                <div class="content-action-bar">
+                  <div class="meta-line">
+                    <el-tag :type="item.selected === '1' ? 'success' : 'info'">{{ item.title || `剧本 v${item.versionNo}` }}</el-tag>
+                    <span>{{ item.confirmStatus || 'PENDING' }}</span>
+                    <span>{{ item.createTime || '-' }}</span>
+                  </div>
+                  <div class="content-action-buttons">
+                    <el-button
+                      v-if="item.selected === '1'"
+                      size="small"
+                      type="warning"
+                      plain
+                      :loading="submitting"
+                      @click="handleCancelConfirmScript(item.versionId)"
+                    >
+                      取消确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="success"
+                      :icon="Check"
+                      :loading="submitting"
+                      @click="handleConfirmScript(item.versionId)"
+                    >
+                      确认这个剧本
+                    </el-button>
+                  </div>
                 </div>
                 <MarkdownViewer :content="item.contentText" />
                 <details class="raw-output">
@@ -242,6 +270,16 @@
                 @click="handleConfirmAllAssets"
               >
                 确认全部
+              </el-button>
+              <el-button
+                v-if="hasApprovedAssets"
+                type="warning"
+                plain
+                :disabled="confirmingAssetKeys.size > 0"
+                :loading="confirmingAllAssets"
+                @click="handleCancelConfirmAllAssets"
+              >
+                取消全部确认
               </el-button>
             </div>
           </div>
@@ -315,15 +353,27 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" width="240">
                   <template #default="{ row }">
                     <el-button
+                      v-if="row.confirmStatus !== 'APPROVED'"
                       size="small"
-                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :disabled="confirmingAllAssets"
                       :loading="isAssetConfirming('CHARACTER', row.characterId)"
                       @click="handleConfirmAsset('CHARACTER', row.characterId)"
                     >
                       确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="warning"
+                      plain
+                      :disabled="confirmingAllAssets"
+                      :loading="isAssetConfirming('CHARACTER', row.characterId)"
+                      @click="handleCancelConfirmAsset('CHARACTER', row.characterId)"
+                    >
+                      取消确认
                     </el-button>
                     <el-button size="small" type="primary" plain @click="openCharacterImageDrawer(row)">
                       角色图
@@ -344,15 +394,27 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" width="240">
                   <template #default="{ row }">
                     <el-button
+                      v-if="row.confirmStatus !== 'APPROVED'"
                       size="small"
-                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :disabled="confirmingAllAssets"
                       :loading="isAssetConfirming('SCENE', row.sceneId)"
                       @click="handleConfirmAsset('SCENE', row.sceneId)"
                     >
                       确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="warning"
+                      plain
+                      :disabled="confirmingAllAssets"
+                      :loading="isAssetConfirming('SCENE', row.sceneId)"
+                      @click="handleCancelConfirmAsset('SCENE', row.sceneId)"
+                    >
+                      取消确认
                     </el-button>
                     <el-button size="small" type="primary" plain @click="openSceneImageDrawer(row)">
                       场景图
@@ -377,15 +439,27 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" width="240">
                   <template #default="{ row }">
                     <el-button
+                      v-if="row.confirmStatus !== 'APPROVED'"
                       size="small"
-                      :disabled="row.confirmStatus === 'APPROVED' || confirmingAllAssets"
+                      :disabled="confirmingAllAssets"
                       :loading="isAssetConfirming('SHOT', row.shotId)"
                       @click="handleConfirmAsset('SHOT', row.shotId)"
                     >
                       确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="warning"
+                      plain
+                      :disabled="confirmingAllAssets"
+                      :loading="isAssetConfirming('SHOT', row.shotId)"
+                      @click="handleCancelConfirmAsset('SHOT', row.shotId)"
+                    >
+                      取消确认
                     </el-button>
                     <el-button size="small" type="primary" plain :icon="VideoCamera" @click="openShotVideoDrawer(row)">
                       视频
@@ -460,6 +534,20 @@
               </el-select>
             </div>
           </el-form-item>
+          <el-form-item label="本阶段生效">
+            <div class="stage-strategy-summary">
+              <el-tag
+                v-for="item in activeStageStrategyItems"
+                :key="item.key"
+                effect="plain"
+              >
+                {{ item.label }}：{{ item.value }}
+              </el-tag>
+              <span class="stage-strategy-note">
+                当前作用域会和全局追加一起发送，未列出的策略不会硬塞进本阶段提示词。
+              </span>
+            </div>
+          </el-form-item>
           <el-form-item label="高级追加提示词">
             <div class="prompt-scope-editor">
               <el-select v-model="activePromptScope">
@@ -475,6 +563,16 @@
               />
             </div>
           </el-form-item>
+          <el-form-item>
+            <el-button
+              type="primary"
+              plain
+              :loading="savingStrategies"
+              @click="handleSaveProjectStrategies"
+            >
+              保存当前策略
+            </el-button>
+          </el-form-item>
         </el-form>
       </aside>
     </div>
@@ -485,6 +583,16 @@
           <summary>查看本次场景图提示词</summary>
           <pre>{{ sceneImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
+
+        <el-form class="reference-image-form" label-position="top">
+          <el-form-item label="场景参考图 URL（可选）">
+            <el-input
+              v-model="sceneImageReferenceUrl"
+              clearable
+              placeholder="粘贴参考图地址；会写入本次场景图提示词，用于锁定空间、光线、天气和色调"
+            />
+          </el-form-item>
+        </el-form>
 
         <div class="scene-image-actions">
           <el-button
@@ -541,6 +649,16 @@
           <summary>查看本次角色图提示词</summary>
           <pre>{{ characterImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
+
+        <el-form class="reference-image-form" label-position="top">
+          <el-form-item label="角色参考图 URL（可选）">
+            <el-input
+              v-model="characterImageReferenceUrl"
+              clearable
+              placeholder="粘贴参考图地址；会写入本次角色图提示词，用于锁定身份、外观轮廓、毛发/服装和色彩"
+            />
+          </el-form-item>
+        </el-form>
 
         <div class="scene-image-actions">
           <el-button
@@ -725,6 +843,9 @@ import {
   actionIntensityOptions,
   aivideoProjectStageOptions,
   audioModeOptions,
+  cancelConfirmAivideoAsset,
+  cancelConfirmAivideoPolish,
+  cancelConfirmAivideoScript,
   continuityLevelOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
@@ -747,6 +868,7 @@ import {
   saveAivideoDocument,
   selectAivideoMedia,
   subtitleModeOptions,
+  updateAivideoProject,
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
@@ -762,12 +884,20 @@ import { useUserStore } from '@/stores/user'
 
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
 type PromptScope = 'global' | 'polish' | 'script' | 'asset' | 'characterImage' | 'sceneImage' | 'shotVideo'
+type StrategyKey = 'defaultStyle' | 'generationStrategy' | 'audioMode' | 'subtitleMode' | 'referenceStrategy' | 'actionIntensity' | 'continuityLevel' | 'multiRoleStrategy'
+
+interface StageStrategyItem {
+  key: StrategyKey
+  label: string
+  value: string
+}
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
+const savingStrategies = ref(false)
 const polishStreaming = ref(false)
 const polishStreamText = ref('')
 const polishStreamMeta = ref<AiStreamMetaPayload>({})
@@ -783,6 +913,7 @@ const assetPromptPreviewText = ref('')
 const characterImageDrawerVisible = ref(false)
 const selectedCharacterForImage = ref<AivideoCharacter>()
 const characterImagePromptPreviewText = ref('')
+const characterImageReferenceUrl = ref('')
 const characterImageGenerating = ref(false)
 const characterImageCandidates = ref<AivideoMediaAsset[]>([])
 const characterImagePreviewUrls = ref<Record<string, string>>({})
@@ -790,6 +921,7 @@ const characterImageSelectingIds = ref<Set<string>>(new Set())
 const sceneImageDrawerVisible = ref(false)
 const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
+const sceneImageReferenceUrl = ref('')
 const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
 const sceneImagePreviewUrls = ref<Record<string, string>>({})
@@ -857,6 +989,27 @@ const promptScopeOptions: Array<{ label: string; value: PromptScope }> = [
   { label: '分镜视频追加', value: 'shotVideo' }
 ]
 
+const stageStrategyKeys: Record<PromptScope, StrategyKey[]> = {
+  global: ['defaultStyle', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  polish: ['defaultStyle'],
+  script: ['defaultStyle', 'generationStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  asset: ['defaultStyle', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  characterImage: ['defaultStyle', 'referenceStrategy', 'multiRoleStrategy'],
+  sceneImage: ['defaultStyle', 'referenceStrategy', 'continuityLevel'],
+  shotVideo: ['defaultStyle', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy']
+}
+
+const strategyLabels: Record<StrategyKey, string> = {
+  defaultStyle: '视觉风格',
+  generationStrategy: '生成策略',
+  audioMode: '声音模式',
+  subtitleMode: '字幕模式',
+  referenceStrategy: '参考素材策略',
+  actionIntensity: '动作强度',
+  continuityLevel: '连续性强度',
+  multiRoleStrategy: '多角色策略'
+}
+
 const projectId = computed(() => String(route.params.id))
 const documents = computed(() => detail.documents || [])
 const latestDocument = computed(() => documents.value[0])
@@ -874,6 +1027,12 @@ const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
 const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
+const hasApprovedAssets = computed(() => [
+  ...characters.value,
+  ...scenes.value,
+  ...shots.value
+].some((item) => item.confirmStatus === 'APPROVED'))
+const activeStageStrategyItems = computed(() => stageStrategyItems(activePromptScope.value))
 const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneName
   ? `场景图候选：${selectedSceneForImage.value.sceneName}`
   : '场景图候选')
@@ -941,18 +1100,95 @@ function strategyValue(settingParams: Record<string, string>, key: string, fallb
   return value && String(value).trim() ? String(value).trim() : fallback
 }
 
+function optionLabel(options: Array<{ label: string; value: string }>, value?: string) {
+  return options.find((item) => item.value === value)?.label || value || ''
+}
+
+function strategyDisplayValue(key: StrategyKey) {
+  switch (key) {
+    case 'defaultStyle':
+      return params.defaultStyle
+    case 'generationStrategy':
+      return optionLabel(generationStrategyOptions, params.generationStrategy)
+    case 'audioMode':
+      return optionLabel(audioModeOptions, params.audioMode)
+    case 'subtitleMode':
+      return optionLabel(subtitleModeOptions, params.subtitleMode)
+    case 'referenceStrategy':
+      return optionLabel(referenceStrategyOptions, params.referenceStrategy)
+    case 'actionIntensity':
+      return optionLabel(actionIntensityOptions, params.actionIntensity)
+    case 'continuityLevel':
+      return optionLabel(continuityLevelOptions, params.continuityLevel)
+    case 'multiRoleStrategy':
+      return optionLabel(multiRoleStrategyOptions, params.multiRoleStrategy)
+    default:
+      return ''
+  }
+}
+
+function stageStrategyItems(scope: PromptScope): StageStrategyItem[] {
+  return (stageStrategyKeys[scope] || []).map((key) => ({
+    key,
+    label: strategyLabels[key],
+    value: strategyDisplayValue(key)
+  })).filter((item) => item.value)
+}
+
+function stagePromptHints(scope: PromptScope) {
+  const hints: Partial<Record<PromptScope, string[]>> = {
+    polish: [
+      '润色阶段只统一世界观、角色气质、画面风格和叙事语气，不提前塞入过密分镜动作。'
+    ],
+    script: [
+      '剧本阶段必须判断每段适合拆成几个镜头，每个镜头只保留可拍的主动作。',
+      '按动作预算拆分：5秒=1个主动作+1个反应/表情+结尾状态；6秒=2个连续动作+结尾状态；8秒=3个连续动作+明确结尾状态。',
+      '超过3个动作beat或出现倒地起身、悬浮、变身、打斗、救援等强动作时，自动拆镜，不要硬塞进同一镜头。'
+    ],
+    asset: [
+      '资产阶段必须输出稳定的角色锚点、场景锚点和分镜动作预算，便于后续图片/视频生成继承。',
+      '出现爪子、手、脚、翅膀、尾巴等部位时，必须在分镜里写清楚构图需要露出对应部位。'
+    ],
+    characterImage: [
+      '角色图阶段只锁定同一角色身份、体型、毛色/发型、服装与显著特征，不新增剧情动作。'
+    ],
+    sceneImage: [
+      '场景图阶段只锁定空间结构、天气、光线、色调、道具和前后景关系，不改变剧情设定。'
+    ],
+    shotVideo: [
+      '视频阶段输出给模型直接执行的镜头 prompt，必须写清 0-2秒 / 2-5秒 / 5-8秒 动作节拍。',
+      '出现部位发光时明确发光部位；例如前爪发光时禁止用眼睛发光替代。',
+      '连续性严格时优先继承上一镜尾帧、同一场景锚点和角色锚点，不跨场景、不换主体外观。'
+    ]
+  }
+  return hints[scope] || []
+}
+
+function stageStrategyPrompt(scope: PromptScope) {
+  const lines = stageStrategyItems(scope).map((item) => `${item.label}：${item.value}`)
+  const hints = stagePromptHints(scope)
+  if (!lines.length && !hints.length) {
+    return ''
+  }
+  return [
+    '【本阶段生效策略】',
+    ...lines,
+    ...hints.map((item) => `规则：${item}`)
+  ].join('\n')
+}
+
+function imageReferencePrompt(scope: PromptScope) {
+  if (scope === 'characterImage' && characterImageReferenceUrl.value.trim()) {
+    return `【角色参考图】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色。`
+  }
+  if (scope === 'sceneImage' && sceneImageReferenceUrl.value.trim()) {
+    return `【场景参考图】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景。`
+  }
+  return ''
+}
+
 function scopedCustomPrompt(scope: PromptScope) {
-  const strategyPrompt = [
-    `视觉风格：${params.defaultStyle}`,
-    `生成策略：${params.generationStrategy}`,
-    `声音模式：${params.audioMode}`,
-    `字幕模式：${params.subtitleMode}`,
-    `参考素材策略：${params.referenceStrategy}`,
-    `动作强度：${params.actionIntensity}`,
-    `连续性强度：${params.continuityLevel}`,
-    `多角色策略：${params.multiRoleStrategy}`
-  ].join('；')
-  return [strategyPrompt, promptScopes.global, promptScopes[scope]]
+  return [stageStrategyPrompt(scope), imageReferencePrompt(scope), promptScopes.global, promptScopes[scope]]
     .map((item) => item.trim())
     .filter(Boolean)
     .join('\n\n')
@@ -1140,6 +1376,8 @@ async function refreshShotVideoPromptPreview() {
 
 async function openCharacterImageDrawer(character: AivideoCharacter) {
   selectedCharacterForImage.value = character
+  activePromptScope.value = 'characterImage'
+  characterImageReferenceUrl.value = ''
   characterImageDrawerVisible.value = true
   await refreshCharacterImagePromptPreview()
   await loadCharacterImageCandidates()
@@ -1195,6 +1433,8 @@ async function loadCharacterImageCandidates() {
 
 async function openSceneImageDrawer(scene: AivideoScene) {
   selectedSceneForImage.value = scene
+  activePromptScope.value = 'sceneImage'
+  sceneImageReferenceUrl.value = ''
   sceneImageDrawerVisible.value = true
   await refreshSceneImagePromptPreview()
   await loadSceneImageCandidates()
@@ -1250,6 +1490,7 @@ async function loadSceneImageCandidates() {
 
 async function openShotVideoDrawer(shot: AivideoShot) {
   selectedShotForVideo.value = shot
+  activePromptScope.value = 'shotVideo'
   shotVideoDrawerVisible.value = true
   resetShotVideoDrawerState()
   const shotId = String(shot.shotId)
@@ -1645,6 +1886,47 @@ async function withSubmit(action: () => Promise<void>, successMessage: string) {
   }
 }
 
+async function handleSaveProjectStrategies() {
+  const project = detail.project
+  if (!project || savingStrategies.value) {
+    return
+  }
+  savingStrategies.value = true
+  try {
+    await updateAivideoProject({
+      projectId: projectId.value,
+      projectName: project.projectName,
+      topicType: project.topicType,
+      targetPlatform: project.targetPlatform,
+      defaultRatio: params.defaultRatio,
+      defaultStyle: params.defaultStyle,
+      generationStrategy: params.generationStrategy,
+      audioMode: params.audioMode,
+      subtitleMode: params.subtitleMode,
+      referenceStrategy: params.referenceStrategy,
+      actionIntensity: params.actionIntensity,
+      continuityLevel: params.continuityLevel,
+      multiRoleStrategy: params.multiRoleStrategy,
+      globalPrompt: promptScopes.global,
+      polishPrompt: promptScopes.polish,
+      scriptPrompt: promptScopes.script,
+      assetPrompt: promptScopes.asset,
+      characterImagePrompt: promptScopes.characterImage,
+      sceneImagePrompt: promptScopes.sceneImage,
+      shotVideoPrompt: promptScopes.shotVideo,
+      defaultShotDuration: params.defaultShotDuration,
+      candidateImageCount: params.imageCandidateCount,
+      previewMode: params.previewMode,
+      budgetLimit: project.budgetLimit,
+      summary: project.summary
+    })
+    ElMessage.success('策略已保存，后续生成会按当前策略发送')
+    await loadDetail()
+  } finally {
+    savingStrategies.value = false
+  }
+}
+
 function handleConfirmDocument() {
   const doc = latestDocument.value
   if (!doc) return
@@ -1754,6 +2036,13 @@ function handleConfirmPolish(versionId: string | number) {
   )
 }
 
+function handleCancelConfirmPolish(versionId: string | number) {
+  withSubmit(
+    () => cancelConfirmAivideoPolish({ projectId: projectId.value, versionId }).then(() => undefined),
+    '润色稿已取消确认'
+  )
+}
+
 async function handleGenerateScript() {
   if (!selectedPolish.value) {
     ElMessage.warning('请先确认润色稿')
@@ -1799,6 +2088,15 @@ function handleConfirmScript(versionId: string | number) {
       assetContextCollapsed.value = true
     }),
     '短剧剧本已确认'
+  )
+}
+
+function handleCancelConfirmScript(versionId: string | number) {
+  withSubmit(
+    () => cancelConfirmAivideoScript({ projectId: projectId.value, versionId }).then(() => {
+      assetContextCollapsed.value = false
+    }),
+    '短剧剧本已取消确认'
   )
 }
 
@@ -1856,6 +2154,21 @@ async function handleConfirmAllAssets() {
   }
 }
 
+async function handleCancelConfirmAllAssets() {
+  if (confirmingAllAssets.value) {
+    return
+  }
+  confirmingAllAssets.value = true
+  try {
+    await cancelConfirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL' })
+    ElMessage.success('资产已取消确认')
+    assetContextCollapsed.value = false
+    await loadDetail()
+  } finally {
+    confirmingAllAssets.value = false
+  }
+}
+
 async function handleConfirmAsset(targetType: string, targetId: string | number) {
   const key = assetConfirmKey(targetType, targetId)
   if (confirmingAssetKeys.value.has(key)) {
@@ -1866,6 +2179,22 @@ async function handleConfirmAsset(targetType: string, targetId: string | number)
     await confirmAivideoAsset({ projectId: projectId.value, targetType, targetId })
     ElMessage.success('资产已确认')
     assetContextCollapsed.value = true
+    await loadDetail()
+  } finally {
+    setAssetConfirming(key, false)
+  }
+}
+
+async function handleCancelConfirmAsset(targetType: string, targetId: string | number) {
+  const key = assetConfirmKey(targetType, targetId)
+  if (confirmingAssetKeys.value.has(key)) {
+    return
+  }
+  setAssetConfirming(key, true)
+  try {
+    await cancelConfirmAivideoAsset({ projectId: projectId.value, targetType, targetId })
+    ElMessage.success('资产已取消确认')
+    assetContextCollapsed.value = false
     await loadDetail()
   } finally {
     setAssetConfirming(key, false)
@@ -2135,6 +2464,17 @@ function setAssetConfirming(key: string, confirming: boolean) {
   confirmingAssetKeys.value = next
 }
 
+function promptScopeByTab(tab: WorkbenchTab): PromptScope {
+  const map: Record<WorkbenchTab, PromptScope> = {
+    document: 'global',
+    polish: 'polish',
+    script: 'script',
+    assets: 'asset',
+    task: 'shotVideo'
+  }
+  return map[tab]
+}
+
 onMounted(() => {
   loadDetail()
 })
@@ -2154,6 +2494,17 @@ watch(() => [
   params.multiRoleStrategy
 ], () => {
   schedulePolishPromptPreview()
+})
+
+watch(() => [
+  characterImageReferenceUrl.value,
+  sceneImageReferenceUrl.value
+], () => {
+  schedulePolishPromptPreview()
+})
+
+watch(activeTab, (tab) => {
+  activePromptScope.value = promptScopeByTab(tab)
 })
 
 watch(shotVideoDrawerVisible, (visible) => {
@@ -2358,6 +2709,14 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+.reference-image-form {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
 .shot-video-gate-alert {
   margin-bottom: 12px;
 }
@@ -2500,6 +2859,28 @@ onBeforeUnmount(() => {
   }
 }
 
+.content-action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  margin: -12px -12px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+}
+
+.content-action-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .raw-output {
   margin-top: 12px;
 
@@ -2540,6 +2921,19 @@ onBeforeUnmount(() => {
   display: grid;
   width: 100%;
   gap: 8px;
+}
+
+.stage-strategy-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.stage-strategy-note {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .shot-video-strategy {

@@ -120,6 +120,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     }
 
     @RepeatSubmit
+    @PostMapping("/text/polish/confirm/cancel")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> cancelConfirmPolishText(@Valid @RequestBody AivideoContentConfirmDto dto) {
+        return cancelConfirmPolish(dto);
+    }
+
+    @RepeatSubmit
     @PostMapping("/text/script/generate")
     @PreAuthorize("@ss.isLogin()")
     public R<AiVideoContentVersionPo> generateScriptText(@Valid @RequestBody AivideoTextGenerateDto dto) {
@@ -143,6 +150,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmScriptText(@Valid @RequestBody AivideoContentConfirmDto dto) {
         return confirmScript(dto);
+    }
+
+    @RepeatSubmit
+    @PostMapping("/text/script/confirm/cancel")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> cancelConfirmScriptText(@Valid @RequestBody AivideoContentConfirmDto dto) {
+        return cancelConfirmScript(dto);
     }
 
     @RepeatSubmit
@@ -174,6 +188,12 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<Void> confirmProjectAsset(@Valid @RequestBody AivideoAssetConfirmDto dto) {
         return confirmAsset(dto);
+    }
+
+    @PostMapping("/assets/confirm/cancel")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> cancelConfirmProjectAsset(@Valid @RequestBody AivideoAssetConfirmDto dto) {
+        return cancelConfirmAsset(dto);
     }
 
     @PostMapping("/media/scene/prompt-preview")

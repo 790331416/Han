@@ -118,6 +118,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         copyProjectFields(dto, project);
         fillUpdateAudit(project);
         projectMapper.updateById(project);
+        upsertProjectSetting(project.getProjectId(), dto);
     }
 
     @Override
@@ -195,6 +196,27 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .eq(AiVideoProjectSettingPo::getProjectId, projectId)
                 .last("limit 1"));
+    }
+
+    private void upsertProjectSetting(Long projectId, AivideoProjectDto dto) {
+        AiVideoProjectSettingPo setting = selectSetting(projectId);
+        if (setting == null) {
+            AiVideoProjectSettingPo newSetting = buildSettingSnapshot(projectId, dto);
+            fillCreateAudit(newSetting);
+            settingMapper.insert(newSetting);
+            return;
+        }
+        setting.setDefaultRatio(defaultString(dto.getDefaultRatio(), defaultString(setting.getDefaultRatio(), "9:16")));
+        setting.setDefaultShotDuration(normalizeShotDuration(dto.getDefaultShotDuration() == null
+                ? defaultInteger(setting.getDefaultShotDuration(), 5)
+                : dto.getDefaultShotDuration()));
+        setting.setImageCandidateCount(dto.getCandidateImageCount() == null
+                ? defaultInteger(setting.getImageCandidateCount(), 2)
+                : dto.getCandidateImageCount());
+        setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(setting.getPreviewMode(), YES)));
+        setting.setParamsJson(XuJsonUtil.toJsonString(buildStrategyParams(dto, setting.getParamsJson())));
+        fillUpdateAudit(setting);
+        settingMapper.updateById(setting);
     }
 
     private List<AiVideoSourceDocumentPo> selectDocuments(Long projectId) {
@@ -390,6 +412,11 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     private void fillCreateAudit(AiVideoProjectSettingPo setting) {
         setting.setCreateBy(resolveOperator());
         setting.setCreateTime(now());
+        setting.setUpdateBy(resolveOperator());
+        setting.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoProjectSettingPo setting) {
         setting.setUpdateBy(resolveOperator());
         setting.setUpdateTime(now());
     }

@@ -25,6 +25,8 @@ public interface IAivideoTextService {
 
     void confirmPolish(AivideoContentConfirmDto dto);
 
+    void cancelConfirmPolish(AivideoContentConfirmDto dto);
+
     AiVideoContentVersionPo generateScript(AivideoTextGenerateDto dto);
 
     SseEmitter generateScriptStream(AivideoTextGenerateDto dto);
@@ -32,6 +34,8 @@ public interface IAivideoTextService {
     AivideoPromptPreviewVo previewScriptPrompt(AivideoTextGenerateDto dto);
 
     void confirmScript(AivideoContentConfirmDto dto);
+
+    void cancelConfirmScript(AivideoContentConfirmDto dto);
 
     AivideoAssetSummaryVo extractAssets(AivideoAssetExtractDto dto);
 
@@ -42,4 +46,6 @@ public interface IAivideoTextService {
     AivideoAssetSummaryVo selectAssetSummary(Long projectId);
 
     void confirmAsset(AivideoAssetConfirmDto dto);
+
+    void cancelConfirmAsset(AivideoAssetConfirmDto dto);
 }

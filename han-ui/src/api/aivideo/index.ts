@@ -337,6 +337,14 @@ export function confirmAivideoPolish(data: {
   return post<void>('/aivideo/studio/text/polish/confirm', data)
 }
 
+export function cancelConfirmAivideoPolish(data: {
+  projectId: string | number
+  versionId: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/text/polish/confirm/cancel', data)
+}
+
 export function generateAivideoScript(data: {
   projectId: string | number
   customPrompt?: string
@@ -357,6 +365,14 @@ export function confirmAivideoScript(data: {
   comment?: string
 }) {
   return post<void>('/aivideo/studio/text/script/confirm', data)
+}
+
+export function cancelConfirmAivideoScript(data: {
+  projectId: string | number
+  versionId: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/text/script/confirm/cancel', data)
 }
 
 export function extractAivideoAssets(data: {
@@ -384,6 +400,15 @@ export function confirmAivideoAsset(data: {
   comment?: string
 }) {
   return post<void>('/aivideo/studio/assets/confirm', data)
+}
+
+export function cancelConfirmAivideoAsset(data: {
+  projectId: string | number
+  targetType: string
+  targetId?: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/assets/confirm/cancel', data)
 }
 
 export function previewAivideoSceneImagePrompt(data: {

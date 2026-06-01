@@ -79,6 +79,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static final String TARGET_SHOT = "SHOT";
     private static final String TARGET_ALL = "ALL";
     private static final String ACTION_CONFIRM = "CONFIRM";
+    private static final String ACTION_CANCEL_CONFIRM = "CANCEL_CONFIRM";
 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoProjectSettingMapper settingMapper;
@@ -206,6 +207,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmPolish(AivideoContentConfirmDto dto) {
+        cancelConfirmContent(dto, CONTENT_POLISH, AivideoProjectStage.DOCUMENT_PARSED);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public AiVideoContentVersionPo generateScript(AivideoTextGenerateDto dto) {
         if (dto == null || dto.getProjectId() == null) {
             throw new BusinessException("项目ID不能为空");
@@ -275,6 +282,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     @Transactional(rollbackFor = Exception.class)
     public void confirmScript(AivideoContentConfirmDto dto) {
         confirmContent(dto, CONTENT_SCRIPT, AivideoProjectStage.SCRIPT_CONFIRMED);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmScript(AivideoContentConfirmDto dto) {
+        cancelConfirmContent(dto, CONTENT_SCRIPT, AivideoProjectStage.POLISH_CONFIRMED);
     }
 
     @Override
@@ -399,6 +412,32 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         approveSingleAsset(project, targetType, dto.getTargetId(), dto.getComment());
         if (hasAsset(project.getProjectId()) && !hasPendingAsset(project.getProjectId())) {
             markProjectStage(project, AivideoProjectStage.ASSET_CONFIRMED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmAsset(AivideoAssetConfirmDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        if (!StringUtils.hasText(dto.getTargetType())) {
+            throw new BusinessException("取消确认目标类型不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        String targetType = dto.getTargetType().trim().toUpperCase();
+        if (TARGET_ALL.equals(targetType)) {
+            cancelAllAssets(project.getProjectId());
+            insertReview(project, TARGET_ALL, null, ACTION_CANCEL_CONFIRM, CONFIRM_APPROVED, CONFIRM_PENDING, dto.getComment(), null);
+            markProjectStage(project, AivideoProjectStage.SCRIPT_CONFIRMED);
+            return;
+        }
+        if (dto.getTargetId() == null) {
+            throw new BusinessException("取消确认目标ID不能为空");
+        }
+        cancelSingleAsset(project, targetType, dto.getTargetId(), dto.getComment());
+        if (hasAsset(project.getProjectId()) && hasPendingAsset(project.getProjectId())) {
+            markProjectStage(project, AivideoProjectStage.SCRIPT_CONFIRMED);
         }
     }
 
@@ -657,6 +696,22 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         contentVersionMapper.updateById(version);
         insertReview(project, TARGET_CONTENT, version.getVersionId(), ACTION_CONFIRM,
                 beforeStatus, CONFIRM_APPROVED, dto.getComment(), version.getCustomPrompt());
+        markProjectStage(project, targetStage);
+    }
+
+    private void cancelConfirmContent(AivideoContentConfirmDto dto, String contentType, AivideoProjectStage targetStage) {
+        if (dto == null || dto.getProjectId() == null || dto.getVersionId() == null) {
+            throw new BusinessException("项目ID和版本ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoContentVersionPo version = requireContentVersion(project.getProjectId(), dto.getVersionId(), contentType);
+        String beforeStatus = version.getConfirmStatus();
+        version.setSelected(NO);
+        version.setConfirmStatus(CONFIRM_PENDING);
+        fillUpdateAudit(version);
+        contentVersionMapper.updateById(version);
+        insertReview(project, TARGET_CONTENT, version.getVersionId(), ACTION_CANCEL_CONFIRM,
+                beforeStatus, CONFIRM_PENDING, dto.getComment(), version.getCustomPrompt());
         markProjectStage(project, targetStage);
     }
 
@@ -987,6 +1042,21 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 .eq(AiVideoShotPo::getDelFlag, DEL_FLAG_NORMAL));
     }
 
+    private void cancelAllAssets(Long projectId) {
+        characterMapper.update(null, new LambdaUpdateWrapper<AiVideoCharacterPo>()
+                .set(AiVideoCharacterPo::getConfirmStatus, CONFIRM_PENDING)
+                .eq(AiVideoCharacterPo::getProjectId, projectId)
+                .eq(AiVideoCharacterPo::getDelFlag, DEL_FLAG_NORMAL));
+        sceneMapper.update(null, new LambdaUpdateWrapper<AiVideoScenePo>()
+                .set(AiVideoScenePo::getConfirmStatus, CONFIRM_PENDING)
+                .eq(AiVideoScenePo::getProjectId, projectId)
+                .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL));
+        shotMapper.update(null, new LambdaUpdateWrapper<AiVideoShotPo>()
+                .set(AiVideoShotPo::getConfirmStatus, CONFIRM_PENDING)
+                .eq(AiVideoShotPo::getProjectId, projectId)
+                .eq(AiVideoShotPo::getDelFlag, DEL_FLAG_NORMAL));
+    }
+
     private void approveSingleAsset(AiVideoProjectPo project, String targetType, Long targetId, String comment) {
         switch (targetType) {
             case TARGET_CHARACTER -> {
@@ -1023,6 +1093,48 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 insertReview(project, TARGET_SHOT, targetId, ACTION_CONFIRM, before, CONFIRM_APPROVED, comment, null);
             }
             default -> throw new BusinessException("不支持的资产确认类型");
+        }
+    }
+
+    private void cancelSingleAsset(AiVideoProjectPo project, String targetType, Long targetId, String comment) {
+        switch (targetType) {
+            case TARGET_CHARACTER -> {
+                AiVideoCharacterPo character = characterMapper.selectById(targetId);
+                if (character == null || !Objects.equals(project.getProjectId(), character.getProjectId())
+                        || !Integer.valueOf(DEL_FLAG_NORMAL).equals(character.getDelFlag())) {
+                    throw new BusinessException("角色资产不存在");
+                }
+                String before = character.getConfirmStatus();
+                character.setConfirmStatus(CONFIRM_PENDING);
+                fillUpdateAudit(character);
+                characterMapper.updateById(character);
+                insertReview(project, TARGET_CHARACTER, targetId, ACTION_CANCEL_CONFIRM, before, CONFIRM_PENDING, comment, null);
+            }
+            case TARGET_SCENE -> {
+                AiVideoScenePo scene = sceneMapper.selectById(targetId);
+                if (scene == null || !Objects.equals(project.getProjectId(), scene.getProjectId())
+                        || !Integer.valueOf(DEL_FLAG_NORMAL).equals(scene.getDelFlag())) {
+                    throw new BusinessException("场景资产不存在");
+                }
+                String before = scene.getConfirmStatus();
+                scene.setConfirmStatus(CONFIRM_PENDING);
+                fillUpdateAudit(scene);
+                sceneMapper.updateById(scene);
+                insertReview(project, TARGET_SCENE, targetId, ACTION_CANCEL_CONFIRM, before, CONFIRM_PENDING, comment, null);
+            }
+            case TARGET_SHOT -> {
+                AiVideoShotPo shot = shotMapper.selectById(targetId);
+                if (shot == null || !Objects.equals(project.getProjectId(), shot.getProjectId())
+                        || !Integer.valueOf(DEL_FLAG_NORMAL).equals(shot.getDelFlag())) {
+                    throw new BusinessException("分镜资产不存在");
+                }
+                String before = shot.getConfirmStatus();
+                shot.setConfirmStatus(CONFIRM_PENDING);
+                fillUpdateAudit(shot);
+                shotMapper.updateById(shot);
+                insertReview(project, TARGET_SHOT, targetId, ACTION_CANCEL_CONFIRM, before, CONFIRM_PENDING, comment, null);
+            }
+            default -> throw new BusinessException("不支持的资产取消确认类型");
         }
     }
 

@@ -94,6 +94,11 @@ public class BAivideoStudioController {
         return R.ok();
     }
 
+    protected R<Void> cancelConfirmPolish(AivideoContentConfirmDto dto) {
+        textService.cancelConfirmPolish(dto);
+        return R.ok();
+    }
+
     protected R<AiVideoContentVersionPo> generateScript(AivideoTextGenerateDto dto) {
         return R.ok(textService.generateScript(dto));
     }
@@ -108,6 +113,11 @@ public class BAivideoStudioController {
 
     protected R<Void> confirmScript(AivideoContentConfirmDto dto) {
         textService.confirmScript(dto);
+        return R.ok();
+    }
+
+    protected R<Void> cancelConfirmScript(AivideoContentConfirmDto dto) {
+        textService.cancelConfirmScript(dto);
         return R.ok();
     }
 
@@ -129,6 +139,11 @@ public class BAivideoStudioController {
 
     protected R<Void> confirmAsset(AivideoAssetConfirmDto dto) {
         textService.confirmAsset(dto);
+        return R.ok();
+    }
+
+    protected R<Void> cancelConfirmAsset(AivideoAssetConfirmDto dto) {
+        textService.cancelConfirmAsset(dto);
         return R.ok();
     }
 
