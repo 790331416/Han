@@ -862,7 +862,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             sceneIdMap.put(scene.getSceneName(), scene.getSceneId());
         }
 
-        int duration = setting != null && setting.getDefaultShotDuration() != null ? setting.getDefaultShotDuration() : 5;
+        int duration = normalizeShotDuration(setting != null ? setting.getDefaultShotDuration() : null);
         index = 1;
         for (ShotPayload item : safeList(payload.shots)) {
             AiVideoShotPo shot = new AiVideoShotPo();
@@ -870,7 +870,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setTenantId(project.getTenantId());
             shot.setEpisodeNo(item.episodeNo != null ? item.episodeNo : 1);
             shot.setShotNo(item.shotNo != null ? item.shotNo : index);
-            shot.setDurationSec(item.durationSec != null ? item.durationSec : duration);
+            shot.setDurationSec(normalizeShotDuration(item.durationSec != null ? item.durationSec : duration));
             shot.setSceneId(resolveSceneId(item, sceneIdMap));
             shot.setCharacterIds(resolveCharacterIds(item, characterIdMap));
             shot.setShotType(item.shotType);
@@ -1103,7 +1103,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private String buildScriptPrompt(AiVideoProjectPo project, String polishedText) {
         return "请将以下润色文本改写为短剧剧本。要求：按场次组织，包含角色、场景、动作、对白、旁白和情绪提示；"
-                + "镜头描述要能继续拆分为分镜，避免空泛形容。\n\n项目：" + project.getProjectName()
+                + "镜头描述要能继续拆分为分镜，避免空泛形容；每个场次必须增加“镜头拆分建议”，写清这段适合拆成几个镜头、"
+                + "每个镜头的主动作、是否包含强动作、建议时长 5/6/8 秒；超过 3 个动作 beat 必须建议拆镜，不要硬塞进一个镜头。\n\n项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform()) + "\n画幅：" + safeValue(project.getDefaultRatio())
                 + "\n\n润色文本：\n" + polishedText;
     }
@@ -1130,7 +1131,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "4. 每个分镜必须明确地点；延续场景时在 sceneName 或 actionDesc 中体现“延续上个分镜场景，机位微调”。\n"
                 + "5. 动作要衔接，不能瞬移；镜头需包含微动作、眼神、呼吸、肢体、环境变化等可拍内容。\n"
                 + "6. shotType、cameraPosition、cameraMovement 要优先使用专业运镜词，如极焦特写、近景推轨、环绕摇镜、慢动作/延时、手持震动。\n"
-                + "7. durationSec 使用项目镜头秒数：" + duration + "；如果剧情确实需要短镜头，也不得低于 3 秒。\n\n"
+                + "7. durationSec 只能在 5、6、8 中动态选择，不再固定使用项目默认秒数；项目默认镜头秒数仅作为初始参考：" + duration + "。\n"
+                + "8. 动作预算：5 秒=1 个主动作 + 1 个反应/表情 + 1 个结尾状态；6 秒=2 个连续动作 + 结尾状态；8 秒=3 个连续动作 + 明确结尾状态。\n"
+                + "9. 超过 3 个动作 beat 必须自动拆成多个 shots，不允许硬塞；强动作如倒地起身、悬浮、变身、俯冲、落水、打斗、救援、掰弯铁栏等额外占预算，优先单独作为一个镜头核心。\n"
+                + "10. actionDesc 必须写成视频模型能执行的动作节拍，包含起始状态、主动作、反应/表情和结尾状态；promptText 必须补充构图、目标部位可见和部位发光限制。\n"
+                + "11. 出现爪子、手、脚、翅膀、尾巴等部位时，必须要求半身/全身构图并露出目标部位；出现发光时必须写清具体发光部位，禁止用眼睛发光替代爪子/手/脚等目标部位发光。\n\n"
                 + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","
@@ -1138,7 +1143,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "\"scenes\":[{\"sceneName\":\"\",\"sceneType\":\"\",\"episodeNo\":1,\"timeDesc\":\"\",\"weather\":\"\",\"atmosphere\":\"\","
                 + "\"visualFeatures\":\"\",\"colorTone\":\"\",\"props\":\"\",\"negativeElements\":\"\",\"promptText\":\"\",\"completeness\":\"\","
                 + "\"missingFields\":[\"\"]}],"
-                + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":" + duration + ",\"sceneName\":\"\",\"characterNames\":[\"\"],"
+                + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":5,\"sceneName\":\"\",\"characterNames\":[\"\"],"
                 + "\"shotType\":\"\",\"cameraPosition\":\"\",\"cameraMovement\":\"\",\"actionDesc\":\"\",\"dialogue\":\"\",\"voiceOver\":\"\","
                 + "\"emotion\":\"\",\"promptText\":\"\"}]}\n\n"
                 + "项目：" + project.getProjectName()
@@ -1162,7 +1167,17 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private int defaultShotDuration(AiVideoProjectSettingPo setting) {
-        return setting != null && setting.getDefaultShotDuration() != null ? setting.getDefaultShotDuration() : 15;
+        return normalizeShotDuration(setting != null ? setting.getDefaultShotDuration() : null);
+    }
+
+    private int normalizeShotDuration(Integer durationSec) {
+        if (durationSec == null || durationSec <= 5) {
+            return 5;
+        }
+        if (durationSec <= 6) {
+            return 6;
+        }
+        return 8;
     }
 
     private Map<String, String> baseVariables(AiVideoProjectPo project) {

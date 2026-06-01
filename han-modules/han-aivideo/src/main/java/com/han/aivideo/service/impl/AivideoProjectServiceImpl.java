@@ -257,7 +257,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         target.setTargetPlatform(trimToNull(source.getTargetPlatform()));
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultStyle(trimToNull(source.getDefaultStyle()));
-        target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
+        target.setDefaultShotDuration(normalizeShotDuration(source.getDefaultShotDuration()));
         target.setCandidateImageCount(source.getCandidateImageCount() == null ? 2 : source.getCandidateImageCount());
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
         target.setBudgetLimit(source.getBudgetLimit());
@@ -281,9 +281,9 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setShotPromptTemplateId(global != null ? global.getShotPromptTemplateId() : null);
         setting.setDefaultRatio(defaultString(dto.getDefaultRatio(), defaultString(global != null ? global.getDefaultRatio() : null, "9:16")));
         setting.setDefaultResolution(defaultString(global != null ? global.getDefaultResolution() : null, "720p"));
-        setting.setDefaultShotDuration(dto.getDefaultShotDuration() == null
+        setting.setDefaultShotDuration(normalizeShotDuration(dto.getDefaultShotDuration() == null
                 ? defaultInteger(global != null ? global.getDefaultShotDuration() : null, 5)
-                : dto.getDefaultShotDuration());
+                : dto.getDefaultShotDuration()));
         setting.setImageCandidateCount(dto.getCandidateImageCount() == null
                 ? defaultInteger(global != null ? global.getImageCandidateCount() : null, 2)
                 : dto.getCandidateImageCount());
@@ -326,6 +326,16 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
 
     private Integer defaultInteger(Integer value, Integer defaultValue) {
         return value == null ? defaultValue : value;
+    }
+
+    private int normalizeShotDuration(Integer durationSec) {
+        if (durationSec == null || durationSec <= 5) {
+            return 5;
+        }
+        if (durationSec <= 6) {
+            return 6;
+        }
+        return 8;
     }
 
     private void fillCreateAudit(AiVideoProjectPo project) {

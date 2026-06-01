@@ -21,6 +21,7 @@
   - `20260527_aivideo_scene_prompt_and_candidate_fill.sql`：AI 短剧场景图默认 Prompt 替换为参考词，并保持默认 2 张候选配置
   - `20260529_aivideo_shot_video_continuity.sql`：AI 短剧分镜视频尾帧衔接字段与默认 Prompt 强约束升级脚本
   - `20260601_aivideo_shot_video_av_character_scene_continuity.sql`：AI 短剧分镜视频默认 Prompt 补充音画双轨、角色一致性和场景连续性强约束
+  - `20260601_aivideo_shot_action_budget.sql`：AI 短剧剧本/分镜/视频 Prompt 增加动作预算、动态 5/6/8 秒、构图部位锁定和视频禁用自动配音配套模板
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -101,3 +102,4 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql`：更新 `AI短剧场景图生成` 内置模板为 BOSS 提供的“电影级纯净场景设计专家”默认词，并确保全局配置继续指向默认 2 张候选图。
 - `sql/upgrades/postgres/20260529_aivideo_shot_video_continuity.sql`：新增 `ai_video_shot.tail_frame_media_id`，更新分镜视频默认 Prompt 为尾帧衔接强约束模板，下一分镜可继承上一分镜尾帧参考图。
 - `sql/upgrades/postgres/20260601_aivideo_shot_video_av_character_scene_continuity.sql`：更新分镜视频默认 Prompt，强制区分对白与旁白，禁止视频阶段新增或改变配音，并把角色完整外观锚点和场景背景连续性写入模板变量。
+- `sql/upgrades/postgres/20260601_aivideo_shot_action_budget.sql`：更新剧本、分镜和分镜视频模板，引入动作预算、动态 5/6/8 秒、强动作拆镜、目标部位可见、发光部位锁定，并归一历史项目和分镜秒数。

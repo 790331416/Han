@@ -350,11 +350,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 projectSetting != null ? projectSetting.getDefaultResolution() : null,
                 globalSetting != null ? globalSetting.getDefaultResolution() : null,
                 "720p");
-        int durationSec = firstInteger(dto.getDurationSec(),
+        int durationSec = normalizeAivideoShotDuration(firstInteger(dto.getDurationSec(),
                 shot.getDurationSec(),
                 projectSetting != null ? projectSetting.getDefaultShotDuration() : null,
                 globalSetting != null ? globalSetting.getDefaultShotDuration() : null,
-                project.getDefaultShotDuration(), 5);
+                project.getDefaultShotDuration(), 5));
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
@@ -382,6 +382,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setDurationSec(context.durationSec());
         request.setVariables(context.variables());
         request.setReturnLastFrame(true);
+        request.setGenerateAudio(false);
         R<AiVideoGenerateResponse> result = aiServiceClient.generateVideo(request);
         if (result == null || result.isFail() || result.getData() == null) {
             throw new BusinessException(result == null ? "AI服务无响应" : result.getMsg());
@@ -866,6 +867,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("currentEndState", buildCurrentEndState(shot));
         variables.put("motionBoundary", buildMotionBoundary(shot));
         variables.put("continuityNegativePrompt", buildContinuityNegativePrompt(shot));
+        variables.put("actionBeats", buildActionBeats(shot, durationSec));
+        variables.put("timingPlan", buildTimingPlan(shot, durationSec));
+        variables.put("compositionRequirement", buildCompositionRequirement(shot));
+        variables.put("bodyPartRequirement", buildBodyPartRequirement(shot));
+        variables.put("glowRequirement", buildGlowRequirement(shot));
         return variables;
     }
 
@@ -876,76 +882,68 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
         String audioVisualProtocol = buildAudioVisualProtocol(shot);
+        String actionBeats = buildActionBeats(shot, durationSec);
+        String timingPlan = buildTimingPlan(shot, durationSec);
+        String compositionRequirement = buildCompositionRequirement(shot);
+        String bodyPartRequirement = buildBodyPartRequirement(shot);
+        String glowRequirement = buildGlowRequirement(shot);
         return """
-                # AI短剧单分镜视频生成
+                # 单分镜视频模型执行版 Prompt
 
-                请基于已选择的参考图生成一个短剧单镜头视频。参考图类型：%s。
+                参考图类型：%s。请基于参考图生成 1 个连续镜头，不要生成多镜头拼接。
+                输出规格：%s，%s，约 %s 秒。参考图地址：%s。
 
-                ## 输出规格
-                - 画幅：%s
-                - 清晰度：%s
-                - 时长：%s 秒
-                - 参考场景图：%s
+                ## 第一帧和连续性
+                - 第一帧必须贴合参考图：主体位置、姿态、朝向、体型、毛色/服饰、光影、天气和背景空间保持一致。
+                - 上一镜头：%s；上一镜头结束状态：%s。
+                - 本镜头起始状态：%s。
+                - 本镜头结尾状态：%s。
 
-                ## 分镜信息
-                - 项目：%s
-                - 风格：%s
-                - 集数/镜头：第 %s 集 / 镜头 %s
-                - 场景：%s
-                - 时间/天气/氛围：%s / %s / %s
-                - 视觉特征：%s
-                - 出场角色：%s
-                - 角色一致性锚点：%s
-                - 场景连续性锚点：%s
-                - 镜头类型：%s
-                - 机位：%s
-                - 镜头运动：%s
-                - 动作描述：%s
-                - 对白：%s
-                - 旁白：%s
-                - 情绪：%s
-                - 原始分镜提示词：%s
+                ## 主体、场景、构图
+                - 项目/风格：%s / %s。
+                - 场景：%s，%s，%s，%s，视觉特征：%s。
+                - 出场主体：%s。
+                - 角色一致性：%s。
+                - 场景一致性：%s。
+                - 构图要求：%s
+                - 部位可见要求：%s
+                - 发光部位要求：%s
 
-                ## 镜头连续性协议
-                - 上一镜头编号：%s
-                - 上一镜头摘要：%s
-                - 上一镜头结束姿态：%s
-                - 本镜头起始姿态：%s
-                - 本镜头结束姿态：%s
-                - 运动边界：%s
-                - 连续性负面约束：%s
-
-                ## 音画/配音协议
+                ## 动作节拍
                 %s
 
-                ## 强制规则
-                1. 以参考场景图作为空间与光影基准，保持场景一致，不要跳到其他地点。
-                2. 镜头只表现当前单个分镜，不扩展前后剧情，不生成多个镜头拼接。
-                3. 严格从“本镜头起始姿态”开始，不允许直接跳到动作结果。
-                4. 动作节奏清晰，镜头运动稳定，适合短剧剪辑。
-                5. 不要生成字幕、水印、logo、花字、海报字和无关屏幕文字。
-                6. 角色、动作和情绪以分镜描述为准；缺失信息用克制、自然的影视表达补齐。
-                7. 同一角色和同一场景不因镜头号变化而自动改变；除非分镜明确写变化，否则保持上一镜头视觉身份与背景连续。
-                8. 不生成、替换或改变配音声线；如果视频模型无法完全禁用音频，必须保持静音或不改变原始旁白/对白口吻。
+                ## 执行顺序
+                %s
+
+                ## 镜头语言
+                - 景别/机位/运镜：%s / %s / %s。
+                - 同一镜头内只保留 1 种主要运镜，运动稳定、低幅度、可剪辑。
+                - 动作边界：%s
+
+                ## 音画规则
+                %s
+                视频生成阶段只负责画面，不生成、不替换、不改变配音、旁白声线、BGM 或音效；对白为空时主体不张嘴。
+
+                ## 负面约束
+                %s
+                禁止字幕、水印、logo、花字、无关文字；禁止换角色、换物种、换毛色、换体型、换背景；禁止用眼睛发光替代指定部位发光。
                 """.formatted(
                 previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
-                safeValue(project.getProjectName()), safeValue(project.getDefaultStyle()),
-                firstInteger(shot.getEpisodeNo(), 1), firstInteger(shot.getShotNo(), 1),
-                safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
-                safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
-                characterNames, characterContinuity, sceneContinuity,
-                safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
-                safeValue(shot.getActionDesc()), safeValue(shot.getDialogue()), safeValue(shot.getVoiceOver()),
-                safeValue(shot.getEmotion()), safeValue(shot.getPromptText()),
-                previousShot == null ? "无" : String.valueOf(firstInteger(previousShot.getShotNo(), 1)),
-                buildPreviousShotSummary(previousShot),
+                previousShot == null ? "无" : "第 " + firstInteger(previousShot.getShotNo(), 1) + " 镜头，" + buildPreviousShotSummary(previousShot),
                 buildPreviousEndState(previousShot),
                 buildCurrentStartState(previousShot, previousTailFrameMedia),
                 buildCurrentEndState(shot),
+                safeValue(project.getProjectName()), safeValue(project.getDefaultStyle()),
+                safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
+                safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
+                characterNames, characterContinuity, sceneContinuity,
+                compositionRequirement, bodyPartRequirement, glowRequirement,
+                actionBeats, timingPlan,
+                safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
                 buildMotionBoundary(shot),
-                buildContinuityNegativePrompt(shot),
-                audioVisualProtocol);
+                audioVisualProtocol,
+                buildContinuityNegativePrompt(shot));
     }
 
     private String buildCharacterContinuity(Long projectId, String characterIds) {
@@ -1051,12 +1049,98 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return "必须从上一镜头已确认视频的结尾状态开始，不能跳过衔接；如果没有尾帧图，按上一镜头动作描述推断结尾姿态。";
     }
 
+    private String buildActionBeats(AiVideoShotPo shot, int durationSec) {
+        List<String> beats = extractActionBeats(firstText(shot != null ? shot.getActionDesc() : null,
+                shot != null ? shot.getPromptText() : null));
+        if (beats.isEmpty()) {
+            return "动作预算：本镜头只表现 1 个清晰主动作、1 个表情反应和 1 个结尾状态，动作缺失时按分镜画面自然补齐。";
+        }
+        String endState = findEndStateBeat(beats);
+        StringBuilder builder = new StringBuilder("动作预算：").append(actionBudgetText(durationSec)).append("\n");
+        List<String> selected = selectActionBeats(beats, durationSec);
+        for (int i = 0; i < selected.size(); i++) {
+            builder.append("- 动作 ").append(i + 1).append("：").append(selected.get(i)).append("\n");
+        }
+        if (StringUtils.hasText(endState)) {
+            builder.append("- 结尾状态：").append(endState).append("\n");
+        }
+        if (beats.size() > selected.size()) {
+            builder.append("- 超预算处理：原始动作超过本时长预算，未列入的后续动作不要硬塞进本镜头，应留给后续分镜。");
+        }
+        return builder.toString().trim();
+    }
+
+    private String buildTimingPlan(AiVideoShotPo shot, int durationSec) {
+        List<String> beats = selectActionBeats(extractActionBeats(firstText(shot != null ? shot.getActionDesc() : null,
+                shot != null ? shot.getPromptText() : null)), durationSec);
+        String action1 = beats.isEmpty() ? "从起始状态进入本镜头主动作，动作缓慢清晰" : beats.get(0);
+        String action2 = beats.size() > 1 ? beats.get(1) : firstText(shot != null ? shot.getEmotion() : null, "用眼神、呼吸或姿态表现反应");
+        String action3 = beats.size() > 2 ? beats.get(2) : findEndStateBeat(extractActionBeats(firstText(
+                shot != null ? shot.getActionDesc() : null, shot != null ? shot.getPromptText() : null)));
+        String endState = firstText(action3, "停在本镜头自然结尾状态，便于下一镜头继续");
+        if (durationSec <= 5) {
+            return "- 前段约 0-2 秒：" + action1 + "。\n"
+                    + "- 中段约 2-4 秒：" + action2 + "。\n"
+                    + "- 末段约 4-5 秒：停在结尾状态：" + endState + "。";
+        }
+        if (durationSec <= 6) {
+            return "- 前段约 0-2 秒：" + action1 + "。\n"
+                    + "- 中段约 2-5 秒：" + action2 + "。\n"
+                    + "- 末段约 5-6 秒：停在结尾状态：" + endState + "。";
+        }
+        return "- 前段约 0-2 秒：" + action1 + "。\n"
+                + "- 中段约 2-5 秒：" + action2 + "。\n"
+                + "- 末段约 5-8 秒：" + endState + "。";
+    }
+
+    private String buildCompositionRequirement(AiVideoShotPo shot) {
+        List<String> parts = detectTargetParts(collectShotText(shot));
+        if (parts.isEmpty()) {
+            return "保持参考图主体清晰，优先中景或近景，避免无故切到纯脸部大特写导致动作丢失。";
+        }
+        return "必须使用半身或全身构图，镜头内持续露出" + String.join("、", parts)
+                + "，不要只拍脸部特写。";
+    }
+
+    private String buildBodyPartRequirement(AiVideoShotPo shot) {
+        List<String> parts = detectTargetParts(collectShotText(shot));
+        if (parts.isEmpty()) {
+            return "无特定肢体部位时，保持主体动作和表情清楚可见。";
+        }
+        return "目标部位为：" + String.join("、", parts)
+                + "；这些部位必须在关键动作发生时完整可见，不能被裁切、遮挡或移出画面。";
+    }
+
+    private String buildGlowRequirement(AiVideoShotPo shot) {
+        String text = collectShotText(shot);
+        if (!containsAny(text, "发光", "微光", "光芒", "亮起", "闪光")) {
+            return "无发光要求时，不要额外增加眼睛、身体或背景发光。";
+        }
+        List<String> parts = detectTargetParts(text);
+        if (parts.isEmpty()) {
+            return "发光必须严格按分镜描述的位置出现，禁止擅自改成眼睛发光或全身发光。";
+        }
+        return "发光部位锁定为：" + String.join("、", parts)
+                + "；只能这些部位发光，禁止用眼睛发光、全身发光或背景闪光替代。";
+    }
+
+    private int normalizeAivideoShotDuration(Integer durationSec) {
+        if (durationSec == null || durationSec <= 5) {
+            return 5;
+        }
+        if (durationSec <= 6) {
+            return 6;
+        }
+        return 8;
+    }
+
     private String buildCurrentEndState(AiVideoShotPo shot) {
         String action = firstText(shot != null ? shot.getActionDesc() : null, shot != null ? shot.getPromptText() : null);
         if (!StringUtils.hasText(action)) {
             return "本镜头结束时保持当前分镜动作的自然结果，便于下一镜头继续。";
         }
-        StringBuilder builder = new StringBuilder("本镜头结束时停留在当前分镜动作的自然结果：").append(action).append("。");
+        String endState = firstText(findEndStateBeat(extractActionBeats(action)), action);
+        StringBuilder builder = new StringBuilder("本镜头结束时停留在当前分镜动作的自然结果：").append(endState).append("。");
         if (containsAny(action, "悬浮", "漂浮", "飞起", "飞到", "飞向")) {
             builder.append(" 若涉及悬浮，默认只允许低空、缓慢、原地附近悬浮，结束时主体仍靠近原位置。");
         }
@@ -1084,6 +1168,90 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             return base + " 禁止一开始就高空飞行，禁止高速升空，禁止翻滚，禁止离开画面中心区域。";
         }
         return base;
+    }
+
+    private String actionBudgetText(int durationSec) {
+        if (durationSec <= 5) {
+            return "5 秒镜头只允许 1 个主动作、1 个反应/表情和 1 个结尾状态";
+        }
+        if (durationSec <= 6) {
+            return "6 秒镜头允许 2 个连续动作和 1 个结尾状态";
+        }
+        return "8 秒镜头允许 3 个连续动作和 1 个明确结尾状态";
+    }
+
+    private List<String> selectActionBeats(List<String> beats, int durationSec) {
+        if (beats == null || beats.isEmpty()) {
+            return List.of();
+        }
+        int maxBeats = durationSec <= 6 ? 2 : 3;
+        List<String> selected = new ArrayList<>();
+        for (String beat : beats) {
+            if (!StringUtils.hasText(beat)) {
+                continue;
+            }
+            if (selected.size() >= maxBeats) {
+                break;
+            }
+            selected.add(beat);
+        }
+        return selected;
+    }
+
+    private List<String> extractActionBeats(String text) {
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        String normalized = text.replace("\r", "\n")
+                .replace("然后", "，")
+                .replace("随后", "，")
+                .replace("接着", "，")
+                .replace("同时", "，")
+                .replace("并且", "，")
+                .replace("并", "，");
+        String[] parts = normalized.split("[，,。；;\\n]+");
+        List<String> beats = new ArrayList<>();
+        for (String part : parts) {
+            if (StringUtils.hasText(part)) {
+                beats.add(part.trim());
+            }
+        }
+        return beats;
+    }
+
+    private String findEndStateBeat(List<String> beats) {
+        if (beats == null || beats.isEmpty()) {
+            return "";
+        }
+        for (int i = beats.size() - 1; i >= 0; i--) {
+            String beat = beats.get(i);
+            if (containsAny(beat, "发光", "微光", "光芒", "亮起", "悬浮", "漂浮", "停在", "定格", "倒地", "落地")) {
+                return beat;
+            }
+        }
+        return beats.get(beats.size() - 1);
+    }
+
+    private List<String> detectTargetParts(String text) {
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        List<String> parts = new ArrayList<>();
+        addPartIfPresent(parts, text, "前爪/爪子", "前爪", "爪子", "爪");
+        addPartIfPresent(parts, text, "手", "手", "手掌", "手指", "手臂");
+        addPartIfPresent(parts, text, "脚", "脚", "脚掌", "腿", "膝盖");
+        addPartIfPresent(parts, text, "翅膀", "翅膀", "羽翼");
+        addPartIfPresent(parts, text, "尾巴", "尾巴", "尾");
+        return parts;
+    }
+
+    private void addPartIfPresent(List<String> parts, String text, String label, String... keywords) {
+        if (parts.contains(label)) {
+            return;
+        }
+        if (containsAny(text, keywords)) {
+            parts.add(label);
+        }
     }
 
     private String collectShotText(AiVideoShotPo shot) {

@@ -90,7 +90,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setVideoPromptTemplateId(source.getVideoPromptTemplateId());
         target.setDefaultRatio(defaultString(source.getDefaultRatio(), "9:16"));
         target.setDefaultResolution(defaultString(source.getDefaultResolution(), "720p"));
-        target.setDefaultShotDuration(source.getDefaultShotDuration() == null ? 5 : source.getDefaultShotDuration());
+        target.setDefaultShotDuration(normalizeShotDuration(source.getDefaultShotDuration()));
         target.setImageCandidateCount(source.getImageCandidateCount() == null ? 2 : source.getImageCandidateCount());
         target.setVideoCandidateCount(source.getVideoCandidateCount() == null ? 1 : source.getVideoCandidateCount());
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
@@ -126,6 +126,16 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
 
     private String defaultString(String value, String defaultValue) {
         return StringUtils.hasText(value) ? value.trim() : defaultValue;
+    }
+
+    private int normalizeShotDuration(Integer durationSec) {
+        if (durationSec == null || durationSec <= 5) {
+            return 5;
+        }
+        if (durationSec <= 6) {
+            return 6;
+        }
+        return 8;
     }
 
     private String normalizeMediaAccessPolicy(String value) {

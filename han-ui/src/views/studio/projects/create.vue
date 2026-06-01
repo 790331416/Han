@@ -32,7 +32,7 @@
           </el-col>
           <el-col :span="6">
             <el-form-item label="镜头秒数">
-              <el-input-number v-model="form.defaultShotDuration" :min="1" :max="30" />
+              <el-input-number v-model="form.defaultShotDuration" :min="5" :max="8" />
             </el-form-item>
           </el-col>
           <el-col :span="6">

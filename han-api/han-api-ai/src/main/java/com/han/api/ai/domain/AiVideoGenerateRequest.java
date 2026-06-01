@@ -38,4 +38,6 @@ public class AiVideoGenerateRequest implements Serializable {
     private String referenceImageUrl;
 
     private Boolean returnLastFrame;
+
+    private Boolean generateAudio;
 }

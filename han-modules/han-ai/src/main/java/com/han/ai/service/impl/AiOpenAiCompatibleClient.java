@@ -139,10 +139,11 @@ class AiOpenAiCompatibleClient {
     }
 
     VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, String referenceImageUrl,
-                                          Integer durationSec, String ratio, String resolution, Boolean returnLastFrame) {
+                                          Integer durationSec, String ratio, String resolution,
+                                          Boolean returnLastFrame, Boolean generateAudio) {
         validateVideoArguments(model, apiKey, prompt, referenceImageUrl);
         VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, durationSec, ratio, resolution,
-                returnLastFrame);
+                returnLastFrame, generateAudio);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
@@ -273,17 +274,25 @@ class AiOpenAiCompatibleClient {
 
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
                                                      Integer durationSec, String ratio, String resolution,
-                                                     Boolean returnLastFrame) {
+                                                     Boolean returnLastFrame, Boolean generateAudio) {
         VideoGenerationRequest request = new VideoGenerationRequest();
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
         request.content.add(VideoContentPart.text(prompt));
         request.content.add(VideoContentPart.image(referenceImageUrl, "first_frame"));
-        request.duration = durationSec == null || durationSec < 1 ? 5 : Math.min(durationSec, 30);
+        request.duration = normalizeVideoDuration(durationSec);
         request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
         request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
         request.returnLastFrame = returnLastFrame == null || Boolean.TRUE.equals(returnLastFrame);
+        request.generateAudio = Boolean.TRUE.equals(generateAudio);
         return request;
+    }
+
+    private int normalizeVideoDuration(Integer durationSec) {
+        if (durationSec == null || durationSec < 1) {
+            return 5;
+        }
+        return Math.max(4, Math.min(durationSec, 15));
     }
 
     private URI buildChatCompletionUri(String baseUrl) {
@@ -824,6 +833,9 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("return_last_frame")
         public Boolean returnLastFrame;
+
+        @JsonProperty("generate_audio")
+        public Boolean generateAudio;
     }
 
     static class VideoContentPart {
