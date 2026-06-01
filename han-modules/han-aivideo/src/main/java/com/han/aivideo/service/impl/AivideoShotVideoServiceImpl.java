@@ -1188,9 +1188,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                     "content", content == null ? "" : content
             ))));
             return true;
-        } catch (IOException exception) {
-            return false;
-        } catch (IllegalStateException exception) {
+        } catch (IOException | RuntimeException exception) {
             return false;
         }
     }
@@ -1199,19 +1197,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         try {
             sendSse(emitter, "error", StringUtils.hasText(message) ? message : "视频生成失败");
         } finally {
-            emitter.complete();
+            safeComplete(emitter);
         }
     }
 
     private void completeWithDone(SseEmitter emitter) {
         try {
             emitter.send(SseEmitter.event().data("[DONE]"));
-        } catch (IOException exception) {
-            // Client-side disconnects must not mark the provider task as failed.
-        } catch (IllegalStateException exception) {
+        } catch (IOException | RuntimeException exception) {
             // Client-side disconnects must not mark the provider task as failed.
         } finally {
+            safeComplete(emitter);
+        }
+    }
+
+    private void safeComplete(SseEmitter emitter) {
+        try {
             emitter.complete();
+        } catch (RuntimeException ignored) {
+            // Client-side disconnects after a successful provider result are not business failures.
         }
     }
 

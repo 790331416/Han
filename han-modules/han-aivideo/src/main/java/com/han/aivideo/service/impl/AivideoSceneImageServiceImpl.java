@@ -275,6 +275,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             shot.setGenerationStatus(STATUS_SELECTED);
             fillUpdateAudit(shot);
             shotMapper.updateById(shot);
+            markVideoTaskSuccessIfCandidateReady(project, media);
         }
 
         insertReview(project, TARGET_MEDIA, media.getMediaId(), ACTION_SELECT,
@@ -474,19 +475,28 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         if (!StringUtils.hasText(lastFrameUrl)) {
             return null;
         }
-        ImageBytes imageBytes = downloadImage(lastFrameUrl);
+        ImageBytes imageBytes;
+        try {
+            imageBytes = downloadImage(lastFrameUrl);
+        } catch (RuntimeException exception) {
+            return null;
+        }
         String extension = extensionFromMime(imageBytes.mimeType());
         String filename = "aivideo-shot-tail-frame-" + shot.getShotId() + "-" + sourceVideo.getMediaId()
                 + "." + extension;
         Resource resource = new NamedByteArrayResource(imageBytes.bytes(), filename);
-        R<FileDTO> uploadResult = fileServiceClient.upload(resource);
+        R<FileDTO> uploadResult;
+        try {
+            uploadResult = fileServiceClient.upload(resource);
+        } catch (RuntimeException exception) {
+            return null;
+        }
         if (uploadResult == null || uploadResult.isFail()) {
-            throw new BusinessException(uploadResult == null ? "尾帧参考图上传失败：文件服务无响应"
-                    : "尾帧参考图上传失败：" + uploadResult.getMsg());
+            return null;
         }
         FileDTO file = uploadResult.getData();
         if (file == null || file.getId() == null || !StringUtils.hasText(file.getUrl())) {
-            throw new BusinessException("尾帧参考图上传成功但未返回 fileId/fileUrl");
+            return null;
         }
 
         mediaAssetMapper.update(null, new LambdaUpdateWrapper<AiVideoMediaAssetPo>()
@@ -523,6 +533,26 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         fillCreateAudit(tailFrame);
         mediaAssetMapper.insert(tailFrame);
         return tailFrame;
+    }
+
+    private void markVideoTaskSuccessIfCandidateReady(AiVideoProjectPo project, AiVideoMediaAssetPo media) {
+        if (media == null || media.getTaskId() == null) {
+            return;
+        }
+        AiVideoGenerationTaskPo task = taskMapper.selectById(media.getTaskId());
+        if (task == null || !Objects.equals(project.getProjectId(), task.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(task.getDelFlag())) {
+            return;
+        }
+        task.setTaskStatus(AivideoTaskStatus.SUCCESS.name());
+        task.setProgress(100);
+        task.setErrorCode(null);
+        task.setErrorMessage(null);
+        if (task.getFinishedTime() == null) {
+            task.setFinishedTime(now());
+        }
+        fillUpdateAudit(task);
+        taskMapper.updateById(task);
     }
 
     @SuppressWarnings("unchecked")
