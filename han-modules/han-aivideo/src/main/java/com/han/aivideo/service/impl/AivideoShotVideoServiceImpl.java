@@ -79,10 +79,13 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             1. 基于已确认场景图生成单个短剧镜头视频，不生成整剧，不跨镜头。
             2. 必须严格执行镜头连续性协议：上一镜头结束姿态就是本镜头起始姿态，不允许跳切、瞬移、突然换姿态。
             3. 必须保持参考图的空间关系、时间、天气、色调和主体环境稳定；若参考图为上一镜头尾帧，优先继承尾帧中的主体位置和姿态。
-            4. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态，动作必须低幅度、渐进、可剪辑。
-            5. 遇到“悬浮、飞起、变身、倒地、站起”等强动作词，除非分镜明确写高速飞行，否则默认只做缓慢、低幅度、原地附近变化。
-            6. 不要生成字幕、水印、logo、花字和无关文字。
-            7. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
+            4. 严格执行音画双轨协议：视频阶段只负责画面，不新增、不改写、不替换配音、旁白声线、BGM 或音效；对白才允许口型同步，旁白和心理活动必须作为画外音处理，角色不张嘴。
+            5. 同一角色、动物或宠物必须保持同一身份与外观锚点，禁止跨镜头换物种、换毛色、换体型、换脸型、换年龄感或丢失项圈/斑纹等标志物。
+            6. 同一场景必须保持背景空间、光线、天气、色调、道具和前中后景关系稳定；除非分镜明确切场，不得无故换地点或换背景。
+            7. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态，动作必须低幅度、渐进、可剪辑。
+            8. 遇到“悬浮、飞起、变身、倒地、站起”等强动作词，除非分镜明确写高速飞行，否则默认只做缓慢、低幅度、原地附近变化。
+            9. 不要生成字幕、水印、logo、花字和无关文字。
+            10. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
             """;
 
     private final AiVideoProjectMapper projectMapper;
@@ -741,6 +744,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("atmosphere", safeValue(scene.getAtmosphere()));
         variables.put("visualFeatures", safeValue(scene.getVisualFeatures()));
         variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())));
+        variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds()));
+        variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
+        variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot));
         variables.put("shotType", safeValue(shot.getShotType()));
         variables.put("cameraPosition", safeValue(shot.getCameraPosition()));
         variables.put("cameraMovement", safeValue(shot.getCameraMovement()));
@@ -765,6 +771,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec, String referenceImageUrl) {
+        String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
+        String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
+        String sceneContinuity = buildSceneContinuity(scene, previousShot);
+        String audioVisualProtocol = buildAudioVisualProtocol(shot);
         return """
                 # AI短剧单分镜视频生成
 
@@ -784,6 +794,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 时间/天气/氛围：%s / %s / %s
                 - 视觉特征：%s
                 - 出场角色：%s
+                - 角色一致性锚点：%s
+                - 场景连续性锚点：%s
                 - 镜头类型：%s
                 - 机位：%s
                 - 镜头运动：%s
@@ -802,6 +814,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 运动边界：%s
                 - 连续性负面约束：%s
 
+                ## 音画/配音协议
+                %s
+
                 ## 强制规则
                 1. 以参考场景图作为空间与光影基准，保持场景一致，不要跳到其他地点。
                 2. 镜头只表现当前单个分镜，不扩展前后剧情，不生成多个镜头拼接。
@@ -809,6 +824,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 4. 动作节奏清晰，镜头运动稳定，适合短剧剪辑。
                 5. 不要生成字幕、水印、logo、花字、海报字和无关屏幕文字。
                 6. 角色、动作和情绪以分镜描述为准；缺失信息用克制、自然的影视表达补齐。
+                7. 同一角色和同一场景不因镜头号变化而自动改变；除非分镜明确写变化，否则保持上一镜头视觉身份与背景连续。
+                8. 不生成、替换或改变配音声线；如果视频模型无法完全禁用音频，必须保持静音或不改变原始旁白/对白口吻。
                 """.formatted(
                 previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
@@ -816,7 +833,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 firstInteger(shot.getEpisodeNo(), 1), firstInteger(shot.getShotNo(), 1),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
-                safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())),
+                characterNames, characterContinuity, sceneContinuity,
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
                 safeValue(shot.getActionDesc()), safeValue(shot.getDialogue()), safeValue(shot.getVoiceOver()),
                 safeValue(shot.getEmotion()), safeValue(shot.getPromptText()),
@@ -826,7 +843,82 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 buildCurrentStartState(previousShot, previousTailFrameMedia),
                 buildCurrentEndState(shot),
                 buildMotionBoundary(shot),
-                buildContinuityNegativePrompt(shot));
+                buildContinuityNegativePrompt(shot),
+                audioVisualProtocol);
+    }
+
+    private String buildCharacterContinuity(Long projectId, String characterIds) {
+        List<String> tokens = parseCharacterTokens(characterIds);
+        if (tokens.isEmpty()) {
+            return "未指定角色时，必须保持参考图中已有主体，不新增、不替换、不改变主体身份。";
+        }
+        List<String> details = new ArrayList<>();
+        for (String token : tokens) {
+            try {
+                Long characterId = Long.parseLong(token);
+                AiVideoCharacterPo character = characterMapper.selectById(characterId);
+                if (character != null && Objects.equals(projectId, character.getProjectId())
+                        && Integer.valueOf(DEL_FLAG_NORMAL).equals(character.getDelFlag())) {
+                    details.add(buildCharacterContinuityLine(character));
+                }
+            } catch (NumberFormatException ignored) {
+                details.add(token + "：保持分镜已设定的身份、外观、颜色和标志性细节，不替换为其他角色。");
+            }
+        }
+        if (details.isEmpty()) {
+            return "出场角色必须继承分镜和参考图中的既定外观，不得跨镜头替换角色或动物。";
+        }
+        return String.join("\n", details);
+    }
+
+    private String buildCharacterContinuityLine(AiVideoCharacterPo character) {
+        List<String> fields = new ArrayList<>();
+        appendField(fields, "角色名：", character.getCharacterName());
+        appendField(fields, "身份/物种：", firstText(character.getIdentityDesc(), character.getStoryRole()));
+        appendField(fields, "年龄/性别：", joinNonBlank("/", character.getAgeDesc(), character.getGender()));
+        appendField(fields, "外观轮廓：", character.getAppearance());
+        appendField(fields, "毛发/发型：", character.getHairStyle());
+        appendField(fields, "服饰/身体特征：", character.getCostume());
+        appendField(fields, "颜色风格：", character.getColorStyle());
+        appendField(fields, "禁改特征：", character.getNegativeTraits());
+        appendField(fields, "原始角色提示词：", character.getPromptText());
+        if (character.getLockedMediaId() != null) {
+            appendField(fields, "已锁定角色图ID：", String.valueOf(character.getLockedMediaId()));
+        }
+        String detail = fields.isEmpty() ? "角色ID " + character.getCharacterId() : String.join("；", fields);
+        return detail + "。同一镜头和跨镜头必须保持为同一角色/同一只动物，不得换物种、毛色、体型、脸型、眼睛、年龄感、项圈、斑纹或其他标志物。";
+    }
+
+    private String buildSceneContinuity(AiVideoScenePo scene, AiVideoShotPo previousShot) {
+        List<String> fields = new ArrayList<>();
+        appendField(fields, "场景名称：", scene.getSceneName());
+        appendField(fields, "场景类型：", scene.getSceneType());
+        appendField(fields, "时间：", scene.getTimeDesc());
+        appendField(fields, "天气：", scene.getWeather());
+        appendField(fields, "氛围：", scene.getAtmosphere());
+        appendField(fields, "视觉特征：", scene.getVisualFeatures());
+        appendField(fields, "色调：", scene.getColorTone());
+        appendField(fields, "核心道具：", scene.getProps());
+        appendField(fields, "禁用元素：", scene.getNegativeElements());
+        appendField(fields, "原始场景提示词：", scene.getPromptText());
+        String relation;
+        if (previousShot == null) {
+            relation = "首镜头以当前参考场景图建立背景锚点。";
+        } else if (Objects.equals(scene.getSceneId(), previousShot.getSceneId())) {
+            relation = "本镜头与上一镜头属于同一场景，必须延续上一镜头背景空间和光影。";
+        } else {
+            relation = "当前镜头绑定场景与上一镜头不同；仅允许按当前场景字段完成明确切场，不额外发明新地点。";
+        }
+        String detail = fields.isEmpty() ? "按参考图保持场景空间、光线、天气和道具。" : String.join("；", fields);
+        return relation + detail + "。背景空间、前中后景、光线、天气、色调和道具不得无故变化；未写明的新物体、陌生建筑或其他角色不要出现。";
+    }
+
+    private String buildAudioVisualProtocol(AiVideoShotPo shot) {
+        String dialogue = firstText(shot != null ? shot.getDialogue() : null, "无");
+        String voiceOver = firstText(shot != null ? shot.getVoiceOver() : null, "无");
+        return "视频阶段只负责画面，不新增、不改写、不替换配音、旁白声线、BGM 或音效；对白：" + dialogue
+                + "；旁白：" + voiceOver
+                + "。只有对白允许角色张嘴和口型同步；旁白、心理活动和环境描述必须作为画外音处理，角色不张嘴、不做口型，用眼神、呼吸、姿态和环境变化承接情绪。分镜之间保持同一旁白/配音口吻、语速、性别/年龄感和情绪连续，禁止声线突变。";
     }
 
     private String buildPreviousShotSummary(AiVideoShotPo previousShot) {
@@ -935,10 +1027,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             return "";
         }
         String raw = characterIds.trim();
-        List<String> tokens = Arrays.stream(raw.replace("[", "").replace("]", "").replace("\"", "").split("[,，、]"))
-                .map(String::trim)
-                .filter(StringUtils::hasText)
-                .toList();
+        List<String> tokens = parseCharacterTokens(characterIds);
         if (tokens.isEmpty()) {
             return raw;
         }
@@ -957,6 +1046,33 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
         }
         return String.join("、", names);
+    }
+
+    private List<String> parseCharacterTokens(String characterIds) {
+        if (!StringUtils.hasText(characterIds)) {
+            return List.of();
+        }
+        return Arrays.stream(characterIds.trim().replace("[", "").replace("]", "").replace("\"", "").split("[,，、]"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
+    }
+
+    private void appendField(List<String> fields, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            fields.add(label + value.trim());
+        }
+    }
+
+    private String joinNonBlank(String delimiter, String... values) {
+        if (values == null) {
+            return "";
+        }
+        return Arrays.stream(values)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .reduce((left, right) -> left + delimiter + right)
+                .orElse("");
     }
 
     private AiVideoProjectPo requireProject(Long projectId) {

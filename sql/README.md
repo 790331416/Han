@@ -20,6 +20,7 @@
   - `20260527_aivideo_media_preview_access.sql`：AI 短剧受控媒体预览、素材访问策略和候选图默认值清理升级脚本
   - `20260527_aivideo_scene_prompt_and_candidate_fill.sql`：AI 短剧场景图默认 Prompt 替换为参考词，并保持默认 2 张候选配置
   - `20260529_aivideo_shot_video_continuity.sql`：AI 短剧分镜视频尾帧衔接字段与默认 Prompt 强约束升级脚本
+  - `20260601_aivideo_shot_video_av_character_scene_continuity.sql`：AI 短剧分镜视频默认 Prompt 补充音画双轨、角色一致性和场景连续性强约束
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -99,3 +100,4 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql`：新增 `media_access_policy`，把历史场景图文件地址归一为受控 `/file/public/...` 路径，并把旧项目候选图数量 3 清理为默认 2。
 - `sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql`：更新 `AI短剧场景图生成` 内置模板为 BOSS 提供的“电影级纯净场景设计专家”默认词，并确保全局配置继续指向默认 2 张候选图。
 - `sql/upgrades/postgres/20260529_aivideo_shot_video_continuity.sql`：新增 `ai_video_shot.tail_frame_media_id`，更新分镜视频默认 Prompt 为尾帧衔接强约束模板，下一分镜可继承上一分镜尾帧参考图。
+- `sql/upgrades/postgres/20260601_aivideo_shot_video_av_character_scene_continuity.sql`：更新分镜视频默认 Prompt，强制区分对白与旁白，禁止视频阶段新增或改变配音，并把角色完整外观锚点和场景背景连续性写入模板变量。
