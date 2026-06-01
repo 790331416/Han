@@ -38,6 +38,73 @@
           </el-col>
         </el-row>
 
+        <el-form-item label="默认视觉风格">
+          <el-select
+            v-model="form.defaultStyle"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入默认风格"
+          >
+            <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="默认生成策略">
+              <el-select v-model="form.generationStrategy">
+                <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认声音模式">
+              <el-select v-model="form.audioMode">
+                <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认字幕模式">
+              <el-select v-model="form.subtitleMode">
+                <el-option v-for="item in subtitleModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-form-item label="默认参考素材">
+              <el-select v-model="form.referenceStrategy">
+                <el-option v-for="item in referenceStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认动作强度">
+              <el-select v-model="form.actionIntensity">
+                <el-option v-for="item in actionIntensityOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认连续性">
+              <el-select v-model="form.continuityLevel">
+                <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认多角色">
+              <el-select v-model="form.multiRoleStrategy">
+                <el-option v-for="item in multiRoleStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="默认画幅">
@@ -113,7 +180,21 @@
 import { onMounted, reactive, ref } from 'vue'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getAivideoSetting, resolutionOptions, ratioOptions, updateAivideoSetting, type AivideoSetting } from '@/api/aivideo'
+import {
+  actionIntensityOptions,
+  audioModeOptions,
+  continuityLevelOptions,
+  generationStrategyOptions,
+  getAivideoSetting,
+  multiRoleStrategyOptions,
+  referenceStrategyOptions,
+  resolutionOptions,
+  ratioOptions,
+  subtitleModeOptions,
+  updateAivideoSetting,
+  visualStyleOptions,
+  type AivideoSetting
+} from '@/api/aivideo'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -127,6 +208,14 @@ const form = reactive<AivideoSetting>({
   previewMode: '1',
   contentAuditEnabled: '1',
   mediaAccessPolicy: 'PRIVATE',
+  defaultStyle: '写实电影感',
+  generationStrategy: 'AUTO',
+  audioMode: 'SILENT',
+  subtitleMode: 'NONE',
+  referenceStrategy: 'CHARACTER_SCENE',
+  actionIntensity: 'NORMAL',
+  continuityLevel: 'STRICT',
+  multiRoleStrategy: 'SINGLE_FIRST',
   remark: ''
 })
 

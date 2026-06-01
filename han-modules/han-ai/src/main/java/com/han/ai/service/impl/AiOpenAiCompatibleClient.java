@@ -139,10 +139,12 @@ class AiOpenAiCompatibleClient {
     }
 
     VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, String referenceImageUrl,
+                                          String referenceVideoUrl, String referenceAudioUrl,
                                           Integer durationSec, String ratio, String resolution,
                                           Boolean returnLastFrame, Boolean generateAudio) {
         validateVideoArguments(model, apiKey, prompt, referenceImageUrl);
-        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, durationSec, ratio, resolution,
+        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, referenceVideoUrl,
+                referenceAudioUrl, durationSec, ratio, resolution,
                 returnLastFrame, generateAudio);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
@@ -273,6 +275,7 @@ class AiOpenAiCompatibleClient {
     }
 
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
+                                                     String referenceVideoUrl, String referenceAudioUrl,
                                                      Integer durationSec, String ratio, String resolution,
                                                      Boolean returnLastFrame, Boolean generateAudio) {
         VideoGenerationRequest request = new VideoGenerationRequest();
@@ -280,6 +283,12 @@ class AiOpenAiCompatibleClient {
         request.content = new ArrayList<>();
         request.content.add(VideoContentPart.text(prompt));
         request.content.add(VideoContentPart.image(referenceImageUrl, "first_frame"));
+        if (StringUtils.hasText(referenceVideoUrl)) {
+            request.content.add(VideoContentPart.video(referenceVideoUrl, "reference_video"));
+        }
+        if (StringUtils.hasText(referenceAudioUrl)) {
+            request.content.add(VideoContentPart.audio(referenceAudioUrl, "reference_audio"));
+        }
         request.duration = normalizeVideoDuration(durationSec);
         request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
         request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
@@ -848,6 +857,12 @@ class AiOpenAiCompatibleClient {
         @JsonProperty("image_url")
         public Map<String, String> imageUrl;
 
+        @JsonProperty("video_url")
+        public Map<String, String> videoUrl;
+
+        @JsonProperty("audio_url")
+        public Map<String, String> audioUrl;
+
         @JsonProperty("role")
         public String role;
 
@@ -864,6 +879,24 @@ class AiOpenAiCompatibleClient {
             part.role = role;
             part.imageUrl = new LinkedHashMap<>();
             part.imageUrl.put("url", url);
+            return part;
+        }
+
+        static VideoContentPart video(String url, String role) {
+            VideoContentPart part = new VideoContentPart();
+            part.type = "video_url";
+            part.role = role;
+            part.videoUrl = new LinkedHashMap<>();
+            part.videoUrl.put("url", url);
+            return part;
+        }
+
+        static VideoContentPart audio(String url, String role) {
+            VideoContentPart part = new VideoContentPart();
+            part.type = "audio_url";
+            part.role = role;
+            part.audioUrl = new LinkedHashMap<>();
+            part.audioUrl.put("url", url);
             return part;
         }
     }

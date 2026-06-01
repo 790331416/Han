@@ -46,5 +46,35 @@ public class AivideoAdminSettingVo {
 
     private String mediaAccessPolicy;
 
+    private String defaultStyle;
+
+    private String generationStrategy;
+
+    private String audioMode;
+
+    private String subtitleMode;
+
+    private String referenceStrategy;
+
+    private String actionIntensity;
+
+    private String continuityLevel;
+
+    private String multiRoleStrategy;
+
+    private String globalPrompt;
+
+    private String polishPrompt;
+
+    private String scriptPrompt;
+
+    private String assetPrompt;
+
+    private String characterImagePrompt;
+
+    private String sceneImagePrompt;
+
+    private String shotVideoPrompt;
+
     private String remark;
 }

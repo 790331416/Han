@@ -47,9 +47,72 @@
           </el-col>
         </el-row>
 
-        <el-form-item label="风格基调">
-          <el-input v-model="form.defaultStyle" placeholder="如电影感、写实、强反差光影" />
+        <el-form-item label="视觉风格">
+          <el-select
+            v-model="form.defaultStyle"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入风格"
+          >
+            <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
         </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="生成策略">
+              <el-select v-model="form.generationStrategy">
+                <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="声音模式">
+              <el-select v-model="form.audioMode">
+                <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="字幕模式">
+              <el-select v-model="form.subtitleMode">
+                <el-option v-for="item in subtitleModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-form-item label="参考素材">
+              <el-select v-model="form.referenceStrategy">
+                <el-option v-for="item in referenceStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="动作强度">
+              <el-select v-model="form.actionIntensity">
+                <el-option v-for="item in actionIntensityOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="连续性">
+              <el-select v-model="form.continuityLevel">
+                <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="多角色">
+              <el-select v-model="form.multiRoleStrategy">
+                <el-option v-for="item in multiRoleStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
         <el-form-item label="项目简介">
           <el-input v-model="form.summary" type="textarea" :rows="3" placeholder="可选，用于后续生成上下文" />
@@ -79,7 +142,19 @@ import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { addAivideoProject, ratioOptions, type AivideoProjectForm } from '@/api/aivideo'
+import {
+  actionIntensityOptions,
+  addAivideoProject,
+  audioModeOptions,
+  continuityLevelOptions,
+  generationStrategyOptions,
+  multiRoleStrategyOptions,
+  ratioOptions,
+  referenceStrategyOptions,
+  subtitleModeOptions,
+  visualStyleOptions,
+  type AivideoProjectForm
+} from '@/api/aivideo'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -90,7 +165,14 @@ const form = reactive<AivideoProjectForm>({
   topicType: '',
   targetPlatform: '',
   defaultRatio: '9:16',
-  defaultStyle: '',
+  defaultStyle: '写实电影感',
+  generationStrategy: 'AUTO',
+  audioMode: 'SILENT',
+  subtitleMode: 'NONE',
+  referenceStrategy: 'CHARACTER_SCENE',
+  actionIntensity: 'NORMAL',
+  continuityLevel: 'STRICT',
+  multiRoleStrategy: 'SINGLE_FIRST',
   defaultShotDuration: 5,
   candidateImageCount: 2,
   previewMode: '1',

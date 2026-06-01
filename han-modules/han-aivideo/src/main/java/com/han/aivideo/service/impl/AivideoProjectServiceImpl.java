@@ -27,12 +27,14 @@ import com.han.aivideo.mapper.AiVideoSourceDocumentMapper;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -291,7 +293,42 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(global != null ? global.getPreviewMode() : null, YES)));
         setting.setContentAuditEnabled(defaultString(global != null ? global.getContentAuditEnabled() : null, YES));
         setting.setMediaAccessPolicy(defaultString(global != null ? global.getMediaAccessPolicy() : null, "PRIVATE"));
+        setting.setParamsJson(XuJsonUtil.toJsonString(buildStrategyParams(dto, global != null ? global.getParamsJson() : null)));
         return setting;
+    }
+
+    private Map<String, Object> buildStrategyParams(AivideoProjectDto dto, String globalParamsJson) {
+        Map<String, Object> params = parseParamsJson(globalParamsJson);
+        putStrategyValue(params, PARAM_DEFAULT_STYLE, dto.getDefaultStyle(), inheritedStrategy(params, PARAM_DEFAULT_STYLE, DEFAULT_STYLE));
+        putStrategyValue(params, PARAM_GENERATION_STRATEGY, dto.getGenerationStrategy(),
+                inheritedStrategy(params, PARAM_GENERATION_STRATEGY, DEFAULT_GENERATION_STRATEGY));
+        putStrategyValue(params, PARAM_AUDIO_MODE, dto.getAudioMode(), inheritedStrategy(params, PARAM_AUDIO_MODE, DEFAULT_AUDIO_MODE));
+        putStrategyValue(params, PARAM_SUBTITLE_MODE, dto.getSubtitleMode(),
+                inheritedStrategy(params, PARAM_SUBTITLE_MODE, DEFAULT_SUBTITLE_MODE));
+        putStrategyValue(params, PARAM_REFERENCE_STRATEGY, dto.getReferenceStrategy(),
+                inheritedStrategy(params, PARAM_REFERENCE_STRATEGY, DEFAULT_REFERENCE_STRATEGY));
+        putStrategyValue(params, PARAM_ACTION_INTENSITY, dto.getActionIntensity(),
+                inheritedStrategy(params, PARAM_ACTION_INTENSITY, DEFAULT_ACTION_INTENSITY));
+        putStrategyValue(params, PARAM_CONTINUITY_LEVEL, dto.getContinuityLevel(),
+                inheritedStrategy(params, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL));
+        putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, dto.getMultiRoleStrategy(),
+                inheritedStrategy(params, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY));
+        putStrategyValue(params, PARAM_GLOBAL_PROMPT, dto.getGlobalPrompt(), inheritedStrategy(params, PARAM_GLOBAL_PROMPT, ""));
+        putStrategyValue(params, PARAM_POLISH_PROMPT, dto.getPolishPrompt(), inheritedStrategy(params, PARAM_POLISH_PROMPT, ""));
+        putStrategyValue(params, PARAM_SCRIPT_PROMPT, dto.getScriptPrompt(), inheritedStrategy(params, PARAM_SCRIPT_PROMPT, ""));
+        putStrategyValue(params, PARAM_ASSET_PROMPT, dto.getAssetPrompt(), inheritedStrategy(params, PARAM_ASSET_PROMPT, ""));
+        putStrategyValue(params, PARAM_CHARACTER_IMAGE_PROMPT, dto.getCharacterImagePrompt(),
+                inheritedStrategy(params, PARAM_CHARACTER_IMAGE_PROMPT, ""));
+        putStrategyValue(params, PARAM_SCENE_IMAGE_PROMPT, dto.getSceneImagePrompt(),
+                inheritedStrategy(params, PARAM_SCENE_IMAGE_PROMPT, ""));
+        putStrategyValue(params, PARAM_SHOT_VIDEO_PROMPT, dto.getShotVideoPrompt(),
+                inheritedStrategy(params, PARAM_SHOT_VIDEO_PROMPT, ""));
+        return params;
+    }
+
+    private String inheritedStrategy(Map<String, Object> params, String key, String defaultValue) {
+        Object value = params.get(key);
+        return value == null || !StringUtils.hasText(String.valueOf(value)) ? defaultValue : String.valueOf(value).trim();
     }
 
     private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {

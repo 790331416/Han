@@ -432,8 +432,48 @@
           <el-form-item label="视频候选数">
             <el-input-number v-model="params.videoCandidateCount" disabled />
           </el-form-item>
-          <el-form-item label="补充提示词">
-            <el-input v-model="customPrompt" type="textarea" :rows="8" maxlength="1200" show-word-limit />
+          <el-form-item label="当前策略">
+            <div class="strategy-grid">
+              <el-select v-model="params.defaultStyle" filterable allow-create default-first-option placeholder="视觉风格">
+                <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.generationStrategy" placeholder="生成策略">
+                <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.audioMode" placeholder="声音模式">
+                <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.subtitleMode" placeholder="字幕模式">
+                <el-option v-for="item in subtitleModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.referenceStrategy" placeholder="参考素材">
+                <el-option v-for="item in referenceStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.actionIntensity" placeholder="动作强度">
+                <el-option v-for="item in actionIntensityOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.continuityLevel" placeholder="连续性">
+                <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="params.multiRoleStrategy" placeholder="多角色">
+                <el-option v-for="item in multiRoleStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </div>
+          </el-form-item>
+          <el-form-item label="高级追加提示词">
+            <div class="prompt-scope-editor">
+              <el-select v-model="activePromptScope">
+                <el-option v-for="item in promptScopeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-input
+                v-model="promptScopes[activePromptScope]"
+                type="textarea"
+                :rows="6"
+                maxlength="1200"
+                show-word-limit
+                placeholder="这里只追加当前作用域提示词；全局追加会和当前阶段提示词一起发送"
+              />
+            </div>
           </el-form-item>
         </el-form>
       </aside>
@@ -553,6 +593,31 @@
 
     <el-drawer v-model="shotVideoDrawerVisible" size="760px" :title="shotVideoDrawerTitle">
       <div v-if="selectedShotForVideo" class="scene-image-drawer">
+        <el-form class="shot-video-strategy" label-position="top">
+          <el-row :gutter="12">
+            <el-col :span="8">
+              <el-form-item label="生成策略">
+                <el-select v-model="params.generationStrategy">
+                  <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="声音模式">
+                <el-select v-model="params.audioMode">
+                  <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="连续性">
+                <el-select v-model="params.continuityLevel">
+                  <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
         <details class="prompt-preview" open>
           <summary>查看本次分镜视频提示词</summary>
           <pre>{{ shotVideoPromptPreviewText || '暂无可预览提示词' }}</pre>
@@ -657,14 +722,19 @@ import {
   AIVIDEO_SCENE_IMAGE_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
   AIVIDEO_SHOT_VIDEO_STREAM_PATH,
+  actionIntensityOptions,
   aivideoProjectStageOptions,
+  audioModeOptions,
+  continuityLevelOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
   confirmAivideoPolish,
   confirmAivideoScript,
+  generationStrategyOptions,
   getAivideoProject,
   listAivideoMedia,
   listAivideoShotVideoTasks,
+  multiRoleStrategyOptions,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
   previewAivideoCharacterImagePrompt,
@@ -673,8 +743,11 @@ import {
   previewAivideoShotVideoPrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
+  referenceStrategyOptions,
   saveAivideoDocument,
   selectAivideoMedia,
+  subtitleModeOptions,
+  visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
   type AivideoProjectDetail,
@@ -688,6 +761,7 @@ import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
 import { useUserStore } from '@/stores/user'
 
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
+type PromptScope = 'global' | 'polish' | 'script' | 'asset' | 'characterImage' | 'sceneImage' | 'shotVideo'
 
 const route = useRoute()
 const router = useRouter()
@@ -732,7 +806,16 @@ const shotVideoSelectingIds = ref<Set<string>>(new Set())
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
-const customPrompt = ref('')
+const activePromptScope = ref<PromptScope>('global')
+const promptScopes = reactive<Record<PromptScope, string>>({
+  global: '',
+  polish: '',
+  script: '',
+  asset: '',
+  characterImage: '',
+  sceneImage: '',
+  shotVideo: ''
+})
 const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
@@ -749,12 +832,30 @@ const sourceDraft = reactive({
 
 const params = reactive({
   defaultRatio: '9:16',
+  defaultStyle: '写实电影感',
   defaultResolution: '720p',
   defaultShotDuration: 5,
   imageCandidateCount: 2,
   videoCandidateCount: 1,
-  previewMode: '1'
+  previewMode: '1',
+  generationStrategy: 'AUTO',
+  audioMode: 'SILENT',
+  subtitleMode: 'NONE',
+  referenceStrategy: 'CHARACTER_SCENE',
+  actionIntensity: 'NORMAL',
+  continuityLevel: 'STRICT',
+  multiRoleStrategy: 'SINGLE_FIRST'
 })
+
+const promptScopeOptions: Array<{ label: string; value: PromptScope }> = [
+  { label: '全局追加', value: 'global' },
+  { label: '润色追加', value: 'polish' },
+  { label: '剧本追加', value: 'script' },
+  { label: '资产提取追加', value: 'asset' },
+  { label: '角色图追加', value: 'characterImage' },
+  { label: '场景图追加', value: 'sceneImage' },
+  { label: '分镜视频追加', value: 'shotVideo' }
+]
 
 const projectId = computed(() => String(route.params.id))
 const documents = computed(() => detail.documents || [])
@@ -824,18 +925,69 @@ function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
 }
 
+function parseParamsJson(paramsJson?: string) {
+  if (!paramsJson) {
+    return {}
+  }
+  try {
+    return JSON.parse(paramsJson) as Record<string, string>
+  } catch (_error) {
+    return {}
+  }
+}
+
+function strategyValue(settingParams: Record<string, string>, key: string, fallback: string) {
+  const value = settingParams[key]
+  return value && String(value).trim() ? String(value).trim() : fallback
+}
+
+function scopedCustomPrompt(scope: PromptScope) {
+  const strategyPrompt = [
+    `视觉风格：${params.defaultStyle}`,
+    `生成策略：${params.generationStrategy}`,
+    `声音模式：${params.audioMode}`,
+    `字幕模式：${params.subtitleMode}`,
+    `参考素材策略：${params.referenceStrategy}`,
+    `动作强度：${params.actionIntensity}`,
+    `连续性强度：${params.continuityLevel}`,
+    `多角色策略：${params.multiRoleStrategy}`
+  ].join('；')
+  return [strategyPrompt, promptScopes.global, promptScopes[scope]]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 async function loadDetail() {
   loading.value = true
   try {
     const res = await getAivideoProject(projectId.value)
     Object.assign(detail, res.data || {})
+    const settingParams = parseParamsJson(res.data.setting?.paramsJson)
     Object.assign(params, {
       defaultRatio: res.data.setting?.defaultRatio || res.data.project?.defaultRatio || '9:16',
+      defaultStyle: strategyValue(settingParams, 'defaultStyle', res.data.project?.defaultStyle || '写实电影感'),
       defaultResolution: res.data.setting?.defaultResolution || '720p',
       defaultShotDuration: res.data.setting?.defaultShotDuration || res.data.project?.defaultShotDuration || 5,
       imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 2,
       videoCandidateCount: res.data.setting?.videoCandidateCount || 1,
-      previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1'
+      previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1',
+      generationStrategy: strategyValue(settingParams, 'generationStrategy', 'AUTO'),
+      audioMode: strategyValue(settingParams, 'audioMode', 'SILENT'),
+      subtitleMode: strategyValue(settingParams, 'subtitleMode', 'NONE'),
+      referenceStrategy: strategyValue(settingParams, 'referenceStrategy', 'CHARACTER_SCENE'),
+      actionIntensity: strategyValue(settingParams, 'actionIntensity', 'NORMAL'),
+      continuityLevel: strategyValue(settingParams, 'continuityLevel', 'STRICT'),
+      multiRoleStrategy: strategyValue(settingParams, 'multiRoleStrategy', 'SINGLE_FIRST')
+    })
+    Object.assign(promptScopes, {
+      global: strategyValue(settingParams, 'globalPrompt', ''),
+      polish: strategyValue(settingParams, 'polishPrompt', ''),
+      script: strategyValue(settingParams, 'scriptPrompt', ''),
+      asset: strategyValue(settingParams, 'assetPrompt', ''),
+      characterImage: strategyValue(settingParams, 'characterImagePrompt', ''),
+      sceneImage: strategyValue(settingParams, 'sceneImagePrompt', ''),
+      shotVideo: strategyValue(settingParams, 'shotVideoPrompt', '')
     })
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
@@ -855,7 +1007,7 @@ async function refreshPolishPromptPreview() {
     const res = await previewAivideoPolishPrompt({
       projectId: projectId.value,
       documentId: doc.documentId,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('polish')
     })
     polishPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
@@ -885,7 +1037,7 @@ async function refreshScriptPromptPreview() {
   try {
     const res = await previewAivideoScriptPrompt({
       projectId: projectId.value,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('script')
     })
     scriptPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
@@ -901,7 +1053,7 @@ async function refreshAssetPromptPreview() {
   try {
     const res = await previewAivideoAssetPrompt({
       projectId: projectId.value,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('asset')
     })
     assetPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
@@ -922,7 +1074,7 @@ async function refreshSceneImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('sceneImage')
     })
     sceneImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
@@ -943,7 +1095,7 @@ async function refreshCharacterImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('characterImage')
     })
     characterImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
@@ -966,7 +1118,14 @@ async function refreshShotVideoPromptPreview() {
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
       durationSec: shot.durationSec || params.defaultShotDuration,
-      customPrompt: customPrompt.value
+      customPrompt: scopedCustomPrompt('shotVideo'),
+      generationStrategy: params.generationStrategy,
+      audioMode: params.audioMode,
+      subtitleMode: params.subtitleMode,
+      referenceStrategy: params.referenceStrategy,
+      actionIntensity: params.actionIntensity,
+      continuityLevel: params.continuityLevel,
+      multiRoleStrategy: params.multiRoleStrategy
     })
     if (!isCurrentShotVideoTarget(shotId)) {
       return
@@ -1418,7 +1577,14 @@ async function recoverShotVideoCandidates(options: { silent?: boolean } = {}) {
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
         durationSec: shot.durationSec || params.defaultShotDuration,
-        customPrompt: customPrompt.value,
+        customPrompt: scopedCustomPrompt('shotVideo'),
+        generationStrategy: params.generationStrategy,
+        audioMode: params.audioMode,
+        subtitleMode: params.subtitleMode,
+        referenceStrategy: params.referenceStrategy,
+        actionIntensity: params.actionIntensity,
+        continuityLevel: params.continuityLevel,
+        multiRoleStrategy: params.multiRoleStrategy,
         recoverOnly: true
       },
       onMeta: (payload) => {
@@ -1559,7 +1725,7 @@ async function handleGeneratePolish() {
       body: {
         projectId: projectId.value,
         documentId: latestDocument.value.documentId,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('polish')
       },
       onDelta: ({ fullContent }) => {
         polishStreamText.value = fullContent
@@ -1605,7 +1771,7 @@ async function handleGenerateScript() {
       tenantId: userStore.tenantId,
       body: {
         projectId: projectId.value,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('script')
       },
       onDelta: ({ fullContent }) => {
         scriptStreamText.value = fullContent
@@ -1653,7 +1819,7 @@ async function handleExtractAssets() {
       tenantId: userStore.tenantId,
       body: {
         projectId: projectId.value,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('asset')
       },
       onDelta: ({ fullContent }) => {
         assetStreamText.value = fullContent
@@ -1724,7 +1890,7 @@ async function handleGenerateCharacterImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('characterImage')
       },
       onMeta: (payload) => {
         if (payload.event === 'candidate' && payload.asset) {
@@ -1768,7 +1934,7 @@ async function handleGenerateSceneImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('sceneImage')
       },
       onMeta: (payload) => {
         if (payload.event === 'candidate' && payload.asset) {
@@ -1825,7 +1991,14 @@ async function handleGenerateShotVideos() {
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
         durationSec: shot.durationSec || params.defaultShotDuration,
-        customPrompt: customPrompt.value
+        customPrompt: scopedCustomPrompt('shotVideo'),
+        generationStrategy: params.generationStrategy,
+        audioMode: params.audioMode,
+        subtitleMode: params.subtitleMode,
+        referenceStrategy: params.referenceStrategy,
+        actionIntensity: params.actionIntensity,
+        continuityLevel: params.continuityLevel,
+        multiRoleStrategy: params.multiRoleStrategy
       },
       onMeta: (payload) => {
         if (!isCurrentShotVideoTarget(shotId)) {
@@ -1966,7 +2139,20 @@ onMounted(() => {
   loadDetail()
 })
 
-watch(customPrompt, () => {
+watch(promptScopes, () => {
+  schedulePolishPromptPreview()
+}, { deep: true })
+
+watch(() => [
+  params.defaultStyle,
+  params.generationStrategy,
+  params.audioMode,
+  params.subtitleMode,
+  params.referenceStrategy,
+  params.actionIntensity,
+  params.continuityLevel,
+  params.multiRoleStrategy
+], () => {
   schedulePolishPromptPreview()
 })
 
@@ -2347,6 +2533,21 @@ onBeforeUnmount(() => {
 .params-panel h3 {
   margin: 0 0 16px;
   font-size: 18px;
+}
+
+.strategy-grid,
+.prompt-scope-editor {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+}
+
+.shot-video-strategy {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
 }
 
 @media (max-width: 1200px) {

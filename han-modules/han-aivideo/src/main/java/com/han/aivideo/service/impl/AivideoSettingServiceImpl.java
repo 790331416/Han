@@ -6,12 +6,15 @@ import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.vo.AivideoAdminSettingVo;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.service.IAivideoSettingService;
+import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -72,6 +75,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         setting.setPreviewMode(YES);
         setting.setContentAuditEnabled(YES);
         setting.setMediaAccessPolicy(MEDIA_ACCESS_PRIVATE);
+        setting.setParamsJson(XuJsonUtil.toJsonString(defaultStrategyParams()));
         setting.setRemark("MVP 0 默认配置，未接真实火山模型");
         return setting;
     }
@@ -96,6 +100,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         target.setPreviewMode(defaultString(source.getPreviewMode(), YES));
         target.setContentAuditEnabled(defaultString(source.getContentAuditEnabled(), YES));
         target.setMediaAccessPolicy(normalizeMediaAccessPolicy(source.getMediaAccessPolicy()));
+        target.setParamsJson(XuJsonUtil.toJsonString(buildStrategyParams(source, target.getParamsJson())));
         target.setRemark(trimToNull(source.getRemark()));
     }
 
@@ -120,8 +125,62 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setPreviewMode(setting.getPreviewMode());
         vo.setContentAuditEnabled(setting.getContentAuditEnabled());
         vo.setMediaAccessPolicy(normalizeMediaAccessPolicy(setting.getMediaAccessPolicy()));
+        Map<String, Object> params = parseParamsJson(setting.getParamsJson());
+        vo.setDefaultStyle(paramText(params, PARAM_DEFAULT_STYLE, DEFAULT_STYLE));
+        vo.setGenerationStrategy(paramText(params, PARAM_GENERATION_STRATEGY, DEFAULT_GENERATION_STRATEGY));
+        vo.setAudioMode(paramText(params, PARAM_AUDIO_MODE, DEFAULT_AUDIO_MODE));
+        vo.setSubtitleMode(paramText(params, PARAM_SUBTITLE_MODE, DEFAULT_SUBTITLE_MODE));
+        vo.setReferenceStrategy(paramText(params, PARAM_REFERENCE_STRATEGY, DEFAULT_REFERENCE_STRATEGY));
+        vo.setActionIntensity(paramText(params, PARAM_ACTION_INTENSITY, DEFAULT_ACTION_INTENSITY));
+        vo.setContinuityLevel(paramText(params, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL));
+        vo.setMultiRoleStrategy(paramText(params, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY));
+        vo.setGlobalPrompt(paramText(params, PARAM_GLOBAL_PROMPT, ""));
+        vo.setPolishPrompt(paramText(params, PARAM_POLISH_PROMPT, ""));
+        vo.setScriptPrompt(paramText(params, PARAM_SCRIPT_PROMPT, ""));
+        vo.setAssetPrompt(paramText(params, PARAM_ASSET_PROMPT, ""));
+        vo.setCharacterImagePrompt(paramText(params, PARAM_CHARACTER_IMAGE_PROMPT, ""));
+        vo.setSceneImagePrompt(paramText(params, PARAM_SCENE_IMAGE_PROMPT, ""));
+        vo.setShotVideoPrompt(paramText(params, PARAM_SHOT_VIDEO_PROMPT, ""));
         vo.setRemark(setting.getRemark());
         return vo;
+    }
+
+    private Map<String, Object> buildStrategyParams(AivideoAdminSettingDto source, String existingJson) {
+        Map<String, Object> params = parseParamsJson(existingJson);
+        putStrategyValue(params, PARAM_DEFAULT_STYLE, source.getDefaultStyle(), DEFAULT_STYLE);
+        putStrategyValue(params, PARAM_GENERATION_STRATEGY, source.getGenerationStrategy(), DEFAULT_GENERATION_STRATEGY);
+        putStrategyValue(params, PARAM_AUDIO_MODE, source.getAudioMode(), DEFAULT_AUDIO_MODE);
+        putStrategyValue(params, PARAM_SUBTITLE_MODE, source.getSubtitleMode(), DEFAULT_SUBTITLE_MODE);
+        putStrategyValue(params, PARAM_REFERENCE_STRATEGY, source.getReferenceStrategy(), DEFAULT_REFERENCE_STRATEGY);
+        putStrategyValue(params, PARAM_ACTION_INTENSITY, source.getActionIntensity(), DEFAULT_ACTION_INTENSITY);
+        putStrategyValue(params, PARAM_CONTINUITY_LEVEL, source.getContinuityLevel(), DEFAULT_CONTINUITY_LEVEL);
+        putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, source.getMultiRoleStrategy(), DEFAULT_MULTI_ROLE_STRATEGY);
+        putStrategyValue(params, PARAM_GLOBAL_PROMPT, source.getGlobalPrompt(), "");
+        putStrategyValue(params, PARAM_POLISH_PROMPT, source.getPolishPrompt(), "");
+        putStrategyValue(params, PARAM_SCRIPT_PROMPT, source.getScriptPrompt(), "");
+        putStrategyValue(params, PARAM_ASSET_PROMPT, source.getAssetPrompt(), "");
+        putStrategyValue(params, PARAM_CHARACTER_IMAGE_PROMPT, source.getCharacterImagePrompt(), "");
+        putStrategyValue(params, PARAM_SCENE_IMAGE_PROMPT, source.getSceneImagePrompt(), "");
+        putStrategyValue(params, PARAM_SHOT_VIDEO_PROMPT, source.getShotVideoPrompt(), "");
+        return params;
+    }
+
+    private Map<String, Object> defaultStrategyParams() {
+        Map<String, Object> params = new LinkedHashMap<>();
+        putStrategyValue(params, PARAM_DEFAULT_STYLE, null, DEFAULT_STYLE);
+        putStrategyValue(params, PARAM_GENERATION_STRATEGY, null, DEFAULT_GENERATION_STRATEGY);
+        putStrategyValue(params, PARAM_AUDIO_MODE, null, DEFAULT_AUDIO_MODE);
+        putStrategyValue(params, PARAM_SUBTITLE_MODE, null, DEFAULT_SUBTITLE_MODE);
+        putStrategyValue(params, PARAM_REFERENCE_STRATEGY, null, DEFAULT_REFERENCE_STRATEGY);
+        putStrategyValue(params, PARAM_ACTION_INTENSITY, null, DEFAULT_ACTION_INTENSITY);
+        putStrategyValue(params, PARAM_CONTINUITY_LEVEL, null, DEFAULT_CONTINUITY_LEVEL);
+        putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, null, DEFAULT_MULTI_ROLE_STRATEGY);
+        return params;
+    }
+
+    private String paramText(Map<String, Object> params, String key, String defaultValue) {
+        Object value = params.get(key);
+        return value == null || !StringUtils.hasText(String.valueOf(value)) ? defaultValue : String.valueOf(value).trim();
     }
 
     private String defaultString(String value, String defaultValue) {

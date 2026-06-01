@@ -77,6 +77,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final int PROVIDER_TASK_REUSE_HOURS = 48;
     private static final int AUTO_RECOVERY_IDLE_SECONDS = 60;
     private static final int AUTO_RECOVERY_BATCH_SIZE = 5;
+    private static final int PROVIDER_TASK_TIMEOUT_MINUTES = 30;
     private static final String SHOT_VIDEO_SYSTEM_PROMPT = """
             你是电影级短剧分镜视频导演。
             核心规则：
@@ -262,6 +263,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
             return;
         }
+        if (isProviderTaskTimedOut(task)) {
+            markTaskFailed(task, "视频任务超过 " + PROVIDER_TASK_TIMEOUT_MINUTES + " 分钟仍未完成，已自动停止续查；请重新生成或检查火山任务日志");
+            return;
+        }
         try {
             RequestContext context = buildContext(toRecoveryDto(task), true);
             if (!isReusableProviderTask(context, task)) {
@@ -312,6 +317,13 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         dto.setRatio(paramText(params, "ratio"));
         dto.setResolution(paramText(params, "resolution"));
         dto.setDurationSec(paramInteger(params, "durationSec"));
+        dto.setGenerationStrategy(paramText(params, PARAM_GENERATION_STRATEGY));
+        dto.setAudioMode(paramText(params, PARAM_AUDIO_MODE));
+        dto.setSubtitleMode(paramText(params, PARAM_SUBTITLE_MODE));
+        dto.setReferenceStrategy(paramText(params, PARAM_REFERENCE_STRATEGY));
+        dto.setActionIntensity(paramText(params, PARAM_ACTION_INTENSITY));
+        dto.setContinuityLevel(paramText(params, PARAM_CONTINUITY_LEVEL));
+        dto.setMultiRoleStrategy(paramText(params, PARAM_MULTI_ROLE_STRATEGY));
         dto.setRecoverOnly(true);
         return dto;
     }
@@ -358,16 +370,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
+        StrategyContext strategy = resolveStrategy(dto, projectSetting, globalSetting);
         String referenceImageUrl = buildProviderFileUrl(referenceMedia.getFileUrl());
         Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
-                referenceImageUrl, ratio, resolution, durationSec);
+                referenceImageUrl, ratio, resolution, durationSec, strategy);
         String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
-                ratio, resolution, durationSec, referenceImageUrl);
+                ratio, resolution, durationSec, referenceImageUrl, strategy);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
-                referenceImageUrl, variables);
+                referenceImageUrl, variables, strategy);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -382,7 +395,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setDurationSec(context.durationSec());
         request.setVariables(context.variables());
         request.setReturnLastFrame(true);
-        request.setGenerateAudio(false);
+        request.setGenerateAudio(shouldGenerateAudio(context.strategy().audioMode()));
         R<AiVideoGenerateResponse> result = aiServiceClient.generateVideo(request);
         if (result == null || result.isFail() || result.getData() == null) {
             throw new BusinessException(result == null ? "AI服务无响应" : result.getMsg());
@@ -590,12 +603,22 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
             return false;
         }
+        if (isProviderTaskTimedOut(task)) {
+            markTaskFailed(task, "视频任务超过 " + PROVIDER_TASK_TIMEOUT_MINUTES + " 分钟仍未完成，已自动停止续查；请重新生成或检查火山任务日志");
+            return false;
+        }
         if (AivideoTaskStatus.FAILED.name().equals(normalizeStatus(task.getTaskStatus()))
                 && !isRecoverableFailedProviderTask(task)) {
             return false;
         }
         LocalDateTime taskTime = firstTime(task.getStartedTime(), task.getUpdateTime(), task.getCreateTime());
         return taskTime == null || !taskTime.isBefore(now().minusHours(PROVIDER_TASK_REUSE_HOURS));
+    }
+
+    private boolean isProviderTaskTimedOut(AiVideoGenerationTaskPo task) {
+        LocalDateTime taskTime = firstTime(task != null ? task.getStartedTime() : null,
+                task != null ? task.getCreateTime() : null);
+        return taskTime != null && taskTime.isBefore(now().minusMinutes(PROVIDER_TASK_TIMEOUT_MINUTES));
     }
 
     private boolean isRecoverableFailedProviderTask(AiVideoGenerationTaskPo task) {
@@ -829,11 +852,19 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private Map<String, String> buildVariables(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                                AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
-                                               String referenceImageUrl, String ratio, String resolution, int durationSec) {
+                                               String referenceImageUrl, String ratio, String resolution, int durationSec,
+                                               StrategyContext strategy) {
         Map<String, String> variables = new LinkedHashMap<>();
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
         variables.put("style", safeValue(project.getDefaultStyle()));
+        variables.put(PARAM_GENERATION_STRATEGY, strategy.generationStrategy());
+        variables.put(PARAM_AUDIO_MODE, strategy.audioMode());
+        variables.put(PARAM_SUBTITLE_MODE, strategy.subtitleMode());
+        variables.put(PARAM_REFERENCE_STRATEGY, strategy.referenceStrategy());
+        variables.put(PARAM_ACTION_INTENSITY, strategy.actionIntensity());
+        variables.put(PARAM_CONTINUITY_LEVEL, strategy.continuityLevel());
+        variables.put(PARAM_MULTI_ROLE_STRATEGY, strategy.multiRoleStrategy());
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("durationSec", String.valueOf(durationSec));
@@ -848,7 +879,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())));
         variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds()));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
-        variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot));
+        variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy));
         variables.put("shotType", safeValue(shot.getShotType()));
         variables.put("cameraPosition", safeValue(shot.getCameraPosition()));
         variables.put("cameraMovement", safeValue(shot.getCameraMovement()));
@@ -877,11 +908,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
-                                        String ratio, String resolution, int durationSec, String referenceImageUrl) {
+                                        String ratio, String resolution, int durationSec, String referenceImageUrl,
+                                        StrategyContext strategy) {
         String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
-        String audioVisualProtocol = buildAudioVisualProtocol(shot);
+        String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy);
         String actionBeats = buildActionBeats(shot, durationSec);
         String timingPlan = buildTimingPlan(shot, durationSec);
         String compositionRequirement = buildCompositionRequirement(shot);
@@ -898,9 +930,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 上一镜头：%s；上一镜头结束状态：%s。
                 - 本镜头起始状态：%s。
                 - 本镜头结尾状态：%s。
+                - 连续性强度：%s。若为极严格，必须同时继承上一尾帧、同场景锚点和角色锚点；缺少任一锚点时不得擅自改背景或主体。
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
+                - 生成策略：%s；参考素材策略：%s；动作强度：%s；多角色策略：%s。
                 - 场景：%s，%s，%s，%s，视觉特征：%s。
                 - 出场主体：%s。
                 - 角色一致性：%s。
@@ -922,11 +956,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
                 ## 音画规则
                 %s
-                视频生成阶段只负责画面，不生成、不替换、不改变配音、旁白声线、BGM 或音效；对白为空时主体不张嘴。
+                字幕模式：%s。除字幕模式明确要求外，禁止生成字幕、标题字、气泡台词、花字和无关文字。
 
                 ## 负面约束
                 %s
-                禁止字幕、水印、logo、花字、无关文字；禁止换角色、换物种、换毛色、换体型、换背景；禁止用眼睛发光替代指定部位发光。
+                禁止水印、logo、无关文字；禁止换角色、换物种、换毛色、换体型、换背景；禁止用眼睛发光替代指定部位发光。
                 """.formatted(
                 previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
@@ -934,7 +968,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 buildPreviousEndState(previousShot),
                 buildCurrentStartState(previousShot, previousTailFrameMedia),
                 buildCurrentEndState(shot),
+                strategy.continuityLevel(),
                 safeValue(project.getProjectName()), safeValue(project.getDefaultStyle()),
+                strategy.generationStrategy(), strategy.referenceStrategy(), strategy.actionIntensity(), strategy.multiRoleStrategy(),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
                 characterNames, characterContinuity, sceneContinuity,
@@ -943,6 +979,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
                 buildMotionBoundary(shot),
                 audioVisualProtocol,
+                strategy.subtitleMode(),
                 buildContinuityNegativePrompt(shot));
     }
 
@@ -1012,10 +1049,47 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return relation + detail + "。背景空间、前中后景、光线、天气、色调和道具不得无故变化；未写明的新物体、陌生建筑或其他角色不要出现。";
     }
 
-    private String buildAudioVisualProtocol(AiVideoShotPo shot) {
+    private StrategyContext resolveStrategy(AivideoShotVideoGenerateDto dto,
+                                            AiVideoProjectSettingPo projectSetting,
+                                            AiVideoProjectSettingPo globalSetting) {
+        return new StrategyContext(
+                firstText(dto.getGenerationStrategy(),
+                        strategyText(projectSetting, globalSetting, PARAM_GENERATION_STRATEGY, DEFAULT_GENERATION_STRATEGY)),
+                firstText(dto.getAudioMode(),
+                        strategyText(projectSetting, globalSetting, PARAM_AUDIO_MODE, DEFAULT_AUDIO_MODE)),
+                firstText(dto.getSubtitleMode(),
+                        strategyText(projectSetting, globalSetting, PARAM_SUBTITLE_MODE, DEFAULT_SUBTITLE_MODE)),
+                firstText(dto.getReferenceStrategy(),
+                        strategyText(projectSetting, globalSetting, PARAM_REFERENCE_STRATEGY, DEFAULT_REFERENCE_STRATEGY)),
+                firstText(dto.getActionIntensity(),
+                        strategyText(projectSetting, globalSetting, PARAM_ACTION_INTENSITY, DEFAULT_ACTION_INTENSITY)),
+                firstText(dto.getContinuityLevel(),
+                        strategyText(projectSetting, globalSetting, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL)),
+                firstText(dto.getMultiRoleStrategy(),
+                        strategyText(projectSetting, globalSetting, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY))
+        );
+    }
+
+    private boolean shouldGenerateAudio(String audioMode) {
+        String mode = firstText(audioMode, DEFAULT_AUDIO_MODE).toUpperCase(Locale.ROOT);
+        return "NATIVE_AUDIO".equals(mode) || "REFERENCE_AUDIO".equals(mode);
+    }
+
+    private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy) {
         String dialogue = firstText(shot != null ? shot.getDialogue() : null, "无");
         String voiceOver = firstText(shot != null ? shot.getVoiceOver() : null, "无");
-        return "视频阶段只负责画面，不新增、不改写、不替换配音、旁白声线、BGM 或音效；对白：" + dialogue
+        String mode = firstText(strategy.audioMode(), DEFAULT_AUDIO_MODE).toUpperCase(Locale.ROOT);
+        String audioRule;
+        if ("NATIVE_AUDIO".equals(mode)) {
+            audioRule = "声音模式=原生有声：允许视频模型生成本镜头声音，但必须严格沿用项目声线设定，不得随机改变旁白/角色音色、BGM 或音效风格。";
+        } else if ("REFERENCE_AUDIO".equals(mode)) {
+            audioRule = "声音模式=参考音频有声：必须使用参考音频作为音色锚点；没有参考音频时不要自行发明新声线，优先保持画面生成稳定。";
+        } else if ("POST_TTS".equals(mode)) {
+            audioRule = "声音模式=后期 TTS：本阶段只生成画面，不生成配音、BGM 或音效；对白和旁白只作为后期配音脚本保留。";
+        } else {
+            audioRule = "声音模式=静音：本阶段只生成画面，generate_audio=false，不生成、不替换、不改变配音、旁白声线、BGM 或音效。";
+        }
+        return audioRule + " 对白：" + dialogue
                 + "；旁白：" + voiceOver
                 + "。只有对白允许角色张嘴和口型同步；旁白、心理活动和环境描述必须作为画外音处理，角色不张嘴、不做口型，用眼神、呼吸、姿态和环境变化承接情绪。分镜之间保持同一旁白/配音口吻、语速、性别/年龄感和情绪连续，禁止声线突变。";
     }
@@ -1079,18 +1153,18 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 shot != null ? shot.getActionDesc() : null, shot != null ? shot.getPromptText() : null)));
         String endState = firstText(action3, "停在本镜头自然结尾状态，便于下一镜头继续");
         if (durationSec <= 5) {
-            return "- 前段约 0-2 秒：" + action1 + "。\n"
-                    + "- 中段约 2-4 秒：" + action2 + "。\n"
-                    + "- 末段约 4-5 秒：停在结尾状态：" + endState + "。";
+            return "- 前段：从上一尾帧或参考图自然进入，执行主动作：" + action1 + "。\n"
+                    + "- 中段：用低幅度表情/呼吸/姿态完成反应：" + action2 + "。\n"
+                    + "- 末段：停在结尾状态：" + endState + "。";
         }
         if (durationSec <= 6) {
-            return "- 前段约 0-2 秒：" + action1 + "。\n"
-                    + "- 中段约 2-5 秒：" + action2 + "。\n"
-                    + "- 末段约 5-6 秒：停在结尾状态：" + endState + "。";
+            return "- 前段：从上一尾帧或参考图自然进入，执行动作一：" + action1 + "。\n"
+                    + "- 中段：连续衔接动作二或反应：" + action2 + "。\n"
+                    + "- 末段：停在结尾状态：" + endState + "。";
         }
-        return "- 前段约 0-2 秒：" + action1 + "。\n"
-                + "- 中段约 2-5 秒：" + action2 + "。\n"
-                + "- 末段约 5-8 秒：" + endState + "。";
+        return "- 前段：从上一尾帧或参考图自然进入，执行动作一：" + action1 + "。\n"
+                + "- 中段：连续衔接动作二：" + action2 + "。\n"
+                + "- 末段：完成动作三或明确结尾状态：" + endState + "。";
     }
 
     private String buildCompositionRequirement(AiVideoShotPo shot) {
@@ -1184,7 +1258,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (beats == null || beats.isEmpty()) {
             return List.of();
         }
-        int maxBeats = durationSec <= 6 ? 2 : 3;
+        int maxBeats = durationSec <= 5 ? 1 : (durationSec <= 6 ? 2 : 3);
+        if (containsAny(String.join("，", beats), "倒地起身", "悬浮", "变身", "俯冲", "落水", "打斗", "救援", "掰弯铁栏")) {
+            maxBeats = Math.min(maxBeats, 1);
+        }
         List<String> selected = new ArrayList<>();
         for (String beat : beats) {
             if (!StringUtils.hasText(beat)) {
@@ -1738,7 +1815,19 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             String customPrompt,
             String prompt,
             String referenceImageUrl,
-            Map<String, String> variables
+            Map<String, String> variables,
+            StrategyContext strategy
+    ) {
+    }
+
+    private record StrategyContext(
+            String generationStrategy,
+            String audioMode,
+            String subtitleMode,
+            String referenceStrategy,
+            String actionIntensity,
+            String continuityLevel,
+            String multiRoleStrategy
     ) {
     }
 

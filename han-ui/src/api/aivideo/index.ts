@@ -9,6 +9,20 @@ export interface AivideoProject {
   targetPlatform?: string
   defaultRatio?: string
   defaultStyle?: string
+  generationStrategy?: string
+  audioMode?: string
+  subtitleMode?: string
+  referenceStrategy?: string
+  actionIntensity?: string
+  continuityLevel?: string
+  multiRoleStrategy?: string
+  globalPrompt?: string
+  polishPrompt?: string
+  scriptPrompt?: string
+  assetPrompt?: string
+  characterImagePrompt?: string
+  sceneImagePrompt?: string
+  shotVideoPrompt?: string
   defaultShotDuration?: number
   candidateImageCount?: number
   previewMode?: string
@@ -36,6 +50,20 @@ export interface AivideoProjectForm {
   targetPlatform?: string
   defaultRatio?: string
   defaultStyle?: string
+  generationStrategy?: string
+  audioMode?: string
+  subtitleMode?: string
+  referenceStrategy?: string
+  actionIntensity?: string
+  continuityLevel?: string
+  multiRoleStrategy?: string
+  globalPrompt?: string
+  polishPrompt?: string
+  scriptPrompt?: string
+  assetPrompt?: string
+  characterImagePrompt?: string
+  sceneImagePrompt?: string
+  shotVideoPrompt?: string
   defaultShotDuration?: number
   candidateImageCount?: number
   previewMode?: string
@@ -190,6 +218,22 @@ export interface AivideoSetting {
   previewMode?: string
   contentAuditEnabled?: string
   mediaAccessPolicy?: string
+  paramsJson?: string
+  defaultStyle?: string
+  generationStrategy?: string
+  audioMode?: string
+  subtitleMode?: string
+  referenceStrategy?: string
+  actionIntensity?: string
+  continuityLevel?: string
+  multiRoleStrategy?: string
+  globalPrompt?: string
+  polishPrompt?: string
+  scriptPrompt?: string
+  assetPrompt?: string
+  characterImagePrompt?: string
+  sceneImagePrompt?: string
+  shotVideoPrompt?: string
   remark?: string
 }
 
@@ -377,6 +421,13 @@ export function previewAivideoShotVideoPrompt(data: {
   resolution?: string
   durationSec?: number
   customPrompt?: string
+  generationStrategy?: string
+  audioMode?: string
+  subtitleMode?: string
+  referenceStrategy?: string
+  actionIntensity?: string
+  continuityLevel?: string
+  multiRoleStrategy?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
 }
@@ -474,4 +525,62 @@ export const resolutionOptions = [
   { label: '720p', value: '720p' },
   { label: '1080p', value: '1080p' },
   { label: '2K', value: '2K' }
+]
+
+export const visualStyleOptions = [
+  { label: '写实电影感', value: '写实电影感' },
+  { label: '3D 国漫 CG', value: '3D 国漫 CG' },
+  { label: '2D 日漫', value: '2D 日漫' },
+  { label: '复古胶片', value: '复古胶片' },
+  { label: '赛博朋克', value: '赛博朋克' },
+  { label: '童话绘本', value: '童话绘本' },
+  { label: '国风水墨', value: '国风水墨' }
+]
+
+export const generationStrategyOptions = [
+  { label: '自动', value: 'AUTO' },
+  { label: '视频延长', value: 'VIDEO_EXTEND' },
+  { label: '分段拼接', value: 'SEGMENT_STITCH' },
+  { label: '轨道补齐', value: 'TRACK_FILL' }
+]
+
+export const audioModeOptions = [
+  { label: '静音', value: 'SILENT' },
+  { label: '原生有声', value: 'NATIVE_AUDIO' },
+  { label: '参考音频有声', value: 'REFERENCE_AUDIO' },
+  { label: '后期 TTS', value: 'POST_TTS' }
+]
+
+export const subtitleModeOptions = [
+  { label: '无字幕', value: 'NONE' },
+  { label: '底部字幕', value: 'BOTTOM' },
+  { label: '气泡台词', value: 'BUBBLE' },
+  { label: '标题文字', value: 'TITLE' }
+]
+
+export const referenceStrategyOptions = [
+  { label: '角色锚定', value: 'CHARACTER_ANCHOR' },
+  { label: '场景定调', value: 'SCENE_TONE' },
+  { label: '运镜参考', value: 'CAMERA_REFERENCE' },
+  { label: '动作参考', value: 'ACTION_REFERENCE' },
+  { label: '音频参考', value: 'AUDIO_REFERENCE' },
+  { label: '角色 + 场景', value: 'CHARACTER_SCENE' }
+]
+
+export const actionIntensityOptions = [
+  { label: '低缓动作', value: 'LOW' },
+  { label: '普通动作', value: 'NORMAL' },
+  { label: '强动作', value: 'STRONG' }
+]
+
+export const continuityLevelOptions = [
+  { label: '普通', value: 'NORMAL' },
+  { label: '严格', value: 'STRICT' },
+  { label: '极严格', value: 'ULTRA_STRICT' }
+]
+
+export const multiRoleStrategyOptions = [
+  { label: '单角色优先', value: 'SINGLE_FIRST' },
+  { label: '多角色允许', value: 'MULTI_ALLOWED' },
+  { label: '超过 4 人自动拆镜', value: 'SPLIT_OVER_FOUR' }
 ]
