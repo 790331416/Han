@@ -1,6 +1,7 @@
 package com.han.aivideo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
@@ -804,7 +805,16 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         task.setErrorMessage(null);
         task.setFinishedTime(now());
         fillUpdateAudit(task);
-        transactionTemplate.executeWithoutResult(status -> taskMapper.updateById(task));
+        transactionTemplate.executeWithoutResult(status -> taskMapper.update(null, new LambdaUpdateWrapper<AiVideoGenerationTaskPo>()
+                .eq(AiVideoGenerationTaskPo::getTaskId, task.getTaskId())
+                .set(AiVideoGenerationTaskPo::getModelId, task.getModelId())
+                .set(AiVideoGenerationTaskPo::getTaskStatus, task.getTaskStatus())
+                .set(AiVideoGenerationTaskPo::getProgress, task.getProgress())
+                .set(AiVideoGenerationTaskPo::getErrorCode, null)
+                .set(AiVideoGenerationTaskPo::getErrorMessage, null)
+                .set(AiVideoGenerationTaskPo::getFinishedTime, task.getFinishedTime())
+                .set(AiVideoGenerationTaskPo::getUpdateBy, task.getUpdateBy())
+                .set(AiVideoGenerationTaskPo::getUpdateTime, task.getUpdateTime())));
     }
 
     private void markTaskFailed(AiVideoGenerationTaskPo task, String message) {
