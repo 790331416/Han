@@ -635,9 +635,9 @@
             </div>
             <el-progress
               :percentage="normalizeTaskProgress(task)"
-              :status="task.taskStatus === 'FAILED' ? 'exception' : task.taskStatus === 'SUCCESS' ? 'success' : undefined"
+              :status="getTaskProgressStatus(task.taskStatus)"
             />
-            <p v-if="task.errorMessage" class="shot-video-task-message">{{ task.errorMessage }}</p>
+            <p v-if="shouldShowTaskMessage(task)" class="shot-video-task-message">{{ task.errorMessage }}</p>
           </article>
         </div>
       </div>
@@ -737,7 +737,9 @@ const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
+let shotVideoRecoveryTimer: ReturnType<typeof setTimeout> | undefined
 const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
+const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -788,6 +790,7 @@ const flowSteps = computed(() => [
   { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
 ])
 const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotVideoTaskInFlight))
+const hasRecoverableShotVideoTask = computed(() => shotVideoTasks.value.some(isRecoverableShotVideoTask))
 const previousShotForVideo = computed(() => {
   const current = selectedShotForVideo.value
   if (!current) {
@@ -1101,6 +1104,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   } finally {
     if (isCurrentShotVideoTarget(shotId)) {
       shotVideoLoading.value = false
+      scheduleShotVideoRecovery()
     }
   }
 }
@@ -1115,6 +1119,7 @@ function revokeShotVideoPreviewUrls() {
 }
 
 function resetShotVideoDrawerState() {
+  clearShotVideoRecoveryTimer()
   shotVideoPromptPreviewText.value = ''
   shotVideoTasks.value = []
   shotVideoCandidates.value = []
@@ -1222,6 +1227,7 @@ async function loadShotVideoTasks() {
     return
   }
   shotVideoTasks.value = (res.data || []).filter((item) => String(item.bizId) === shotId)
+  scheduleShotVideoRecovery()
 }
 
 function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
@@ -1231,6 +1237,8 @@ function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
   }
   const key = String(taskId)
   const current = shotVideoTasks.value.find((item) => String(item.taskId) === key)
+  const event = metaText(payload.event)
+  const taskStatus = normalizeShotVideoTaskStatus(metaText(payload.status) || current?.taskStatus, event)
   const next: AivideoTask = {
     ...(current || {}),
     taskId,
@@ -1238,10 +1246,10 @@ function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
     taskType: 'SHOT_VIDEO',
     bizType: 'SHOT',
     bizId: selectedShotForVideo.value?.shotId,
-    providerTaskId: String(payload.providerTaskId || current?.providerTaskId || ''),
-    taskStatus: String(payload.status || current?.taskStatus || (payload.event === 'done' ? 'SUCCESS' : 'RUNNING')),
-    progress: Number(payload.progress ?? current?.progress ?? (payload.event === 'done' ? 100 : 15)),
-    errorMessage: String(payload.message || current?.errorMessage || '')
+    providerTaskId: metaText(payload.providerTaskId) || current?.providerTaskId || '',
+    taskStatus,
+    progress: Number(payload.progress ?? current?.progress ?? (event === 'done' ? 100 : 15)),
+    errorMessage: shouldClearTaskMessage(event, taskStatus) ? '' : String(metaText(payload.message) || current?.errorMessage || '')
   }
   shotVideoTasks.value = [
     next,
@@ -1249,18 +1257,35 @@ function mergeShotVideoTaskMeta(payload: AiStreamMetaPayload) {
   ]
 }
 
+function metaText(value: unknown) {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+  const text = String(value).trim()
+  return text || undefined
+}
+
 function isShotVideoTaskInFlight(task?: AivideoTask) {
-  return inFlightTaskStatuses.has(String(task?.taskStatus || '').toUpperCase())
+  return inFlightTaskStatuses.has(normalizeShotVideoTaskStatus(task?.taskStatus))
 }
 
 function getTaskStatusTagType(status?: string) {
-  if (status === 'SUCCESS') return 'success'
-  if (status === 'FAILED') return 'danger'
-  if (status === 'CANCELED') return 'info'
+  const normalized = normalizeShotVideoTaskStatus(status)
+  if (normalized === 'SUCCESS') return 'success'
+  if (normalized === 'FAILED') return 'danger'
+  if (normalized === 'CANCELED') return 'info'
   return 'warning'
 }
 
+function getTaskProgressStatus(status?: string): 'success' | 'exception' | undefined {
+  const normalized = normalizeShotVideoTaskStatus(status)
+  if (normalized === 'FAILED') return 'exception'
+  if (normalized === 'SUCCESS') return 'success'
+  return undefined
+}
+
 function formatTaskStatus(status?: string) {
+  const normalized = normalizeShotVideoTaskStatus(status)
   const statusMap: Record<string, string> = {
     PENDING: '排队中',
     RUNNING: '生成中',
@@ -1268,7 +1293,7 @@ function formatTaskStatus(status?: string) {
     FAILED: '失败',
     CANCELED: '已取消'
   }
-  return statusMap[String(status || 'RUNNING')] || String(status || '生成中')
+  return statusMap[normalized] || String(status || '生成中')
 }
 
 function normalizeTaskProgress(task: AivideoTask) {
@@ -1278,7 +1303,7 @@ function normalizeTaskProgress(task: AivideoTask) {
 }
 
 function isRecoverableShotVideoTask(task: AivideoTask) {
-  const status = String(task.taskStatus || '').toUpperCase()
+  const status = normalizeShotVideoTaskStatus(task.taskStatus)
   if (status === 'PENDING' || status === 'RUNNING') {
     return true
   }
@@ -1301,6 +1326,51 @@ function isRecoverableShotVideoTask(task: AivideoTask) {
   ].some((keyword) => message.includes(keyword))
 }
 
+function normalizeShotVideoTaskStatus(status?: string, event?: string) {
+  if (event === 'done' || event === 'candidate') {
+    return 'SUCCESS'
+  }
+  const normalized = String(status || 'RUNNING').trim().replace(/-/g, '_').toUpperCase()
+  if (['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'DONE', 'FINISHED'].some((keyword) => normalized.includes(keyword))) {
+    return 'SUCCESS'
+  }
+  if (['FAIL', 'ERROR'].some((keyword) => normalized.includes(keyword))) {
+    return 'FAILED'
+  }
+  if (normalized.includes('CANCEL')) {
+    return 'CANCELED'
+  }
+  if (normalized.includes('PENDING') || normalized.includes('QUEUED')) {
+    return 'PENDING'
+  }
+  return normalized || 'RUNNING'
+}
+
+function shouldClearTaskMessage(event?: string, status?: string) {
+  return event === 'done' || event === 'candidate' || normalizeShotVideoTaskStatus(status) === 'SUCCESS'
+}
+
+function shouldShowTaskMessage(task: AivideoTask) {
+  return !!task.errorMessage && normalizeShotVideoTaskStatus(task.taskStatus) !== 'SUCCESS'
+}
+
+function clearShotVideoRecoveryTimer() {
+  if (shotVideoRecoveryTimer) {
+    clearTimeout(shotVideoRecoveryTimer)
+    shotVideoRecoveryTimer = undefined
+  }
+}
+
+function scheduleShotVideoRecovery(delay = SHOT_VIDEO_RECOVERY_INTERVAL) {
+  clearShotVideoRecoveryTimer()
+  if (!shotVideoDrawerVisible.value || shotVideoGenerating.value || shotVideoLoading.value || !hasRecoverableShotVideoTask.value) {
+    return
+  }
+  shotVideoRecoveryTimer = setTimeout(() => {
+    void recoverShotVideoCandidates({ silent: true })
+  }, delay)
+}
+
 async function handleRefreshShotVideoCandidates() {
   if (shotVideoGenerating.value) {
     return
@@ -1316,21 +1386,25 @@ async function handleRefreshShotVideoCandidates() {
     return
   }
   const hasRecoverableTask = shotVideoTasks.value.some(isRecoverableShotVideoTask)
-  if (!shotVideoCandidates.value.length && hasRecoverableTask) {
+  if (hasRecoverableTask) {
     await recoverShotVideoCandidates()
   } else if (!shotVideoCandidates.value.length && shotVideoTasks.value.length) {
     ElMessage.info('没有可续查的进行中视频任务，需要重新生成候选')
+  } else {
+    ElMessage.success('候选已刷新')
   }
 }
 
-async function recoverShotVideoCandidates() {
+async function recoverShotVideoCandidates(options: { silent?: boolean } = {}) {
   const shot = selectedShotForVideo.value
   if (!shot || shotVideoGenerating.value) {
     return
   }
+  clearShotVideoRecoveryTimer()
   const shotId = String(shot.shotId)
   shotVideoGenerating.value = true
   let streamErrorShown = false
+  const silent = !!options.silent
   try {
     await requestAiStream({
       baseUrl: import.meta.env.VITE_APP_BASE_API || '',
@@ -1364,12 +1438,16 @@ async function recoverShotVideoCandidates() {
           void loadShotVideoPreviewUrl(asset)
         }
         if (payload.event === 'pending') {
-          ElMessage.info(String(payload.message || '视频任务仍在生成中，稍后刷新候选'))
+          if (!silent) {
+            ElMessage.info(String(payload.message || '视频任务仍在生成中，稍后刷新候选'))
+          }
         }
       },
       onError: (message) => {
         streamErrorShown = true
-        ElMessage.error(message || '续查分镜视频任务失败')
+        if (!silent) {
+          ElMessage.error(message || '续查分镜视频任务失败')
+        }
       }
     })
     await loadShotVideoTasks()
@@ -1380,10 +1458,13 @@ async function recoverShotVideoCandidates() {
       await loadShotVideoTasks()
       return
     }
-    ElMessage.error(error?.message || '续查分镜视频任务失败')
+    if (!silent) {
+      ElMessage.error(error?.message || '续查分镜视频任务失败')
+    }
     await loadShotVideoTasks()
   } finally {
     shotVideoGenerating.value = false
+    scheduleShotVideoRecovery()
   }
 }
 
@@ -1784,6 +1865,7 @@ async function handleGenerateShotVideos() {
     await loadShotVideoTasks()
   } finally {
     shotVideoGenerating.value = false
+    scheduleShotVideoRecovery()
   }
 }
 
@@ -1888,10 +1970,19 @@ watch(customPrompt, () => {
   schedulePolishPromptPreview()
 })
 
+watch(shotVideoDrawerVisible, (visible) => {
+  if (!visible) {
+    clearShotVideoRecoveryTimer()
+  } else {
+    scheduleShotVideoRecovery()
+  }
+})
+
 onBeforeUnmount(() => {
   if (promptPreviewTimer) {
     clearTimeout(promptPreviewTimer)
   }
+  clearShotVideoRecoveryTimer()
   revokeCharacterImagePreviewUrls()
   revokeSceneImagePreviewUrls()
   revokeShotVideoPreviewUrls()

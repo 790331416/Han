@@ -35,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
@@ -70,9 +71,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final int DEFAULT_VIDEO_CANDIDATE_COUNT = 1;
     private static final int MAX_VIDEO_BYTES = 300 * 1024 * 1024;
     private static final int POLL_INTERVAL_MILLIS = 5_000;
-    private static final int MAX_POLL_TIMES = 12;
+    private static final int MAX_POLL_TIMES = 60;
     private static final int MAX_TRANSIENT_QUERY_FAILURES = 8;
     private static final int PROVIDER_TASK_REUSE_HOURS = 48;
+    private static final int AUTO_RECOVERY_IDLE_SECONDS = 60;
+    private static final int AUTO_RECOVERY_BATCH_SIZE = 5;
     private static final String SHOT_VIDEO_SYSTEM_PROMPT = """
             你是电影级短剧分镜视频导演。
             核心规则：
@@ -189,12 +192,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 if (existingAsset != null) {
                     assets.add(existingAsset);
                     markTaskSuccess(task, context.modelId());
-                    sendSse(emitter, "meta", meta("event", "candidate", "asset", existingAsset));
+                    sendSse(emitter, "meta", meta("event", "candidate", "taskId", task.getTaskId(), "asset", existingAsset));
                     continue;
-                }
-                if (!recoveringProviderTask && StringUtils.hasText(submitted.getProviderTaskId())
-                        && !StringUtils.hasText(submitted.getVideoUrl())) {
-                    throw new ProviderTaskPendingException("视频任务已提交，稍后点击刷新候选续查结果");
                 }
                 AiVideoTaskQueryResponse completed = waitForCompletion(context, task, submitted, emitter);
                 String videoUrl = firstText(completed != null ? completed.getVideoUrl() : null, submitted.getVideoUrl());
@@ -204,7 +203,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 AivideoMediaAssetVo asset = saveCandidate(context, task, submitted, completed, videoUrl, nextCandidateNo(context));
                 assets.add(asset);
                 markTaskProgress(task, Math.min(95, 25 + (i * 65 / total)));
-                sendSse(emitter, "meta", meta("event", "candidate", "asset", asset));
+                sendSse(emitter, "meta", meta("event", "candidate", "taskId", task.getTaskId(), "asset", asset));
             }
             markTaskSuccess(task, context.modelId());
             sendSse(emitter, "meta", meta("event", "done", "taskId", task.getTaskId(), "assets", assets));
@@ -238,6 +237,82 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             markTaskFailed(task, exception.getMessage());
             completeWithError(emitter, exception.getMessage());
         }
+    }
+
+    @Scheduled(fixedDelayString = "${han.aivideo.shot-video.recovery.fixed-delay:60000}",
+            initialDelayString = "${han.aivideo.shot-video.recovery.initial-delay:30000}")
+    public void recoverStaleShotVideoTasks() {
+        List<AiVideoGenerationTaskPo> tasks = taskMapper.selectList(new LambdaQueryWrapper<AiVideoGenerationTaskPo>()
+                .eq(AiVideoGenerationTaskPo::getTaskType, TASK_SHOT_VIDEO)
+                .eq(AiVideoGenerationTaskPo::getBizType, BIZ_SHOT)
+                .in(AiVideoGenerationTaskPo::getTaskStatus, AivideoTaskStatus.PENDING.name(), AivideoTaskStatus.RUNNING.name())
+                .isNotNull(AiVideoGenerationTaskPo::getProviderTaskId)
+                .ne(AiVideoGenerationTaskPo::getProviderTaskId, "")
+                .eq(AiVideoGenerationTaskPo::getDelFlag, DEL_FLAG_NORMAL)
+                .le(AiVideoGenerationTaskPo::getUpdateTime, now().minusSeconds(AUTO_RECOVERY_IDLE_SECONDS))
+                .orderByAsc(AiVideoGenerationTaskPo::getUpdateTime)
+                .last("limit " + AUTO_RECOVERY_BATCH_SIZE));
+        for (AiVideoGenerationTaskPo task : tasks) {
+            recoverStaleShotVideoTask(task);
+        }
+    }
+
+    private void recoverStaleShotVideoTask(AiVideoGenerationTaskPo task) {
+        if (task == null || !StringUtils.hasText(task.getProviderTaskId())) {
+            return;
+        }
+        try {
+            RequestContext context = buildContext(toRecoveryDto(task), true);
+            if (!isReusableProviderTask(context, task)) {
+                return;
+            }
+            markTaskRecovering(context, task);
+            AivideoMediaAssetVo existingAsset = findExistingCandidateByProviderTaskId(context, task.getProviderTaskId());
+            if (existingAsset != null) {
+                markTaskSuccess(task, context.modelId());
+                return;
+            }
+            AiVideoGenerateResponse submitted = toSubmittedResponse(context, task);
+            AiVideoTaskQueryResponse response = queryProviderTask(context, task.getProviderTaskId());
+            markTaskProgress(task, normalizeProgress(response.getProgress(), 1));
+            if (isSuccessStatus(response.getTaskStatus()) || StringUtils.hasText(response.getVideoUrl())) {
+                String videoUrl = firstText(response.getVideoUrl(), submitted.getVideoUrl());
+                if (!StringUtils.hasText(videoUrl)) {
+                    markTaskPending(task, "视频任务已完成，但供应商暂未返回可下载视频地址，系统会继续自动续查");
+                    return;
+                }
+                AivideoMediaAssetVo duplicate = findExistingCandidateByProviderTaskId(context, task.getProviderTaskId());
+                if (duplicate == null) {
+                    saveCandidate(context, task, submitted, response, videoUrl, nextCandidateNo(context));
+                }
+                markTaskSuccess(task, context.modelId());
+                return;
+            }
+            if (isFailedStatus(response.getTaskStatus())) {
+                markTaskFailed(task, "视频生成失败，供应商状态：" + response.getTaskStatus());
+                return;
+            }
+            markTaskPending(task, "视频任务仍在生成中，系统正在自动续查");
+        } catch (Exception exception) {
+            if (shouldKeepProviderTaskPending(task, exception)) {
+                markTaskPending(task, buildProviderPendingMessage(exception));
+            }
+        }
+    }
+
+    private AivideoShotVideoGenerateDto toRecoveryDto(AiVideoGenerationTaskPo task) {
+        AivideoShotVideoGenerateDto dto = new AivideoShotVideoGenerateDto();
+        dto.setProjectId(task.getProjectId());
+        dto.setShotId(task.getBizId());
+        dto.setCandidateCount(1);
+        dto.setModelId(task.getModelId());
+        dto.setCustomPrompt(task.getCustomPrompt());
+        Map<String, Object> params = parseTaskParams(task.getParamsJson());
+        dto.setRatio(paramText(params, "ratio"));
+        dto.setResolution(paramText(params, "resolution"));
+        dto.setDurationSec(paramInteger(params, "durationSec"));
+        dto.setRecoverOnly(true);
+        return dto;
     }
 
     private RequestContext buildContext(AivideoShotVideoGenerateDto dto, boolean requireVideoModel) {
@@ -403,6 +478,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             markTaskProgress(task, progress);
             sendSse(emitter, "meta", meta(
                     "event", "polling",
+                    "taskId", task.getTaskId(),
                     "providerTaskId", providerTaskId,
                     "status", firstText(response.getTaskStatus(), "RUNNING"),
                     "progress", progress
@@ -415,6 +491,18 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
         }
         throw new ProviderTaskPendingException("视频任务仍在生成中，请稍后刷新候选");
+    }
+
+    private AiVideoTaskQueryResponse queryProviderTask(RequestContext context, String providerTaskId) {
+        AiVideoTaskQueryRequest query = new AiVideoTaskQueryRequest();
+        query.setTenantId(context.project().getTenantId());
+        query.setModelId(context.modelId());
+        query.setProviderTaskId(providerTaskId);
+        R<AiVideoTaskQueryResponse> result = aiServiceClient.queryVideoTask(query);
+        if (result == null || result.isFail() || result.getData() == null) {
+            throw new BusinessException(result == null ? "AI service no response" : result.getMsg());
+        }
+        return result.getData();
     }
 
     private AivideoMediaAssetVo saveCandidate(RequestContext context, AiVideoGenerationTaskPo task,
@@ -618,6 +706,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         int progress = task.getProgress() == null ? 15 : Math.min(95, Math.max(15, task.getProgress()));
         task.setTaskStatus(AivideoTaskStatus.RUNNING.name());
         task.setProgress(progress);
+        task.setErrorCode(null);
         task.setErrorMessage(StringUtils.hasText(message) ? message : "video task is still running; refresh candidates later");
         task.setFinishedTime(null);
         if (task.getStartedTime() == null) {
@@ -711,6 +800,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         task.setModelId(modelId != null ? modelId : task.getModelId());
         task.setTaskStatus(AivideoTaskStatus.SUCCESS.name());
         task.setProgress(100);
+        task.setErrorCode(null);
+        task.setErrorMessage(null);
         task.setFinishedTime(now());
         fillUpdateAudit(task);
         transactionTemplate.executeWithoutResult(status -> taskMapper.updateById(task));
@@ -1380,6 +1471,39 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
         }
         return "";
+    }
+
+    private Map<String, Object> parseTaskParams(String paramsJson) {
+        if (!StringUtils.hasText(paramsJson)) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> params = XuJsonUtil.parseObject(paramsJson, Map.class);
+            return params == null ? Map.of() : params;
+        } catch (RuntimeException exception) {
+            return Map.of();
+        }
+    }
+
+    private String paramText(Map<String, Object> params, String key) {
+        if (params == null || !params.containsKey(key)) {
+            return null;
+        }
+        Object value = params.get(key);
+        String text = value == null ? "" : String.valueOf(value).trim();
+        return StringUtils.hasText(text) ? text : null;
+    }
+
+    private Integer paramInteger(Map<String, Object> params, String key) {
+        String text = paramText(params, key);
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private Long firstLong(Long... values) {
