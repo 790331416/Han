@@ -19,6 +19,6 @@ SET content = replace(
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧角色图生成'
-  AND category = 'aivideo_character_image';
+  AND category = 'aivideo_image';
 
 COMMIT;
