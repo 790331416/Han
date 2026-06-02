@@ -98,4 +98,28 @@ WHERE template_name = 'AI短剧资产提取'
   AND content LIKE '%面部特写%'
   AND content LIKE '%全身正侧背三视图%';
 
+UPDATE ai_prompt_template
+SET content = replace(content,
+        '4. promptText 要可直接用于角色图生成，包含横向 16:9、纯白极简背景、面部特写、全身正侧背三视图、固定自然站姿等关键信息。',
+        '4. promptText 要可直接用于角色图生成，必须写成四方向全身转面表：纯白极简背景，方向顺序固定为正面、左侧面、右侧面、背面；每个方向完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位。' || E'\n' ||
+        '5. promptText 禁止写头部特写、面部特写、半身像、三视图或正侧背旧版版式；禁止用大头特写替代全身视图。'),
+    description = 'AI短剧资产提取默认模板，强制角色图锚点使用四方向全身转面表',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧资产提取'
+  AND content LIKE '%面部特写%'
+  AND content LIKE '%全身正侧背三视图%';
+
+UPDATE ai_prompt_template
+SET content = replace(content,
+        '5. durationSec 使用项目默认镜头秒数：{{defaultShotDuration}}；剧情需要短镜头时不得低于 3 秒。',
+        '5. characters.promptText 必须可直接用于角色图生成，写成单一角色、纯白极简背景、四方向全身转面表，方向顺序固定为正面、左侧面、右侧面、背面；每个方向完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位。' || E'\n' ||
+        '6. characters.promptText 禁止写头部特写、面部特写、半身像、三视图或正侧背旧版版式；禁止用大头特写替代全身视图；动物保持自然四足站立，不拟人化。' || E'\n' ||
+        '7. durationSec 使用项目默认镜头秒数：{{defaultShotDuration}}；剧情需要短镜头时不得低于 3 秒。'),
+    description = 'AI短剧分镜提取默认模板，增加角色四方向全身转面锚点',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧分镜提取'
+  AND content NOT LIKE '%四方向全身转面表%';
+
 COMMIT;
