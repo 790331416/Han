@@ -25,5 +25,7 @@ public class AivideoCharacterImageGenerateDto {
 
     private String size;
 
+    private String referenceImageUrl;
+
     private String customPrompt;
 }

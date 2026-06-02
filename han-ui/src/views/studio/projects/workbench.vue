@@ -1236,7 +1236,9 @@ function stagePromptHints(scope: PromptScope) {
       '出现爪子、手、脚、翅膀、尾巴等部位时，必须在分镜里写清楚构图需要露出对应部位。'
     ],
     characterImage: [
-      '角色图阶段只锁定同一角色身份、体型、毛色/发型、服装与显著特征，不新增剧情动作。'
+      '角色图阶段只锁定同一角色身份、体型、毛色/发型、服装与显著特征，不新增剧情动作。',
+      '角色图必须输出四方向全身转面表：同一画布，纯白或浅灰背景，顺序固定为正面、左侧面、右侧面、背面。',
+      '每个方向必须完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止头部特写、半身、裁切身体或用大头替代全身。'
     ],
     sceneImage: [
       '场景图阶段只锁定空间结构、天气、光线、色调、道具和前后景关系，不改变剧情设定。'
@@ -1265,10 +1267,10 @@ function stageStrategyPrompt(scope: PromptScope) {
 
 function imageReferencePrompt(scope: PromptScope) {
   if (scope === 'characterImage' && characterImageReferenceUrl.value.trim()) {
-    return `【角色参考图】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色。`
+    return `【角色参考图 URL】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色；参考图只用于锁定外观，不允许改变“四方向全身转面表”的固定版式。`
   }
   if (scope === 'sceneImage' && sceneImageReferenceUrl.value.trim()) {
-    return `【场景参考图】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景。`
+    return `【场景参考图 URL】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景。`
   }
   return ''
 }
@@ -1396,6 +1398,7 @@ async function refreshSceneImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
+      referenceImageUrl: sceneImageReferenceUrl.value.trim(),
       customPrompt: scopedCustomPrompt('sceneImage')
     })
     sceneImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
@@ -1417,6 +1420,7 @@ async function refreshCharacterImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
+      referenceImageUrl: characterImageReferenceUrl.value.trim(),
       customPrompt: scopedCustomPrompt('characterImage')
     })
     characterImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
@@ -2359,6 +2363,7 @@ async function handleGenerateCharacterImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
+        referenceImageUrl: characterImageReferenceUrl.value.trim(),
         customPrompt: scopedCustomPrompt('characterImage')
       },
       onMeta: (payload) => {
@@ -2403,6 +2408,7 @@ async function handleGenerateSceneImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
+        referenceImageUrl: sceneImageReferenceUrl.value.trim(),
         customPrompt: scopedCustomPrompt('sceneImage')
       },
       onMeta: (payload) => {

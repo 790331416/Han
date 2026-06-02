@@ -97,13 +97,14 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             5. 不输出解释，只输出可直接用于图片模型的场景图提示词。
             """;
     private static final String CHARACTER_IMAGE_SYSTEM_PROMPT = """
-            你是电影级角色形象设计专家。
+            你是电影级角色四方向全身转面设定图设计专家。
             核心规则：
-            1. 只生成单一角色形象设定图，不生成群像，不生成无关背景角色。
+            1. 只生成单一角色四方向全身转面设定图，不生成群像，不生成无关背景角色。
             2. 如果角色是动物或非人类，必须保持其物种本体，不要改成人类演员、真人脸或人类身体。
-            3. 画面以角色形象为主体，优先生成清晰的角色概念设定板，便于后续保持一致性。
-            4. 必须体现角色身份、性格气质、外观特征、服饰/毛发/标志性细节。
-            5. 不输出解释，只输出可直接用于图片模型的角色图提示词。
+            3. 画面必须是固定版式的角色转面表：同一画布、纯白或浅灰极简背景、四个等宽分区，顺序为正面、左侧面、右侧面、背面。
+            4. 每个方向都必须完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、半身、裁切身体或让大头特写替代全身视图。
+            5. 四个方向必须保持同一角色身份、体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹和光照比例一致。
+            6. 不输出解释，只输出可直接用于图片模型的角色图提示词。
             """;
 
     private final AiVideoProjectMapper projectMapper;
@@ -365,6 +366,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 projectSetting != null ? projectSetting.getSceneImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getSceneImagePromptTemplateId() : null);
         Map<String, String> variables = buildSceneVariables(project, scene, ratio, resolution);
+        variables.put("referenceImageUrl", safeValue(dto.getReferenceImageUrl()));
         String fallbackPrompt = buildSceneImagePrompt(project, scene, ratio, resolution);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
@@ -403,7 +405,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 projectSetting != null ? projectSetting.getCharacterImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getCharacterImagePromptTemplateId() : null);
         Map<String, String> variables = buildCharacterVariables(project, character, ratio, resolution);
-        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution);
+        variables.put("referenceImageUrl", safeValue(dto.getReferenceImageUrl()));
+        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution, dto.getReferenceImageUrl());
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("size", firstText(dto.getSize(), ""));
@@ -411,7 +414,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables,
                 CHARACTER_IMAGE_SYSTEM_PROMPT, ASSET_CHARACTER_IMAGE, BIZ_CHARACTER, character.getCharacterId(),
                 TASK_CHARACTER_IMAGE, "角色形象图生成失败",
-                "multiple characters, crowd, extra people, watermark, logo, text, signature, human body if animal role");
+                "multiple characters, crowd, extra people, watermark, logo, text, signature, headshot only, portrait only, close-up only, half body, cropped body, missing legs, missing paws, missing feet, missing tail, inconsistent layout, inconsistent scale, inconsistent markings, different animal, different breed, human body if animal role");
     }
 
     private AiImageGenerateResponse invokeImageGeneration(RequestContext context, int candidateCount) {
@@ -809,11 +812,14 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private String buildCharacterImagePrompt(AiVideoProjectPo project, AiVideoCharacterPo character,
-                                             String ratio, String resolution) {
+                                             String ratio, String resolution, String referenceImageUrl) {
         return """
-                电影级角色形象设定图，单一角色，纯净背景，角色一致性参考图，画幅：%s，清晰度目标：%s。
+                电影级角色四方向全身转面设定图，单一角色，纯净背景，角色一致性参考图，画幅：%s，清晰度目标：%s。
                 如果该角色是动物、宠物、怪物、机器人、器物精灵或其他非人类，必须保持其物种本体，不要改成人类演员、真人脸或人类身体。
-                画面重点：清晰面部/头部特写 + 全身正面 + 侧面 + 背面，适合作为后续图片和视频生成的角色一致性参考。
+                构图硬规则：输出一张标准角色转面表，同一画布，纯白或浅灰极简背景，四个等宽分区从左到右依次为“正面、左侧面、右侧面、背面”。
+                全身硬规则：四个方向都必须完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、禁止半身、禁止身体裁切、禁止用大头特写替代全身视图。
+                一致性硬规则：四个方向必须是同一角色，保持同一体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹、光照和比例。
+                旧词屏蔽规则：如果原始角色提示词或补充要求里出现“头部特写、面部特写、三视图、正侧背”等旧版版式，只提取身份和外观特征，不执行旧版构图；最终仍以四方向全身转面表为最高优先级。
                 必须体现身份定位、性格气质、外观轮廓、毛发/发型、服饰/身体特征、颜色风格、标志性细节。
                 只出现该角色本体，不出现其他角色、文字、水印、logo、复杂环境。
 
@@ -832,13 +838,14 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 色彩风格：%s
                 负面特征：%s
                 原始角色提示词：%s
+                参考图 URL：%s
                 """.formatted(
                 safeValue(ratio), safeValue(resolution), safeValue(project.getProjectName()),
                 safeValue(project.getDefaultStyle()), safeValue(character.getCharacterName()), safeValue(character.getGender()),
                 safeValue(character.getAgeDesc()), safeValue(character.getIdentityDesc()), safeValue(character.getStoryRole()),
                 safeValue(character.getPersonalityTags()), safeValue(character.getRelationshipDesc()), safeValue(character.getAppearance()),
                 safeValue(character.getHairStyle()), safeValue(character.getCostume()), safeValue(character.getColorStyle()),
-                safeValue(character.getNegativeTraits()), safeValue(character.getPromptText()));
+                safeValue(character.getNegativeTraits()), safeValue(character.getPromptText()), safeValue(referenceImageUrl));
     }
 
     private int normalizeCandidateCount(Integer requested, AiVideoProjectSettingPo projectSetting,
