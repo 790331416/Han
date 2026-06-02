@@ -993,6 +993,10 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private String extractJsonBlock(String content) {
+        return normalizeAssetJsonBlock(content);
+    }
+
+    static String normalizeAssetJsonBlock(String content) {
         if (!StringUtils.hasText(content)) {
             throw new BusinessException("结构化结果为空");
         }
@@ -1005,8 +1009,15 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 text = text.substring(start + 1, end).trim();
             }
         }
+        int assetKeyStart = firstAssetKeyIndex(text);
         int objectStart = text.indexOf('{');
         int objectEnd = text.lastIndexOf('}');
+        if (assetKeyStart >= 0 && (objectStart < 0 || assetKeyStart < objectStart)) {
+            String wrappedFragment = wrapJsonObjectFragment(text);
+            if (StringUtils.hasText(wrappedFragment)) {
+                return wrappedFragment;
+            }
+        }
         if (objectStart < 0 || objectEnd <= objectStart) {
             String wrappedFragment = wrapJsonObjectFragment(text);
             if (StringUtils.hasText(wrappedFragment)) {
@@ -1017,7 +1028,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return text.substring(objectStart, objectEnd + 1);
     }
 
-    private String wrapJsonObjectFragment(String text) {
+    private static String wrapJsonObjectFragment(String text) {
         String fragment = text.trim();
         int keyStart = firstAssetKeyIndex(fragment);
         if (keyStart < 0) {
@@ -1032,7 +1043,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return "{" + fragment + "}";
     }
 
-    private int firstAssetKeyIndex(String text) {
+    private static int firstAssetKeyIndex(String text) {
         int result = -1;
         for (String key : List.of("\"characters\"", "\"scenes\"", "\"shots\"")) {
             int index = text.indexOf(key);
