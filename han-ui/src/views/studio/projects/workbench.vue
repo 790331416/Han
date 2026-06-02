@@ -606,12 +606,32 @@
         </details>
 
         <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="场景参考图 URL（可选）">
-            <el-input
-              v-model="sceneImageReferenceUrl"
-              clearable
-              placeholder="粘贴参考图地址；会写入本次场景图提示词，用于锁定空间、光线、天气和色调"
-            />
+          <el-form-item label="场景参考图（可粘贴 URL 或上传）">
+            <div class="reference-image-control">
+              <el-input
+                v-model="sceneImageReferenceUrl"
+                clearable
+                placeholder="粘贴参考图地址；会写入本次场景图提示词，用于锁定空间、光线、天气和色调"
+              />
+              <el-upload
+                accept="image/*"
+                :show-file-list="false"
+                :http-request="uploadSceneReferenceImage"
+                :disabled="sceneReferenceUploading || sceneImageGenerating"
+              >
+                <el-button
+                  :icon="Upload"
+                  :loading="sceneReferenceUploading"
+                  :disabled="sceneImageGenerating"
+                >
+                  上传参考图
+                </el-button>
+              </el-upload>
+            </div>
+            <div v-if="sceneImageReferenceUrl" class="reference-image-tip">
+              <span>当前参考图 URL 已生效。</span>
+              <el-link :href="sceneImageReferenceUrl" target="_blank" type="primary">打开查看</el-link>
+            </div>
           </el-form-item>
         </el-form>
 
@@ -620,7 +640,7 @@
             type="primary"
             :icon="MagicStick"
             :loading="sceneImageGenerating"
-            :disabled="sceneImageGenerating"
+            :disabled="sceneImageGenerating || sceneReferenceUploading"
             @click="handleGenerateSceneImages"
           >
             生成 {{ params.imageCandidateCount || 2 }} 张候选图
@@ -672,12 +692,32 @@
         </details>
 
         <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="角色参考图 URL（可选）">
-            <el-input
-              v-model="characterImageReferenceUrl"
-              clearable
-              placeholder="粘贴参考图地址；会写入本次角色图提示词，用于锁定身份、外观轮廓、毛发/服装和色彩"
-            />
+          <el-form-item label="角色参考图（可粘贴 URL 或上传）">
+            <div class="reference-image-control">
+              <el-input
+                v-model="characterImageReferenceUrl"
+                clearable
+                placeholder="粘贴参考图地址；会写入本次角色图提示词，用于锁定身份、外观轮廓、毛发/服装和色彩"
+              />
+              <el-upload
+                accept="image/*"
+                :show-file-list="false"
+                :http-request="uploadCharacterReferenceImage"
+                :disabled="characterReferenceUploading || characterImageGenerating"
+              >
+                <el-button
+                  :icon="Upload"
+                  :loading="characterReferenceUploading"
+                  :disabled="characterImageGenerating"
+                >
+                  上传参考图
+                </el-button>
+              </el-upload>
+            </div>
+            <div v-if="characterImageReferenceUrl" class="reference-image-tip">
+              <span>当前参考图 URL 已生效。</span>
+              <el-link :href="characterImageReferenceUrl" target="_blank" type="primary">打开查看</el-link>
+            </div>
           </el-form-item>
         </el-form>
 
@@ -686,7 +726,7 @@
             type="primary"
             :icon="MagicStick"
             :loading="characterImageGenerating"
-            :disabled="characterImageGenerating"
+            :disabled="characterImageGenerating || characterReferenceUploading"
             @click="handleGenerateCharacterImages"
           >
             生成 {{ params.imageCandidateCount || 2 }} 张候选图
@@ -853,6 +893,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import type { UploadRequestOptions } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowUp, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled, VideoCamera } from '@element-plus/icons-vue'
 import {
   AIVIDEO_ASSET_STREAM_PATH,
@@ -890,6 +931,7 @@ import {
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoProject,
+  uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
@@ -935,6 +977,7 @@ const characterImageDrawerVisible = ref(false)
 const selectedCharacterForImage = ref<AivideoCharacter>()
 const characterImagePromptPreviewText = ref('')
 const characterImageReferenceUrl = ref('')
+const characterReferenceUploading = ref(false)
 const characterImageGenerating = ref(false)
 const characterImageCandidates = ref<AivideoMediaAsset[]>([])
 const characterImagePreviewUrls = ref<Record<string, string>>({})
@@ -943,6 +986,7 @@ const sceneImageDrawerVisible = ref(false)
 const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
 const sceneImageReferenceUrl = ref('')
+const sceneReferenceUploading = ref(false)
 const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
 const sceneImagePreviewUrls = ref<Record<string, string>>({})
@@ -1379,6 +1423,54 @@ async function refreshCharacterImagePromptPreview() {
   } catch (_error) {
     characterImagePromptPreviewText.value = ''
   }
+}
+
+function validateReferenceImageFile(file: File) {
+  const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)
+  if (!isImage) {
+    throw new Error('请上传图片文件，支持 png、jpg、jpeg、webp、gif、bmp')
+  }
+  const maxSize = 20 * 1024 * 1024
+  if (file.size > maxSize) {
+    throw new Error('参考图不能超过 20MB')
+  }
+}
+
+async function uploadReferenceImage(options: UploadRequestOptions, scope: 'characterImage' | 'sceneImage') {
+  const loadingRef = scope === 'characterImage' ? characterReferenceUploading : sceneReferenceUploading
+  loadingRef.value = true
+  try {
+    const file = options.file as File
+    validateReferenceImageFile(file)
+    const res = await uploadAivideoReferenceImage(file)
+    const url = res.data?.url
+    if (!url) {
+      throw new Error('上传成功但没有返回参考图 URL')
+    }
+    if (scope === 'characterImage') {
+      characterImageReferenceUrl.value = url
+      await refreshCharacterImagePromptPreview()
+    } else {
+      sceneImageReferenceUrl.value = url
+      await refreshSceneImagePromptPreview()
+    }
+    ElMessage.success('参考图已上传，URL 已写入本次生成提示词')
+    options.onSuccess?.(res.data)
+  } catch (error: any) {
+    const message = error?.message || '参考图上传失败'
+    ElMessage.error(message)
+    options.onError?.(new Error(message) as any)
+  } finally {
+    loadingRef.value = false
+  }
+}
+
+function uploadCharacterReferenceImage(options: UploadRequestOptions) {
+  return uploadReferenceImage(options, 'characterImage')
+}
+
+function uploadSceneReferenceImage(options: UploadRequestOptions) {
+  return uploadReferenceImage(options, 'sceneImage')
 }
 
 async function refreshShotVideoPromptPreview() {
@@ -2771,6 +2863,32 @@ onBeforeUnmount(() => {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #f9fafb;
+}
+
+.reference-image-control {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+
+  .el-input {
+    flex: 1;
+  }
+}
+
+.reference-image-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .reference-image-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .shot-video-gate-alert {

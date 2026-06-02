@@ -276,6 +276,12 @@ export interface AivideoMediaAsset {
   createTime?: string
 }
 
+export interface AivideoUploadedFile {
+  id?: string | number
+  name?: string
+  url?: string
+}
+
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
 export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
@@ -484,6 +490,15 @@ export function previewAivideoMedia(mediaId: string | number) {
 
 export function getPublicAivideoMediaPreviewUrl(mediaId: string | number) {
   return `/aivideo/public/media/${mediaId}/preview`
+}
+
+export function uploadAivideoReferenceImage(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post<AivideoUploadedFile>('/file/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    silentError: true
+  })
 }
 
 export function selectAivideoMedia(data: {
