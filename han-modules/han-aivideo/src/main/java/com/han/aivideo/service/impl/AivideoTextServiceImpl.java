@@ -72,6 +72,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static final String TASK_SCRIPT = "TEXT_SCRIPT";
     private static final String TASK_ASSET = "ASSET_EXTRACT";
     private static final String TEXT_SYSTEM_PROMPT = "你是专业短剧编剧和影视前期策划助手。请严格按用户要求输出，避免添加无法落地的空泛描述。";
+    private static final int ASSET_EXTRACT_MAX_TOKENS = 8192;
     private static final String TARGET_DOCUMENT = "DOCUMENT";
     private static final String TARGET_CONTENT = "CONTENT_VERSION";
     private static final String TARGET_CHARACTER = "CHARACTER";
@@ -311,7 +312,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 setting != null ? setting.getTextModelId() : null,
                 promptTemplateId, prompt, dto.getCustomPrompt(), variables);
         try {
-            AiTextGenerateResponse response = invokeTextGeneration(project, setting,
+            AiTextGenerateResponse response = invokeAssetTextGeneration(project, setting,
                     null, null, prompt, variables);
             AssetPayload payload = parseAssetPayload(response.getContent());
             softDeletePendingAssets(project.getProjectId());
@@ -470,14 +471,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private AiTextGenerateResponse invokeTextGeneration(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
                                                        Long promptTemplateId, String customPrompt,
                                                        String userPrompt, Map<String, String> variables) {
-        AiTextGenerateRequest request = new AiTextGenerateRequest();
-        request.setTenantId(project.getTenantId());
-        request.setModelId(setting != null ? setting.getTextModelId() : null);
-        request.setPromptTemplateId(promptTemplateId);
-        request.setUserPrompt(userPrompt);
-        request.setCustomPrompt(customPrompt);
-        request.setVariables(variables);
-        request.setSystemPrompt(TEXT_SYSTEM_PROMPT);
+        AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId, customPrompt,
+                userPrompt, variables);
         R<AiTextGenerateResponse> result = aiServiceClient.generateText(request);
         if (result == null || result.isFail()) {
             throw new BusinessException(result == null ? "AI 文本生成服务无响应" : result.getMsg());
@@ -486,6 +481,30 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("AI 文本生成结果为空");
         }
         return result.getData();
+    }
+
+    private AiTextGenerateResponse invokeAssetTextGeneration(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
+                                                             Long promptTemplateId, String customPrompt,
+                                                             String userPrompt, Map<String, String> variables) {
+        AiTextGenerateRequest request = buildAssetTextGenerateRequest(project, setting, promptTemplateId, customPrompt,
+                userPrompt, variables);
+        R<AiTextGenerateResponse> result = aiServiceClient.generateText(request);
+        if (result == null || result.isFail()) {
+            throw new BusinessException(result == null ? "AI 文本生成服务无响应" : result.getMsg());
+        }
+        if (result.getData() == null || !StringUtils.hasText(result.getData().getContent())) {
+            throw new BusinessException("AI 文本生成结果为空");
+        }
+        return result.getData();
+    }
+
+    private AiTextGenerateRequest buildAssetTextGenerateRequest(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
+                                                                Long promptTemplateId, String customPrompt,
+                                                                String userPrompt, Map<String, String> variables) {
+        AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId, customPrompt,
+                userPrompt, variables);
+        request.setMaxTokens(ASSET_EXTRACT_MAX_TOKENS);
+        return request;
     }
 
     private void runPolishStream(AiVideoProjectPo project, AiVideoSourceDocumentPo document,
@@ -555,7 +574,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                                 Map<String, String> variables, AiVideoGenerationTaskPo task,
                                 String operator, SseEmitter emitter) {
         try {
-            AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, null,
+            AiTextGenerateRequest request = buildAssetTextGenerateRequest(project, setting, null,
                     null, userPrompt, variables);
             AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
                     chunk -> sendSse(emitter, "delta", chunk));
@@ -978,8 +997,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private AssetPayload parseAssetPayload(String content) {
-        String json = extractJsonBlock(content);
         try {
+            String json = extractJsonBlock(content);
             AssetPayload payload = XuJsonUtil.parseObject(json, AssetPayload.class);
             if (payload == null || (safeList(payload.characters).isEmpty()
                     && safeList(payload.scenes).isEmpty()
@@ -988,6 +1007,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             }
             return payload;
         } catch (RuntimeException exception) {
+            if (isProbablyTruncatedAssetJson(content)) {
+                throw new BusinessException("结构化资产解析失败：JSON 未闭合，疑似输出过长被截断，请减少单次输出或重新生成");
+            }
             throw new BusinessException("结构化资产解析失败，请重新生成或补充提示词");
         }
     }
@@ -1052,6 +1074,56 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             }
         }
         return result;
+    }
+
+    static boolean isProbablyTruncatedAssetJson(String content) {
+        if (!StringUtils.hasText(content)) {
+            return false;
+        }
+        String text = content.trim();
+        if (firstAssetKeyIndex(text) < 0) {
+            return false;
+        }
+        int objectStart = text.indexOf('{');
+        if (objectStart < 0) {
+            return false;
+        }
+        return hasUnbalancedJsonDelimiters(text.substring(objectStart));
+    }
+
+    private static boolean hasUnbalancedJsonDelimiters(String text) {
+        int objectDepth = 0;
+        int arrayDepth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < text.length(); i++) {
+            char current = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (current == '\\' && inString) {
+                escaped = true;
+                continue;
+            }
+            if (current == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (current == '{') {
+                objectDepth++;
+            } else if (current == '}') {
+                objectDepth--;
+            } else if (current == '[') {
+                arrayDepth++;
+            } else if (current == ']') {
+                arrayDepth--;
+            }
+        }
+        return inString || objectDepth != 0 || arrayDepth != 0;
     }
 
     private Map<String, Object> buildAssetCounts(Long projectId) {
@@ -1278,6 +1350,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         int duration = defaultShotDuration(setting);
         return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【角色、场景、分镜】。"
                 + "必须只输出 JSON 对象，不要输出解释、Markdown 围栏或额外说明。JSON key 必须保持英文，所有字段值必须使用中文。\n\n"
+                + "【最高优先级：紧凑输出，防止 JSON 被截断】\n"
+                + "1. 资产阶段只输出可入库的稳定锚点，不在这里写长篇图片/视频执行提示词；角色图、场景图、分镜视频会在后续阶段再扩写 prompt。\n"
+                + "2. promptText 必须是短提示：角色/场景不超过 80 个中文字符，分镜不超过 100 个中文字符；禁止写长句、禁止重复画幅/风格堆叠。\n"
+                + "3. actionDesc 不超过 60 个中文字符，voiceOver 不超过 80 个中文字符；保留动作节拍核心即可，不能把整段旁白塞进一个字段。\n"
+                + "4. 每个数组元素只保留必要信息，不输出解释性备注、Markdown、编号标题或额外字段；如果信息缺失，用空字符串或空数组。\n"
+                + "5. 必须输出完整闭合 JSON，最后一个字符必须是 }。\n\n"
                 + "【角色构建规则】\n"
                 + "1. 你是电影级角色概念设计师，需要先解析角色画像：代号、年龄/生命阶段、性别或物种、社会身份或物种身份、人格标签、故事功能。\n"
                 + "2. 每个角色必须输出鲜明、可区分的视觉方案；如果是人类，写清年龄、自然发色、具体发型、眼神神态、服装材质、主色辅色、鞋履配饰。\n"

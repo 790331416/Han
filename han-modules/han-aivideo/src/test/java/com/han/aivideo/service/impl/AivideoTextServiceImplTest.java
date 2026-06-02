@@ -3,6 +3,8 @@ package com.han.aivideo.service.impl;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AivideoTextServiceImplTest {
 
@@ -66,5 +68,23 @@ class AivideoTextServiceImplTest {
                 "  \"scenes\": [],\n" +
                 "  \"shots\": []\n" +
                 "}", normalized);
+    }
+
+    @Test
+    void isProbablyTruncatedAssetJsonDetectsUnclosedStreamOutput() {
+        String raw = """
+                {"characters":[{"characterName":"dog"}],"scenes":[],"shots":[{"shotNo":1,"voiceOver":"follow me next
+                """;
+
+        assertTrue(AivideoTextServiceImpl.isProbablyTruncatedAssetJson(raw));
+    }
+
+    @Test
+    void isProbablyTruncatedAssetJsonIgnoresCompleteAssetJson() {
+        String raw = """
+                {"characters":[{"characterName":"dog"}],"scenes":[],"shots":[{"shotNo":1,"voiceOver":"done"}]}
+                """;
+
+        assertFalse(AivideoTextServiceImpl.isProbablyTruncatedAssetJson(raw));
     }
 }
