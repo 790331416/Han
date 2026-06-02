@@ -807,7 +807,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         variables.put("costume", safeValue(character.getCostume()));
         variables.put("colorStyle", safeValue(character.getColorStyle()));
         variables.put("negativeTraits", safeValue(character.getNegativeTraits()));
-        variables.put("characterPromptText", safeValue(character.getPromptText()));
+        variables.put("characterPromptText", sanitizeCharacterImagePromptText(character.getPromptText()));
         return variables;
     }
 
@@ -845,7 +845,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 safeValue(character.getAgeDesc()), safeValue(character.getIdentityDesc()), safeValue(character.getStoryRole()),
                 safeValue(character.getPersonalityTags()), safeValue(character.getRelationshipDesc()), safeValue(character.getAppearance()),
                 safeValue(character.getHairStyle()), safeValue(character.getCostume()), safeValue(character.getColorStyle()),
-                safeValue(character.getNegativeTraits()), safeValue(character.getPromptText()), safeValue(referenceImageUrl));
+                safeValue(character.getNegativeTraits()), sanitizeCharacterImagePromptText(character.getPromptText()), safeValue(referenceImageUrl));
     }
 
     private int normalizeCandidateCount(Integer requested, AiVideoProjectSettingPo projectSetting,

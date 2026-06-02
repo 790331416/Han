@@ -103,6 +103,24 @@ abstract class AivideoServiceSupport {
         return global + "\n\n" + stage;
     }
 
+    protected String sanitizeCharacterImagePromptText(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "未填写";
+        }
+        String sanitized = value.trim();
+        sanitized = sanitized.replace("头部特写", "头部特征清晰");
+        sanitized = sanitized.replace("面部特写", "面部/表情特征清晰");
+        sanitized = sanitized.replace("脸部特写", "脸部/表情特征清晰");
+        sanitized = sanitized.replace("大头特写", "正常比例全身视图");
+        sanitized = sanitized.replace("半身像", "完整全身像");
+        sanitized = sanitized.replace("半身", "完整全身");
+        sanitized = sanitized.replace("三视图", "四方向全身转面表");
+        sanitized = sanitized.replace("正侧背", "正面、左侧面、右侧面、背面");
+        sanitized = sanitized.replace("正面图、侧面图、背面图", "正面、左侧面、右侧面、背面四方向全身图");
+        sanitized = sanitized.replace("正面、侧面、背面", "正面、左侧面、右侧面、背面");
+        return StringUtils.hasText(sanitized) ? sanitized.trim() : "未填写";
+    }
+
     protected Long currentTenantId() {
         if (SecurityContextHolder.isAdmin()) {
             return null;

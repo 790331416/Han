@@ -1017,7 +1017,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         appendField(fields, "服饰/身体特征：", character.getCostume());
         appendField(fields, "颜色风格：", character.getColorStyle());
         appendField(fields, "禁改特征：", character.getNegativeTraits());
-        appendField(fields, "原始角色提示词：", character.getPromptText());
+        appendField(fields, "净化后的角色外观提示词：", sanitizeCharacterImagePromptText(character.getPromptText()));
         if (character.getLockedMediaId() != null) {
             appendField(fields, "已锁定角色图ID：", String.valueOf(character.getLockedMediaId()));
         }

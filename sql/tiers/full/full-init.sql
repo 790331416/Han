@@ -2141,7 +2141,7 @@ $aivideo_character_image$
 4. 构图硬规则：输出一张标准角色转面表，同一画布，纯白或浅灰极简背景，四个等宽分区从左到右依次为“正面、左侧面、右侧面、背面”。
 5. 全身硬规则：四个方向都必须完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、禁止半身、禁止身体裁切、禁止用大头特写替代全身视图。
 6. 一致性硬规则：四个方向必须是同一角色，保持同一体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹、光照和比例。
-7. 旧词屏蔽规则：如果原始角色提示词或补充要求里出现“头部特写、面部特写、三视图、正侧背”等旧版版式，只提取身份和外观特征，不执行旧版构图；最终仍以四方向全身转面表为最高优先级。
+7. 历史版式屏蔽规则：历史输入里的旧版头像、半身、三视图或正侧背版式只用于识别无效构图，不进入最终构图；最终只允许四方向全身转面表。
 8. 直接输出图片提示词，不输出解释。
 
 【当前任务变量】
@@ -2159,7 +2159,7 @@ $aivideo_character_image$
 毛发/发型：{{hairStyle}}
 服饰/身体特征：{{costume}}
 色彩风格：{{colorStyle}}
-原始角色提示词：{{characterPromptText}}
+净化后的角色外观提示词：{{characterPromptText}}
 参考图 URL：{{referenceImageUrl}}
 $aivideo_character_image$,
 '["projectName","style","ratio","resolution","characterName","gender","ageDesc","identityDesc","storyRole","personalityTags","appearance","hairStyle","costume","colorStyle","characterPromptText","referenceImageUrl"]',
