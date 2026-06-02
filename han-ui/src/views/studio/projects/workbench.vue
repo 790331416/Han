@@ -1237,11 +1237,12 @@ function stagePromptHints(scope: PromptScope) {
     ],
     characterImage: [
       '角色图阶段只锁定同一角色身份、体型、毛色/发型、服装与显著特征，不新增剧情动作。',
-      '角色图必须输出四方向全身转面表：同一画布，纯白或浅灰背景，顺序固定为正面、左侧面、右侧面、背面。',
-      '每个方向必须完整露出头部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止头部特写、半身、裁切身体或用大头替代全身。'
+      '角色图必须输出 Seedance 视频角色锚定图：单一主体、3/4正面或轻微侧正面、全身完整可见、主体占画面高度60%-75%、纯白/浅灰极简背景。',
+      '禁止四方向、三视图、多视图、转面表、分栏拼图、同款分身或多个角度并排；动物保持物种本体和自然四足站姿，不拟人化。'
     ],
     sceneImage: [
-      '场景图阶段只锁定空间结构、天气、光线、色调、道具和前后景关系，不改变剧情设定。'
+      '场景图阶段只锁定空间结构、天气、光线、色调、道具和前后景关系，不改变剧情设定。',
+      '场景图必须是可作为 Seedance 首帧/环境锚点的单镜头纯场景图：前景/中景/远景清楚，留出角色可行动区域，禁止拼图、分栏、设定板、漫画格和文字标签。'
     ],
     shotVideo: [
       '视频阶段输出给模型直接执行的镜头 prompt，必须写清 0-2秒 / 2-5秒 / 5-8秒 动作节拍。',
@@ -1267,10 +1268,10 @@ function stageStrategyPrompt(scope: PromptScope) {
 
 function imageReferencePrompt(scope: PromptScope) {
   if (scope === 'characterImage' && characterImageReferenceUrl.value.trim()) {
-    return `【角色参考图 URL】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色；参考图只用于锁定外观，不允许改变“四方向全身转面表”的固定版式。`
+    return `【角色参考图 URL】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色；参考图只用于锁定外观，最终仍必须输出单主体视频角色锚定图，禁止四方向/三视图/多视图/分栏拼图。`
   }
   if (scope === 'sceneImage' && sceneImageReferenceUrl.value.trim()) {
-    return `【场景参考图 URL】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景。`
+    return `【场景参考图 URL】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景；最终必须保持单镜头纯场景首帧参考图，不生成拼图、分栏、设定板或文字标签。`
   }
   return ''
 }

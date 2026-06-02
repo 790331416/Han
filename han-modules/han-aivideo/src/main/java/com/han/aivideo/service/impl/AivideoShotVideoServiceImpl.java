@@ -86,11 +86,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             3. 必须保持参考图的空间关系、时间、天气、色调和主体环境稳定；若参考图为上一镜头尾帧，优先继承尾帧中的主体位置和姿态。
             4. 严格执行音画双轨协议：视频阶段只负责画面，不新增、不改写、不替换配音、旁白声线、BGM 或音效；对白才允许口型同步，旁白和心理活动必须作为画外音处理，角色不张嘴。
             5. 同一角色、动物或宠物必须保持同一身份与外观锚点，禁止跨镜头换物种、换毛色、换体型、换脸型、换年龄感或丢失项圈/斑纹等标志物。
-            6. 同一场景必须保持背景空间、光线、天气、色调、道具和前中后景关系稳定；除非分镜明确切场，不得无故换地点或换背景。
-            7. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态，动作必须低幅度、渐进、可剪辑。
-            8. 遇到“悬浮、飞起、变身、倒地、站起”等强动作词，除非分镜明确写高速飞行，否则默认只做缓慢、低幅度、原地附近变化。
-            9. 不要生成字幕、水印、logo、花字和无关文字。
-            10. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
+            6. 若角色参考图是纯白/浅灰棚拍的单主体锚定图，只提取角色身份与外观，不继承白底棚拍背景，不复制同款分身，不把单主体误识别成多个主体。
+            7. 同一场景必须保持背景空间、光线、天气、色调、道具和前中后景关系稳定；除非分镜明确切场，不得无故换地点或换背景。
+            8. 根据分镜动作、镜头运动、情绪和旁白设计可拍摄的视频动态，动作必须低幅度、渐进、可剪辑。
+            9. 遇到“悬浮、飞起、变身、倒地、站起”等强动作词，除非分镜明确写高速飞行，否则默认只做缓慢、低幅度、原地附近变化。
+            10. 不要生成字幕、水印、logo、花字和无关文字。
+            11. 输出必须适合后续短剧剪辑，节奏清晰，动作可见。
             """;
 
     private final AiVideoProjectMapper projectMapper;
@@ -931,6 +932,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 本镜头起始状态：%s。
                 - 本镜头结尾状态：%s。
                 - 连续性强度：%s。若为极严格，必须同时继承上一尾帧、同场景锚点和角色锚点；缺少任一锚点时不得擅自改背景或主体。
+                - 角色锚定图使用规则：角色图只用于锁定身份、体型、毛色/服饰和标志物；不得把白底/浅灰棚拍背景带入剧情场景，不得把单主体锚定图复制成多只同款主体。
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
@@ -1022,7 +1024,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             appendField(fields, "已锁定角色图ID：", String.valueOf(character.getLockedMediaId()));
         }
         String detail = fields.isEmpty() ? "角色ID " + character.getCharacterId() : String.join("；", fields);
-        return detail + "。同一镜头和跨镜头必须保持为同一角色/同一只动物，不得换物种、毛色、体型、脸型、眼睛、年龄感、项圈、斑纹或其他标志物。";
+        return detail + "。同一镜头和跨镜头必须保持为同一角色/同一只动物，不得换物种、毛色、体型、脸型、眼睛、年龄感、项圈、斑纹或其他标志物；角色图只作外观锚定，不继承白底棚拍背景，不复制同款分身。";
     }
 
     private String buildSceneContinuity(AiVideoScenePo scene, AiVideoShotPo previousShot) {
