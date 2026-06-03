@@ -6,6 +6,7 @@ import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
+import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -44,6 +45,10 @@ public interface IAivideoTextService {
     AivideoPromptPreviewVo previewAssetPrompt(AivideoAssetExtractDto dto);
 
     AivideoAssetSummaryVo selectAssetSummary(Long projectId);
+
+    AiVideoGenerationTaskPo selectStudioTask(Long taskId);
+
+    AiVideoGenerationTaskPo selectLatestAssetTask(Long projectId);
 
     void confirmAsset(AivideoAssetConfirmDto dto);
 

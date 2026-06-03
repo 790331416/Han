@@ -918,6 +918,8 @@ import {
   confirmAivideoPolish,
   confirmAivideoScript,
   generationStrategyOptions,
+  getAivideoStudioTask,
+  getLatestAivideoAssetTask,
   getAivideoProject,
   listAivideoMedia,
   listAivideoShotVideoTasks,
@@ -1027,8 +1029,10 @@ const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
+let assetTaskPollTimer: ReturnType<typeof setTimeout> | undefined
 let shotVideoRecoveryTimer: ReturnType<typeof setTimeout> | undefined
 const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
+const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
 
 const sourceDraft = reactive({
@@ -2411,17 +2415,115 @@ function handleCancelConfirmScript(versionId: string | number) {
   )
 }
 
+function clearAssetTaskPollingTimer() {
+  if (assetTaskPollTimer) {
+    clearTimeout(assetTaskPollTimer)
+    assetTaskPollTimer = undefined
+  }
+}
+
+function resolveAssetTaskId() {
+  const taskId = assetStreamMeta.value.taskId
+  return taskId === undefined || taskId === null || taskId === '' ? '' : String(taskId)
+}
+
+function syncAssetTaskMeta(task?: AivideoTask) {
+  if (!task) {
+    return
+  }
+  assetStreamMeta.value = {
+    ...assetStreamMeta.value,
+    taskId: task.taskId,
+    taskStatus: task.taskStatus,
+    progress: task.progress,
+    errorMessage: task.errorMessage,
+    updateTime: task.updateTime
+  }
+}
+
+function scheduleAssetTaskPolling(taskId: string | number, delay = ASSET_TASK_POLL_INTERVAL) {
+  clearAssetTaskPollingTimer()
+  if (!taskId) {
+    return
+  }
+  assetStreaming.value = true
+  submitting.value = true
+  assetTaskPollTimer = setTimeout(() => {
+    void pollAssetTask(taskId)
+  }, delay)
+}
+
+async function pollAssetTask(taskId: string | number) {
+  try {
+    const res = await getAivideoStudioTask(taskId)
+    const task = res.data
+    if (!task) {
+      clearAssetTaskPollingTimer()
+      assetStreaming.value = false
+      submitting.value = false
+      assetContextCollapsed.value = false
+      ElMessage.error('资产任务不存在或已不可访问')
+      return
+    }
+    syncAssetTaskMeta(task)
+    const status = normalizeShotVideoTaskStatus(task?.taskStatus)
+    if (inFlightTaskStatuses.has(status)) {
+      scheduleAssetTaskPolling(taskId)
+      return
+    }
+    clearAssetTaskPollingTimer()
+    assetStreaming.value = false
+    submitting.value = false
+    await loadDetail()
+    if (status === 'SUCCESS') {
+      if (hasAssets.value) {
+        ElMessage.success('资产已提取并结构化入库')
+      } else {
+        assetContextCollapsed.value = false
+        ElMessage.warning('资产任务已完成，但没有形成可确认的结构化资产，请查看原始输出')
+      }
+      return
+    }
+    if (status === 'FAILED') {
+      assetContextCollapsed.value = false
+      ElMessage.error(task?.errorMessage || '资产提取失败，请查看原始输出')
+    }
+  } catch {
+    scheduleAssetTaskPolling(taskId, ASSET_TASK_POLL_INTERVAL * 2)
+  }
+}
+
+async function recoverLatestAssetTask() {
+  if (assetStreaming.value) {
+    return
+  }
+  try {
+    const res = await getLatestAivideoAssetTask(projectId.value)
+    const task = res.data
+    if (!task || !inFlightTaskStatuses.has(normalizeShotVideoTaskStatus(task.taskStatus))) {
+      return
+    }
+    syncAssetTaskMeta(task)
+    assetContextCollapsed.value = false
+    scheduleAssetTaskPolling(task.taskId, 500)
+  } catch {
+    // Best-effort page-load recovery only; normal asset extraction is unaffected.
+  }
+}
+
 async function handleExtractAssets() {
   if (!selectedScript.value) {
     ElMessage.warning('请先确认短剧剧本')
     return
   }
+  clearAssetTaskPollingTimer()
   assetStreaming.value = true
   submitting.value = true
   assetStreamText.value = ''
   assetStreamMeta.value = {}
+  let pollingStarted = false
   try {
-    await requestAiStream({
+    const fullContent = await requestAiStream({
       baseUrl: import.meta.env.VITE_APP_BASE_API || '',
       path: AIVIDEO_ASSET_STREAM_PATH,
       token: userStore.token,
@@ -2434,12 +2536,16 @@ async function handleExtractAssets() {
         assetStreamText.value = fullContent
       },
       onMeta: (payload) => {
-        assetStreamMeta.value = payload
+        assetStreamMeta.value = { ...assetStreamMeta.value, ...payload }
       },
       onError: (message) => {
         ElMessage.error(message || '资产提取失败')
       }
     })
+    if (fullContent) {
+      assetStreamText.value = fullContent
+    }
+    clearAssetTaskPollingTimer()
     await loadDetail()
     if (hasAssets.value) {
       ElMessage.success('资产已提取并结构化入库')
@@ -2448,11 +2554,21 @@ async function handleExtractAssets() {
       ElMessage.warning('资产原始输出已返回，但没有形成可确认的结构化资产，请重新提取')
     }
   } catch (error: any) {
+    const taskId = resolveAssetTaskId()
+    if (taskId) {
+      pollingStarted = true
+      assetContextCollapsed.value = false
+      ElMessage.warning('连接已断开，资产后台任务继续执行，正在轮询结果')
+      scheduleAssetTaskPolling(taskId, 500)
+      return
+    }
     assetContextCollapsed.value = false
     ElMessage.error(error?.message || '资产提取失败')
   } finally {
-    assetStreaming.value = false
-    submitting.value = false
+    if (!pollingStarted) {
+      assetStreaming.value = false
+      submitting.value = false
+    }
   }
 }
 
@@ -2794,8 +2910,9 @@ function promptScopeByTab(tab: WorkbenchTab): PromptScope {
   return map[tab]
 }
 
-onMounted(() => {
-  loadDetail()
+onMounted(async () => {
+  await loadDetail()
+  await recoverLatestAssetTask()
 })
 
 watch(promptScopes, () => {
@@ -2838,6 +2955,7 @@ onBeforeUnmount(() => {
   if (promptPreviewTimer) {
     clearTimeout(promptPreviewTimer)
   }
+  clearAssetTaskPollingTimer()
   clearShotVideoRecoveryTimer()
   revokeReferencePreviewUrls()
   revokeCharacterImagePreviewUrls()

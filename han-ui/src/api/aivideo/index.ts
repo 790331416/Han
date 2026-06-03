@@ -399,6 +399,14 @@ export function getAivideoAssets(projectId: string | number) {
   return get<AivideoAssetSummary>(`/aivideo/studio/assets/summary/${projectId}`)
 }
 
+export function getAivideoStudioTask(taskId: string | number) {
+  return get<AivideoTask>(`/aivideo/studio/task/${taskId}`)
+}
+
+export function getLatestAivideoAssetTask(projectId: string | number) {
+  return get<AivideoTask>('/aivideo/studio/task/assets/latest', { projectId }, { silentError: true })
+}
+
 export function confirmAivideoAsset(data: {
   projectId: string | number
   targetType: string

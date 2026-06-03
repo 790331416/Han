@@ -172,6 +172,18 @@ public class AivideoStudioController extends BAivideoStudioController {
         return extractAssetsStream(dto);
     }
 
+    @GetMapping("/task/{taskId}")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AiVideoGenerationTaskPo> getStudioTaskInfo(@PathVariable Long taskId) {
+        return getStudioTask(taskId);
+    }
+
+    @GetMapping("/task/assets/latest")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AiVideoGenerationTaskPo> getLatestProjectAssetTask(@RequestParam Long projectId) {
+        return getLatestAssetTask(projectId);
+    }
+
     @PostMapping("/assets/prompt-preview")
     @PreAuthorize("@ss.isLogin()")
     public R<AivideoPromptPreviewVo> previewProjectAssetPrompt(@Valid @RequestBody AivideoAssetExtractDto dto) {

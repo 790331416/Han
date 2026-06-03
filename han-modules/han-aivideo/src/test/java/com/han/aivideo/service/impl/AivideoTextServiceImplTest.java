@@ -2,6 +2,7 @@ package com.han.aivideo.service.impl;
 
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -133,5 +134,15 @@ class AivideoTextServiceImplTest {
                                 ""
                         )
                 )));
+    }
+
+    @Test
+    void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
+        SseEmitter emitter = new SseEmitter();
+        emitter.complete();
+
+        boolean sent = AivideoTextServiceImpl.sendSseSafely(emitter, "delta", "chunk");
+
+        assertFalse(sent);
     }
 }

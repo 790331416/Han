@@ -47,6 +47,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -350,6 +351,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         String operator = resolveOperator();
 
         SseEmitter emitter = new SseEmitter(300_000L);
+        sendSseSafely(emitter, "meta", Map.of(
+                "event", "started",
+                "taskId", task.getTaskId(),
+                "taskStatus", task.getTaskStatus(),
+                "progress", task.getProgress()
+        ));
         CompletableFuture.runAsync(() -> runAssetStream(project, setting, promptTemplateId,
                 dto.getCustomPrompt(), taskPrompt, variables, task, operator, emitter));
         return emitter;
@@ -388,6 +395,39 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         vo.setScenes(selectScenes(projectId));
         vo.setShots(selectShots(projectId));
         return vo;
+    }
+
+    @Override
+    public AiVideoGenerationTaskPo selectStudioTask(Long taskId) {
+        if (taskId == null) {
+            throw new BusinessException("任务ID不能为空");
+        }
+        AiVideoGenerationTaskPo task = taskMapper.selectById(taskId);
+        if (task == null || !Integer.valueOf(DEL_FLAG_NORMAL).equals(task.getDelFlag())) {
+            throw new BusinessException("任务不存在");
+        }
+        Long tenantId = currentTenantId();
+        if (tenantId != null && !tenantId.equals(task.getTenantId())) {
+            throw new BusinessException("无权访问该任务");
+        }
+        return task;
+    }
+
+    @Override
+    public AiVideoGenerationTaskPo selectLatestAssetTask(Long projectId) {
+        requireProject(projectId);
+        LambdaQueryWrapper<AiVideoGenerationTaskPo> wrapper = new LambdaQueryWrapper<AiVideoGenerationTaskPo>()
+                .eq(AiVideoGenerationTaskPo::getProjectId, projectId)
+                .eq(AiVideoGenerationTaskPo::getTaskType, TASK_ASSET)
+                .eq(AiVideoGenerationTaskPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByDesc(AiVideoGenerationTaskPo::getUpdateTime)
+                .orderByDesc(AiVideoGenerationTaskPo::getTaskId)
+                .last("limit 1");
+        Long tenantId = currentTenantId();
+        if (tenantId != null) {
+            wrapper.eq(AiVideoGenerationTaskPo::getTenantId, tenantId);
+        }
+        return taskMapper.selectOne(wrapper);
     }
 
     @Override
@@ -515,26 +555,26 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
                     customPrompt, userPrompt, variables);
             AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
-                    chunk -> sendSse(emitter, "delta", chunk));
+                    chunk -> sendSseSafely(emitter, "delta", chunk));
             if (!StringUtils.hasText(result.content())) {
                 throw new BusinessException("AI 文本生成结果为空");
             }
+            Map<String, Object> resultMeta = safeResultMeta(result);
             AiVideoContentVersionPo version = buildContentVersion(project, document.getDocumentId(), CONTENT_POLISH,
                     "润色稿 v" + nextVersionNo(project.getProjectId(), CONTENT_POLISH),
-                    result.content(), null, promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+                    result.content(), null, promptTemplateId, customPrompt, resolveLong(resultMeta.get("modelId")), task.getTaskId());
             version.setCreateBy(operator);
             version.setUpdateBy(operator);
             contentVersionMapper.insert(version);
             markTaskSuccess(task, version.getModelId(), null);
-            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            Map<String, Object> meta = new LinkedHashMap<>(resultMeta);
             meta.put("versionId", version.getVersionId());
             meta.put("taskId", task.getTaskId());
-            sendSse(emitter, "meta", meta);
-            emitter.send(SseEmitter.event().data("[DONE]"));
-            emitter.complete();
+            sendSseSafely(emitter, "meta", meta);
+            completeWithDoneSafely(emitter);
         } catch (Exception exception) {
             markTaskFailed(task, exception.getMessage());
-            completeWithError(emitter, exception.getMessage());
+            completeWithErrorSafely(emitter, exception.getMessage());
         }
     }
 
@@ -546,26 +586,26 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AiTextGenerateRequest request = buildTextGenerateRequest(project, setting, promptTemplateId,
                     customPrompt, userPrompt, variables);
             AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
-                    chunk -> sendSse(emitter, "delta", chunk));
+                    chunk -> sendSseSafely(emitter, "delta", chunk));
             if (!StringUtils.hasText(result.content())) {
                 throw new BusinessException("AI 文本生成结果为空");
             }
+            Map<String, Object> resultMeta = safeResultMeta(result);
             AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_SCRIPT,
                     "短剧剧本 v" + nextVersionNo(project.getProjectId(), CONTENT_SCRIPT),
-                    result.content(), null, promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+                    result.content(), null, promptTemplateId, customPrompt, resolveLong(resultMeta.get("modelId")), task.getTaskId());
             version.setCreateBy(operator);
             version.setUpdateBy(operator);
             contentVersionMapper.insert(version);
             markTaskSuccess(task, version.getModelId(), null);
-            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            Map<String, Object> meta = new LinkedHashMap<>(resultMeta);
             meta.put("versionId", version.getVersionId());
             meta.put("taskId", task.getTaskId());
-            sendSse(emitter, "meta", meta);
-            emitter.send(SseEmitter.event().data("[DONE]"));
-            emitter.complete();
+            sendSseSafely(emitter, "meta", meta);
+            completeWithDoneSafely(emitter);
         } catch (Exception exception) {
             markTaskFailed(task, exception.getMessage());
-            completeWithError(emitter, exception.getMessage());
+            completeWithErrorSafely(emitter, exception.getMessage());
         }
     }
 
@@ -573,22 +613,29 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                                 Long promptTemplateId, String customPrompt, String userPrompt,
                                 Map<String, String> variables, AiVideoGenerationTaskPo task,
                                 String operator, SseEmitter emitter) {
+        String generatedContent = null;
+        Long generatedModelId = null;
         try {
             AiTextGenerateRequest request = buildAssetTextGenerateRequest(project, setting, null,
                     null, userPrompt, variables);
             AivideoAiStreamClient.StreamResult result = aiStreamClient.streamText(request,
-                    chunk -> sendSse(emitter, "delta", chunk));
-            if (!StringUtils.hasText(result.content())) {
+                    chunk -> sendSseSafely(emitter, "delta", chunk));
+            Map<String, Object> resultMeta = safeResultMeta(result);
+            generatedContent = result.content();
+            generatedModelId = resolveLong(resultMeta.get("modelId"));
+            if (!StringUtils.hasText(generatedContent)) {
                 throw new BusinessException("AI 文本生成结果为空");
             }
-            AssetPayload payload = parseAssetPayload(result.content());
+            AssetPayload payload = parseAssetPayload(generatedContent);
+            String assetContent = generatedContent;
+            Long assetModelId = generatedModelId;
             AiVideoContentVersionPo assetVersion = transactionTemplate.execute(status -> {
                 softDeletePendingAssets(project.getProjectId());
                 insertAssets(project, payload, setting);
 
                 AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
-                        "结构化资产", result.content(), extractJsonBlock(result.content()),
-                        promptTemplateId, customPrompt, resolveLong(result.meta().get("modelId")), task.getTaskId());
+                        "结构化资产", assetContent, extractJsonBlock(assetContent),
+                        promptTemplateId, customPrompt, assetModelId, task.getTaskId());
                 version.setCreateBy(operator);
                 version.setUpdateBy(operator);
                 contentVersionMapper.insert(version);
@@ -598,16 +645,37 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             if (assetVersion == null) {
                 throw new BusinessException("资产提取结果保存失败");
             }
-            Map<String, Object> meta = new LinkedHashMap<>(result.meta());
+            Map<String, Object> meta = new LinkedHashMap<>(resultMeta);
             meta.put("versionId", assetVersion.getVersionId());
             meta.put("taskId", task.getTaskId());
             meta.put("assetCounts", buildAssetCounts(project.getProjectId()));
-            sendSse(emitter, "meta", meta);
-            emitter.send(SseEmitter.event().data("[DONE]"));
-            emitter.complete();
+            sendSseSafely(emitter, "meta", meta);
+            completeWithDoneSafely(emitter);
         } catch (Exception exception) {
+            saveFailedAssetExtractVersion(project, promptTemplateId, customPrompt, task, operator,
+                    generatedContent, generatedModelId, exception.getMessage());
             markTaskFailed(task, exception.getMessage());
-            completeWithError(emitter, exception.getMessage());
+            completeWithErrorSafely(emitter, exception.getMessage());
+        }
+    }
+
+    private void saveFailedAssetExtractVersion(AiVideoProjectPo project, Long promptTemplateId, String customPrompt,
+                                               AiVideoGenerationTaskPo task, String operator, String content,
+                                               Long modelId, String errorMessage) {
+        if (!StringUtils.hasText(content)) {
+            return;
+        }
+        try {
+            AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
+                    "结构化资产（未入库）", content, extractJsonBlock(content),
+                    promptTemplateId, customPrompt, modelId, task.getTaskId());
+            version.setCreateBy(operator);
+            version.setUpdateBy(operator);
+            String reason = StringUtils.hasText(errorMessage) ? "\n\n【结构化失败原因】\n" + limit(errorMessage, 500) : "";
+            version.setContentText(content + reason);
+            contentVersionMapper.insert(version);
+        } catch (RuntimeException ignored) {
+            // Do not hide the real task failure if best-effort raw output persistence also fails.
         }
     }
 
@@ -668,22 +736,58 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return request;
     }
 
-    private void sendSse(SseEmitter emitter, String type, Object content) {
+    private static Map<String, Object> safeResultMeta(AivideoAiStreamClient.StreamResult result) {
+        if (result == null || result.meta() == null) {
+            return Collections.emptyMap();
+        }
+        return result.meta();
+    }
+
+    static boolean sendSseSafely(SseEmitter emitter, String type, Object content) {
+        if (emitter == null) {
+            return false;
+        }
         try {
             emitter.send(SseEmitter.event().data(XuJsonUtil.toJsonString(Map.of(
                     "type", type,
                     "content", content == null ? "" : content
             ))));
+            return true;
         } catch (IOException exception) {
-            throw new IllegalStateException("SSE send failed", exception);
+            return false;
+        } catch (IllegalStateException exception) {
+            return false;
         }
     }
 
-    private void completeWithError(SseEmitter emitter, String message) {
+    private void completeWithDoneSafely(SseEmitter emitter) {
         try {
-            sendSse(emitter, "error", StringUtils.hasText(message) ? message : "AI 文本生成失败");
+            if (emitter != null) {
+                emitter.send(SseEmitter.event().data("[DONE]"));
+            }
+        } catch (IOException | IllegalStateException ignored) {
+            // SSE is only an observer channel; persisted task state remains authoritative.
         } finally {
+            completeSafely(emitter);
+        }
+    }
+
+    private void completeWithErrorSafely(SseEmitter emitter, String message) {
+        try {
+            sendSseSafely(emitter, "error", StringUtils.hasText(message) ? message : "AI 文本生成失败");
+        } finally {
+            completeSafely(emitter);
+        }
+    }
+
+    private void completeSafely(SseEmitter emitter) {
+        if (emitter == null) {
+            return;
+        }
+        try {
             emitter.complete();
+        } catch (IllegalStateException ignored) {
+            // Spring may already have completed the emitter after client disconnect or timeout.
         }
     }
 

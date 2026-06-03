@@ -129,6 +129,14 @@ public class BAivideoStudioController {
         return textService.extractAssetsStream(dto);
     }
 
+    protected R<AiVideoGenerationTaskPo> getStudioTask(Long taskId) {
+        return R.ok(textService.selectStudioTask(taskId));
+    }
+
+    protected R<AiVideoGenerationTaskPo> getLatestAssetTask(Long projectId) {
+        return R.ok(textService.selectLatestAssetTask(projectId));
+    }
+
     protected R<AivideoPromptPreviewVo> previewAssetPrompt(AivideoAssetExtractDto dto) {
         return R.ok(textService.previewAssetPrompt(dto));
     }
