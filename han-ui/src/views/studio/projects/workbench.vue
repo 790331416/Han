@@ -757,17 +757,18 @@
             <strong>当前分镜参考图</strong>
             <small>来自已确认的场景图和角色图，仅展示当前视频生成会依赖的锚点</small>
           </div>
-          <div v-if="shotVideoReferenceOptions.length" class="reference-selected-grid">
-            <article v-for="option in shotVideoReferenceOptions" :key="option.mediaId" class="reference-selected-card">
+          <div v-if="shotVideoReferenceOptions.length" class="shot-reference-grid">
+            <article v-for="option in shotVideoReferenceOptions" :key="option.mediaId" class="shot-reference-card">
               <el-image
                 v-if="referencePreviewUrls[option.mediaId]"
+                class="shot-reference-thumb"
                 :src="referencePreviewUrls[option.mediaId]"
                 :preview-src-list="shotVideoReferencePreviewList"
                 fit="cover"
                 preview-teleported
               />
-              <el-empty v-else description="缩略图加载中" />
-              <div>
+              <el-empty v-else class="shot-reference-thumb shot-reference-placeholder" description="缩略图加载中" />
+              <div class="shot-reference-text">
                 <strong>{{ option.label }}</strong>
                 <small>{{ option.subtitle }}</small>
               </div>
@@ -3165,6 +3166,63 @@ onBeforeUnmount(() => {
   border: 1px solid #dbeafe;
   border-radius: 8px;
   background: #f8fbff;
+}
+
+.shot-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.shot-reference-card {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.shot-reference-thumb {
+  width: 136px;
+  height: 92px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  cursor: zoom-in;
+}
+
+.shot-reference-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.shot-reference-text {
+  min-width: 0;
+
+  strong,
+  small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  strong {
+    white-space: nowrap;
+  }
+
+  small {
+    margin-top: 6px;
+    color: #64748b;
+    line-height: 1.5;
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
 }
 
 .shot-tail-frame-tag {
