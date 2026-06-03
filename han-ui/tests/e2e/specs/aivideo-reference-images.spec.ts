@@ -230,8 +230,16 @@ test('aivideo workbench should use confirmed images through reusable reference p
   await expect(page.getByText(new RegExp(`建议参考.*${labels.eveningScene}.*#30`))).toBeVisible()
 
   await page.getByRole('row').filter({ hasText: labels.stormScene }).getByRole('button', { name: labels.sceneButton }).click()
-  await expect(page.getByTestId('reference-image-picker-scene')).toBeVisible()
-  await expect(page.getByTestId('reference-selected-card-scene').filter({ hasText: `${labels.eveningScene} #30` })).toBeVisible()
+  const sceneReferencePicker = page.getByTestId('reference-image-picker-scene')
+  await expect(sceneReferencePicker).toBeVisible()
+  const sceneReferenceCard = page.getByTestId('reference-selected-card-scene').filter({ hasText: `${labels.eveningScene} #30` })
+  await expect(sceneReferenceCard).toBeVisible()
+  await expect.poll(async () => (await sceneReferenceCard.boundingBox())?.width ?? 0).toBeGreaterThan(320)
+  await sceneReferencePicker.locator('.el-select').click()
+  const sceneReferencePopper = page.locator('.el-select__popper.reference-image-popper')
+  await expect(sceneReferencePopper).toBeVisible()
+  await expect.poll(async () => (await sceneReferencePopper.boundingBox())?.width ?? 0).toBeGreaterThan(520)
+  await page.keyboard.press('Escape')
   await page.getByText('scene prompt refs=30').waitFor({ state: 'visible' })
 
   await page.getByTestId('reference-selected-card-scene').filter({ hasText: `${labels.eveningScene} #30` }).locator('img').click()
