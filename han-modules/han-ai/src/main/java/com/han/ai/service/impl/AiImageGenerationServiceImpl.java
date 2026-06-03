@@ -53,7 +53,7 @@ public class AiImageGenerationServiceImpl extends AiServiceSupport implements IA
 
         String prompt = resolvePrompt(request);
         AiOpenAiCompatibleClient.ImageGenerationResult result = openAiCompatibleClient.imageGeneration(
-                model, apiKey, prompt, request.getCandidateCount(), resolveSize(request));
+                model, apiKey, prompt, request.getReferenceImageUrls(), request.getCandidateCount(), resolveSize(request));
 
         AiImageGenerateResponse response = new AiImageGenerateResponse();
         response.setModelId(model.getModelId());

@@ -3,6 +3,8 @@ package com.han.aivideo.domain.dto;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * AI short-drama character image generation request.
  */
@@ -26,6 +28,10 @@ public class AivideoCharacterImageGenerateDto {
     private String size;
 
     private String referenceImageUrl;
+
+    private List<Long> referenceMediaIds;
+
+    private List<String> referenceImageUrls;
 
     private String customPrompt;
 }

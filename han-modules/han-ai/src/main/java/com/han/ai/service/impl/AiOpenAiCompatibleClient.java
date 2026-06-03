@@ -117,8 +117,13 @@ class AiOpenAiCompatibleClient {
     }
 
     ImageGenerationResult imageGeneration(AiModelPo model, String apiKey, String prompt, Integer candidateCount, String size) {
+        return imageGeneration(model, apiKey, prompt, List.of(), candidateCount, size);
+    }
+
+    ImageGenerationResult imageGeneration(AiModelPo model, String apiKey, String prompt,
+                                          List<String> referenceImageUrls, Integer candidateCount, String size) {
         validateImageArguments(model, apiKey, prompt);
-        ImageGenerationRequest payload = buildImageRequest(model, prompt, candidateCount, size);
+        ImageGenerationRequest payload = buildImageRequest(model, prompt, referenceImageUrls, candidateCount, size);
         URI requestUri = buildImageGenerationUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
@@ -265,13 +270,36 @@ class AiOpenAiCompatibleClient {
         return request;
     }
 
-    private ImageGenerationRequest buildImageRequest(AiModelPo model, String prompt, Integer candidateCount, String size) {
+    private ImageGenerationRequest buildImageRequest(AiModelPo model, String prompt,
+                                                     List<String> referenceImageUrls,
+                                                     Integer candidateCount, String size) {
         ImageGenerationRequest request = new ImageGenerationRequest();
         request.model = model.getModelCode();
         request.prompt = prompt;
         request.n = candidateCount == null || candidateCount < 1 ? 1 : Math.min(candidateCount, 4);
         request.size = StringUtils.hasText(size) ? size.trim() : "2048x2048";
+        request.image = normalizeImageReferences(referenceImageUrls);
         return request;
+    }
+
+    private List<String> normalizeImageReferences(List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
+            return null;
+        }
+        List<String> references = new ArrayList<>();
+        for (String referenceImageUrl : referenceImageUrls) {
+            if (!StringUtils.hasText(referenceImageUrl)) {
+                continue;
+            }
+            String trimmed = referenceImageUrl.trim();
+            if (!references.contains(trimmed)) {
+                references.add(trimmed);
+            }
+            if (references.size() >= 9) {
+                break;
+            }
+        }
+        return references.isEmpty() ? null : references;
     }
 
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
@@ -816,6 +844,9 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("prompt")
         public String prompt;
+
+        @JsonProperty("image")
+        public List<String> image;
 
         @JsonProperty("n")
         public Integer n;

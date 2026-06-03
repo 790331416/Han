@@ -3,6 +3,8 @@ package com.han.aivideo.domain.dto;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * Scene image generation request.
  */
@@ -26,6 +28,10 @@ public class AivideoSceneImageGenerateDto {
     private String size;
 
     private String referenceImageUrl;
+
+    private List<Long> referenceMediaIds;
+
+    private List<String> referenceImageUrls;
 
     private String customPrompt;
 }

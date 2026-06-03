@@ -367,6 +367,13 @@
                 <el-table-column prop="characterName" label="角色名称" min-width="120" />
                 <el-table-column prop="storyRole" label="角色定位" min-width="120" />
                 <el-table-column prop="appearance" label="形象描述" min-width="220" show-overflow-tooltip />
+                <el-table-column label="参考内容" min-width="220">
+                  <template #default="{ row }">
+                    <div class="reference-summary">
+                      {{ characterReferenceSummary(row) }}
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="角色图" width="120">
                   <template #default="{ row }">
                     <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
@@ -408,6 +415,13 @@
                 <el-table-column prop="sceneName" label="场景" min-width="140" />
                 <el-table-column prop="atmosphere" label="氛围" min-width="160" />
                 <el-table-column prop="visualFeatures" label="视觉特征" min-width="240" show-overflow-tooltip />
+                <el-table-column label="参考内容" min-width="260">
+                  <template #default="{ row }">
+                    <div class="reference-summary">
+                      {{ sceneReferenceSummary(row) }}
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="场景图" width="120">
                   <template #default="{ row }">
                     <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
@@ -598,7 +612,7 @@
       </aside>
     </div>
 
-    <el-drawer v-model="sceneImageDrawerVisible" size="680px" :title="sceneImageDrawerTitle">
+    <el-drawer v-model="sceneImageDrawerVisible" size="760px" :title="sceneImageDrawerTitle">
       <div v-if="selectedSceneForImage" class="scene-image-drawer">
         <details class="prompt-preview" open>
           <summary>查看本次场景图提示词</summary>
@@ -606,32 +620,55 @@
         </details>
 
         <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="场景参考图（可粘贴 URL 或上传）">
-            <div class="reference-image-control">
-              <el-input
-                v-model="sceneImageReferenceUrl"
-                clearable
-                placeholder="粘贴参考图地址；会写入本次场景图提示词，用于锁定空间、光线、天气和色调"
-              />
-              <el-upload
-                accept="image/*"
-                :show-file-list="false"
-                :http-request="uploadSceneReferenceImage"
-                :disabled="sceneReferenceUploading || sceneImageGenerating"
+          <el-form-item label="从已确认场景图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）">
+            <el-select
+              v-model="sceneReferenceMediaIds"
+              multiple
+              clearable
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择已确认场景图；例如暴雨夜小区街道参考傍晚静谧小区街道"
+              :disabled="sceneImageGenerating"
+              @change="handleSceneReferenceChange"
+            >
+              <el-option
+                v-for="option in sceneReferenceOptions"
+                :key="option.mediaId"
+                :label="option.label"
+                :value="option.mediaId"
               >
-                <el-button
-                  :icon="Upload"
-                  :loading="sceneReferenceUploading"
-                  :disabled="sceneImageGenerating"
-                >
-                  上传参考图
-                </el-button>
-              </el-upload>
+                <div class="reference-select-option">
+                  <img
+                    v-if="referencePreviewUrls[option.mediaId]"
+                    :src="referencePreviewUrls[option.mediaId]"
+                    alt="场景参考缩略图"
+                  />
+                  <span v-else class="reference-select-placeholder">图</span>
+                  <div>
+                    <strong>{{ option.label }}</strong>
+                    <small>{{ option.subtitle }}</small>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+            <div v-if="sceneSelectedReferenceOptions.length" class="reference-selected-grid">
+              <article v-for="option in sceneSelectedReferenceOptions" :key="option.mediaId" class="reference-selected-card">
+                <el-image
+                  v-if="referencePreviewUrls[option.mediaId]"
+                  :src="referencePreviewUrls[option.mediaId]"
+                  :preview-src-list="sceneSelectedReferencePreviewList"
+                  fit="cover"
+                  preview-teleported
+                />
+                <el-empty v-else description="缩略图加载中" />
+                <div>
+                  <strong>{{ option.label }}</strong>
+                  <small>{{ option.subtitle }}</small>
+                </div>
+              </article>
             </div>
-            <div v-if="sceneImageReferenceUrl" class="reference-image-tip">
-              <span>当前参考图 URL 已生效。</span>
-              <el-link :href="sceneImageReferenceUrl" target="_blank" type="primary">打开查看</el-link>
-            </div>
+            <el-empty v-else class="reference-empty" description="未选择参考场景图；可直接生成，或先确认一张场景图后再引用" />
           </el-form-item>
         </el-form>
 
@@ -640,7 +677,7 @@
             type="primary"
             :icon="MagicStick"
             :loading="sceneImageGenerating"
-            :disabled="sceneImageGenerating || sceneReferenceUploading"
+            :disabled="sceneImageGenerating"
             @click="handleGenerateSceneImages"
           >
             生成 {{ params.imageCandidateCount || 2 }} 张候选图
@@ -684,7 +721,7 @@
       </div>
     </el-drawer>
 
-    <el-drawer v-model="characterImageDrawerVisible" size="680px" :title="characterImageDrawerTitle">
+    <el-drawer v-model="characterImageDrawerVisible" size="760px" :title="characterImageDrawerTitle">
       <div v-if="selectedCharacterForImage" class="scene-image-drawer">
         <details class="prompt-preview" open>
           <summary>查看本次角色图提示词</summary>
@@ -692,32 +729,55 @@
         </details>
 
         <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="角色参考图（可粘贴 URL 或上传）">
-            <div class="reference-image-control">
-              <el-input
-                v-model="characterImageReferenceUrl"
-                clearable
-                placeholder="粘贴参考图地址；会写入本次角色图提示词，用于锁定身份、外观轮廓、毛发/服装和色彩"
-              />
-              <el-upload
-                accept="image/*"
-                :show-file-list="false"
-                :http-request="uploadCharacterReferenceImage"
-                :disabled="characterReferenceUploading || characterImageGenerating"
+          <el-form-item label="从已确认角色图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）">
+            <el-select
+              v-model="characterReferenceMediaIds"
+              multiple
+              clearable
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择已确认角色图；用于锁定物种、脸型、体型、毛色、服装或标志性细节"
+              :disabled="characterImageGenerating"
+              @change="handleCharacterReferenceChange"
+            >
+              <el-option
+                v-for="option in characterReferenceOptions"
+                :key="option.mediaId"
+                :label="option.label"
+                :value="option.mediaId"
               >
-                <el-button
-                  :icon="Upload"
-                  :loading="characterReferenceUploading"
-                  :disabled="characterImageGenerating"
-                >
-                  上传参考图
-                </el-button>
-              </el-upload>
+                <div class="reference-select-option">
+                  <img
+                    v-if="referencePreviewUrls[option.mediaId]"
+                    :src="referencePreviewUrls[option.mediaId]"
+                    alt="角色参考缩略图"
+                  />
+                  <span v-else class="reference-select-placeholder">图</span>
+                  <div>
+                    <strong>{{ option.label }}</strong>
+                    <small>{{ option.subtitle }}</small>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+            <div v-if="characterSelectedReferenceOptions.length" class="reference-selected-grid">
+              <article v-for="option in characterSelectedReferenceOptions" :key="option.mediaId" class="reference-selected-card">
+                <el-image
+                  v-if="referencePreviewUrls[option.mediaId]"
+                  :src="referencePreviewUrls[option.mediaId]"
+                  :preview-src-list="characterSelectedReferencePreviewList"
+                  fit="cover"
+                  preview-teleported
+                />
+                <el-empty v-else description="缩略图加载中" />
+                <div>
+                  <strong>{{ option.label }}</strong>
+                  <small>{{ option.subtitle }}</small>
+                </div>
+              </article>
             </div>
-            <div v-if="characterImageReferenceUrl" class="reference-image-tip">
-              <span>当前参考图 URL 已生效。</span>
-              <el-link :href="characterImageReferenceUrl" target="_blank" type="primary">打开查看</el-link>
-            </div>
+            <el-empty v-else class="reference-empty" description="未选择参考角色图；可直接生成，或先确认一张角色图后再引用" />
           </el-form-item>
         </el-form>
 
@@ -726,7 +786,7 @@
             type="primary"
             :icon="MagicStick"
             :loading="characterImageGenerating"
-            :disabled="characterImageGenerating || characterReferenceUploading"
+            :disabled="characterImageGenerating"
             @click="handleGenerateCharacterImages"
           >
             生成 {{ params.imageCandidateCount || 2 }} 张候选图
@@ -772,6 +832,30 @@
 
     <el-drawer v-model="shotVideoDrawerVisible" size="760px" :title="shotVideoDrawerTitle">
       <div v-if="selectedShotForVideo" class="scene-image-drawer">
+        <section class="shot-reference-panel">
+          <div class="panel-title-row">
+            <strong>当前分镜参考图</strong>
+            <small>来自已确认的场景图和角色图，仅展示当前视频生成会依赖的锚点</small>
+          </div>
+          <div v-if="shotVideoReferenceOptions.length" class="reference-selected-grid">
+            <article v-for="option in shotVideoReferenceOptions" :key="option.mediaId" class="reference-selected-card">
+              <el-image
+                v-if="referencePreviewUrls[option.mediaId]"
+                :src="referencePreviewUrls[option.mediaId]"
+                :preview-src-list="shotVideoReferencePreviewList"
+                fit="cover"
+                preview-teleported
+              />
+              <el-empty v-else description="缩略图加载中" />
+              <div>
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.subtitle }}</small>
+              </div>
+            </article>
+          </div>
+          <el-empty v-else class="reference-empty" description="当前分镜暂无已确认场景图或角色图可参考" />
+        </section>
+
         <el-form class="shot-video-strategy" label-position="top">
           <el-row :gutter="12">
             <el-col :span="8">
@@ -893,7 +977,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import type { UploadRequestOptions } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowUp, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled, VideoCamera } from '@element-plus/icons-vue'
 import {
   AIVIDEO_ASSET_STREAM_PATH,
@@ -931,7 +1014,6 @@ import {
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoProject,
-  uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
@@ -955,6 +1037,13 @@ interface StageStrategyItem {
   value: string
 }
 
+interface ReferenceImageOption {
+  mediaId: string
+  label: string
+  subtitle: string
+  sourceName: string
+}
+
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -976,8 +1065,7 @@ const assetPromptPreviewText = ref('')
 const characterImageDrawerVisible = ref(false)
 const selectedCharacterForImage = ref<AivideoCharacter>()
 const characterImagePromptPreviewText = ref('')
-const characterImageReferenceUrl = ref('')
-const characterReferenceUploading = ref(false)
+const characterReferenceMediaIds = ref<string[]>([])
 const characterImageGenerating = ref(false)
 const characterImageCandidates = ref<AivideoMediaAsset[]>([])
 const characterImagePreviewUrls = ref<Record<string, string>>({})
@@ -985,12 +1073,12 @@ const characterImageSelectingIds = ref<Set<string>>(new Set())
 const sceneImageDrawerVisible = ref(false)
 const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
-const sceneImageReferenceUrl = ref('')
-const sceneReferenceUploading = ref(false)
+const sceneReferenceMediaIds = ref<string[]>([])
 const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
 const sceneImagePreviewUrls = ref<Record<string, string>>({})
 const sceneImageSelectingIds = ref<Set<string>>(new Set())
+const referencePreviewUrls = ref<Record<string, string>>({})
 const shotVideoDrawerVisible = ref(false)
 const selectedShotForVideo = ref<AivideoShot>()
 const shotVideoPromptPreviewText = ref('')
@@ -1091,6 +1179,24 @@ const assetPreviewText = computed(() => assetStreamText.value || latestAssetExtr
 const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
+const characterReferenceOptions = computed(() => characters.value
+  .filter((item) => !!item.lockedMediaId)
+  .map(characterToReferenceOption))
+const sceneReferenceOptions = computed(() => scenes.value
+  .filter((item) => !!item.lockedMediaId)
+  .map(sceneToReferenceOption))
+const characterSelectedReferenceOptions = computed(() => selectedReferenceOptions(characterReferenceMediaIds.value, characterReferenceOptions.value))
+const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
+const characterSelectedReferencePreviewList = computed(() => characterSelectedReferenceOptions.value
+  .map((item) => referencePreviewUrls.value[item.mediaId])
+  .filter(Boolean))
+const sceneSelectedReferencePreviewList = computed(() => sceneSelectedReferenceOptions.value
+  .map((item) => referencePreviewUrls.value[item.mediaId])
+  .filter(Boolean))
+const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
+const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
+  .map((item) => referencePreviewUrls.value[item.mediaId])
+  .filter(Boolean))
 const assetCounts = computed(() => ({
   characters: characters.value.length,
   scenes: scenes.value.length,
@@ -1266,12 +1372,157 @@ function stageStrategyPrompt(scope: PromptScope) {
   ].join('\n')
 }
 
-function imageReferencePrompt(scope: PromptScope) {
-  if (scope === 'characterImage' && characterImageReferenceUrl.value.trim()) {
-    return `【角色参考图 URL】${characterImageReferenceUrl.value.trim()}\n请优先参考该图的角色身份、外观轮廓、毛发/服装/色彩特征，禁止改成其他角色；参考图只用于锁定外观，最终仍必须输出单主体视频角色锚定图，禁止四方向/三视图/多视图/分栏拼图。`
+function characterToReferenceOption(character: AivideoCharacter): ReferenceImageOption {
+  const mediaId = String(character.lockedMediaId || '')
+  return {
+    mediaId,
+    label: `${character.characterName || '未命名角色'} #${mediaId}`,
+    subtitle: [character.storyRole, character.appearance].filter(Boolean).join(' / ') || '已确认角色图',
+    sourceName: character.characterName || '未命名角色'
   }
-  if (scope === 'sceneImage' && sceneImageReferenceUrl.value.trim()) {
-    return `【场景参考图 URL】${sceneImageReferenceUrl.value.trim()}\n请优先参考该图的空间结构、光线、天气、色调和前后景关系，禁止替换为无关场景；最终必须保持单镜头纯场景首帧参考图，不生成拼图、分栏、设定板或文字标签。`
+}
+
+function sceneToReferenceOption(scene: AivideoScene): ReferenceImageOption {
+  const mediaId = String(scene.lockedMediaId || '')
+  return {
+    mediaId,
+    label: `${scene.sceneName || '未命名场景'} #${mediaId}`,
+    subtitle: [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景图',
+    sourceName: scene.sceneName || '未命名场景'
+  }
+}
+
+function selectedReferenceOptions(selectedIds: string[], options: ReferenceImageOption[]) {
+  const optionMap = new Map(options.map((item) => [item.mediaId, item]))
+  return selectedIds.map((id) => optionMap.get(String(id))).filter(Boolean) as ReferenceImageOption[]
+}
+
+function shouldUseSceneContinuityReference(scene: AivideoScene) {
+  const text = [
+    scene.sceneName,
+    scene.sceneType,
+    scene.timeDesc,
+    scene.weather,
+    scene.atmosphere,
+    scene.visualFeatures,
+    scene.promptText
+  ].filter(Boolean).join(' ')
+  return /同一|同一个|同条|同场景|同地点|同街道|延续|上一|相同|同款|同位置/.test(text)
+}
+
+function findRecommendedSceneReference(scene: AivideoScene) {
+  if (!shouldUseSceneContinuityReference(scene)) {
+    return undefined
+  }
+  const currentIndex = scenes.value.findIndex((item) => String(item.sceneId) === String(scene.sceneId))
+  if (currentIndex <= 0) {
+    return undefined
+  }
+  return scenes.value
+    .slice(0, currentIndex)
+    .reverse()
+    .find((item) => !!item.lockedMediaId)
+}
+
+function sceneReferenceSummary(scene: AivideoScene) {
+  const recommended = findRecommendedSceneReference(scene)
+  if (recommended?.lockedMediaId) {
+    return `建议参考：${recommended.sceneName || '上一已确认场景'} 的图 #${recommended.lockedMediaId}`
+  }
+  if (scene.lockedMediaId) {
+    return `已确认图 #${scene.lockedMediaId}，可作为后续同场景参考`
+  }
+  return sceneReferenceOptions.value.length ? '生成时可选择已确认场景图作为参考' : '暂无已确认场景图可参考'
+}
+
+function characterReferenceSummary(character: AivideoCharacter) {
+  if (character.lockedMediaId) {
+    return `已确认角色图 #${character.lockedMediaId}；再生成时默认参考此图保持一致`
+  }
+  return characterReferenceOptions.value.length ? '生成时可选择已确认角色图作为外观参考' : '暂无已确认角色图可参考'
+}
+
+function defaultSceneReferenceMediaIds(scene: AivideoScene) {
+  const recommended = findRecommendedSceneReference(scene)
+  if (recommended?.lockedMediaId) {
+    return [String(recommended.lockedMediaId)]
+  }
+  return scene.lockedMediaId ? [String(scene.lockedMediaId)] : []
+}
+
+function defaultCharacterReferenceMediaIds(character: AivideoCharacter) {
+  return character.lockedMediaId ? [String(character.lockedMediaId)] : []
+}
+
+function parseShotCharacterIds(value?: string) {
+  if (!value) {
+    return []
+  }
+  const text = String(value).trim()
+  if (!text) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(text)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => {
+          if (item && typeof item === 'object') {
+            return String(item.characterId || item.id || '')
+          }
+          return String(item)
+        })
+        .filter(Boolean)
+    }
+  } catch (_error) {
+    // 兼容逗号、中文逗号或分号分隔的老数据。
+  }
+  return text.split(/[,，;；\s]+/).map((item) => item.trim()).filter(Boolean)
+}
+
+function buildShotVideoReferenceOptions(shot?: AivideoShot) {
+  if (!shot) {
+    return []
+  }
+  const options: ReferenceImageOption[] = []
+  const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
+  if (scene?.lockedMediaId) {
+    options.push({
+      mediaId: String(scene.lockedMediaId),
+      label: `场景：${scene.sceneName || '未命名场景'} #${scene.lockedMediaId}`,
+      subtitle: [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '当前分镜场景图',
+      sourceName: scene.sceneName || '当前分镜场景'
+    })
+  }
+  const characterIdSet = new Set(parseShotCharacterIds(shot.characterIds))
+  characters.value
+    .filter((item) => item.lockedMediaId && characterIdSet.has(String(item.characterId)))
+    .forEach((item) => {
+      options.push({
+        mediaId: String(item.lockedMediaId),
+        label: `角色：${item.characterName || '未命名角色'} #${item.lockedMediaId}`,
+        subtitle: [item.storyRole, item.appearance].filter(Boolean).join(' / ') || '当前分镜角色图',
+        sourceName: item.characterName || '当前分镜角色'
+      })
+    })
+  return options
+}
+
+function imageReferencePrompt(scope: PromptScope) {
+  const options = scope === 'characterImage'
+    ? characterSelectedReferenceOptions.value
+    : scope === 'sceneImage'
+      ? sceneSelectedReferenceOptions.value
+      : []
+  if (!options.length) {
+    return ''
+  }
+  const references = options.map((item, index) => `图片${index + 1}：${item.sourceName}（已确认媒体 #${item.mediaId}）`).join('\n')
+  if (scope === 'characterImage') {
+    return `【角色参考图】\n${references}\n请严格按图片顺序使用参考图：图片1为最重要角色身份锚点，优先继承物种/脸型/体型/毛色/服装/标志性细节；后续图片只补充局部细节。禁止生成多个主体，禁止改成其他角色，最终仍必须输出单主体视频角色锚定图。`
+  }
+  if (scope === 'sceneImage') {
+    return `【场景参考图】\n${references}\n请严格按图片顺序使用参考图：图片1为最重要场景锚点，优先继承空间结构、镜头位置、核心道具、建筑关系和色调；后续图片只补充天气、时间、光线或局部细节。禁止替换为无关场景，最终必须保持单镜头纯场景首帧参考图。`
   }
   return ''
 }
@@ -1399,7 +1650,7 @@ async function refreshSceneImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
-      referenceImageUrl: sceneImageReferenceUrl.value.trim(),
+      referenceMediaIds: sceneReferenceMediaIds.value,
       customPrompt: scopedCustomPrompt('sceneImage')
     })
     sceneImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
@@ -1421,61 +1672,13 @@ async function refreshCharacterImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
-      referenceImageUrl: characterImageReferenceUrl.value.trim(),
+      referenceMediaIds: characterReferenceMediaIds.value,
       customPrompt: scopedCustomPrompt('characterImage')
     })
     characterImagePromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
   } catch (_error) {
     characterImagePromptPreviewText.value = ''
   }
-}
-
-function validateReferenceImageFile(file: File) {
-  const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)
-  if (!isImage) {
-    throw new Error('请上传图片文件，支持 png、jpg、jpeg、webp、gif、bmp')
-  }
-  const maxSize = 20 * 1024 * 1024
-  if (file.size > maxSize) {
-    throw new Error('参考图不能超过 20MB')
-  }
-}
-
-async function uploadReferenceImage(options: UploadRequestOptions, scope: 'characterImage' | 'sceneImage') {
-  const loadingRef = scope === 'characterImage' ? characterReferenceUploading : sceneReferenceUploading
-  loadingRef.value = true
-  try {
-    const file = options.file as File
-    validateReferenceImageFile(file)
-    const res = await uploadAivideoReferenceImage(file)
-    const url = res.data?.url
-    if (!url) {
-      throw new Error('上传成功但没有返回参考图 URL')
-    }
-    if (scope === 'characterImage') {
-      characterImageReferenceUrl.value = url
-      await refreshCharacterImagePromptPreview()
-    } else {
-      sceneImageReferenceUrl.value = url
-      await refreshSceneImagePromptPreview()
-    }
-    ElMessage.success('参考图已上传，URL 已写入本次生成提示词')
-    options.onSuccess?.(res.data)
-  } catch (error: any) {
-    const message = error?.message || '参考图上传失败'
-    ElMessage.error(message)
-    options.onError?.(new Error(message) as any)
-  } finally {
-    loadingRef.value = false
-  }
-}
-
-function uploadCharacterReferenceImage(options: UploadRequestOptions) {
-  return uploadReferenceImage(options, 'characterImage')
-}
-
-function uploadSceneReferenceImage(options: UploadRequestOptions) {
-  return uploadReferenceImage(options, 'sceneImage')
 }
 
 async function refreshShotVideoPromptPreview() {
@@ -1513,11 +1716,62 @@ async function refreshShotVideoPromptPreview() {
   }
 }
 
+function normalizeReferenceMediaSelection(ids: Array<string | number>) {
+  const unique = Array.from(new Set((ids || []).map((id) => String(id)).filter(Boolean)))
+  if (unique.length > 9) {
+    ElMessage.warning('参考图最多选择 9 张，已自动保留前 9 张')
+    return unique.slice(0, 9)
+  }
+  return unique
+}
+
+async function loadReferencePreviewUrl(mediaId: string | number) {
+  const key = String(mediaId)
+  if (!key || referencePreviewUrls.value[key]) {
+    return
+  }
+  try {
+    const response = await previewAivideoMedia(key)
+    const blob = (response as any).data as Blob
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      return
+    }
+    referencePreviewUrls.value = {
+      ...referencePreviewUrls.value,
+      [key]: URL.createObjectURL(blob)
+    }
+  } catch (_error) {
+    // 缩略图失败不阻断生成；卡片会保留占位。
+  }
+}
+
+async function loadReferencePreviewUrls(options: ReferenceImageOption[]) {
+  await Promise.all(options.map((item) => loadReferencePreviewUrl(item.mediaId)))
+}
+
+function revokeReferencePreviewUrls() {
+  Object.values(referencePreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  referencePreviewUrls.value = {}
+}
+
+async function handleSceneReferenceChange(ids: Array<string | number>) {
+  sceneReferenceMediaIds.value = normalizeReferenceMediaSelection(ids)
+  await loadReferencePreviewUrls(sceneSelectedReferenceOptions.value)
+  await refreshSceneImagePromptPreview()
+}
+
+async function handleCharacterReferenceChange(ids: Array<string | number>) {
+  characterReferenceMediaIds.value = normalizeReferenceMediaSelection(ids)
+  await loadReferencePreviewUrls(characterSelectedReferenceOptions.value)
+  await refreshCharacterImagePromptPreview()
+}
+
 async function openCharacterImageDrawer(character: AivideoCharacter) {
   selectedCharacterForImage.value = character
   activePromptScope.value = 'characterImage'
-  characterImageReferenceUrl.value = ''
+  characterReferenceMediaIds.value = defaultCharacterReferenceMediaIds(character)
   characterImageDrawerVisible.value = true
+  await loadReferencePreviewUrls(characterReferenceOptions.value)
   await refreshCharacterImagePromptPreview()
   await loadCharacterImageCandidates()
 }
@@ -1573,8 +1827,9 @@ async function loadCharacterImageCandidates() {
 async function openSceneImageDrawer(scene: AivideoScene) {
   selectedSceneForImage.value = scene
   activePromptScope.value = 'sceneImage'
-  sceneImageReferenceUrl.value = ''
+  sceneReferenceMediaIds.value = defaultSceneReferenceMediaIds(scene)
   sceneImageDrawerVisible.value = true
+  await loadReferencePreviewUrls(sceneReferenceOptions.value)
   await refreshSceneImagePromptPreview()
   await loadSceneImageCandidates()
 }
@@ -1636,6 +1891,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   shotVideoLoading.value = true
   try {
     await Promise.all([
+      loadReferencePreviewUrls(shotVideoReferenceOptions.value),
       refreshShotVideoPromptPreview(),
       loadShotVideoTasks(),
       loadShotVideoCandidates()
@@ -2364,7 +2620,7 @@ async function handleGenerateCharacterImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
-        referenceImageUrl: characterImageReferenceUrl.value.trim(),
+        referenceMediaIds: characterReferenceMediaIds.value,
         customPrompt: scopedCustomPrompt('characterImage')
       },
       onMeta: (payload) => {
@@ -2409,7 +2665,7 @@ async function handleGenerateSceneImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
-        referenceImageUrl: sceneImageReferenceUrl.value.trim(),
+        referenceMediaIds: sceneReferenceMediaIds.value,
         customPrompt: scopedCustomPrompt('sceneImage')
       },
       onMeta: (payload) => {
@@ -2644,8 +2900,8 @@ watch(() => [
 })
 
 watch(() => [
-  characterImageReferenceUrl.value,
-  sceneImageReferenceUrl.value
+  characterReferenceMediaIds.value.join(','),
+  sceneReferenceMediaIds.value.join(',')
 ], () => {
   schedulePolishPromptPreview()
 })
@@ -2667,6 +2923,7 @@ onBeforeUnmount(() => {
     clearTimeout(promptPreviewTimer)
   }
   clearShotVideoRecoveryTimer()
+  revokeReferencePreviewUrls()
   revokeCharacterImagePreviewUrls()
   revokeSceneImagePreviewUrls()
   revokeShotVideoPreviewUrls()
@@ -2891,15 +3148,108 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+.reference-select-option {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  line-height: 1.25;
+
+  img,
+  .reference-select-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #eef2ff;
+  }
+
+  .reference-select-placeholder {
+    display: grid;
+    place-items: center;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  strong,
+  small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    margin-top: 3px;
+    color: #64748b;
+  }
+}
+
+.reference-selected-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.reference-selected-card {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #ffffff;
+
+  .el-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    background: #f3f4f6;
+  }
+
+  strong,
+  small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    color: #64748b;
+  }
+}
+
+.reference-empty {
+  margin-top: 8px;
+  padding: 8px 0;
+}
+
+.reference-summary {
+  color: #475569;
+  line-height: 1.5;
+}
+
 @media (max-width: 720px) {
   .reference-image-control {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .reference-selected-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .shot-video-gate-alert {
   margin-bottom: 12px;
+}
+
+.shot-reference-panel {
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
 }
 
 .shot-tail-frame-tag {

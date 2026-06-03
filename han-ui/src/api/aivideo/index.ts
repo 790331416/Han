@@ -426,6 +426,8 @@ export function previewAivideoSceneImagePrompt(data: {
   resolution?: string
   size?: string
   referenceImageUrl?: string
+  referenceMediaIds?: Array<string | number>
+  referenceImageUrls?: string[]
   customPrompt?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/scene/prompt-preview', data, { silentError: true })
@@ -440,6 +442,8 @@ export function previewAivideoCharacterImagePrompt(data: {
   resolution?: string
   size?: string
   referenceImageUrl?: string
+  referenceMediaIds?: Array<string | number>
+  referenceImageUrls?: string[]
   customPrompt?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/character/prompt-preview', data, { silentError: true })

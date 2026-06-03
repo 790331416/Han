@@ -86,6 +86,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String MEDIA_ACCESS_PRIVATE = "PRIVATE";
     private static final String MEDIA_ACCESS_PUBLIC = "PUBLIC";
     private static final int DEFAULT_CANDIDATE_COUNT = 2;
+    private static final int MAX_REFERENCE_IMAGE_COUNT = 9;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final String SCENE_IMAGE_SYSTEM_PROMPT = """
             你是 Seedance 视频生成专用场景参考图设计专家。
@@ -123,6 +124,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     @Value("${han.aivideo.media.internal-file-origin:http://gateway:8080}")
     private String internalFileOrigin;
+
+    @Value("${han.aivideo.media.public-file-origin:}")
+    private String publicFileOrigin;
 
     @Override
     public AivideoPromptPreviewVo previewSceneImagePrompt(AivideoSceneImageGenerateDto dto) {
@@ -367,14 +371,18 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getSceneImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getSceneImagePromptTemplateId() : null);
+        List<String> referenceImageUrls = resolveReferenceImageUrls(project.getProjectId(), ASSET_SCENE_IMAGE,
+                BIZ_SCENE, dto.getReferenceMediaIds(), dto.getReferenceImageUrl(), dto.getReferenceImageUrls());
         Map<String, String> variables = buildSceneVariables(project, scene, ratio, resolution);
-        variables.put("referenceImageUrl", safeValue(dto.getReferenceImageUrl()));
+        variables.put("referenceImageUrl", referenceImageUrls.isEmpty() ? "未填写" : referenceImageUrls.get(0));
+        variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
+        variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
         String fallbackPrompt = buildSceneImagePrompt(project, scene, ratio, resolution);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("size", firstText(dto.getSize(), ""));
         return new RequestContext(project, scene, null, setting, modelId, promptTemplateId, candidateCount,
-                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables,
+                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables, referenceImageUrls,
                 SCENE_IMAGE_SYSTEM_PROMPT, ASSET_SCENE_IMAGE, BIZ_SCENE, scene.getSceneId(),
                 TASK_SCENE_IMAGE, "场景图生成失败", "人物, 人影, human, person, face, body, crowd, extra people");
     }
@@ -406,17 +414,114 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getCharacterImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getCharacterImagePromptTemplateId() : null);
+        List<String> referenceImageUrls = resolveReferenceImageUrls(project.getProjectId(), ASSET_CHARACTER_IMAGE,
+                BIZ_CHARACTER, dto.getReferenceMediaIds(), dto.getReferenceImageUrl(), dto.getReferenceImageUrls());
         Map<String, String> variables = buildCharacterVariables(project, character, ratio, resolution);
-        variables.put("referenceImageUrl", safeValue(dto.getReferenceImageUrl()));
-        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution, dto.getReferenceImageUrl());
+        variables.put("referenceImageUrl", referenceImageUrls.isEmpty() ? "未填写" : referenceImageUrls.get(0));
+        variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
+        variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
+        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution,
+                referenceImageUrls.isEmpty() ? null : referenceImageUrls.get(0));
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("size", firstText(dto.getSize(), ""));
         return new RequestContext(project, null, character, setting, modelId, promptTemplateId, candidateCount,
-                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables,
+                ratio, resolution, dto.getSize(), dto.getCustomPrompt(), prompt, variables, referenceImageUrls,
                 CHARACTER_IMAGE_SYSTEM_PROMPT, ASSET_CHARACTER_IMAGE, BIZ_CHARACTER, character.getCharacterId(),
                 TASK_CHARACTER_IMAGE, "角色形象图生成失败",
                 "multiple characters, crowd, extra people, watermark, logo, text, signature, headshot only, portrait only, close-up only, half body, cropped body, missing legs, missing paws, missing feet, missing tail, inconsistent layout, inconsistent scale, inconsistent markings, different animal, different breed, human body if animal role");
+    }
+
+    private List<String> resolveReferenceImageUrls(Long projectId, String expectedAssetType, String expectedBizType,
+                                                   List<Long> referenceMediaIds, String referenceImageUrl,
+                                                   List<String> referenceImageUrls) {
+        List<String> references = new ArrayList<>();
+        if (referenceMediaIds != null) {
+            for (Long mediaId : referenceMediaIds) {
+                addMediaReference(references, projectId, expectedAssetType, expectedBizType, mediaId);
+            }
+        }
+        addDirectReference(references, referenceImageUrl);
+        if (referenceImageUrls != null) {
+            for (String url : referenceImageUrls) {
+                addDirectReference(references, url);
+            }
+        }
+        return references;
+    }
+
+    private void addMediaReference(List<String> references, Long projectId, String expectedAssetType,
+                                   String expectedBizType, Long mediaId) {
+        if (mediaId == null) {
+            return;
+        }
+        if (references.size() >= MAX_REFERENCE_IMAGE_COUNT) {
+            throw new BusinessException("参考图最多支持 " + MAX_REFERENCE_IMAGE_COUNT + " 张");
+        }
+        AiVideoMediaAssetPo media = requireMedia(mediaId);
+        if (!Objects.equals(projectId, media.getProjectId())) {
+            throw new BusinessException("参考图不属于当前项目");
+        }
+        if (!expectedAssetType.equals(media.getAssetType()) || !expectedBizType.equals(media.getBizType())) {
+            throw new BusinessException("参考图类型不匹配，请选择已确认的" + ("SCENE".equals(expectedBizType) ? "场景图" : "角色图"));
+        }
+        if (!YES.equals(media.getSelected())) {
+            throw new BusinessException("只能选择已确认的参考图");
+        }
+        addReference(references, buildProviderFileUrl(media.getFileUrl()));
+    }
+
+    private void addDirectReference(List<String> references, String url) {
+        if (!StringUtils.hasText(url)) {
+            return;
+        }
+        if (references.size() >= MAX_REFERENCE_IMAGE_COUNT) {
+            throw new BusinessException("参考图最多支持 " + MAX_REFERENCE_IMAGE_COUNT + " 张");
+        }
+        addReference(references, buildProviderFileUrl(url));
+    }
+
+    private void addReference(List<String> references, String url) {
+        if (!StringUtils.hasText(url)) {
+            return;
+        }
+        String trimmed = url.trim();
+        if (!references.contains(trimmed)) {
+            references.add(trimmed);
+        }
+    }
+
+    private String buildProviderFileUrl(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl)) {
+            throw new BusinessException("参考图地址为空");
+        }
+        String trimmed = fileUrl.trim();
+        if (trimmed.startsWith("http")) {
+            return trimmed;
+        }
+        String publicPath = toFilePublicPath(trimmed);
+        String origin = firstText(publicFileOrigin, "");
+        if (!StringUtils.hasText(origin)) {
+            throw new BusinessException("参考图外部访问地址未配置，请配置 han.aivideo.media.public-file-origin");
+        }
+        if (origin.endsWith("/")) {
+            origin = origin.substring(0, origin.length() - 1);
+        }
+        return origin + publicPath;
+    }
+
+    private String formatReferenceImageUrls(List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
+            return "未填写";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < referenceImageUrls.size(); i++) {
+            if (i > 0) {
+                builder.append('\n');
+            }
+            builder.append("图片").append(i + 1).append("：").append(referenceImageUrls.get(i));
+        }
+        return builder.toString();
     }
 
     private AiImageGenerateResponse invokeImageGeneration(RequestContext context, int candidateCount) {
@@ -428,6 +533,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
         request.setSize(context.size());
+        request.setReferenceImageUrls(context.referenceImageUrls());
         R<AiImageGenerateResponse> result = aiServiceClient.generateImage(request);
         if (result == null || result.isFail()) {
             throw new BusinessException(result == null ? "AI 图片服务无响应" : result.getMsg());
@@ -767,9 +873,10 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 不能出现其他人, 无人, 纯场景, no humans, empty scene, single shot reference。
                 Seedance 视频场景参考图/首帧环境锚点，单一镜头画面，极高画质，高辨识度，画幅：%s，清晰度目标：%s。
                 严禁出现任何角色、人名、人影、人物剪影、动物、脸、身体部位、crowd、person、human。
-                禁止拼图、分栏、设定板、地图、俯视平面图、漫画格、文字、水印、logo 或说明标签。
-                场景描述必须完整涵盖环境类型、具体时间、天气光线、空间氛围、视觉主要特征和核心道具。
-                画面必须可作为后续分镜视频背景：前景/中景/远景清楚，地面或可行动区域明确，主光源方向和色调稳定，避免过度抽象。
+            禁止拼图、分栏、设定板、地图、俯视平面图、漫画格、文字、水印、logo 或说明标签。
+            如本次传入参考图，必须按图片1、图片2……的顺序使用：图片1为最重要场景锚点，优先继承其空间结构、镜头位置、核心道具和建筑关系；后续参考图只补充天气、时间、光线或细节，不得随机换地点。
+            场景描述必须完整涵盖环境类型、具体时间、天气光线、空间氛围、视觉主要特征和核心道具。
+            画面必须可作为后续分镜视频背景：前景/中景/远景清楚，地面或可行动区域明确，主光源方向和色调稳定，避免过度抽象。
 
                 项目：%s
                 风格：%s
@@ -823,8 +930,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 视频参考硬规则：禁止四方向、三视图、多视图、转面表、分栏、拼图、同款分身、多个角度并排；避免被视频模型误识别成多个主体。
                 全身硬规则：必须完整露出头部/脸部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、禁止半身、禁止身体裁切。
                 一致性硬规则：突出 2-3 个稳定外观特征，保持同一体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹、光照和比例。
-                旧词屏蔽规则：如果历史提示词里出现头像、半身、三视图、四方向、正侧背等旧版版式，只提取身份和外观特征；最终只允许单主体视频角色锚定图。
-                必须体现身份定位、性格气质、外观轮廓、毛发/发型、服饰/身体特征、颜色风格、标志性细节。
+            旧词屏蔽规则：如果历史提示词里出现头像、半身、三视图、四方向、正侧背等旧版版式，只提取身份和外观特征；最终只允许单主体视频角色锚定图。
+            如本次传入参考图，必须按图片1、图片2……的顺序使用：图片1为最重要角色身份锚点，优先继承物种/脸型/体型/毛色/服装/标志性细节；后续参考图只补充局部细节，不得生成多个主体或改变物种。
+            必须体现身份定位、性格气质、外观轮廓、毛发/发型、服饰/身体特征、颜色风格、标志性细节。
                 只出现该角色本体，不出现其他角色、复杂剧情动作、文字、水印、logo、复杂环境；背景使用纯白、浅灰或极简棚拍背景。
 
                 项目：%s
@@ -1152,6 +1260,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             String customPrompt,
             String prompt,
             Map<String, String> variables,
+            List<String> referenceImageUrls,
             String systemPrompt,
             String assetType,
             String bizType,

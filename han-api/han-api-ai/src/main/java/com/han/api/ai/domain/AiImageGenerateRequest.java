@@ -1,6 +1,7 @@
 package com.han.api.ai.domain;
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +29,8 @@ public class AiImageGenerateRequest implements Serializable {
     private String resolution;
 
     private String size;
+
+    private List<String> referenceImageUrls;
 
     public Long getTenantId() {
         return tenantId;
@@ -107,5 +110,13 @@ public class AiImageGenerateRequest implements Serializable {
 
     public void setSize(String size) {
         this.size = size;
+    }
+
+    public List<String> getReferenceImageUrls() {
+        return referenceImageUrls;
+    }
+
+    public void setReferenceImageUrls(List<String> referenceImageUrls) {
+        this.referenceImageUrls = referenceImageUrls;
     }
 }
