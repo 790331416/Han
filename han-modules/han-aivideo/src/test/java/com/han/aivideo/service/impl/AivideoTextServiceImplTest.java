@@ -1,9 +1,14 @@
 package com.han.aivideo.service.impl;
 
+import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AivideoTextServiceImplTest {
@@ -86,5 +91,47 @@ class AivideoTextServiceImplTest {
                 """;
 
         assertFalse(AivideoTextServiceImpl.isProbablyTruncatedAssetJson(raw));
+    }
+
+    @Test
+    void validateShotSpatialContinuityRejectsDoghouseJumpAfterSignFrameDanger() {
+        BusinessException exception = assertThrows(BusinessException.class, () ->
+                AivideoTextServiceImpl.validateShotSpatialContinuity(List.of(
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                2,
+                                "暴雨夜小区街道",
+                                "一道闪电划破夜空，照亮对面商铺屋顶上摇摇欲坠的广告牌铁架，一个模糊的小身影蜷缩在上面。",
+                                ""
+                        ),
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                3,
+                                "狗窝角落",
+                                "狗狗蜷缩在窝的角落，身体随着雷声微微发抖。雨水泼溅到窝口，打湿边缘。",
+                                ""
+                        )
+                )));
+
+        assertTrue(exception.getMessage().contains("第2镜"));
+        assertTrue(exception.getMessage().contains("第3镜"));
+        assertTrue(exception.getMessage().contains("狗窝"));
+    }
+
+    @Test
+    void validateShotSpatialContinuityAllowsStreetBridgeTowardSignFrameDanger() {
+        assertDoesNotThrow(() ->
+                AivideoTextServiceImpl.validateShotSpatialContinuity(List.of(
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                2,
+                                "暴雨夜小区街道",
+                                "一道闪电划破夜空，照亮对面商铺屋顶上摇摇欲坠的广告牌铁架，一个模糊的小身影蜷缩在上面。",
+                                ""
+                        ),
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                3,
+                                "暴雨夜小区街道",
+                                "延续上一镜，狗狗在街边抬头望向广告牌铁架，身体绷紧，准备冲向商铺雨棚。",
+                                ""
+                        )
+                )));
     }
 }

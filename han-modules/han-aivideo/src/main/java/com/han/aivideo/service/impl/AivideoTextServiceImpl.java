@@ -884,6 +884,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private void insertAssets(AiVideoProjectPo project, AssetPayload payload, AiVideoProjectSettingPo setting) {
+        validateShotSpatialContinuity(toShotContinuitySnapshots(payload == null ? null : payload.shots));
+
         Map<String, Long> characterIdMap = new LinkedHashMap<>();
         int index = 1;
         for (CharacterPayload item : safeList(payload.characters)) {
@@ -1380,7 +1382,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "8. 动作预算：5 秒=1 个主动作 + 1 个反应/表情 + 1 个结尾状态；6 秒=2 个连续动作 + 结尾状态；8 秒=3 个连续动作 + 明确结尾状态。\n"
                 + "9. 超过 3 个动作 beat 必须自动拆成多个 shots，不允许硬塞；强动作如倒地起身、悬浮、变身、俯冲、落水、打斗、救援、掰弯铁栏等额外占预算，优先单独作为一个镜头核心。\n"
                 + "10. actionDesc 必须写成视频模型能执行的动作节拍，包含起始状态、主动作、反应/表情和结尾状态；promptText 必须补充构图、目标部位可见和部位发光限制。\n"
-                + "11. 出现爪子、手、脚、翅膀、尾巴等部位时，必须要求半身/全身构图并露出目标部位；出现发光时必须写清具体发光部位，禁止用眼睛发光替代爪子/手/脚等目标部位发光。\n\n"
+                + "11. 出现爪子、手、脚、翅膀、尾巴等部位时，必须要求半身/全身构图并露出目标部位；出现发光时必须写清具体发光部位，禁止用眼睛发光替代爪子/手/脚等目标部位发光。\n"
+                + "12. 剧情空间连续性是硬约束：后一分镜必须承接前一分镜的主体位置、危险目标、空间关系和结尾状态，不能只因情绪需要突然换地点。\n"
+                + "13. 如果上一分镜建立了屋顶、广告牌、铁架、高处、水中、火场、车道等危险目标，下一分镜必须继续该目标、让主角观察/靠近/救援该目标，或在 actionDesc 开头写明过渡动作。\n"
+                + "14. 未经剧本铺垫，禁止突然切到狗窝、室内、家里、床下、窝口等新地点；必须先用过渡镜头建立空间关系，或改写为“延续上一镜，镜头回到街边/同一条街道”。\n"
+                + "15. 错误示例：上一镜“广告牌铁架上有小身影”，下一镜“狗狗蜷缩在窝的角落”。正确示例：下一镜“延续上一镜，狗狗在街边抬头望向广告牌铁架，身体绷紧准备冲向商铺雨棚”。\n\n"
                 + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","
@@ -1462,6 +1468,88 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private <T> List<T> safeList(List<T> values) {
         return values == null ? List.of() : values;
+    }
+
+    private List<ShotContinuitySnapshot> toShotContinuitySnapshots(List<ShotPayload> shots) {
+        List<ShotContinuitySnapshot> snapshots = new ArrayList<>();
+        for (ShotPayload shot : safeList(shots)) {
+            if (shot == null) {
+                continue;
+            }
+            snapshots.add(new ShotContinuitySnapshot(shot.shotNo, shot.sceneName, shot.actionDesc, shot.promptText));
+        }
+        return snapshots;
+    }
+
+    static void validateShotSpatialContinuity(List<ShotContinuitySnapshot> shots) {
+        if (shots == null || shots.size() < 2) {
+            return;
+        }
+        for (int i = 1; i < shots.size(); i++) {
+            ShotContinuitySnapshot previous = shots.get(i - 1);
+            ShotContinuitySnapshot current = shots.get(i);
+            String previousText = continuityText(previous);
+            String currentText = continuityText(current);
+            if (hasHighRiskSpatialTarget(previousText)
+                    && hasUnintroducedShelterJump(currentText)
+                    && !hasSpatialBridge(currentText)) {
+                throw new BusinessException("分镜连续性失败：第" + shotNo(previous, i)
+                        + "镜建立了广告牌/铁架/高处等危机目标，第" + shotNo(current, i + 1)
+                        + "镜突然切到狗窝/室内/窝口等未铺垫地点。请改为延续上一镜的街道与危险目标，"
+                        + "或在 actionDesc 开头补充明确过渡动作。");
+            }
+        }
+    }
+
+    private static String continuityText(ShotContinuitySnapshot shot) {
+        if (shot == null) {
+            return "";
+        }
+        return compactText(shot.sceneName(), shot.actionDesc(), shot.promptText());
+    }
+
+    private static String compactText(String... values) {
+        StringBuilder builder = new StringBuilder();
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                builder.append(value.trim());
+            }
+        }
+        return builder.toString();
+    }
+
+    private static boolean hasHighRiskSpatialTarget(String text) {
+        return containsAny(text, "广告牌", "铁架", "屋顶", "楼顶", "高处", "雨棚", "水中", "落水",
+                "火场", "车道", "桥边", "悬崖", "摇摇欲坠", "小身影", "被困");
+    }
+
+    private static boolean hasUnintroducedShelterJump(String text) {
+        return containsAny(text, "狗窝", "窝口", "窝里", "窝的", "窝角", "室内", "屋内", "家里",
+                "床下", "沙发下", "房间");
+    }
+
+    private static boolean hasSpatialBridge(String text) {
+        return containsAny(text, "延续上一镜", "承接上一镜", "从上一镜", "镜头回到", "切回", "同一条街",
+                "同一街道", "街边", "对面商铺", "广告牌", "铁架", "屋顶", "高处", "雨棚", "抬头望向");
+    }
+
+    private static boolean containsAny(String text, String... keywords) {
+        if (!StringUtils.hasText(text) || keywords == null) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (StringUtils.hasText(keyword) && text.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int shotNo(ShotContinuitySnapshot shot, int fallback) {
+        return shot != null && shot.shotNo() != null ? shot.shotNo() : fallback;
     }
 
     private void fillCreateAudit(AiVideoGenerationTaskPo task) {
@@ -1594,5 +1682,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         public String voiceOver;
         public String emotion;
         public String promptText;
+    }
+
+    record ShotContinuitySnapshot(Integer shotNo, String sceneName, String actionDesc, String promptText) {
     }
 }
