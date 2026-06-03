@@ -619,58 +619,18 @@
           <pre>{{ sceneImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
 
-        <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="从已确认场景图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）">
-            <el-select
-              v-model="sceneReferenceMediaIds"
-              multiple
-              clearable
-              filterable
-              collapse-tags
-              collapse-tags-tooltip
-              placeholder="选择已确认场景图；例如暴雨夜小区街道参考傍晚静谧小区街道"
-              :disabled="sceneImageGenerating"
-              @change="handleSceneReferenceChange"
-            >
-              <el-option
-                v-for="option in sceneReferenceOptions"
-                :key="option.mediaId"
-                :label="option.label"
-                :value="option.mediaId"
-              >
-                <div class="reference-select-option">
-                  <img
-                    v-if="referencePreviewUrls[option.mediaId]"
-                    :src="referencePreviewUrls[option.mediaId]"
-                    alt="场景参考缩略图"
-                  />
-                  <span v-else class="reference-select-placeholder">图</span>
-                  <div>
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.subtitle }}</small>
-                  </div>
-                </div>
-              </el-option>
-            </el-select>
-            <div v-if="sceneSelectedReferenceOptions.length" class="reference-selected-grid">
-              <article v-for="option in sceneSelectedReferenceOptions" :key="option.mediaId" class="reference-selected-card">
-                <el-image
-                  v-if="referencePreviewUrls[option.mediaId]"
-                  :src="referencePreviewUrls[option.mediaId]"
-                  :preview-src-list="sceneSelectedReferencePreviewList"
-                  fit="cover"
-                  preview-teleported
-                />
-                <el-empty v-else description="缩略图加载中" />
-                <div>
-                  <strong>{{ option.label }}</strong>
-                  <small>{{ option.subtitle }}</small>
-                </div>
-              </article>
-            </div>
-            <el-empty v-else class="reference-empty" description="未选择参考场景图；可直接生成，或先确认一张场景图后再引用" />
-          </el-form-item>
-        </el-form>
+        <ReferenceImagePicker
+          v-model="sceneReferenceMediaIds"
+          scope="scene"
+          label="从已确认场景图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）"
+          placeholder="选择已确认场景图；例如暴雨夜小区街道参考傍晚静谧小区街道"
+          thumbnail-alt="场景参考缩略图"
+          empty-description="未选择参考场景图；可直接生成，或先确认一张场景图后再引用"
+          :options="sceneReferenceOptions"
+          :preview-urls="referencePreviewUrls"
+          :disabled="sceneImageGenerating"
+          @change="handleSceneReferenceChange"
+        />
 
         <div class="scene-image-actions">
           <el-button
@@ -728,58 +688,18 @@
           <pre>{{ characterImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
 
-        <el-form class="reference-image-form" label-position="top">
-          <el-form-item label="从已确认角色图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）">
-            <el-select
-              v-model="characterReferenceMediaIds"
-              multiple
-              clearable
-              filterable
-              collapse-tags
-              collapse-tags-tooltip
-              placeholder="选择已确认角色图；用于锁定物种、脸型、体型、毛色、服装或标志性细节"
-              :disabled="characterImageGenerating"
-              @change="handleCharacterReferenceChange"
-            >
-              <el-option
-                v-for="option in characterReferenceOptions"
-                :key="option.mediaId"
-                :label="option.label"
-                :value="option.mediaId"
-              >
-                <div class="reference-select-option">
-                  <img
-                    v-if="referencePreviewUrls[option.mediaId]"
-                    :src="referencePreviewUrls[option.mediaId]"
-                    alt="角色参考缩略图"
-                  />
-                  <span v-else class="reference-select-placeholder">图</span>
-                  <div>
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.subtitle }}</small>
-                  </div>
-                </div>
-              </el-option>
-            </el-select>
-            <div v-if="characterSelectedReferenceOptions.length" class="reference-selected-grid">
-              <article v-for="option in characterSelectedReferenceOptions" :key="option.mediaId" class="reference-selected-card">
-                <el-image
-                  v-if="referencePreviewUrls[option.mediaId]"
-                  :src="referencePreviewUrls[option.mediaId]"
-                  :preview-src-list="characterSelectedReferencePreviewList"
-                  fit="cover"
-                  preview-teleported
-                />
-                <el-empty v-else description="缩略图加载中" />
-                <div>
-                  <strong>{{ option.label }}</strong>
-                  <small>{{ option.subtitle }}</small>
-                </div>
-              </article>
-            </div>
-            <el-empty v-else class="reference-empty" description="未选择参考角色图；可直接生成，或先确认一张角色图后再引用" />
-          </el-form-item>
-        </el-form>
+        <ReferenceImagePicker
+          v-model="characterReferenceMediaIds"
+          scope="character"
+          label="从已确认角色图选择参考（可多选，按顺序作为图片1、图片2传给图片模型）"
+          placeholder="选择已确认角色图；用于锁定物种、脸型、体型、毛色、服装或标志性细节"
+          thumbnail-alt="角色参考缩略图"
+          empty-description="未选择参考角色图；可直接生成，或先确认一张角色图后再引用"
+          :options="characterReferenceOptions"
+          :preview-urls="referencePreviewUrls"
+          :disabled="characterImageGenerating"
+          @change="handleCharacterReferenceChange"
+        />
 
         <div class="scene-image-actions">
           <el-button
@@ -1024,6 +944,7 @@ import {
 } from '@/api/aivideo'
 import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
 import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
+import ReferenceImagePicker from '@/components/aivideo/ReferenceImagePicker.vue'
 import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
 import { useUserStore } from '@/stores/user'
 
@@ -1187,12 +1108,6 @@ const sceneReferenceOptions = computed(() => scenes.value
   .map(sceneToReferenceOption))
 const characterSelectedReferenceOptions = computed(() => selectedReferenceOptions(characterReferenceMediaIds.value, characterReferenceOptions.value))
 const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
-const characterSelectedReferencePreviewList = computed(() => characterSelectedReferenceOptions.value
-  .map((item) => referencePreviewUrls.value[item.mediaId])
-  .filter(Boolean))
-const sceneSelectedReferencePreviewList = computed(() => sceneSelectedReferenceOptions.value
-  .map((item) => referencePreviewUrls.value[item.mediaId])
-  .filter(Boolean))
 const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
   .map((item) => referencePreviewUrls.value[item.mediaId])

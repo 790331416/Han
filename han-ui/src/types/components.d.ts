@@ -57,6 +57,7 @@ declare module 'vue' {
     IconSelect: typeof import('./../components/IconSelect/index.vue')['default']
     JsonStructureViewer: typeof import('./../components/aivideo/JsonStructureViewer.vue')['default']
     MarkdownViewer: typeof import('./../components/aivideo/MarkdownViewer.vue')['default']
+    ReferenceImagePicker: typeof import('./../components/aivideo/ReferenceImagePicker.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }
