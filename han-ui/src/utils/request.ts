@@ -23,6 +23,16 @@ const service: AxiosInstance = axios.create({
 // 防止401重复弹窗
 let isReloginShowing = false
 
+function resetTokenAndGoLogin() {
+  const userStore = useUserStore()
+  userStore.resetToken()
+  router.push('/login').finally(() => {
+    window.setTimeout(() => {
+      isReloginShowing = false
+    }, 800)
+  })
+}
+
 // 请求拦截器
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -77,34 +87,36 @@ service.interceptors.response.use(
     
     // 业务错误
     if (res.code !== 200) {
+      // 401: Token过期
+      if (res.code === 401) {
+        if (!isReloginShowing) {
+          isReloginShowing = true
+          ElMessageBox.confirm('登录状态已过期，请重新登录', '系统提示', {
+            confirmButtonText: '重新登录',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }).then(() => {
+            resetTokenAndGoLogin()
+          }).catch(() => {
+            isReloginShowing = false
+          })
+        }
+        return Promise.reject(new Error(res.msg || '登录状态已过期，请重新登录'))
+      }
+
       if (!response.config.silentError) {
         ElMessage.error(res.msg || '请求失败')
       }
-      
-      // 401: Token过期
-      if (res.code === 401 && !isReloginShowing) {
-        isReloginShowing = true
-        ElMessageBox.confirm('登录状态已过期，请重新登录', '系统提示', {
-          confirmButtonText: '重新登录',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }).then(() => {
-          const userStore = useUserStore()
-          userStore.resetToken()
-          location.href = '/login'
-        }).finally(() => {
-          isReloginShowing = false
-        })
-      }
-      
+
       return Promise.reject(new Error(res.msg || '请求失败'))
     }
-    
+
     return res as any
   },
   (error) => {
     console.error('响应错误:', error)
     let message = error.message || '请求失败'
+    let unauthorized = false
     
     if (error.response) {
       switch (error.response.status) {
@@ -112,11 +124,11 @@ service.interceptors.response.use(
           message = '请求参数错误'
           break
         case 401:
-          message = '未授权，请登录'
+          unauthorized = true
+          message = '登录状态已过期，请重新登录'
           if (!isReloginShowing) {
-            const userStore = useUserStore()
-            userStore.resetToken()
-            router.push('/login')
+            isReloginShowing = true
+            resetTokenAndGoLogin()
           }
           break
         case 403:
@@ -137,7 +149,7 @@ service.interceptors.response.use(
       message = '网络错误'
     }
     
-    if (!error.config?.silentError) {
+    if (!unauthorized && !error.config?.silentError) {
       ElMessage.error(message)
     }
     return Promise.reject(error)

@@ -96,10 +96,16 @@ const formatTime = (time: string) => {
 }
 
 const refreshNoticeState = async () => {
+  if (!getToken()) {
+    unreadCount.value = 0
+    notices.value = []
+    return
+  }
   await Promise.all([fetchUnreadCount(), loadNotices()])
 }
 
 const fetchUnreadCount = async () => {
+  if (!getToken()) return
   try {
     const res = await getUnreadCount()
     unreadCount.value = (res.data as number) || 0
@@ -109,6 +115,10 @@ const fetchUnreadCount = async () => {
 }
 
 const loadNotices = async () => {
+  if (!getToken()) {
+    notices.value = []
+    return
+  }
   loading.value = true
   try {
     const res = await getLatestNotices(5)
@@ -152,6 +162,7 @@ const connectSse = () => {
   try {
     const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
     const token = getToken() || ''
+    if (!token) return
     const url = `${baseUrl}/system/notice/sse?token=${token}`
     eventSource = new EventSource(url)
 
