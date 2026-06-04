@@ -59,6 +59,12 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="角色造型">
+          <el-select v-model="form.characterDesignType" placeholder="选择角色造型类型">
+            <el-option v-for="item in characterDesignTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="生成策略">
@@ -146,6 +152,7 @@ import {
   actionIntensityOptions,
   addAivideoProject,
   audioModeOptions,
+  characterDesignTypeOptions,
   continuityLevelOptions,
   generationStrategyOptions,
   multiRoleStrategyOptions,
@@ -166,6 +173,7 @@ const form = reactive<AivideoProjectForm>({
   targetPlatform: '',
   defaultRatio: '9:16',
   defaultStyle: '写实电影感',
+  characterDesignType: 'AUTO',
   generationStrategy: 'AUTO',
   audioMode: 'SILENT',
   subtitleMode: 'NONE',

@@ -335,6 +335,8 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
                 inheritedStrategy(params, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL));
         putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, dto.getMultiRoleStrategy(),
                 inheritedStrategy(params, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY));
+        putStrategyValue(params, PARAM_CHARACTER_DESIGN_TYPE, dto.getCharacterDesignType(),
+                inheritedStrategy(params, PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE));
         putStrategyValue(params, PARAM_GLOBAL_PROMPT, dto.getGlobalPrompt(), inheritedStrategy(params, PARAM_GLOBAL_PROMPT, ""));
         putStrategyValue(params, PARAM_POLISH_PROMPT, dto.getPolishPrompt(), inheritedStrategy(params, PARAM_POLISH_PROMPT, ""));
         putStrategyValue(params, PARAM_SCRIPT_PROMPT, dto.getScriptPrompt(), inheritedStrategy(params, PARAM_SCRIPT_PROMPT, ""));

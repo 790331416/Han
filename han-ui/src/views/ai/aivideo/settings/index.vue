@@ -50,6 +50,12 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="默认角色造型">
+          <el-select v-model="form.characterDesignType" placeholder="选择默认角色造型类型">
+            <el-option v-for="item in characterDesignTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="默认生成策略">
@@ -183,6 +189,7 @@ import { ElMessage } from 'element-plus'
 import {
   actionIntensityOptions,
   audioModeOptions,
+  characterDesignTypeOptions,
   continuityLevelOptions,
   generationStrategyOptions,
   getAivideoSetting,
@@ -209,6 +216,7 @@ const form = reactive<AivideoSetting>({
   contentAuditEnabled: '1',
   mediaAccessPolicy: 'PRIVATE',
   defaultStyle: '写实电影感',
+  characterDesignType: 'AUTO',
   generationStrategy: 'AUTO',
   audioMode: 'SILENT',
   subtitleMode: 'NONE',

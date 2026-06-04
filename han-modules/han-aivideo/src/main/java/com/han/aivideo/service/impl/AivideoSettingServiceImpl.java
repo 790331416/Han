@@ -134,6 +134,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         vo.setActionIntensity(paramText(params, PARAM_ACTION_INTENSITY, DEFAULT_ACTION_INTENSITY));
         vo.setContinuityLevel(paramText(params, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL));
         vo.setMultiRoleStrategy(paramText(params, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY));
+        vo.setCharacterDesignType(paramText(params, PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE));
         vo.setGlobalPrompt(paramText(params, PARAM_GLOBAL_PROMPT, ""));
         vo.setPolishPrompt(paramText(params, PARAM_POLISH_PROMPT, ""));
         vo.setScriptPrompt(paramText(params, PARAM_SCRIPT_PROMPT, ""));
@@ -155,6 +156,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         putStrategyValue(params, PARAM_ACTION_INTENSITY, source.getActionIntensity(), DEFAULT_ACTION_INTENSITY);
         putStrategyValue(params, PARAM_CONTINUITY_LEVEL, source.getContinuityLevel(), DEFAULT_CONTINUITY_LEVEL);
         putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, source.getMultiRoleStrategy(), DEFAULT_MULTI_ROLE_STRATEGY);
+        putStrategyValue(params, PARAM_CHARACTER_DESIGN_TYPE, source.getCharacterDesignType(), DEFAULT_CHARACTER_DESIGN_TYPE);
         putStrategyValue(params, PARAM_GLOBAL_PROMPT, source.getGlobalPrompt(), "");
         putStrategyValue(params, PARAM_POLISH_PROMPT, source.getPolishPrompt(), "");
         putStrategyValue(params, PARAM_SCRIPT_PROMPT, source.getScriptPrompt(), "");
@@ -175,6 +177,7 @@ public class AivideoSettingServiceImpl extends AivideoServiceSupport implements 
         putStrategyValue(params, PARAM_ACTION_INTENSITY, null, DEFAULT_ACTION_INTENSITY);
         putStrategyValue(params, PARAM_CONTINUITY_LEVEL, null, DEFAULT_CONTINUITY_LEVEL);
         putStrategyValue(params, PARAM_MULTI_ROLE_STRATEGY, null, DEFAULT_MULTI_ROLE_STRATEGY);
+        putStrategyValue(params, PARAM_CHARACTER_DESIGN_TYPE, null, DEFAULT_CHARACTER_DESIGN_TYPE);
         return params;
     }
 

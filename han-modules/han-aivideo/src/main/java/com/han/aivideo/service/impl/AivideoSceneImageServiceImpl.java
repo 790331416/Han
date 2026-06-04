@@ -371,13 +371,15 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getSceneImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getSceneImagePromptTemplateId() : null);
+        String style = firstText(dto.getDefaultStyle(), strategyText(projectSetting, globalSetting, PARAM_DEFAULT_STYLE,
+                firstText(project.getDefaultStyle(), DEFAULT_STYLE)));
         List<String> referenceImageUrls = resolveReferenceImageUrls(project.getProjectId(), ASSET_SCENE_IMAGE,
                 BIZ_SCENE, dto.getReferenceMediaIds(), dto.getReferenceImageUrl(), dto.getReferenceImageUrls());
-        Map<String, String> variables = buildSceneVariables(project, scene, ratio, resolution);
+        Map<String, String> variables = buildSceneVariables(project, scene, ratio, resolution, style);
         variables.put("referenceImageUrl", referenceImageUrls.isEmpty() ? "未填写" : referenceImageUrls.get(0));
         variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
         variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
-        String fallbackPrompt = buildSceneImagePrompt(project, scene, ratio, resolution);
+        String fallbackPrompt = buildSceneImagePrompt(project, scene, ratio, resolution, style);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("size", firstText(dto.getSize(), ""));
@@ -414,13 +416,17 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getCharacterImagePromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getCharacterImagePromptTemplateId() : null);
+        String style = firstText(dto.getDefaultStyle(), strategyText(projectSetting, globalSetting, PARAM_DEFAULT_STYLE,
+                firstText(project.getDefaultStyle(), DEFAULT_STYLE)));
+        String characterDesignType = firstText(dto.getCharacterDesignType(), strategyText(projectSetting, globalSetting,
+                PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE));
         List<String> referenceImageUrls = resolveReferenceImageUrls(project.getProjectId(), ASSET_CHARACTER_IMAGE,
                 BIZ_CHARACTER, dto.getReferenceMediaIds(), dto.getReferenceImageUrl(), dto.getReferenceImageUrls());
-        Map<String, String> variables = buildCharacterVariables(project, character, ratio, resolution);
+        Map<String, String> variables = buildCharacterVariables(project, character, ratio, resolution, style, characterDesignType);
         variables.put("referenceImageUrl", referenceImageUrls.isEmpty() ? "未填写" : referenceImageUrls.get(0));
         variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
         variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
-        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution,
+        String fallbackPrompt = buildCharacterImagePrompt(project, character, ratio, resolution, style, characterDesignType,
                 referenceImageUrls.isEmpty() ? null : referenceImageUrls.get(0));
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
@@ -848,11 +854,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private Map<String, String> buildSceneVariables(AiVideoProjectPo project, AiVideoScenePo scene,
-                                                    String ratio, String resolution) {
+                                                    String ratio, String resolution, String style) {
         Map<String, String> variables = new LinkedHashMap<>();
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
-        variables.put("style", safeValue(project.getDefaultStyle()));
+        variables.put("style", safeValue(style));
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("sceneName", safeValue(scene.getSceneName()));
@@ -868,7 +874,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return variables;
     }
 
-    private String buildSceneImagePrompt(AiVideoProjectPo project, AiVideoScenePo scene, String ratio, String resolution) {
+    private String buildSceneImagePrompt(AiVideoProjectPo project, AiVideoScenePo scene, String ratio, String resolution,
+                                         String style) {
         return """
                 不能出现其他人, 无人, 纯场景, no humans, empty scene, single shot reference。
                 Seedance 视频场景参考图/首帧环境锚点，单一镜头画面，极高画质，高辨识度，画幅：%s，清晰度目标：%s。
@@ -891,18 +898,21 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 原始场景提示词：%s
                 """.formatted(
                 safeValue(ratio), safeValue(resolution), safeValue(project.getProjectName()),
-                safeValue(project.getDefaultStyle()), safeValue(scene.getSceneName()), safeValue(scene.getSceneType()),
+                safeValue(style), safeValue(scene.getSceneName()), safeValue(scene.getSceneType()),
                 safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()), safeValue(scene.getAtmosphere()),
                 safeValue(scene.getVisualFeatures()), safeValue(scene.getColorTone()), safeValue(scene.getProps()),
                 safeValue(scene.getPromptText()));
     }
 
     private Map<String, String> buildCharacterVariables(AiVideoProjectPo project, AiVideoCharacterPo character,
-                                                        String ratio, String resolution) {
+                                                        String ratio, String resolution, String style,
+                                                        String characterDesignType) {
         Map<String, String> variables = new LinkedHashMap<>();
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
-        variables.put("style", safeValue(project.getDefaultStyle()));
+        variables.put("style", safeValue(style));
+        variables.put(PARAM_CHARACTER_DESIGN_TYPE, safeValue(characterDesignType));
+        variables.put("characterDesignInstruction", characterDesignInstruction(characterDesignType));
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("characterName", safeValue(character.getCharacterName()));
@@ -922,10 +932,12 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private String buildCharacterImagePrompt(AiVideoProjectPo project, AiVideoCharacterPo character,
-                                             String ratio, String resolution, String referenceImageUrl) {
+                                             String ratio, String resolution, String style,
+                                             String characterDesignType, String referenceImageUrl) {
         return """
                 Seedance 视频生成专用单主体角色锚定图，单一角色，纯净背景，角色一致性参考图，画幅：%s，清晰度目标：%s。
                 如果该角色是动物、宠物、怪物、机器人、器物精灵或其他非人类，必须保持其物种本体，不要改成人类演员、真人脸或人类身体。
+                造型硬规则：%s
                 构图硬规则：只输出一只/一个主体，3/4 正面或轻微侧正面自然站姿，主体居中，全身完整可见，主体占画面高度 60%-75%。
                 视频参考硬规则：禁止四方向、三视图、多视图、转面表、分栏、拼图、同款分身、多个角度并排；避免被视频模型误识别成多个主体。
                 全身硬规则：必须完整露出头部/脸部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、禁止半身、禁止身体裁切。
@@ -937,6 +949,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
                 项目：%s
                 风格：%s
+                角色造型类型：%s
                 角色名称：%s
                 性别/物种：%s
                 年龄/阶段：%s
@@ -952,8 +965,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 净化后的角色外观提示词：%s
                 参考图 URL：%s
                 """.formatted(
-                safeValue(ratio), safeValue(resolution), safeValue(project.getProjectName()),
-                safeValue(project.getDefaultStyle()), safeValue(character.getCharacterName()), safeValue(character.getGender()),
+                safeValue(ratio), safeValue(resolution), characterDesignInstruction(characterDesignType),
+                safeValue(project.getProjectName()),
+                safeValue(style), safeValue(characterDesignType), safeValue(character.getCharacterName()), safeValue(character.getGender()),
                 safeValue(character.getAgeDesc()), safeValue(character.getIdentityDesc()), safeValue(character.getStoryRole()),
                 safeValue(character.getPersonalityTags()), safeValue(character.getRelationshipDesc()), safeValue(character.getAppearance()),
                 safeValue(character.getHairStyle()), safeValue(character.getCostume()), safeValue(character.getColorStyle()),

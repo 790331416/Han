@@ -25,6 +25,7 @@ abstract class AivideoServiceSupport {
     protected static final String PARAM_ACTION_INTENSITY = "actionIntensity";
     protected static final String PARAM_CONTINUITY_LEVEL = "continuityLevel";
     protected static final String PARAM_MULTI_ROLE_STRATEGY = "multiRoleStrategy";
+    protected static final String PARAM_CHARACTER_DESIGN_TYPE = "characterDesignType";
     protected static final String PARAM_GLOBAL_PROMPT = "globalPrompt";
     protected static final String PARAM_POLISH_PROMPT = "polishPrompt";
     protected static final String PARAM_SCRIPT_PROMPT = "scriptPrompt";
@@ -41,6 +42,7 @@ abstract class AivideoServiceSupport {
     protected static final String DEFAULT_ACTION_INTENSITY = "NORMAL";
     protected static final String DEFAULT_CONTINUITY_LEVEL = "STRICT";
     protected static final String DEFAULT_MULTI_ROLE_STRATEGY = "SINGLE_FIRST";
+    protected static final String DEFAULT_CHARACTER_DESIGN_TYPE = "AUTO";
 
     protected int normalizePageNum(Integer pageNum) {
         return pageNum == null || pageNum < 1 ? 1 : pageNum;
@@ -124,6 +126,26 @@ abstract class AivideoServiceSupport {
         sanitized = sanitized.replace("正面、侧面、背面", "单主体3/4正面全身");
         sanitized = sanitized.replace("正面、左侧面、右侧面、背面", "单主体3/4正面全身");
         return StringUtils.hasText(sanitized) ? sanitized.trim() : "未填写";
+    }
+
+    protected String characterDesignInstruction(String value) {
+        String type = StringUtils.hasText(value) ? value.trim() : DEFAULT_CHARACTER_DESIGN_TYPE;
+        if (type.contains("Q版") || "CHIBI_FULL_BODY".equals(type)) {
+            return "角色造型类型=Q版萌系全身：允许 2.5-4 头身、圆润轮廓、大眼、短腿和萌化比例，但必须仍是单主体完整全身视频角色锚定图；禁止只画头像、大头贴、半身像、贴纸、表情包或多角度拼图。";
+        }
+        if (type.contains("动物本体") || "ANIMAL_BODY_CUTE".equals(type)) {
+            return "角色造型类型=动物本体萌化：在保持物种本体、四足/翅膀/尾巴等生理结构不变的前提下，允许更圆润、更亲和；禁止改成人类身体、真人脸、直立人形或穿成人类戏服，除非角色设定明确要求拟人化。";
+        }
+        if (type.contains("拟人") || "ANTHROPOMORPHIC".equals(type)) {
+            return "角色造型类型=拟人化角色：仅当角色设定明确为拟人化时才使用；需要写清人形比例、服装和物种标志物，同时保持完整全身、单主体和一致性锚点。";
+        }
+        return switch (type) {
+            case "REALISTIC_NATURAL" -> "角色造型类型=写实自然比例：保持真实头身比例、自然骨骼结构和可信材质；动物必须保持真实物种体态，禁止卡通大头化、玩偶化或拟人化。";
+            case "SEMI_REAL_CARTOON" -> "角色造型类型=半写实卡通：允许轮廓更圆润、五官更清晰、颜色更干净，但仍保持完整全身、自然比例和可用于视频连续生成的稳定体型。";
+            case "CHILDREN_PICTURE_BOOK" -> "角色造型类型=低龄儿童绘本：轮廓柔和、表情亲和、色块清爽，保持完整全身和稳定外观；禁止过度复杂纹理、恐怖化或成人写实阴影。";
+            case "MONSTER_VILLAIN" -> "角色造型类型=怪物/夸张反派：允许更强剪影、夸张轮廓和压迫感，但必须锁定 2-3 个稳定标志特征，禁止随机变形、断肢错肢、同款分身或剧情动作。";
+            default -> "角色造型类型=自动：根据视觉风格和角色设定选择自然比例；无论风格如何，最终都必须是单主体完整全身视频角色锚定图。";
+        };
     }
 
     protected Long currentTenantId() {

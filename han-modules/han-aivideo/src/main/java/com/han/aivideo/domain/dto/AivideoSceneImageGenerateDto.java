@@ -27,6 +27,8 @@ public class AivideoSceneImageGenerateDto {
 
     private String size;
 
+    private String defaultStyle;
+
     private String referenceImageUrl;
 
     private List<Long> referenceMediaIds;

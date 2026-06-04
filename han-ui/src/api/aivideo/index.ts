@@ -16,6 +16,7 @@ export interface AivideoProject {
   actionIntensity?: string
   continuityLevel?: string
   multiRoleStrategy?: string
+  characterDesignType?: string
   globalPrompt?: string
   polishPrompt?: string
   scriptPrompt?: string
@@ -57,6 +58,7 @@ export interface AivideoProjectForm {
   actionIntensity?: string
   continuityLevel?: string
   multiRoleStrategy?: string
+  characterDesignType?: string
   globalPrompt?: string
   polishPrompt?: string
   scriptPrompt?: string
@@ -227,6 +229,7 @@ export interface AivideoSetting {
   actionIntensity?: string
   continuityLevel?: string
   multiRoleStrategy?: string
+  characterDesignType?: string
   globalPrompt?: string
   polishPrompt?: string
   scriptPrompt?: string
@@ -433,6 +436,7 @@ export function previewAivideoSceneImagePrompt(data: {
   ratio?: string
   resolution?: string
   size?: string
+  defaultStyle?: string
   referenceImageUrl?: string
   referenceMediaIds?: Array<string | number>
   referenceImageUrls?: string[]
@@ -449,6 +453,8 @@ export function previewAivideoCharacterImagePrompt(data: {
   ratio?: string
   resolution?: string
   size?: string
+  defaultStyle?: string
+  characterDesignType?: string
   referenceImageUrl?: string
   referenceMediaIds?: Array<string | number>
   referenceImageUrls?: string[]
@@ -466,6 +472,7 @@ export function previewAivideoShotVideoPrompt(data: {
   resolution?: string
   durationSec?: number
   customPrompt?: string
+  defaultStyle?: string
   generationStrategy?: string
   audioMode?: string
   subtitleMode?: string
@@ -473,6 +480,7 @@ export function previewAivideoShotVideoPrompt(data: {
   actionIntensity?: string
   continuityLevel?: string
   multiRoleStrategy?: string
+  characterDesignType?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
 }
@@ -637,4 +645,15 @@ export const multiRoleStrategyOptions = [
   { label: '单角色优先', value: 'SINGLE_FIRST' },
   { label: '多角色允许', value: 'MULTI_ALLOWED' },
   { label: '超过 4 人自动拆镜', value: 'SPLIT_OVER_FOUR' }
+]
+
+export const characterDesignTypeOptions = [
+  { label: '自动', value: 'AUTO' },
+  { label: '写实自然比例', value: 'REALISTIC_NATURAL' },
+  { label: '半写实卡通', value: 'SEMI_REAL_CARTOON' },
+  { label: 'Q版萌系全身', value: 'CHIBI_FULL_BODY' },
+  { label: '低龄儿童绘本', value: 'CHILDREN_PICTURE_BOOK' },
+  { label: '动物本体萌化', value: 'ANIMAL_BODY_CUTE' },
+  { label: '拟人化角色', value: 'ANTHROPOMORPHIC' },
+  { label: '怪物/夸张反派', value: 'MONSTER_VILLAIN' }
 ]

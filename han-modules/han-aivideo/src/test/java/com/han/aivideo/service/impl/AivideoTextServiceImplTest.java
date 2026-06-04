@@ -1,10 +1,13 @@
 package com.han.aivideo.service.impl;
 
+import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,6 +16,35 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AivideoTextServiceImplTest {
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildStrategyParamsStoresCharacterDesignType() throws Exception {
+        AivideoProjectDto dto = new AivideoProjectDto();
+        dto.setProjectName("测试项目");
+        dto.setCharacterDesignType("Q版萌系全身");
+        AivideoProjectServiceImpl service = new AivideoProjectServiceImpl(
+                null, null, null, null, null, null, null, null);
+        Method method = AivideoProjectServiceImpl.class.getDeclaredMethod(
+                "buildStrategyParams", AivideoProjectDto.class, String.class);
+        method.setAccessible(true);
+
+        Map<String, Object> params = (Map<String, Object>) method.invoke(service, dto, "{}");
+
+        assertEquals("Q版萌系全身", params.get("characterDesignType"));
+    }
+
+    @Test
+    void characterDesignInstructionKeepsQVersionAsFullBodyAnchor() {
+        TestSupport support = new TestSupport();
+
+        String instruction = support.characterDesignInstruction("Q版萌系全身");
+
+        assertTrue(instruction.contains("Q版"));
+        assertTrue(instruction.contains("完整全身"));
+        assertTrue(instruction.contains("禁止"));
+        assertTrue(instruction.contains("大头贴"));
+    }
 
     @Test
     void normalizeAssetJsonBlockWrapsTopLevelAssetFragment() {
@@ -144,5 +176,12 @@ class AivideoTextServiceImplTest {
         boolean sent = AivideoTextServiceImpl.sendSseSafely(emitter, "delta", "chunk");
 
         assertFalse(sent);
+    }
+
+    private static final class TestSupport extends AivideoServiceSupport {
+        @Override
+        protected String characterDesignInstruction(String value) {
+            return super.characterDesignInstruction(value);
+        }
     }
 }

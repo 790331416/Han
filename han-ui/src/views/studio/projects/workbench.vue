@@ -546,6 +546,9 @@
               <el-select v-model="params.defaultStyle" filterable allow-create default-first-option placeholder="视觉风格">
                 <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
+              <el-select v-model="params.characterDesignType" placeholder="角色造型">
+                <el-option v-for="item in characterDesignTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
               <el-select v-model="params.generationStrategy" placeholder="生成策略">
                 <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
@@ -619,6 +622,19 @@
           <pre>{{ sceneImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
 
+        <div class="image-extra-prompt-form">
+          <label>本次场景图追加提示词</label>
+          <el-input
+            v-model="promptScopes.sceneImage"
+            type="textarea"
+            :rows="3"
+            maxlength="1200"
+            show-word-limit
+            placeholder="例如：保持路边皮球位置不变、镜头低机位、不要出现人物"
+            :disabled="sceneImageGenerating"
+          />
+        </div>
+
         <ReferenceImagePicker
           v-model="sceneReferenceMediaIds"
           scope="scene"
@@ -631,6 +647,47 @@
           :disabled="sceneImageGenerating"
           @change="handleSceneReferenceChange"
         />
+
+        <div class="external-reference-form">
+          <label>自定义场景参考图（可粘贴 URL 或上传，本次生成会按顺序追加到参考图）</label>
+          <div class="reference-image-control">
+            <el-input
+              v-model="sceneReferenceImageUrlInput"
+              placeholder="粘贴场景参考图 URL，回车或点添加"
+              :disabled="sceneImageGenerating || sceneReferenceUploading"
+              @keyup.enter="handleAddSceneReferenceUrl"
+            />
+            <el-button :disabled="sceneImageGenerating || sceneReferenceUploading" @click="handleAddSceneReferenceUrl">
+              添加 URL
+            </el-button>
+            <el-button
+              :icon="Upload"
+              :loading="sceneReferenceUploading"
+              :disabled="sceneImageGenerating"
+              @click="triggerSceneReferenceUpload"
+            >
+              上传参考图
+            </el-button>
+            <input
+              ref="sceneReferenceFileInputRef"
+              class="hidden-file-input"
+              type="file"
+              accept="image/*"
+              @change="handleUploadSceneReferenceImage"
+            />
+          </div>
+          <div v-if="sceneReferenceImageUrls.length" class="external-reference-list">
+            <el-tag
+              v-for="(url, index) in sceneReferenceImageUrls"
+              :key="url"
+              closable
+              type="info"
+              @close="removeSceneReferenceUrl(index)"
+            >
+              外部图{{ index + 1 }}：{{ compactUrl(url) }}
+            </el-tag>
+          </div>
+        </div>
 
         <div class="scene-image-actions">
           <el-button
@@ -688,6 +745,19 @@
           <pre>{{ characterImagePromptPreviewText || '暂无可预览提示词' }}</pre>
         </details>
 
+        <div class="image-extra-prompt-form">
+          <label>本次角色图追加提示词</label>
+          <el-input
+            v-model="promptScopes.characterImage"
+            type="textarea"
+            :rows="3"
+            maxlength="1200"
+            show-word-limit
+            placeholder="例如：Q版但必须全身入镜、不要头像贴纸、保持四肢和尾巴完整"
+            :disabled="characterImageGenerating"
+          />
+        </div>
+
         <ReferenceImagePicker
           v-model="characterReferenceMediaIds"
           scope="character"
@@ -700,6 +770,47 @@
           :disabled="characterImageGenerating"
           @change="handleCharacterReferenceChange"
         />
+
+        <div class="external-reference-form">
+          <label>自定义角色参考图（可粘贴 URL 或上传，本次生成会按顺序追加到参考图）</label>
+          <div class="reference-image-control">
+            <el-input
+              v-model="characterReferenceImageUrlInput"
+              placeholder="粘贴角色参考图 URL，回车或点添加"
+              :disabled="characterImageGenerating || characterReferenceUploading"
+              @keyup.enter="handleAddCharacterReferenceUrl"
+            />
+            <el-button :disabled="characterImageGenerating || characterReferenceUploading" @click="handleAddCharacterReferenceUrl">
+              添加 URL
+            </el-button>
+            <el-button
+              :icon="Upload"
+              :loading="characterReferenceUploading"
+              :disabled="characterImageGenerating"
+              @click="triggerCharacterReferenceUpload"
+            >
+              上传参考图
+            </el-button>
+            <input
+              ref="characterReferenceFileInputRef"
+              class="hidden-file-input"
+              type="file"
+              accept="image/*"
+              @change="handleUploadCharacterReferenceImage"
+            />
+          </div>
+          <div v-if="characterReferenceImageUrls.length" class="external-reference-list">
+            <el-tag
+              v-for="(url, index) in characterReferenceImageUrls"
+              :key="url"
+              closable
+              type="info"
+              @close="removeCharacterReferenceUrl(index)"
+            >
+              外部图{{ index + 1 }}：{{ compactUrl(url) }}
+            </el-tag>
+          </div>
+        </div>
 
         <div class="scene-image-actions">
           <el-button
@@ -895,7 +1006,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowUp, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled, VideoCamera } from '@element-plus/icons-vue'
@@ -912,6 +1023,7 @@ import {
   cancelConfirmAivideoAsset,
   cancelConfirmAivideoPolish,
   cancelConfirmAivideoScript,
+  characterDesignTypeOptions,
   continuityLevelOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
@@ -937,6 +1049,7 @@ import {
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoProject,
+  uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
@@ -953,7 +1066,7 @@ import { useUserStore } from '@/stores/user'
 
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
 type PromptScope = 'global' | 'polish' | 'script' | 'asset' | 'characterImage' | 'sceneImage' | 'shotVideo'
-type StrategyKey = 'defaultStyle' | 'generationStrategy' | 'audioMode' | 'subtitleMode' | 'referenceStrategy' | 'actionIntensity' | 'continuityLevel' | 'multiRoleStrategy'
+type StrategyKey = 'defaultStyle' | 'generationStrategy' | 'audioMode' | 'subtitleMode' | 'referenceStrategy' | 'actionIntensity' | 'continuityLevel' | 'multiRoleStrategy' | 'characterDesignType'
 
 interface StageStrategyItem {
   key: StrategyKey
@@ -990,6 +1103,9 @@ const characterImageDrawerVisible = ref(false)
 const selectedCharacterForImage = ref<AivideoCharacter>()
 const characterImagePromptPreviewText = ref('')
 const characterReferenceMediaIds = ref<string[]>([])
+const characterReferenceImageUrlInput = ref('')
+const characterReferenceImageUrls = ref<string[]>([])
+const characterReferenceUploading = ref(false)
 const characterImageGenerating = ref(false)
 const characterImageCandidates = ref<AivideoMediaAsset[]>([])
 const characterImagePreviewUrls = ref<Record<string, string>>({})
@@ -998,6 +1114,9 @@ const sceneImageDrawerVisible = ref(false)
 const selectedSceneForImage = ref<AivideoScene>()
 const sceneImagePromptPreviewText = ref('')
 const sceneReferenceMediaIds = ref<string[]>([])
+const sceneReferenceImageUrlInput = ref('')
+const sceneReferenceImageUrls = ref<string[]>([])
+const sceneReferenceUploading = ref(false)
 const sceneImageGenerating = ref(false)
 const sceneImageCandidates = ref<AivideoMediaAsset[]>([])
 const sceneImagePreviewUrls = ref<Record<string, string>>({})
@@ -1027,6 +1146,8 @@ const promptScopes = reactive<Record<PromptScope, string>>({
 })
 const assetContextCollapsed = ref(true)
 const sourceFileInputRef = ref<HTMLInputElement>()
+const sceneReferenceFileInputRef = ref<HTMLInputElement>()
+const characterReferenceFileInputRef = ref<HTMLInputElement>()
 const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
 let assetTaskPollTimer: ReturnType<typeof setTimeout> | undefined
@@ -1055,7 +1176,8 @@ const params = reactive({
   referenceStrategy: 'CHARACTER_SCENE',
   actionIntensity: 'NORMAL',
   continuityLevel: 'STRICT',
-  multiRoleStrategy: 'SINGLE_FIRST'
+  multiRoleStrategy: 'SINGLE_FIRST',
+  characterDesignType: 'AUTO'
 })
 
 const promptScopeOptions: Array<{ label: string; value: PromptScope }> = [
@@ -1069,13 +1191,13 @@ const promptScopeOptions: Array<{ label: string; value: PromptScope }> = [
 ]
 
 const stageStrategyKeys: Record<PromptScope, StrategyKey[]> = {
-  global: ['defaultStyle', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  global: ['defaultStyle', 'characterDesignType', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
   polish: ['defaultStyle'],
-  script: ['defaultStyle', 'generationStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
-  asset: ['defaultStyle', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
-  characterImage: ['defaultStyle', 'referenceStrategy', 'multiRoleStrategy'],
+  script: ['defaultStyle', 'characterDesignType', 'generationStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  asset: ['defaultStyle', 'characterDesignType', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy'],
+  characterImage: ['defaultStyle', 'characterDesignType', 'referenceStrategy', 'multiRoleStrategy'],
   sceneImage: ['defaultStyle', 'referenceStrategy', 'continuityLevel'],
-  shotVideo: ['defaultStyle', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy']
+  shotVideo: ['defaultStyle', 'characterDesignType', 'generationStrategy', 'audioMode', 'subtitleMode', 'referenceStrategy', 'actionIntensity', 'continuityLevel', 'multiRoleStrategy']
 }
 
 const strategyLabels: Record<StrategyKey, string> = {
@@ -1086,7 +1208,8 @@ const strategyLabels: Record<StrategyKey, string> = {
   referenceStrategy: '参考素材策略',
   actionIntensity: '动作强度',
   continuityLevel: '连续性强度',
-  multiRoleStrategy: '多角色策略'
+  multiRoleStrategy: '多角色策略',
+  characterDesignType: '角色造型类型'
 }
 
 const projectId = computed(() => String(route.params.id))
@@ -1234,6 +1357,8 @@ function strategyDisplayValue(key: StrategyKey) {
       return optionLabel(continuityLevelOptions, params.continuityLevel)
     case 'multiRoleStrategy':
       return optionLabel(multiRoleStrategyOptions, params.multiRoleStrategy)
+    case 'characterDesignType':
+      return optionLabel(characterDesignTypeOptions, params.characterDesignType)
     default:
       return ''
   }
@@ -1262,6 +1387,7 @@ function stagePromptHints(scope: PromptScope) {
       '出现爪子、手、脚、翅膀、尾巴等部位时，必须在分镜里写清楚构图需要露出对应部位。'
     ],
     characterImage: [
+      '角色造型类型为 Q版萌系全身时，只允许 Q版完整全身角色锚定图，禁止头像、大头贴、半身、表情包和多角度拼图。',
       '角色图阶段只锁定同一角色身份、体型、毛色/发型、服装与显著特征，不新增剧情动作。',
       '角色图必须输出 Seedance 视频角色锚定图：单一主体、3/4正面或轻微侧正面、全身完整可见、主体占画面高度60%-75%、纯白/浅灰极简背景。',
       '禁止四方向、三视图、多视图、转面表、分栏拼图、同款分身或多个角度并排；动物保持物种本体和自然四足站姿，不拟人化。'
@@ -1315,6 +1441,113 @@ function sceneToReferenceOption(scene: AivideoScene): ReferenceImageOption {
 function selectedReferenceOptions(selectedIds: string[], options: ReferenceImageOption[]) {
   const optionMap = new Map(options.map((item) => [item.mediaId, item]))
   return selectedIds.map((id) => optionMap.get(String(id))).filter(Boolean) as ReferenceImageOption[]
+}
+
+function compactUrl(url: string) {
+  const value = String(url || '').trim()
+  return value.length > 46 ? `${value.slice(0, 22)}...${value.slice(-20)}` : value
+}
+
+function normalizeExternalReferenceUrls(urls: string[]) {
+  return Array.from(new Set((urls || []).map((url) => String(url || '').trim()).filter(Boolean)))
+}
+
+function appendExternalReferenceUrl(urlsRef: Ref<string[]>, value: string) {
+  const url = String(value || '').trim()
+  if (!url) {
+    return false
+  }
+  const next = normalizeExternalReferenceUrls([...urlsRef.value, url])
+  if (next.length > 9) {
+    ElMessage.warning('参考图最多 9 张，已自动保留前 9 张')
+    urlsRef.value = next.slice(0, 9)
+  } else {
+    urlsRef.value = next
+  }
+  return true
+}
+
+function triggerSceneReferenceUpload() {
+  sceneReferenceFileInputRef.value?.click()
+}
+
+function triggerCharacterReferenceUpload() {
+  characterReferenceFileInputRef.value?.click()
+}
+
+async function uploadReferenceImageFile(file: File, urlsRef: Ref<string[]>) {
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请上传图片文件')
+    return false
+  }
+  const res = await uploadAivideoReferenceImage(file)
+  const url = res.data?.url
+  if (!url) {
+    ElMessage.error('上传成功但没有返回可用图片地址')
+    return false
+  }
+  appendExternalReferenceUrl(urlsRef, url)
+  return true
+}
+
+async function handleUploadSceneReferenceImage(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) {
+    return
+  }
+  sceneReferenceUploading.value = true
+  try {
+    if (await uploadReferenceImageFile(file, sceneReferenceImageUrls)) {
+      ElMessage.success('场景参考图已上传')
+      await refreshSceneImagePromptPreview()
+    }
+  } finally {
+    sceneReferenceUploading.value = false
+    input.value = ''
+  }
+}
+
+async function handleUploadCharacterReferenceImage(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) {
+    return
+  }
+  characterReferenceUploading.value = true
+  try {
+    if (await uploadReferenceImageFile(file, characterReferenceImageUrls)) {
+      ElMessage.success('角色参考图已上传')
+      await refreshCharacterImagePromptPreview()
+    }
+  } finally {
+    characterReferenceUploading.value = false
+    input.value = ''
+  }
+}
+
+async function handleAddSceneReferenceUrl() {
+  if (appendExternalReferenceUrl(sceneReferenceImageUrls, sceneReferenceImageUrlInput.value)) {
+    sceneReferenceImageUrlInput.value = ''
+    await refreshSceneImagePromptPreview()
+  }
+}
+
+async function handleAddCharacterReferenceUrl() {
+  if (appendExternalReferenceUrl(characterReferenceImageUrls, characterReferenceImageUrlInput.value)) {
+    characterReferenceImageUrlInput.value = ''
+    await refreshCharacterImagePromptPreview()
+  }
+}
+
+async function removeSceneReferenceUrl(index: number) {
+  sceneReferenceImageUrls.value = sceneReferenceImageUrls.value.filter((_url, currentIndex) => currentIndex !== index)
+  await refreshSceneImagePromptPreview()
+}
+
+async function removeCharacterReferenceUrl(index: number) {
+  characterReferenceImageUrls.value = characterReferenceImageUrls.value.filter((_url, currentIndex) => currentIndex !== index)
+  await refreshCharacterImagePromptPreview()
 }
 
 function shouldUseSceneContinuityReference(scene: AivideoScene) {
@@ -1447,8 +1680,21 @@ function imageReferencePrompt(scope: PromptScope) {
   return ''
 }
 
+function externalImageReferencePrompt(scope: PromptScope) {
+  const urls = scope === 'characterImage'
+    ? characterReferenceImageUrls.value
+    : scope === 'sceneImage'
+      ? sceneReferenceImageUrls.value
+      : []
+  if (!urls.length) {
+    return ''
+  }
+  const references = urls.map((url, index) => `外部图片${index + 1}：${url}`).join('\n')
+  return `【外部参考图】\n${references}\n这些图片与已确认参考图一起作为本次生成参考；不得把外部参考图当成新剧情，只继承所需的外观、空间、材质或色调锚点。`
+}
+
 function scopedCustomPrompt(scope: PromptScope) {
-  return [stageStrategyPrompt(scope), imageReferencePrompt(scope), promptScopes.global, promptScopes[scope]]
+  return [stageStrategyPrompt(scope), imageReferencePrompt(scope), externalImageReferencePrompt(scope), promptScopes.global, promptScopes[scope]]
     .map((item) => item.trim())
     .filter(Boolean)
     .join('\n\n')
@@ -1474,7 +1720,8 @@ async function loadDetail() {
       referenceStrategy: strategyValue(settingParams, 'referenceStrategy', 'CHARACTER_SCENE'),
       actionIntensity: strategyValue(settingParams, 'actionIntensity', 'NORMAL'),
       continuityLevel: strategyValue(settingParams, 'continuityLevel', 'STRICT'),
-      multiRoleStrategy: strategyValue(settingParams, 'multiRoleStrategy', 'SINGLE_FIRST')
+      multiRoleStrategy: strategyValue(settingParams, 'multiRoleStrategy', 'SINGLE_FIRST'),
+      characterDesignType: strategyValue(settingParams, 'characterDesignType', 'AUTO')
     })
     Object.assign(promptScopes, {
       global: strategyValue(settingParams, 'globalPrompt', ''),
@@ -1570,6 +1817,8 @@ async function refreshSceneImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
+      defaultStyle: params.defaultStyle,
+      referenceImageUrls: sceneReferenceImageUrls.value,
       referenceMediaIds: sceneReferenceMediaIds.value,
       customPrompt: scopedCustomPrompt('sceneImage')
     })
@@ -1592,6 +1841,9 @@ async function refreshCharacterImagePromptPreview() {
       candidateCount: params.imageCandidateCount || 2,
       ratio: params.defaultRatio,
       resolution: params.defaultResolution,
+      defaultStyle: params.defaultStyle,
+      characterDesignType: params.characterDesignType,
+      referenceImageUrls: characterReferenceImageUrls.value,
       referenceMediaIds: characterReferenceMediaIds.value,
       customPrompt: scopedCustomPrompt('characterImage')
     })
@@ -1617,13 +1869,15 @@ async function refreshShotVideoPromptPreview() {
       resolution: params.defaultResolution,
       durationSec: shot.durationSec || params.defaultShotDuration,
       customPrompt: scopedCustomPrompt('shotVideo'),
+      defaultStyle: params.defaultStyle,
       generationStrategy: params.generationStrategy,
       audioMode: params.audioMode,
       subtitleMode: params.subtitleMode,
       referenceStrategy: params.referenceStrategy,
       actionIntensity: params.actionIntensity,
       continuityLevel: params.continuityLevel,
-      multiRoleStrategy: params.multiRoleStrategy
+      multiRoleStrategy: params.multiRoleStrategy,
+      characterDesignType: params.characterDesignType
     })
     if (!isCurrentShotVideoTarget(shotId)) {
       return
@@ -1690,6 +1944,8 @@ async function openCharacterImageDrawer(character: AivideoCharacter) {
   selectedCharacterForImage.value = character
   activePromptScope.value = 'characterImage'
   characterReferenceMediaIds.value = defaultCharacterReferenceMediaIds(character)
+  characterReferenceImageUrlInput.value = ''
+  characterReferenceImageUrls.value = []
   characterImageDrawerVisible.value = true
   await loadReferencePreviewUrls(characterReferenceOptions.value)
   await refreshCharacterImagePromptPreview()
@@ -1748,6 +2004,8 @@ async function openSceneImageDrawer(scene: AivideoScene) {
   selectedSceneForImage.value = scene
   activePromptScope.value = 'sceneImage'
   sceneReferenceMediaIds.value = defaultSceneReferenceMediaIds(scene)
+  sceneReferenceImageUrlInput.value = ''
+  sceneReferenceImageUrls.value = []
   sceneImageDrawerVisible.value = true
   await loadReferencePreviewUrls(sceneReferenceOptions.value)
   await refreshSceneImagePromptPreview()
@@ -2134,6 +2392,7 @@ async function recoverShotVideoCandidates(options: { silent?: boolean } = {}) {
         resolution: params.defaultResolution,
         durationSec: shot.durationSec || params.defaultShotDuration,
         customPrompt: scopedCustomPrompt('shotVideo'),
+        defaultStyle: params.defaultStyle,
         generationStrategy: params.generationStrategy,
         audioMode: params.audioMode,
         subtitleMode: params.subtitleMode,
@@ -2141,6 +2400,7 @@ async function recoverShotVideoCandidates(options: { silent?: boolean } = {}) {
         actionIntensity: params.actionIntensity,
         continuityLevel: params.continuityLevel,
         multiRoleStrategy: params.multiRoleStrategy,
+        characterDesignType: params.characterDesignType,
         recoverOnly: true
       },
       onMeta: (payload) => {
@@ -2222,6 +2482,7 @@ async function handleSaveProjectStrategies() {
       actionIntensity: params.actionIntensity,
       continuityLevel: params.continuityLevel,
       multiRoleStrategy: params.multiRoleStrategy,
+      characterDesignType: params.characterDesignType,
       globalPrompt: promptScopes.global,
       polishPrompt: promptScopes.polish,
       scriptPrompt: promptScopes.script,
@@ -2652,6 +2913,9 @@ async function handleGenerateCharacterImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
+        defaultStyle: params.defaultStyle,
+        characterDesignType: params.characterDesignType,
+        referenceImageUrls: characterReferenceImageUrls.value,
         referenceMediaIds: characterReferenceMediaIds.value,
         customPrompt: scopedCustomPrompt('characterImage')
       },
@@ -2697,6 +2961,8 @@ async function handleGenerateSceneImages() {
         candidateCount: params.imageCandidateCount || 2,
         ratio: params.defaultRatio,
         resolution: params.defaultResolution,
+        defaultStyle: params.defaultStyle,
+        referenceImageUrls: sceneReferenceImageUrls.value,
         referenceMediaIds: sceneReferenceMediaIds.value,
         customPrompt: scopedCustomPrompt('sceneImage')
       },
@@ -2762,7 +3028,8 @@ async function handleGenerateShotVideos() {
         referenceStrategy: params.referenceStrategy,
         actionIntensity: params.actionIntensity,
         continuityLevel: params.continuityLevel,
-        multiRoleStrategy: params.multiRoleStrategy
+        multiRoleStrategy: params.multiRoleStrategy,
+        characterDesignType: params.characterDesignType
       },
       onMeta: (payload) => {
         if (!isCurrentShotVideoTarget(shotId)) {
@@ -2927,14 +3194,17 @@ watch(() => [
   params.referenceStrategy,
   params.actionIntensity,
   params.continuityLevel,
-  params.multiRoleStrategy
+  params.multiRoleStrategy,
+  params.characterDesignType
 ], () => {
   schedulePolishPromptPreview()
 })
 
 watch(() => [
   characterReferenceMediaIds.value.join(','),
-  sceneReferenceMediaIds.value.join(',')
+  sceneReferenceMediaIds.value.join(','),
+  characterReferenceImageUrls.value.join(','),
+  sceneReferenceImageUrls.value.join(',')
 ], () => {
   schedulePolishPromptPreview()
 })
@@ -3153,6 +3423,45 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.external-reference-form {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    color: #374151;
+    font-weight: 600;
+  }
+}
+
+.external-reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.image-extra-prompt-form {
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    color: #1e40af;
+    font-weight: 600;
+  }
 }
 
 .reference-image-form {

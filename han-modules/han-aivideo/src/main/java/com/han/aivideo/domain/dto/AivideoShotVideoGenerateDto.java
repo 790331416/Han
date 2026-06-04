@@ -27,6 +27,8 @@ public class AivideoShotVideoGenerateDto {
 
     private String customPrompt;
 
+    private String defaultStyle;
+
     private String generationStrategy;
 
     private String audioMode;
@@ -40,6 +42,8 @@ public class AivideoShotVideoGenerateDto {
     private String continuityLevel;
 
     private String multiRoleStrategy;
+
+    private String characterDesignType;
 
     /**
      * Only recover/poll an existing provider task. Used by the workbench refresh action.

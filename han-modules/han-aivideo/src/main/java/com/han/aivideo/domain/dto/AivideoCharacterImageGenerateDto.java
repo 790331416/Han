@@ -27,6 +27,10 @@ public class AivideoCharacterImageGenerateDto {
 
     private String size;
 
+    private String defaultStyle;
+
+    private String characterDesignType;
+
     private String referenceImageUrl;
 
     private List<Long> referenceMediaIds;

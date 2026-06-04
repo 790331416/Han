@@ -318,6 +318,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         dto.setRatio(paramText(params, "ratio"));
         dto.setResolution(paramText(params, "resolution"));
         dto.setDurationSec(paramInteger(params, "durationSec"));
+        dto.setDefaultStyle(paramText(params, "style"));
         dto.setGenerationStrategy(paramText(params, PARAM_GENERATION_STRATEGY));
         dto.setAudioMode(paramText(params, PARAM_AUDIO_MODE));
         dto.setSubtitleMode(paramText(params, PARAM_SUBTITLE_MODE));
@@ -325,6 +326,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         dto.setActionIntensity(paramText(params, PARAM_ACTION_INTENSITY));
         dto.setContinuityLevel(paramText(params, PARAM_CONTINUITY_LEVEL));
         dto.setMultiRoleStrategy(paramText(params, PARAM_MULTI_ROLE_STRATEGY));
+        dto.setCharacterDesignType(paramText(params, PARAM_CHARACTER_DESIGN_TYPE));
         dto.setRecoverOnly(true);
         return dto;
     }
@@ -858,7 +860,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         Map<String, String> variables = new LinkedHashMap<>();
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
-        variables.put("style", safeValue(project.getDefaultStyle()));
+        variables.put("style", safeValue(strategy.visualStyle()));
         variables.put(PARAM_GENERATION_STRATEGY, strategy.generationStrategy());
         variables.put(PARAM_AUDIO_MODE, strategy.audioMode());
         variables.put(PARAM_SUBTITLE_MODE, strategy.subtitleMode());
@@ -866,6 +868,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put(PARAM_ACTION_INTENSITY, strategy.actionIntensity());
         variables.put(PARAM_CONTINUITY_LEVEL, strategy.continuityLevel());
         variables.put(PARAM_MULTI_ROLE_STRATEGY, strategy.multiRoleStrategy());
+        variables.put(PARAM_CHARACTER_DESIGN_TYPE, strategy.characterDesignType());
+        variables.put("characterDesignInstruction", characterDesignInstruction(strategy.characterDesignType()));
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("durationSec", String.valueOf(durationSec));
@@ -936,7 +940,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
-                - 生成策略：%s；参考素材策略：%s；动作强度：%s；多角色策略：%s。
+                - 生成策略：%s；参考素材策略：%s；动作强度：%s；多角色策略：%s；角色造型类型：%s。
+                - 角色造型硬规则：%s
                 - 场景：%s，%s，%s，%s，视觉特征：%s。
                 - 出场主体：%s。
                 - 角色一致性：%s。
@@ -971,8 +976,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 buildCurrentStartState(previousShot, previousTailFrameMedia),
                 buildCurrentEndState(shot),
                 strategy.continuityLevel(),
-                safeValue(project.getProjectName()), safeValue(project.getDefaultStyle()),
+                safeValue(project.getProjectName()), safeValue(strategy.visualStyle()),
                 strategy.generationStrategy(), strategy.referenceStrategy(), strategy.actionIntensity(), strategy.multiRoleStrategy(),
+                strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType()),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
                 characterNames, characterContinuity, sceneContinuity,
@@ -1055,6 +1061,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                             AiVideoProjectSettingPo projectSetting,
                                             AiVideoProjectSettingPo globalSetting) {
         return new StrategyContext(
+                firstText(dto.getDefaultStyle(),
+                        strategyText(projectSetting, globalSetting, PARAM_DEFAULT_STYLE, DEFAULT_STYLE)),
                 firstText(dto.getGenerationStrategy(),
                         strategyText(projectSetting, globalSetting, PARAM_GENERATION_STRATEGY, DEFAULT_GENERATION_STRATEGY)),
                 firstText(dto.getAudioMode(),
@@ -1068,7 +1076,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 firstText(dto.getContinuityLevel(),
                         strategyText(projectSetting, globalSetting, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL)),
                 firstText(dto.getMultiRoleStrategy(),
-                        strategyText(projectSetting, globalSetting, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY))
+                        strategyText(projectSetting, globalSetting, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY)),
+                firstText(dto.getCharacterDesignType(),
+                        strategyText(projectSetting, globalSetting, PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE))
         );
     }
 
@@ -1823,13 +1833,15 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private record StrategyContext(
+            String visualStyle,
             String generationStrategy,
             String audioMode,
             String subtitleMode,
             String referenceStrategy,
             String actionIntensity,
             String continuityLevel,
-            String multiRoleStrategy
+            String multiRoleStrategy,
+            String characterDesignType
     ) {
     }
 

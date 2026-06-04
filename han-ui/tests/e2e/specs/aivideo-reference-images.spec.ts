@@ -23,6 +23,10 @@ const labels = {
   shotAction: '狗狗冲向摇晃的广告牌'
 }
 
+const manualSceneReferenceUrl = 'https://example.test/manual-scene-reference.png'
+const uploadedReferenceUrl = 'https://cdn.test/uploaded-reference.png'
+const sceneExtraPrompt = '固定路边皮球位置，不出现人物'
+
 const projectDetail = {
   project: {
     projectId: 1,
@@ -43,7 +47,8 @@ const projectDetail = {
     defaultResolution: '720p',
     imageCandidateCount: 2,
     videoCandidateCount: 1,
-    defaultShotDuration: 5
+    defaultShotDuration: 5,
+    paramsJson: JSON.stringify({ characterDesignType: 'CHIBI_FULL_BODY' })
   },
   documents: [
     {
@@ -202,6 +207,10 @@ async function mockAivideoWorkbench(page: Page, capture: {
       await fulfillJson(route, { effectivePrompt: 'shot video prompt' })
       return
     }
+    if (path === '/file/upload') {
+      await fulfillJson(route, { url: uploadedReferenceUrl })
+      return
+    }
     if (path === '/aivideo/studio/media/list' || path === '/aivideo/studio/media/shot/video/tasks') {
       await fulfillJson(route, [])
       return
@@ -232,6 +241,16 @@ test('aivideo workbench should use confirmed images through reusable reference p
   await page.getByRole('row').filter({ hasText: labels.stormScene }).getByRole('button', { name: labels.sceneButton }).click()
   const sceneReferencePicker = page.getByTestId('reference-image-picker-scene')
   await expect(sceneReferencePicker).toBeVisible()
+  await page.locator('.image-extra-prompt-form').filter({ hasText: '本次场景图追加提示词' }).locator('textarea').fill(sceneExtraPrompt)
+  await page.getByPlaceholder('粘贴场景参考图 URL，回车或点添加').fill(manualSceneReferenceUrl)
+  await page.getByRole('button', { name: '添加 URL' }).click()
+  await expect(page.getByText(/外部图1/)).toBeVisible()
+  await page.locator('input[type="file"][accept="image/*"]').first().setInputFiles({
+    name: 'scene-reference.png',
+    mimeType: 'image/png',
+    buffer: PNG_1X1
+  })
+  await expect(page.getByText(/外部图2/)).toBeVisible()
   const sceneReferenceCard = page.getByTestId('reference-selected-card-scene').filter({ hasText: `${labels.eveningScene} #30` })
   await expect(sceneReferenceCard).toBeVisible()
   await expect.poll(async () => (await sceneReferenceCard.boundingBox())?.width ?? 0).toBeGreaterThan(320)
@@ -269,5 +288,11 @@ test('aivideo workbench should use confirmed images through reusable reference p
   await page.locator('.el-image-viewer__close').click()
 
   expect(capture.scenePromptBodies.at(-1)?.referenceMediaIds).toEqual(['30'])
+  await expect.poll(() => capture.scenePromptBodies.at(-1)?.referenceImageUrls || []).toEqual([
+    manualSceneReferenceUrl,
+    uploadedReferenceUrl
+  ])
+  await expect.poll(() => String(capture.scenePromptBodies.at(-1)?.customPrompt || '')).toContain(sceneExtraPrompt)
   expect(capture.characterPromptBodies.at(-1)?.referenceMediaIds).toEqual(['41'])
+  expect(capture.characterPromptBodies.at(-1)?.characterDesignType).toBe('CHIBI_FULL_BODY')
 })

@@ -62,6 +62,8 @@ public class AivideoAdminSettingVo {
 
     private String multiRoleStrategy;
 
+    private String characterDesignType;
+
     private String globalPrompt;
 
     private String polishPrompt;
