@@ -522,10 +522,41 @@
       </section>
 
       <aside class="params-panel">
-        <h3>参数</h3>
+        <div class="params-panel-head">
+          <div>
+            <h3>参数</h3>
+            <small>项目级默认配置，保存后影响后续生成</small>
+          </div>
+          <div class="params-actions">
+            <template v-if="paramsEditing">
+              <el-button size="small" :disabled="savingStrategies" @click="handleCancelProjectParams">
+                取消
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="savingStrategies"
+                data-testid="save-project-params"
+                @click="handleSaveProjectStrategies"
+              >
+                保存
+              </el-button>
+            </template>
+            <el-button
+              v-else
+              size="small"
+              type="primary"
+              plain
+              data-testid="edit-project-params"
+              @click="handleEditProjectParams"
+            >
+              编辑参数
+            </el-button>
+          </div>
+        </div>
         <el-form label-position="top">
           <el-form-item label="画幅">
-            <el-select v-model="params.defaultRatio" disabled>
+            <el-select v-model="params.defaultRatio" :disabled="!paramsEditing || savingStrategies">
               <el-option v-for="item in ratioOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
@@ -533,41 +564,67 @@
             <el-input v-model="params.defaultResolution" disabled />
           </el-form-item>
           <el-form-item label="镜头秒数">
-            <el-input-number v-model="params.defaultShotDuration" disabled />
+            <el-input-number
+              v-model="params.defaultShotDuration"
+              :min="5"
+              :max="8"
+              :step="1"
+              :disabled="!paramsEditing || savingStrategies"
+            />
           </el-form-item>
           <el-form-item label="图片候选数">
-            <el-input-number v-model="params.imageCandidateCount" disabled />
+            <el-input-number
+              v-model="params.imageCandidateCount"
+              :min="1"
+              :max="4"
+              :step="1"
+              :disabled="!paramsEditing || savingStrategies"
+              data-testid="project-image-candidate-count"
+            />
           </el-form-item>
           <el-form-item label="视频候选数">
-            <el-input-number v-model="params.videoCandidateCount" disabled />
+            <el-input-number
+              v-model="params.videoCandidateCount"
+              :min="1"
+              :max="3"
+              :step="1"
+              :disabled="!paramsEditing || savingStrategies"
+            />
           </el-form-item>
           <el-form-item label="当前策略">
             <div class="strategy-grid">
-              <el-select v-model="params.defaultStyle" filterable allow-create default-first-option placeholder="视觉风格">
+              <el-select
+                v-model="params.defaultStyle"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="视觉风格"
+                :disabled="!paramsEditing || savingStrategies"
+              >
                 <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.characterDesignType" placeholder="角色造型">
+              <el-select v-model="params.characterDesignType" placeholder="角色造型" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in characterDesignTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.generationStrategy" placeholder="生成策略">
+              <el-select v-model="params.generationStrategy" placeholder="生成策略" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.audioMode" placeholder="声音模式">
+              <el-select v-model="params.audioMode" placeholder="声音模式" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.subtitleMode" placeholder="字幕模式">
+              <el-select v-model="params.subtitleMode" placeholder="字幕模式" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in subtitleModeOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.referenceStrategy" placeholder="参考素材">
+              <el-select v-model="params.referenceStrategy" placeholder="参考素材" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in referenceStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.actionIntensity" placeholder="动作强度">
+              <el-select v-model="params.actionIntensity" placeholder="动作强度" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in actionIntensityOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.continuityLevel" placeholder="连续性">
+              <el-select v-model="params.continuityLevel" placeholder="连续性" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
-              <el-select v-model="params.multiRoleStrategy" placeholder="多角色">
+              <el-select v-model="params.multiRoleStrategy" placeholder="多角色" :disabled="!paramsEditing || savingStrategies">
                 <el-option v-for="item in multiRoleStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
             </div>
@@ -598,18 +655,9 @@
                 maxlength="1200"
                 show-word-limit
                 placeholder="这里只追加当前作用域提示词；全局追加会和当前阶段提示词一起发送"
+                :disabled="!paramsEditing || savingStrategies"
               />
             </div>
-          </el-form-item>
-          <el-form-item>
-            <el-button
-              type="primary"
-              plain
-              :loading="savingStrategies"
-              @click="handleSaveProjectStrategies"
-            >
-              保存当前策略
-            </el-button>
           </el-form-item>
         </el-form>
       </aside>
@@ -1109,6 +1157,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
 const savingStrategies = ref(false)
+const paramsEditing = ref(false)
 const polishStreaming = ref(false)
 const polishStreamText = ref('')
 const polishStreamMeta = ref<AiStreamMetaPayload>({})
@@ -1201,6 +1250,10 @@ const params = reactive({
   multiRoleStrategy: 'SINGLE_FIRST',
   characterDesignType: 'AUTO'
 })
+const paramsSnapshot = ref<{
+  params: typeof params
+  promptScopes: Record<PromptScope, string>
+} | null>(null)
 
 const promptScopeOptions: Array<{ label: string; value: PromptScope }> = [
   { label: '全局追加', value: 'global' },
@@ -1957,32 +2010,34 @@ async function loadDetail() {
     const res = await getAivideoProject(projectId.value)
     Object.assign(detail, res.data || {})
     const settingParams = parseParamsJson(res.data.setting?.paramsJson)
-    Object.assign(params, {
-      defaultRatio: res.data.setting?.defaultRatio || res.data.project?.defaultRatio || '9:16',
-      defaultStyle: strategyValue(settingParams, 'defaultStyle', res.data.project?.defaultStyle || '写实电影感'),
-      defaultResolution: res.data.setting?.defaultResolution || '720p',
-      defaultShotDuration: res.data.setting?.defaultShotDuration || res.data.project?.defaultShotDuration || 5,
-      imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 2,
-      videoCandidateCount: res.data.setting?.videoCandidateCount || 1,
-      previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1',
-      generationStrategy: strategyValue(settingParams, 'generationStrategy', 'AUTO'),
-      audioMode: strategyValue(settingParams, 'audioMode', 'SILENT'),
-      subtitleMode: strategyValue(settingParams, 'subtitleMode', 'NONE'),
-      referenceStrategy: strategyValue(settingParams, 'referenceStrategy', 'CHARACTER_SCENE'),
-      actionIntensity: strategyValue(settingParams, 'actionIntensity', 'NORMAL'),
-      continuityLevel: strategyValue(settingParams, 'continuityLevel', 'STRICT'),
-      multiRoleStrategy: strategyValue(settingParams, 'multiRoleStrategy', 'SINGLE_FIRST'),
-      characterDesignType: strategyValue(settingParams, 'characterDesignType', 'AUTO')
-    })
-    Object.assign(promptScopes, {
-      global: strategyValue(settingParams, 'globalPrompt', ''),
-      polish: strategyValue(settingParams, 'polishPrompt', ''),
-      script: strategyValue(settingParams, 'scriptPrompt', ''),
-      asset: strategyValue(settingParams, 'assetPrompt', ''),
-      characterImage: strategyValue(settingParams, 'characterImagePrompt', ''),
-      sceneImage: strategyValue(settingParams, 'sceneImagePrompt', ''),
-      shotVideo: strategyValue(settingParams, 'shotVideoPrompt', '')
-    })
+    if (!paramsEditing.value) {
+      Object.assign(params, {
+        defaultRatio: res.data.setting?.defaultRatio || res.data.project?.defaultRatio || '9:16',
+        defaultStyle: strategyValue(settingParams, 'defaultStyle', res.data.project?.defaultStyle || '写实电影感'),
+        defaultResolution: res.data.setting?.defaultResolution || '720p',
+        defaultShotDuration: res.data.setting?.defaultShotDuration || res.data.project?.defaultShotDuration || 5,
+        imageCandidateCount: res.data.setting?.imageCandidateCount || res.data.project?.candidateImageCount || 2,
+        videoCandidateCount: res.data.setting?.videoCandidateCount || 1,
+        previewMode: res.data.setting?.previewMode || res.data.project?.previewMode || '1',
+        generationStrategy: strategyValue(settingParams, 'generationStrategy', 'AUTO'),
+        audioMode: strategyValue(settingParams, 'audioMode', 'SILENT'),
+        subtitleMode: strategyValue(settingParams, 'subtitleMode', 'NONE'),
+        referenceStrategy: strategyValue(settingParams, 'referenceStrategy', 'CHARACTER_SCENE'),
+        actionIntensity: strategyValue(settingParams, 'actionIntensity', 'NORMAL'),
+        continuityLevel: strategyValue(settingParams, 'continuityLevel', 'STRICT'),
+        multiRoleStrategy: strategyValue(settingParams, 'multiRoleStrategy', 'SINGLE_FIRST'),
+        characterDesignType: strategyValue(settingParams, 'characterDesignType', 'AUTO')
+      })
+      Object.assign(promptScopes, {
+        global: strategyValue(settingParams, 'globalPrompt', ''),
+        polish: strategyValue(settingParams, 'polishPrompt', ''),
+        script: strategyValue(settingParams, 'scriptPrompt', ''),
+        asset: strategyValue(settingParams, 'assetPrompt', ''),
+        characterImage: strategyValue(settingParams, 'characterImagePrompt', ''),
+        sceneImage: strategyValue(settingParams, 'sceneImagePrompt', ''),
+        shotVideo: strategyValue(settingParams, 'shotVideoPrompt', '')
+      })
+    }
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
     await refreshAssetPromptPreview()
@@ -2712,11 +2767,54 @@ async function withSubmit(action: () => Promise<void>, successMessage: string) {
   }
 }
 
+function clampInteger(value: number | undefined, min: number, max: number, fallback: number) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.min(max, Math.max(min, Math.round(numeric)))
+}
+
+function captureProjectParams() {
+  return {
+    params: { ...params },
+    promptScopes: { ...promptScopes }
+  }
+}
+
+function normalizeProjectParamsForSave() {
+  params.defaultShotDuration = clampInteger(params.defaultShotDuration, 5, 8, 5)
+  params.imageCandidateCount = clampInteger(params.imageCandidateCount, 1, 4, 1)
+  params.videoCandidateCount = clampInteger(params.videoCandidateCount, 1, 3, 1)
+}
+
+function handleEditProjectParams() {
+  if (savingStrategies.value) {
+    return
+  }
+  paramsSnapshot.value = captureProjectParams()
+  paramsEditing.value = true
+}
+
+function handleCancelProjectParams() {
+  if (savingStrategies.value) {
+    return
+  }
+  const snapshot = paramsSnapshot.value
+  if (snapshot) {
+    Object.assign(params, snapshot.params)
+    Object.assign(promptScopes, snapshot.promptScopes)
+  }
+  paramsEditing.value = false
+  paramsSnapshot.value = null
+}
+
 async function handleSaveProjectStrategies() {
   const project = detail.project
   if (!project || savingStrategies.value) {
     return
   }
+  normalizeProjectParamsForSave()
   savingStrategies.value = true
   try {
     await updateAivideoProject({
@@ -2743,11 +2841,14 @@ async function handleSaveProjectStrategies() {
       shotVideoPrompt: promptScopes.shotVideo,
       defaultShotDuration: params.defaultShotDuration,
       candidateImageCount: params.imageCandidateCount,
+      videoCandidateCount: params.videoCandidateCount,
       previewMode: params.previewMode,
       budgetLimit: project.budgetLimit,
       summary: project.summary
     })
-    ElMessage.success('策略已保存，后续生成会按当前策略发送')
+    paramsEditing.value = false
+    paramsSnapshot.value = null
+    ElMessage.success('项目参数已保存，后续生成会按当前配置发送')
     await loadDetail()
   } finally {
     savingStrategies.value = false
@@ -4149,9 +4250,30 @@ onBeforeUnmount(() => {
   color: #6b7280;
 }
 
-.params-panel h3 {
-  margin: 0 0 16px;
-  font-size: 18px;
+.params-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  small {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    line-height: 1.4;
+  }
+}
+
+.params-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .strategy-grid,

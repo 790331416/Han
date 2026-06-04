@@ -58,6 +58,8 @@ public class AivideoProjectDto {
 
     private Integer candidateImageCount;
 
+    private Integer videoCandidateCount;
+
     private String previewMode;
 
     private BigDecimal budgetLimit;

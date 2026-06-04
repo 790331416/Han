@@ -153,6 +153,7 @@ async function fulfillJson(route: Route, data: unknown) {
 async function mockAivideoWorkbench(page: Page, capture: {
   scenePromptBodies: unknown[]
   characterPromptBodies: unknown[]
+  projectEditBodies: unknown[]
 }) {
   await page.addInitScript(() => {
     localStorage.setItem('Admin-Token', 'browser-test-token')
@@ -177,6 +178,35 @@ async function mockAivideoWorkbench(page: Page, capture: {
     }
     if (path === '/aivideo/studio/project/1') {
       await fulfillJson(route, projectDetail)
+      return
+    }
+    if (path === '/aivideo/studio/project/edit') {
+      const body = JSON.parse(request.postData() || '{}')
+      capture.projectEditBodies.push(body)
+      Object.assign(projectDetail.project, body)
+      projectDetail.setting.defaultRatio = body.defaultRatio || projectDetail.setting.defaultRatio
+      projectDetail.setting.defaultShotDuration = body.defaultShotDuration || projectDetail.setting.defaultShotDuration
+      projectDetail.setting.imageCandidateCount = body.candidateImageCount || projectDetail.setting.imageCandidateCount
+      projectDetail.setting.videoCandidateCount = body.videoCandidateCount || projectDetail.setting.videoCandidateCount
+      projectDetail.setting.paramsJson = JSON.stringify({
+        defaultStyle: body.defaultStyle,
+        generationStrategy: body.generationStrategy,
+        audioMode: body.audioMode,
+        subtitleMode: body.subtitleMode,
+        referenceStrategy: body.referenceStrategy,
+        actionIntensity: body.actionIntensity,
+        continuityLevel: body.continuityLevel,
+        multiRoleStrategy: body.multiRoleStrategy,
+        characterDesignType: body.characterDesignType,
+        globalPrompt: body.globalPrompt,
+        polishPrompt: body.polishPrompt,
+        scriptPrompt: body.scriptPrompt,
+        assetPrompt: body.assetPrompt,
+        characterImagePrompt: body.characterImagePrompt,
+        sceneImagePrompt: body.sceneImagePrompt,
+        shotVideoPrompt: body.shotVideoPrompt
+      })
+      await fulfillJson(route, null)
       return
     }
     if (path === '/aivideo/studio/text/polish/prompt-preview') {
@@ -227,18 +257,26 @@ async function mockAivideoWorkbench(page: Page, capture: {
 test('aivideo workbench should use confirmed images through reusable reference pickers', async ({ page }) => {
   const capture = {
     scenePromptBodies: [] as any[],
-    characterPromptBodies: [] as any[]
+    characterPromptBodies: [] as any[],
+    projectEditBodies: [] as any[]
   }
   await mockAivideoWorkbench(page, capture)
 
   await page.goto('/studio/projects/1/workbench', { waitUntil: 'networkidle' })
   await expect(page.getByText(labels.project)).toBeVisible()
 
+  await page.getByTestId('edit-project-params').click()
+  await page.getByTestId('project-image-candidate-count').getByRole('button', { name: '减少数值' }).click()
+  await page.getByTestId('save-project-params').click()
+  await expect.poll(() => capture.projectEditBodies.at(-1)?.candidateImageCount).toBe(1)
+  await expect.poll(() => capture.projectEditBodies.at(-1)?.videoCandidateCount).toBe(1)
+
   await page.getByRole('button', { name: new RegExp(labels.assets) }).first().click()
   await page.getByRole('tab', { name: labels.sceneTab }).click()
   await expect(page.getByText(new RegExp(`建议参考.*${labels.eveningScene}.*#30`))).toBeVisible()
 
   await page.getByRole('row').filter({ hasText: labels.stormScene }).getByRole('button', { name: labels.sceneButton }).click()
+  await expect(page.getByRole('button', { name: /生成 1 张候选图/ })).toBeVisible()
   const sceneReferencePicker = page.getByTestId('reference-image-picker-scene')
   await expect(sceneReferencePicker).toBeVisible()
   await page.locator('.image-extra-prompt-form').filter({ hasText: '本次场景图追加提示词' }).locator('textarea').fill(sceneExtraPrompt)
@@ -268,6 +306,7 @@ test('aivideo workbench should use confirmed images through reusable reference p
 
   await page.getByRole('tab', { name: labels.characterTab }).click()
   await page.getByRole('row').filter({ hasText: labels.dog }).getByRole('button', { name: labels.characterButton }).click()
+  await expect(page.getByRole('button', { name: /生成 1 张候选图/ })).toBeVisible()
   await expect(page.getByTestId('reference-image-picker-character')).toBeVisible()
   await expect(page.getByTestId('reference-selected-card-character').filter({ hasText: `${labels.dog} #41` })).toBeVisible()
   await page.getByText('character prompt refs=41').waitFor({ state: 'visible' })

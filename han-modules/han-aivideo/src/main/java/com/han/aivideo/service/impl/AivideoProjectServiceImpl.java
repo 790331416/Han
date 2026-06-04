@@ -213,6 +213,9 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setImageCandidateCount(dto.getCandidateImageCount() == null
                 ? defaultInteger(setting.getImageCandidateCount(), 2)
                 : dto.getCandidateImageCount());
+        setting.setVideoCandidateCount(dto.getVideoCandidateCount() == null
+                ? defaultInteger(setting.getVideoCandidateCount(), 1)
+                : dto.getVideoCandidateCount());
         setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(setting.getPreviewMode(), YES)));
         setting.setParamsJson(XuJsonUtil.toJsonString(buildStrategyParams(dto, setting.getParamsJson())));
         fillUpdateAudit(setting);
@@ -311,7 +314,9 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         setting.setImageCandidateCount(dto.getCandidateImageCount() == null
                 ? defaultInteger(global != null ? global.getImageCandidateCount() : null, 2)
                 : dto.getCandidateImageCount());
-        setting.setVideoCandidateCount(defaultInteger(global != null ? global.getVideoCandidateCount() : null, 1));
+        setting.setVideoCandidateCount(dto.getVideoCandidateCount() == null
+                ? defaultInteger(global != null ? global.getVideoCandidateCount() : null, 1)
+                : dto.getVideoCandidateCount());
         setting.setPreviewMode(defaultString(dto.getPreviewMode(), defaultString(global != null ? global.getPreviewMode() : null, YES)));
         setting.setContentAuditEnabled(defaultString(global != null ? global.getContentAuditEnabled() : null, YES));
         setting.setMediaAccessPolicy(defaultString(global != null ? global.getMediaAccessPolicy() : null, "PRIVATE"));

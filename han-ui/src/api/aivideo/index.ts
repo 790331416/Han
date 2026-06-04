@@ -26,6 +26,7 @@ export interface AivideoProject {
   shotVideoPrompt?: string
   defaultShotDuration?: number
   candidateImageCount?: number
+  videoCandidateCount?: number
   previewMode?: string
   currentStage?: string
   projectStatus?: string
@@ -68,6 +69,7 @@ export interface AivideoProjectForm {
   shotVideoPrompt?: string
   defaultShotDuration?: number
   candidateImageCount?: number
+  videoCandidateCount?: number
   previewMode?: string
   budgetLimit?: number
   summary?: string
