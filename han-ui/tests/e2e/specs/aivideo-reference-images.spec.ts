@@ -278,6 +278,8 @@ test('aivideo workbench should use confirmed images through reusable reference p
   await expect(page.getByText(`场景：${labels.stormScene} #46`).first()).toBeVisible()
   await expect(page.getByText(`角色：${labels.dog} #41`).first()).toBeVisible()
   await expect(page.getByText(`角色：${labels.cat} #44`).first()).toBeVisible()
+  await expect(page.getByText('视频生成前预检')).toBeVisible()
+  await expect(page.getByText(/角色造型人工复核：Q版萌系全身/)).toBeVisible()
   const shotReferenceCards = page.locator('.shot-reference-panel .shot-reference-card')
   await expect(shotReferenceCards).toHaveCount(3)
   const shotReferenceImage = shotReferenceCards.first().locator('.el-image')
@@ -286,6 +288,11 @@ test('aivideo workbench should use confirmed images through reusable reference p
   await shotReferenceCards.first().locator('img').click()
   await expect(page.locator('.el-image-viewer__wrapper')).toBeVisible()
   await page.locator('.el-image-viewer__close').click()
+  await page.getByRole('button', { name: /生成 1 条候选视频/ }).click()
+  const preflightDialog = page.locator('.el-message-box').filter({ hasText: '参考图规则预检' })
+  await expect(preflightDialog).toBeVisible()
+  await expect(preflightDialog.getByText(/Q版单主体完整全身/)).toBeVisible()
+  await preflightDialog.getByRole('button', { name: '先检查图片' }).click()
 
   expect(capture.scenePromptBodies.at(-1)?.referenceMediaIds).toEqual(['30'])
   await expect.poll(() => capture.scenePromptBodies.at(-1)?.referenceImageUrls || []).toEqual([

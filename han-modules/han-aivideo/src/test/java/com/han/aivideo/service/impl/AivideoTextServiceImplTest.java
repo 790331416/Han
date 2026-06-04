@@ -42,8 +42,43 @@ class AivideoTextServiceImplTest {
 
         assertTrue(instruction.contains("Q版"));
         assertTrue(instruction.contains("完整全身"));
+        assertTrue(instruction.contains("猫耳"));
+        assertTrue(instruction.contains("猫尾"));
+        assertTrue(instruction.contains("单主体"));
         assertTrue(instruction.contains("禁止"));
         assertTrue(instruction.contains("大头贴"));
+        assertTrue(instruction.contains("四视图"));
+        assertTrue(instruction.contains("三视图"));
+    }
+
+    @Test
+    void characterDesignInstructionSeparates3dAnd2dAnimeAnchors() {
+        TestSupport support = new TestSupport();
+
+        String cg3d = support.characterDesignInstruction("THREE_D_ANIME_CG");
+        String anime2d = support.characterDesignInstruction("TWO_D_ANIME");
+
+        assertTrue(cg3d.contains("3D"));
+        assertTrue(cg3d.contains("全身"));
+        assertTrue(cg3d.contains("禁止真人照片"));
+        assertTrue(cg3d.contains("禁止2D平面漫画"));
+        assertTrue(anime2d.contains("2D"));
+        assertTrue(anime2d.contains("线稿"));
+        assertTrue(anime2d.contains("禁止3D渲染"));
+        assertTrue(anime2d.contains("禁止真人照片"));
+    }
+
+    @Test
+    void characterDesignInstructionInfersAnimeTypeFromVisualStyleWhenAuto() {
+        TestSupport support = new TestSupport();
+
+        String cg3d = support.characterDesignInstruction("AUTO", "3D 国漫 CG");
+        String anime2d = support.characterDesignInstruction("AUTO", "2D 日漫");
+
+        assertTrue(cg3d.contains("3D"));
+        assertTrue(cg3d.contains("禁止2D平面漫画"));
+        assertTrue(anime2d.contains("2D"));
+        assertTrue(anime2d.contains("禁止3D渲染"));
     }
 
     @Test
@@ -182,6 +217,10 @@ class AivideoTextServiceImplTest {
         @Override
         protected String characterDesignInstruction(String value) {
             return super.characterDesignInstruction(value);
+        }
+
+        protected String characterDesignInstruction(String value, String visualStyle) {
+            return super.characterDesignInstruction(value, visualStyle);
         }
     }
 }

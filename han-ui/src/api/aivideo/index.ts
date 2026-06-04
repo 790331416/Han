@@ -651,6 +651,8 @@ export const characterDesignTypeOptions = [
   { label: '自动', value: 'AUTO' },
   { label: '写实自然比例', value: 'REALISTIC_NATURAL' },
   { label: '半写实卡通', value: 'SEMI_REAL_CARTOON' },
+  { label: '3D动漫/国漫CG', value: 'THREE_D_ANIME_CG' },
+  { label: '2D动漫/日漫', value: 'TWO_D_ANIME' },
   { label: 'Q版萌系全身', value: 'CHIBI_FULL_BODY' },
   { label: '低龄儿童绘本', value: 'CHILDREN_PICTURE_BOOK' },
   { label: '动物本体萌化', value: 'ANIMAL_BODY_CUTE' },

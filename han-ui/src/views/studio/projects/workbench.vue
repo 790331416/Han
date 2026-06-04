@@ -927,6 +927,22 @@
           :title="previousShotGateMessage"
         />
 
+        <section class="shot-video-preflight-panel">
+          <div class="panel-title-row">
+            <strong>视频生成前预检</strong>
+            <el-tag :type="shotVideoPreflightLevel" effect="plain">{{ shotVideoPreflightSummary }}</el-tag>
+          </div>
+          <ul class="shot-video-preflight-list">
+            <li v-for="item in shotVideoPreflightItems" :key="`${item.status}-${item.title}`">
+              <el-tag :type="preflightTagType(item.status)" size="small">{{ preflightStatusText(item.status) }}</el-tag>
+              <div>
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.detail }}</small>
+              </div>
+            </li>
+          </ul>
+        </section>
+
         <div class="scene-image-actions">
           <el-button
             type="primary"
@@ -1008,7 +1024,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowUp, Check, DocumentChecked, Film, MagicStick, Refresh, Tickets, Upload, UserFilled, VideoCamera } from '@element-plus/icons-vue'
 import {
   AIVIDEO_ASSET_STREAM_PATH,
@@ -1079,6 +1095,12 @@ interface ReferenceImageOption {
   label: string
   subtitle: string
   sourceName: string
+}
+
+interface ShotVideoPreflightItem {
+  status: 'pass' | 'warn' | 'fail'
+  title: string
+  detail: string
 }
 
 const route = useRoute()
@@ -1240,6 +1262,25 @@ const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
+const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
+const shotVideoPreflightLevel = computed(() => {
+  if (shotVideoPreflightItems.value.some((item) => item.status === 'fail')) {
+    return 'danger'
+  }
+  if (shotVideoPreflightItems.value.some((item) => item.status === 'warn')) {
+    return 'warning'
+  }
+  return 'success'
+})
+const shotVideoPreflightSummary = computed(() => {
+  if (shotVideoPreflightLevel.value === 'danger') {
+    return '存在不合格项'
+  }
+  if (shotVideoPreflightLevel.value === 'warning') {
+    return '需人工复核'
+  }
+  return '系统检查通过'
+})
 const assetCounts = computed(() => ({
   characters: characters.value.length,
   scenes: scenes.value.length,
@@ -1659,6 +1700,216 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
       })
     })
   return options
+}
+
+function resolveEffectiveCharacterDesignType() {
+  const type = String(params.characterDesignType || 'AUTO')
+  if (type !== 'AUTO') {
+    return type
+  }
+  const style = String(params.defaultStyle || '')
+  if (/Q版|萌系/.test(style)) {
+    return 'CHIBI_FULL_BODY'
+  }
+  if (/3D|CG|国漫/.test(style)) {
+    return 'THREE_D_ANIME_CG'
+  }
+  if (/2D|日漫|动漫/.test(style)) {
+    return 'TWO_D_ANIME'
+  }
+  if (/绘本/.test(style)) {
+    return 'CHILDREN_PICTURE_BOOK'
+  }
+  if (/写实|电影/.test(style)) {
+    return 'REALISTIC_NATURAL'
+  }
+  return 'AUTO'
+}
+
+function characterDesignLabel(value?: string) {
+  return characterDesignTypeOptions.find((item) => item.value === value)?.label || value || '自动'
+}
+
+function characterDesignPreflightRule(value?: string) {
+  switch (value) {
+    case 'CHIBI_FULL_BODY':
+      return '请人工确认角色图是 Q版单主体完整全身，2.5-3.5 头身，猫耳/猫尾/手脚或标志物完整可见；不是头像、半身、贴纸、表情包、四视图/三视图/多视图。'
+    case 'THREE_D_ANIME_CG':
+      return '请人工确认角色图是 3D动漫/国漫CG 单主体完整全身，材质、服装、发型、眼睛和标志物稳定；不是真人照片、2D平面漫画、Q版大头、粘土玩具或多视图。'
+    case 'TWO_D_ANIME':
+      return '请人工确认角色图是 2D动漫/日漫单主体完整全身，线稿清晰、色块稳定、适合后续动作；不是3D渲染、真人照片、漫画分镜、对白气泡或多视图。'
+    case 'REALISTIC_NATURAL':
+      return '请人工确认角色图是写实自然比例单主体完整全身，骨骼、服装、毛发/皮肤可信；不是Q版、动漫化、玩偶化、网红写真、头像或半身。'
+    case 'SEMI_REAL_CARTOON':
+      return '请人工确认角色图是半写实卡通单主体完整全身，比例可动且不是Q版大头、贴纸、表情包、头像、半身或多视图。'
+    case 'ANIMAL_BODY_CUTE':
+      return '请人工确认动物角色图保持物种本体，四足/翅膀/尾巴/耳朵/爪子完整可见；不是人类身体、真人脸、直立人形或人类戏服。'
+    case 'ANTHROPOMORPHIC':
+      return '请人工确认拟人化角色图同时固定人形比例和物种标志物，例如猫耳、猫尾、翅膀或角；不能变成纯人类或丢失标志物。'
+    case 'CHILDREN_PICTURE_BOOK':
+      return '请人工确认角色图是低龄绘本单主体完整全身，轮廓柔和、色块清爽、低复杂度；不是成人写实、恐怖化、复杂背景或多视图。'
+    case 'MONSTER_VILLAIN':
+      return '请人工确认怪物/反派角色图完整全身、结构可动，锁定2-3个稳定标志特征；不是随机变形、断肢错肢、血腥或多视图。'
+    default:
+      return '请人工确认角色图是 Seedance 视频可用的单主体完整全身角色锚定图，背景纯白/浅灰/极简棚拍，不是头像、半身、四视图、三视图、多视图或同款分身。'
+  }
+}
+
+function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightItem[] {
+  if (!shot) {
+    return []
+  }
+  const items: ShotVideoPreflightItem[] = []
+  const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
+  if (!scene) {
+    items.push({
+      status: 'fail',
+      title: '场景绑定缺失',
+      detail: '当前分镜没有找到对应场景，建议先回到资产阶段修正分镜场景。'
+    })
+  } else if (!scene.lockedMediaId) {
+    items.push({
+      status: 'fail',
+      title: `场景图未选择：${scene.sceneName || '未命名场景'}`,
+      detail: '视频生成前必须先为当前场景选择一张已确认场景图，否则空间、天气和光线锚点不稳定。'
+    })
+  } else {
+    items.push({
+      status: 'pass',
+      title: `场景图已锁定：${scene.sceneName || '未命名场景'} #${scene.lockedMediaId}`,
+      detail: '系统会把已确认场景图作为当前分镜空间、天气、光线和道具锚点。'
+    })
+  }
+
+  const characterIds = parseShotCharacterIds(shot.characterIds)
+  if (!characterIds.length) {
+    items.push({
+      status: 'warn',
+      title: '分镜未绑定角色',
+      detail: '如果这个镜头确实是纯场景可以继续；如果有角色动作，请先在资产分镜中绑定角色。'
+    })
+  }
+  if (characterIds.length > 4) {
+    items.push({
+      status: 'fail',
+      title: '出场角色超过 4 个',
+      detail: '火山提示词指南中参考人物过多会降低稳定性，建议拆镜或按角色分组后再生成。'
+    })
+  }
+
+  const characterIdSet = new Set(characterIds)
+  const shotCharacters = characters.value.filter((item) => characterIdSet.has(String(item.characterId)))
+  characterIds
+    .filter((id) => !shotCharacters.some((item) => String(item.characterId) === id))
+    .forEach((id) => {
+      items.push({
+        status: 'fail',
+        title: `角色不存在：${id}`,
+        detail: '分镜绑定了不存在的角色ID，请重新提取或修正资产。'
+      })
+    })
+  shotCharacters.forEach((character) => {
+    if (!character.lockedMediaId) {
+      items.push({
+        status: 'fail',
+        title: `角色图未选择：${character.characterName || '未命名角色'}`,
+        detail: '视频生成前建议先为出场角色选择一张已确认角色图，否则容易换脸、换服装、换体型或丢失标志物。'
+      })
+    } else {
+      items.push({
+        status: 'pass',
+        title: `角色图已锁定：${character.characterName || '未命名角色'} #${character.lockedMediaId}`,
+        detail: '系统会在分镜视频提示词中持续绑定该角色的身份、外观、服装/毛色和标志物。'
+      })
+    }
+  })
+
+  const effectiveType = resolveEffectiveCharacterDesignType()
+  const inferred = params.characterDesignType === 'AUTO' && effectiveType !== 'AUTO'
+  items.push({
+    status: 'warn',
+    title: `角色造型人工复核：${characterDesignLabel(effectiveType)}${inferred ? '（由当前视觉风格自动推断）' : ''}`,
+    detail: characterDesignPreflightRule(effectiveType)
+  })
+
+  const referenceCount = shotVideoReferenceOptions.value.length
+  if (referenceCount > 5) {
+    items.push({
+      status: 'warn',
+      title: `参考图数量偏多：${referenceCount} 张`,
+      detail: '火山指南建议不要堆满素材，过多参考图会造成主体识别和风格优先级冲突；建议保留关键角色图1-2张和场景图1张。'
+    })
+  } else if (referenceCount > 0) {
+    items.push({
+      status: 'pass',
+      title: `参考图数量：${referenceCount} 张`,
+      detail: '当前参考图数量处于可控范围；如果出现风格冲突，优先减少非必要参考图。'
+    })
+  }
+  return items
+}
+
+function preflightTagType(status: ShotVideoPreflightItem['status']) {
+  if (status === 'pass') {
+    return 'success'
+  }
+  if (status === 'fail') {
+    return 'danger'
+  }
+  return 'warning'
+}
+
+function preflightStatusText(status: ShotVideoPreflightItem['status']) {
+  if (status === 'pass') {
+    return '通过'
+  }
+  if (status === 'fail') {
+    return '不合格'
+  }
+  return '复核'
+}
+
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+async function confirmShotVideoPreflight() {
+  const items = shotVideoPreflightItems.value
+  const riskyItems = items.filter((item) => item.status !== 'pass')
+  if (!riskyItems.length) {
+    return true
+  }
+  const hasFail = riskyItems.some((item) => item.status === 'fail')
+  const html = `
+    <div class="shot-video-preflight-dialog">
+      <p>${hasFail ? '存在不合格项，建议先重新生成或补齐参考图。' : '系统检查通过基础锚点，但仍需要人工复核图片是否符合火山视频生成规则。'}</p>
+      <ul>
+        ${riskyItems.map((item) => `
+          <li>
+            <strong>[${escapeHtml(preflightStatusText(item.status))}] ${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.detail)}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `
+  try {
+    await ElMessageBox.confirm(html, '参考图规则预检', {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '继续生成',
+      cancelButtonText: hasFail ? '先去补图/重生' : '先检查图片',
+      type: hasFail ? 'warning' : 'info',
+      distinguishCancelAndClose: true
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 function imageReferencePrompt(scope: PromptScope) {
@@ -3005,6 +3256,10 @@ async function handleGenerateShotVideos() {
     }
     return
   }
+  const preflightConfirmed = await confirmShotVideoPreflight()
+  if (!preflightConfirmed) {
+    return
+  }
   const shotId = String(shot.shotId)
   shotVideoGenerating.value = true
   let receivedCandidate = false
@@ -3586,6 +3841,58 @@ onBeforeUnmount(() => {
 
 .shot-video-gate-alert {
   margin-bottom: 12px;
+}
+
+.shot-video-preflight-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.shot-video-preflight-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  strong,
+  small {
+    display: block;
+  }
+
+  small {
+    margin-top: 3px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+}
+
+:global(.shot-video-preflight-dialog) {
+  ul {
+    display: grid;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding-left: 18px;
+  }
+
+  li span {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+    line-height: 1.5;
+  }
 }
 
 .shot-reference-panel {

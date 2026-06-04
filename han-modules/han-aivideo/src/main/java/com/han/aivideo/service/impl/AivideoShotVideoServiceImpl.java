@@ -869,7 +869,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put(PARAM_CONTINUITY_LEVEL, strategy.continuityLevel());
         variables.put(PARAM_MULTI_ROLE_STRATEGY, strategy.multiRoleStrategy());
         variables.put(PARAM_CHARACTER_DESIGN_TYPE, strategy.characterDesignType());
-        variables.put("characterDesignInstruction", characterDesignInstruction(strategy.characterDesignType()));
+        variables.put("characterDesignInstruction", characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()));
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("durationSec", String.valueOf(durationSec));
@@ -978,7 +978,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 strategy.continuityLevel(),
                 safeValue(project.getProjectName()), safeValue(strategy.visualStyle()),
                 strategy.generationStrategy(), strategy.referenceStrategy(), strategy.actionIntensity(), strategy.multiRoleStrategy(),
-                strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType()),
+                strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
                 characterNames, characterContinuity, sceneContinuity,

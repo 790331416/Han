@@ -107,7 +107,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             4. 必须完整露出头部/脸部、躯干、四肢/手脚/爪子、尾巴或标志性部位，边缘不得裁切。
             5. 背景使用纯白、浅灰或极简棚拍背景，不出现复杂场景、文字、水印、logo、漫画分镜框或说明标签。
             6. 必须突出 2-3 个稳定外观特征，供后续视频全程绑定；禁止夸张动作、强表情、换装、变身或剧情场景。
-            7. 不输出解释，只输出可直接用于图片模型的角色图提示词。
+            7. 如果参考图与当前角色造型类型或视觉风格冲突，只继承身份、脸型/物种、体型、发型/毛色、服装和标志物，不继承错误风格。
+            8. 不输出解释，只输出可直接用于图片模型的角色图提示词。
             """;
 
     private final AiVideoProjectMapper projectMapper;
@@ -912,7 +913,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
         variables.put("style", safeValue(style));
         variables.put(PARAM_CHARACTER_DESIGN_TYPE, safeValue(characterDesignType));
-        variables.put("characterDesignInstruction", characterDesignInstruction(characterDesignType));
+        variables.put("characterDesignInstruction", characterDesignInstruction(characterDesignType, style));
         variables.put("ratio", safeValue(ratio));
         variables.put("resolution", safeValue(resolution));
         variables.put("characterName", safeValue(character.getCharacterName()));
@@ -941,9 +942,10 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 构图硬规则：只输出一只/一个主体，3/4 正面或轻微侧正面自然站姿，主体居中，全身完整可见，主体占画面高度 60%-75%。
                 视频参考硬规则：禁止四方向、三视图、多视图、转面表、分栏、拼图、同款分身、多个角度并排；避免被视频模型误识别成多个主体。
                 全身硬规则：必须完整露出头部/脸部、躯干、四肢/爪子/脚、尾巴或标志性部位；禁止只画头部、禁止半身、禁止身体裁切。
-                一致性硬规则：突出 2-3 个稳定外观特征，保持同一体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹、光照和比例。
+            一致性硬规则：突出 2-3 个稳定外观特征，保持同一体型、年龄阶段、物种/品种、毛色/发型、服饰/身体特征、斑纹、光照和比例。
             旧词屏蔽规则：如果历史提示词里出现头像、半身、三视图、四方向、正侧背等旧版版式，只提取身份和外观特征；最终只允许单主体视频角色锚定图。
             如本次传入参考图，必须按图片1、图片2……的顺序使用：图片1为最重要角色身份锚点，优先继承物种/脸型/体型/毛色/服装/标志性细节；后续参考图只补充局部细节，不得生成多个主体或改变物种。
+            风格冲突处理：如果参考图风格与当前视觉风格或角色造型类型冲突，只继承身份和稳定外观锚点，不继承错误风格、错误比例或错误材质。
             必须体现身份定位、性格气质、外观轮廓、毛发/发型、服饰/身体特征、颜色风格、标志性细节。
                 只出现该角色本体，不出现其他角色、复杂剧情动作、文字、水印、logo、复杂环境；背景使用纯白、浅灰或极简棚拍背景。
 
@@ -965,7 +967,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
                 净化后的角色外观提示词：%s
                 参考图 URL：%s
                 """.formatted(
-                safeValue(ratio), safeValue(resolution), characterDesignInstruction(characterDesignType),
+                safeValue(ratio), safeValue(resolution), characterDesignInstruction(characterDesignType, style),
                 safeValue(project.getProjectName()),
                 safeValue(style), safeValue(characterDesignType), safeValue(character.getCharacterName()), safeValue(character.getGender()),
                 safeValue(character.getAgeDesc()), safeValue(character.getIdentityDesc()), safeValue(character.getStoryRole()),
