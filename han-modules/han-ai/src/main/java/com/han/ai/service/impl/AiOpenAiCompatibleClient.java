@@ -311,9 +311,10 @@ class AiOpenAiCompatibleClient {
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
         request.content.add(VideoContentPart.text(prompt));
+        boolean firstFrameMode = useFirstFrameMode(referenceImageUrls, referenceVideoUrl, referenceAudioUrl);
         for (int i = 0; i < referenceImageUrls.size(); i++) {
             request.content.add(VideoContentPart.image(referenceImageUrls.get(i),
-                    i == 0 ? "first_frame" : "reference_image"));
+                    firstFrameMode ? "first_frame" : "reference_image"));
         }
         if (StringUtils.hasText(referenceVideoUrl)) {
             request.content.add(VideoContentPart.video(referenceVideoUrl, "reference_video"));
@@ -327,6 +328,13 @@ class AiOpenAiCompatibleClient {
         request.returnLastFrame = returnLastFrame == null || Boolean.TRUE.equals(returnLastFrame);
         request.generateAudio = Boolean.TRUE.equals(generateAudio);
         return request;
+    }
+
+    private boolean useFirstFrameMode(List<String> referenceImageUrls, String referenceVideoUrl, String referenceAudioUrl) {
+        return referenceImageUrls != null
+                && referenceImageUrls.size() == 1
+                && !StringUtils.hasText(referenceVideoUrl)
+                && !StringUtils.hasText(referenceAudioUrl);
     }
 
     private int normalizeVideoDuration(Integer durationSec) {
