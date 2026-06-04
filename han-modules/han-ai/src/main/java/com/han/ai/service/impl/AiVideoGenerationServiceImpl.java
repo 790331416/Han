@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -52,7 +53,7 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
 
         String prompt = resolvePrompt(request);
         AiOpenAiCompatibleClient.VideoGenerationResult result = openAiCompatibleClient.videoGeneration(
-                model, apiKey, prompt, request.getReferenceImageUrl(), request.getReferenceVideoUrl(),
+                model, apiKey, prompt, resolveReferenceImageUrls(request), request.getReferenceVideoUrl(),
                 request.getReferenceAudioUrl(), request.getDurationSec(),
                 request.getRatio(), request.getResolution(), request.getReturnLastFrame(), request.getGenerateAudio());
 
@@ -68,6 +69,27 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         response.setLastFrameUrl(result.lastFrameUrl());
         response.setRawResponse(result.rawResponse());
         return response;
+    }
+
+    private List<String> resolveReferenceImageUrls(AiVideoGenerateRequest request) {
+        List<String> references = new ArrayList<>();
+        if (request.getReferenceImageUrls() != null) {
+            for (String url : request.getReferenceImageUrls()) {
+                addReferenceImageUrl(references, url);
+            }
+        }
+        addReferenceImageUrl(references, request.getReferenceImageUrl());
+        return references;
+    }
+
+    private void addReferenceImageUrl(List<String> references, String url) {
+        if (!StringUtils.hasText(url)) {
+            return;
+        }
+        String trimmed = url.trim();
+        if (!references.contains(trimmed)) {
+            references.add(trimmed);
+        }
     }
 
     @Override

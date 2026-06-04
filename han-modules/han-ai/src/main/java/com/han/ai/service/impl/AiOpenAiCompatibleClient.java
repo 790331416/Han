@@ -143,12 +143,13 @@ class AiOpenAiCompatibleClient {
         }
     }
 
-    VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, String referenceImageUrl,
+    VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, List<String> referenceImageUrls,
                                           String referenceVideoUrl, String referenceAudioUrl,
                                           Integer durationSec, String ratio, String resolution,
                                           Boolean returnLastFrame, Boolean generateAudio) {
-        validateVideoArguments(model, apiKey, prompt, referenceImageUrl);
-        VideoGenerationRequest payload = buildVideoRequest(model, prompt, referenceImageUrl, referenceVideoUrl,
+        List<String> references = normalizeImageReferences(referenceImageUrls);
+        validateVideoArguments(model, apiKey, prompt, references);
+        VideoGenerationRequest payload = buildVideoRequest(model, prompt, references, referenceVideoUrl,
                 referenceAudioUrl, durationSec, ratio, resolution,
                 returnLastFrame, generateAudio);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
@@ -247,12 +248,12 @@ class AiOpenAiCompatibleClient {
         }
     }
 
-    private void validateVideoArguments(AiModelPo model, String apiKey, String prompt, String referenceImageUrl) {
+    private void validateVideoArguments(AiModelPo model, String apiKey, String prompt, List<String> referenceImageUrls) {
         validateVideoConfig(model, apiKey);
         if (!StringUtils.hasText(prompt)) {
             throw new BusinessException("视频生成提示词不能为空");
         }
-        if (!StringUtils.hasText(referenceImageUrl)) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
             throw new BusinessException("视频生成参考图地址不能为空");
         }
     }
@@ -302,7 +303,7 @@ class AiOpenAiCompatibleClient {
         return references.isEmpty() ? null : references;
     }
 
-    private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, String referenceImageUrl,
+    private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, List<String> referenceImageUrls,
                                                      String referenceVideoUrl, String referenceAudioUrl,
                                                      Integer durationSec, String ratio, String resolution,
                                                      Boolean returnLastFrame, Boolean generateAudio) {
@@ -310,7 +311,10 @@ class AiOpenAiCompatibleClient {
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
         request.content.add(VideoContentPart.text(prompt));
-        request.content.add(VideoContentPart.image(referenceImageUrl, "first_frame"));
+        for (int i = 0; i < referenceImageUrls.size(); i++) {
+            request.content.add(VideoContentPart.image(referenceImageUrls.get(i),
+                    i == 0 ? "first_frame" : "reference_image"));
+        }
         if (StringUtils.hasText(referenceVideoUrl)) {
             request.content.add(VideoContentPart.video(referenceVideoUrl, "reference_video"));
         }

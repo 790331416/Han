@@ -1755,6 +1755,10 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
   return options
 }
 
+function currentShotVideoReferenceMediaIds() {
+  return shotVideoReferenceOptions.value.map((item) => item.mediaId)
+}
+
 function resolveEffectiveCharacterDesignType() {
   const type = String(params.characterDesignType || 'AUTO')
   if (type !== 'AUTO') {
@@ -1830,7 +1834,7 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     items.push({
       status: 'pass',
       title: `场景图已锁定：${scene.sceneName || '未命名场景'} #${scene.lockedMediaId}`,
-      detail: '系统会把已确认场景图作为当前分镜空间、天气、光线和道具锚点。'
+      detail: '系统会把已确认场景图作为当前分镜空间、天气、光线和道具锚点，并作为视频请求参考图实际传入。'
     })
   }
 
@@ -1872,7 +1876,7 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       items.push({
         status: 'pass',
         title: `角色图已锁定：${character.characterName || '未命名角色'} #${character.lockedMediaId}`,
-        detail: '系统会在分镜视频提示词中持续绑定该角色的身份、外观、服装/毛色和标志物。'
+        detail: '系统会把已确认角色图作为当前分镜角色锚点实际传入视频请求，锁定身份、外观、服装/毛色和标志物。'
       })
     }
   })
@@ -2183,7 +2187,8 @@ async function refreshShotVideoPromptPreview() {
       actionIntensity: params.actionIntensity,
       continuityLevel: params.continuityLevel,
       multiRoleStrategy: params.multiRoleStrategy,
-      characterDesignType: params.characterDesignType
+      characterDesignType: params.characterDesignType,
+      referenceMediaIds: currentShotVideoReferenceMediaIds()
     })
     if (!isCurrentShotVideoTarget(shotId)) {
       return
@@ -3385,7 +3390,8 @@ async function handleGenerateShotVideos() {
         actionIntensity: params.actionIntensity,
         continuityLevel: params.continuityLevel,
         multiRoleStrategy: params.multiRoleStrategy,
-        characterDesignType: params.characterDesignType
+        characterDesignType: params.characterDesignType,
+        referenceMediaIds: currentShotVideoReferenceMediaIds()
       },
       onMeta: (payload) => {
         if (!isCurrentShotVideoTarget(shotId)) {

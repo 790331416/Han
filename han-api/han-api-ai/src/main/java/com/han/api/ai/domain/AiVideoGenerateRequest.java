@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,6 +37,8 @@ public class AiVideoGenerateRequest implements Serializable {
     private Integer durationSec;
 
     private String referenceImageUrl;
+
+    private List<String> referenceImageUrls;
 
     private String referenceVideoUrl;
 

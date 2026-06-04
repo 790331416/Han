@@ -71,6 +71,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final String STATUS_READY = "READY";
     private static final int DEFAULT_VIDEO_CANDIDATE_COUNT = 1;
     private static final int MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+    private static final int MAX_VIDEO_REFERENCE_IMAGES = 6;
     private static final int POLL_INTERVAL_MILLIS = 5_000;
     private static final int MAX_POLL_TIMES = 60;
     private static final int MAX_TRANSIENT_QUERY_FAILURES = 8;
@@ -347,7 +348,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             validatePreviousShotReady(previousShot);
         }
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
-        AiVideoMediaAssetPo referenceMedia = previousTailFrameMedia != null ? previousTailFrameMedia : sceneReferenceMedia;
+        List<AiVideoMediaAssetPo> referenceMedias = buildShotVideoReferenceMedias(project.getProjectId(), shot,
+                sceneReferenceMedia, previousTailFrameMedia, dto.getReferenceMediaIds());
+        AiVideoMediaAssetPo referenceMedia = referenceMedias.get(0);
         AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
         AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
         Long modelId = firstLong(dto.getModelId(),
@@ -374,16 +377,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
         StrategyContext strategy = resolveStrategy(dto, projectSetting, globalSetting);
-        String referenceImageUrl = buildProviderFileUrl(referenceMedia.getFileUrl());
+        List<String> referenceImageUrls = buildProviderFileUrls(referenceMedias);
+        String referenceImageUrl = referenceImageUrls.get(0);
         Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
-                referenceImageUrl, ratio, resolution, durationSec, strategy);
+                referenceMedias, referenceImageUrls, ratio, resolution, durationSec, strategy);
         String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
-                ratio, resolution, durationSec, referenceImageUrl, strategy);
+                ratio, resolution, durationSec, referenceMedias, referenceImageUrls, strategy);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
-                referenceImageUrl, variables, strategy);
+                referenceImageUrl, referenceImageUrls, referenceMedias, variables, strategy);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -392,6 +396,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setModelId(context.modelId());
         request.setUserPrompt(context.prompt());
         request.setReferenceImageUrl(context.referenceImageUrl());
+        request.setReferenceImageUrls(context.referenceImageUrls());
         request.setCandidateCount(1);
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
@@ -452,6 +457,89 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             return null;
         }
         return media;
+    }
+
+    private List<AiVideoMediaAssetPo> buildShotVideoReferenceMedias(Long projectId, AiVideoShotPo shot,
+                                                                    AiVideoMediaAssetPo sceneReferenceMedia,
+                                                                    AiVideoMediaAssetPo previousTailFrameMedia,
+                                                                    List<Long> explicitReferenceMediaIds) {
+        Map<Long, AiVideoMediaAssetPo> references = new LinkedHashMap<>();
+        addReferenceMedia(references, previousTailFrameMedia);
+        addReferenceMedia(references, sceneReferenceMedia);
+        if (explicitReferenceMediaIds != null) {
+            for (Long mediaId : explicitReferenceMediaIds) {
+                addReferenceMedia(references, requireReferenceImage(projectId, mediaId));
+            }
+        }
+        addCharacterReferenceMedias(projectId, shot, references);
+        if (references.isEmpty()) {
+            throw new BusinessException("视频生成参考图不能为空，请先选择场景图或角色图");
+        }
+        return new ArrayList<>(references.values());
+    }
+
+    private void addCharacterReferenceMedias(Long projectId, AiVideoShotPo shot, Map<Long, AiVideoMediaAssetPo> references) {
+        for (String token : parseCharacterTokens(shot.getCharacterIds())) {
+            try {
+                Long characterId = Long.parseLong(token);
+                AiVideoCharacterPo character = characterMapper.selectById(characterId);
+                if (character == null || !Objects.equals(projectId, character.getProjectId())
+                        || !Integer.valueOf(DEL_FLAG_NORMAL).equals(character.getDelFlag())
+                        || character.getLockedMediaId() == null) {
+                    continue;
+                }
+                addReferenceMedia(references, requireReferenceImage(projectId, character.getLockedMediaId()));
+            } catch (NumberFormatException ignored) {
+                // 老数据可能存角色名，无法反查锁定图时仅保留文字锚点。
+            }
+        }
+    }
+
+    private AiVideoMediaAssetPo requireReferenceImage(Long projectId, Long mediaId) {
+        if (mediaId == null) {
+            throw new BusinessException("参考图ID不能为空");
+        }
+        AiVideoMediaAssetPo media = mediaAssetMapper.selectById(mediaId);
+        if (media == null || !Objects.equals(projectId, media.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())
+                || !isVideoReferenceAsset(media)
+                || !StringUtils.hasText(media.getFileUrl())) {
+            throw new BusinessException("参考图不存在、未归档或类型不支持，请重新选择场景图/角色图");
+        }
+        return media;
+    }
+
+    private boolean isVideoReferenceAsset(AiVideoMediaAssetPo media) {
+        String assetType = firstText(media.getAssetType());
+        if ("SHOT_TAIL_FRAME".equals(assetType)) {
+            return true;
+        }
+        boolean supportedType = "SCENE_IMAGE".equals(assetType) || "CHARACTER_IMAGE".equals(assetType);
+        if (!supportedType) {
+            return false;
+        }
+        return YES.equals(media.getSelected()) || "SELECTED".equalsIgnoreCase(firstText(media.getAssetStatus()));
+    }
+
+    private void addReferenceMedia(Map<Long, AiVideoMediaAssetPo> references, AiVideoMediaAssetPo media) {
+        if (media == null || media.getMediaId() == null || references.containsKey(media.getMediaId())) {
+            return;
+        }
+        if (references.size() >= MAX_VIDEO_REFERENCE_IMAGES) {
+            return;
+        }
+        references.put(media.getMediaId(), media);
+    }
+
+    private List<String> buildProviderFileUrls(List<AiVideoMediaAssetPo> referenceMedias) {
+        List<String> urls = new ArrayList<>();
+        for (AiVideoMediaAssetPo media : referenceMedias) {
+            String url = buildProviderFileUrl(media.getFileUrl());
+            if (!urls.contains(url)) {
+                urls.add(url);
+            }
+        }
+        return urls;
     }
 
     private AiVideoTaskQueryResponse waitForCompletion(RequestContext context, AiVideoGenerationTaskPo task,
@@ -855,9 +943,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private Map<String, String> buildVariables(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                                AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
-                                               String referenceImageUrl, String ratio, String resolution, int durationSec,
+                                               List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
+                                               String ratio, String resolution, int durationSec,
                                                StrategyContext strategy) {
         Map<String, String> variables = new LinkedHashMap<>();
+        String referenceImageUrl = referenceImageUrls.get(0);
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
         variables.put("style", safeValue(strategy.visualStyle()));
@@ -894,7 +984,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("emotion", safeValue(shot.getEmotion()));
         variables.put("shotPromptText", safeValue(shot.getPromptText()));
         variables.put("referenceImageUrl", referenceImageUrl);
-        variables.put("referenceFrameType", previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图");
+        variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
+        variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
+        variables.put("referenceMediaIds", formatReferenceMediaIds(referenceMedias));
+        variables.put("referenceAnchorSummary", buildReferenceAnchorSummary(referenceMedias));
+        variables.put("referenceFrameType", previousTailFrameMedia != null ? "上一分镜尾帧 + 当前场景/角色锚点" : "当前场景图 + 角色锚点");
         variables.put("previousShotNo", previousShot == null ? "无" : String.valueOf(firstInteger(previousShot.getShotNo(), 1)));
         variables.put("previousShotSummary", buildPreviousShotSummary(previousShot));
         variables.put("previousEndState", buildPreviousEndState(previousShot));
@@ -913,8 +1007,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
-                                        String ratio, String resolution, int durationSec, String referenceImageUrl,
+                                        String ratio, String resolution, int durationSec,
+                                        List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
                                         StrategyContext strategy) {
+        String referenceImageUrl = referenceImageUrls.get(0);
+        String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
         String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
@@ -928,7 +1025,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 # 单分镜视频模型执行版 Prompt
 
                 参考图类型：%s。请基于参考图生成 1 个连续镜头，不要生成多镜头拼接。
-                输出规格：%s，%s，约 %s 秒。参考图地址：%s。
+                输出规格：%s，%s，约 %s 秒。第一帧参考图地址：%s。
+                实际传入参考图共 %s 张：
+                %s
 
                 ## 第一帧和连续性
                 - 第一帧必须贴合参考图：主体位置、姿态、朝向、体型、毛色/服饰、光影、天气和背景空间保持一致。
@@ -936,7 +1035,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 本镜头起始状态：%s。
                 - 本镜头结尾状态：%s。
                 - 连续性强度：%s。若为极严格，必须同时继承上一尾帧、同场景锚点和角色锚点；缺少任一锚点时不得擅自改背景或主体。
-                - 角色锚定图使用规则：角色图只用于锁定身份、体型、毛色/服饰和标志物；不得把白底/浅灰棚拍背景带入剧情场景，不得把单主体锚定图复制成多只同款主体。
+                - 多参考图优先级：图片1决定起始帧/空间连续性；场景图锁定空间、天气、光线和道具；角色图锁定身份、体型比例、脸型、服装/毛色和标志物。
+                - 角色锚定图使用规则：角色图优先于角色文字描述；若文字描述与角色图冲突，必须以角色图中的造型、比例、服装、发型、猫耳/猫尾等标志物为准；不得把白底/浅灰棚拍背景带入剧情场景，不得把单主体锚定图复制成多只同款主体。
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
@@ -971,6 +1071,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 """.formatted(
                 previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
+                referenceImageUrls.size(), referenceAnchorSummary,
                 previousShot == null ? "无" : "第 " + firstInteger(previousShot.getShotNo(), 1) + " 镜头，" + buildPreviousShotSummary(previousShot),
                 buildPreviousEndState(previousShot),
                 buildCurrentStartState(previousShot, previousTailFrameMedia),
@@ -989,6 +1090,81 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 audioVisualProtocol,
                 strategy.subtitleMode(),
                 buildContinuityNegativePrompt(shot));
+    }
+
+    private String formatReferenceImageUrls(List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
+            return "未填写";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < referenceImageUrls.size(); i++) {
+            if (i > 0) {
+                builder.append('\n');
+            }
+            builder.append("图片").append(i + 1).append("：").append(referenceImageUrls.get(i));
+        }
+        return builder.toString();
+    }
+
+    private String formatReferenceMediaIds(List<AiVideoMediaAssetPo> referenceMedias) {
+        if (referenceMedias == null || referenceMedias.isEmpty()) {
+            return "";
+        }
+        return referenceMedias.stream()
+                .map(AiVideoMediaAssetPo::getMediaId)
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
+    }
+
+    private String buildReferenceAnchorSummary(List<AiVideoMediaAssetPo> referenceMedias) {
+        if (referenceMedias == null || referenceMedias.isEmpty()) {
+            return "未传入参考图。";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < referenceMedias.size(); i++) {
+            AiVideoMediaAssetPo media = referenceMedias.get(i);
+            if (i > 0) {
+                builder.append('\n');
+            }
+            builder.append("- 图片").append(i + 1)
+                    .append("（mediaId=").append(media.getMediaId()).append("，")
+                    .append(referenceAnchorRole(media, i)).append("）：")
+                    .append(referenceAnchorDescription(media));
+        }
+        return builder.toString();
+    }
+
+    private String referenceAnchorRole(AiVideoMediaAssetPo media, int index) {
+        String assetType = firstText(media.getAssetType());
+        if (index == 0) {
+            return "first_frame";
+        }
+        if ("CHARACTER_IMAGE".equals(assetType)) {
+            return "reference_image/character_anchor";
+        }
+        if ("SCENE_IMAGE".equals(assetType)) {
+            return "reference_image/scene_anchor";
+        }
+        if ("SHOT_TAIL_FRAME".equals(assetType)) {
+            return "reference_image/tail_frame";
+        }
+        return "reference_image";
+    }
+
+    private String referenceAnchorDescription(AiVideoMediaAssetPo media) {
+        String assetType = firstText(media.getAssetType());
+        if ("CHARACTER_IMAGE".equals(assetType)) {
+            return "角色锚定图，只锁定身份、Q版/比例、脸型、服装/毛色和猫耳猫尾等标志物，不继承白底背景。";
+        }
+        if ("SCENE_IMAGE".equals(assetType)) {
+            return "场景锚定图，锁定空间结构、时间、天气、光线、道具和背景关系。";
+        }
+        if ("SHOT_TAIL_FRAME".equals(assetType)) {
+            return "上一分镜尾帧，优先锁定本镜头第一帧姿态、朝向、位置和光影。";
+        }
+        return "参考图，按分镜要求补充视觉锚点。";
     }
 
     private String buildCharacterContinuity(Long projectId, String characterIds) {
@@ -1030,7 +1206,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             appendField(fields, "已锁定角色图ID：", String.valueOf(character.getLockedMediaId()));
         }
         String detail = fields.isEmpty() ? "角色ID " + character.getCharacterId() : String.join("；", fields);
-        return detail + "。同一镜头和跨镜头必须保持为同一角色/同一只动物，不得换物种、毛色、体型、脸型、眼睛、年龄感、项圈、斑纹或其他标志物；角色图只作外观锚定，不继承白底棚拍背景，不复制同款分身。";
+        return detail + "。同一镜头和跨镜头必须保持为同一角色/同一只动物；如果锁定角色图与文字档案冲突，必须以锁定角色图中的造型、比例、脸型、服装/毛色和猫耳猫尾等标志物为准；不得换物种、毛色、体型、脸型、眼睛、年龄感、项圈、斑纹或其他标志物；角色图只作外观锚定，不继承白底棚拍背景，不复制同款分身。";
     }
 
     private String buildSceneContinuity(AiVideoScenePo scene, AiVideoShotPo previousShot) {
@@ -1827,6 +2003,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             String customPrompt,
             String prompt,
             String referenceImageUrl,
+            List<String> referenceImageUrls,
+            List<AiVideoMediaAssetPo> referenceMedias,
             Map<String, String> variables,
             StrategyContext strategy
     ) {

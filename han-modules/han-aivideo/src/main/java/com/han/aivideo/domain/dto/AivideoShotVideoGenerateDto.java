@@ -3,6 +3,8 @@ package com.han.aivideo.domain.dto;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * Single shot video generation request.
  */
@@ -44,6 +46,8 @@ public class AivideoShotVideoGenerateDto {
     private String multiRoleStrategy;
 
     private String characterDesignType;
+
+    private List<Long> referenceMediaIds;
 
     /**
      * Only recover/poll an existing provider task. Used by the workbench refresh action.

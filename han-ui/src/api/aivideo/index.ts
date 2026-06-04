@@ -483,6 +483,7 @@ export function previewAivideoShotVideoPrompt(data: {
   continuityLevel?: string
   multiRoleStrategy?: string
   characterDesignType?: string
+  referenceMediaIds?: Array<string | number>
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
 }

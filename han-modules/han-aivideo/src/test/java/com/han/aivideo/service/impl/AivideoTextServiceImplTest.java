@@ -1,6 +1,8 @@
 package com.han.aivideo.service.impl;
 
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
+import com.han.api.ai.domain.AiVideoGenerateRequest;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -46,9 +48,29 @@ class AivideoTextServiceImplTest {
         assertTrue(instruction.contains("猫尾"));
         assertTrue(instruction.contains("单主体"));
         assertTrue(instruction.contains("禁止"));
+        assertTrue(instruction.contains("禁止拉长为正常比例"));
         assertTrue(instruction.contains("大头贴"));
         assertTrue(instruction.contains("四视图"));
         assertTrue(instruction.contains("三视图"));
+    }
+
+    @Test
+    void videoGenerateRequestCarriesMultipleReferenceImageUrls() {
+        AiVideoGenerateRequest request = new AiVideoGenerateRequest();
+
+        request.setReferenceImageUrls(List.of("https://media.example/scene.jpg", "https://media.example/character.jpg"));
+
+        assertEquals(List.of("https://media.example/scene.jpg", "https://media.example/character.jpg"),
+                request.getReferenceImageUrls());
+    }
+
+    @Test
+    void shotVideoGenerateDtoCarriesReferenceMediaIds() {
+        AivideoShotVideoGenerateDto dto = new AivideoShotVideoGenerateDto();
+
+        dto.setReferenceMediaIds(List.of(30L, 59L));
+
+        assertEquals(List.of(30L, 59L), dto.getReferenceMediaIds());
     }
 
     @Test
