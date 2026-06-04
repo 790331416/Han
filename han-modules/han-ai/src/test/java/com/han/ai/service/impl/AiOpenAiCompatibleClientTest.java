@@ -17,7 +17,7 @@ class AiOpenAiCompatibleClientTest {
         Object request = buildVideoRequest(List.of(
                 "https://example.com/tail.png",
                 "https://example.com/role.png"
-        ), null, null);
+        ), null, null, false);
 
         List<String> imageRoles = imageRolesOf(request);
 
@@ -26,8 +26,15 @@ class AiOpenAiCompatibleClientTest {
     }
 
     @Test
-    void videoRequestKeepsFirstFrameRoleForSingleImageWithoutReferenceMedia() throws Exception {
-        Object request = buildVideoRequest(List.of("https://example.com/tail.png"), null, null);
+    void videoRequestKeepsReferenceImageRoleForSingleImageByDefault() throws Exception {
+        Object request = buildVideoRequest(List.of("https://example.com/scene.png"), null, null, false);
+
+        assertEquals(List.of("reference_image"), imageRolesOf(request));
+    }
+
+    @Test
+    void videoRequestKeepsFirstFrameRoleForSingleImageWhenExplicitlyRequested() throws Exception {
+        Object request = buildVideoRequest(List.of("https://example.com/tail.png"), null, null, true);
 
         assertEquals(List.of("first_frame"), imageRolesOf(request));
     }
@@ -35,20 +42,20 @@ class AiOpenAiCompatibleClientTest {
     @Test
     void videoRequestAvoidsFirstFrameWhenSingleImageIsMixedWithReferenceAudio() throws Exception {
         Object request = buildVideoRequest(List.of("https://example.com/tail.png"),
-                null, "https://example.com/voice.wav");
+                null, "https://example.com/voice.wav", true);
 
         assertEquals(List.of("reference_image"), imageRolesOf(request));
     }
 
     private Object buildVideoRequest(List<String> referenceImageUrls, String referenceVideoUrl,
-                                     String referenceAudioUrl) throws Exception {
+                                     String referenceAudioUrl, Boolean referenceImageAsFirstFrame) throws Exception {
         AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
         Method method = AiOpenAiCompatibleClient.class.getDeclaredMethod("buildVideoRequest",
                 AiModelPo.class, String.class, List.class, String.class, String.class,
-                Integer.class, String.class, String.class, Boolean.class, Boolean.class);
+                Integer.class, String.class, String.class, Boolean.class, Boolean.class, Boolean.class);
         method.setAccessible(true);
         return method.invoke(client, model(), "test prompt", referenceImageUrls, referenceVideoUrl,
-                referenceAudioUrl, 5, "9:16", "720p", true, false);
+                referenceAudioUrl, 5, "9:16", "720p", true, false, referenceImageAsFirstFrame);
     }
 
     private AiModelPo model() {

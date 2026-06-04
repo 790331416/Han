@@ -4,7 +4,10 @@ import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
+import com.han.aivideo.mapper.AiVideoCharacterMapper;
+import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.api.ai.domain.AiVideoGenerateRequest;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 
@@ -290,6 +294,108 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void shotVideoReferencesUseTailOnlyForSameSceneWithoutNewCharacters() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("5");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5");
+        AiVideoMediaAssetPo scene = media(30L, "SCENE_IMAGE");
+        AiVideoMediaAssetPo tailFrame = media(47L, "SHOT_TAIL_FRAME");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, scene, tailFrame, List.of());
+
+        assertEquals(1, references.size());
+        assertEquals(47L, references.get(0).getMediaId());
+        assertEquals("SHOT_TAIL_FRAME", references.get(0).getAssetType());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shotVideoReferencesSkipPreviousTailWhenSceneChanges() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(13L);
+        shot.setCharacterIds("");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("");
+        AiVideoMediaAssetPo scene = media(30L, "SCENE_IMAGE");
+        AiVideoMediaAssetPo tailFrame = media(47L, "SHOT_TAIL_FRAME");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, scene, tailFrame, List.of());
+
+        assertEquals(1, references.size());
+        assertEquals(30L, references.get(0).getMediaId());
+        assertEquals("SCENE_IMAGE", references.get(0).getAssetType());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shotVideoReferencesKeepTailAsReferenceWhenNewCharacterAppearsInSameScene() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && (Long.valueOf(5L).equals(args[0]) || Long.valueOf(6L).equals(args[0]))) {
+                        var character = new com.han.aivideo.domain.po.AiVideoCharacterPo();
+                        Long characterId = (Long) args[0];
+                        character.setCharacterId(characterId);
+                        character.setProjectId(3L);
+                        character.setLockedMediaId(characterId + 60L);
+                        character.setDelFlag(0);
+                        return character;
+                    }
+                    return null;
+                });
+        AiVideoMediaAssetMapper mediaMapper = (AiVideoMediaAssetMapper) Proxy.newProxyInstance(
+                AiVideoMediaAssetMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoMediaAssetMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())
+                            && (Long.valueOf(65L).equals(args[0]) || Long.valueOf(66L).equals(args[0]))) {
+                        return media((Long) args[0], "CHARACTER_IMAGE");
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, mediaMapper, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("5,6");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5");
+        AiVideoMediaAssetPo scene = media(30L, "SCENE_IMAGE");
+        AiVideoMediaAssetPo tailFrame = media(47L, "SHOT_TAIL_FRAME");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, scene, tailFrame, List.of());
+
+        assertEquals(List.of("SHOT_TAIL_FRAME", "SCENE_IMAGE", "CHARACTER_IMAGE", "CHARACTER_IMAGE"),
+                references.stream().map(AiVideoMediaAssetPo::getAssetType).toList());
+    }
+
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();
@@ -297,6 +403,18 @@ class AivideoTextServiceImplTest {
         boolean sent = AivideoTextServiceImpl.sendSseSafely(emitter, "delta", "chunk");
 
         assertFalse(sent);
+    }
+
+    private AiVideoMediaAssetPo media(Long mediaId, String assetType) {
+        AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
+        media.setMediaId(mediaId);
+        media.setAssetType(assetType);
+        media.setProjectId(3L);
+        media.setFileUrl("/file/public/test.png");
+        media.setSelected("1");
+        media.setAssetStatus("SELECTED");
+        media.setDelFlag(0);
+        return media;
     }
 
     private static final class TestSupport extends AivideoServiceSupport {

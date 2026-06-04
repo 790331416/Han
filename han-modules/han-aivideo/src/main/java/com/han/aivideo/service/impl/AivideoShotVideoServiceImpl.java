@@ -349,7 +349,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
         List<AiVideoMediaAssetPo> referenceMedias = buildShotVideoReferenceMedias(project.getProjectId(), shot,
+                previousShot,
                 sceneReferenceMedia, previousTailFrameMedia, dto.getReferenceMediaIds());
+        boolean referenceImageAsFirstFrame = shouldSendReferenceImageAsFirstFrame(referenceMedias, previousTailFrameMedia);
         AiVideoMediaAssetPo referenceMedia = referenceMedias.get(0);
         AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
         AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
@@ -385,9 +387,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 ratio, resolution, durationSec, referenceMedias, referenceImageUrls, strategy);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
+        variables.put("referenceImageAsFirstFrame", String.valueOf(referenceImageAsFirstFrame));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
-                referenceImageUrl, referenceImageUrls, referenceMedias, variables, strategy);
+                referenceImageUrl, referenceImageUrls, referenceMedias, referenceImageAsFirstFrame, variables, strategy);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -397,6 +400,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setUserPrompt(context.prompt());
         request.setReferenceImageUrl(context.referenceImageUrl());
         request.setReferenceImageUrls(context.referenceImageUrls());
+        request.setReferenceImageAsFirstFrame(context.referenceImageAsFirstFrame());
         request.setCandidateCount(1);
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
@@ -460,11 +464,18 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private List<AiVideoMediaAssetPo> buildShotVideoReferenceMedias(Long projectId, AiVideoShotPo shot,
+                                                                    AiVideoShotPo previousShot,
                                                                     AiVideoMediaAssetPo sceneReferenceMedia,
                                                                     AiVideoMediaAssetPo previousTailFrameMedia,
                                                                     List<Long> explicitReferenceMediaIds) {
         Map<Long, AiVideoMediaAssetPo> references = new LinkedHashMap<>();
-        addReferenceMedia(references, previousTailFrameMedia);
+        if (shouldUsePreviousTailFrameOnly(shot, previousShot, previousTailFrameMedia, explicitReferenceMediaIds)) {
+            addReferenceMedia(references, previousTailFrameMedia);
+            return new ArrayList<>(references.values());
+        }
+        if (previousTailFrameMedia != null && isSameScene(shot, previousShot)) {
+            addReferenceMedia(references, previousTailFrameMedia);
+        }
         addReferenceMedia(references, sceneReferenceMedia);
         if (explicitReferenceMediaIds != null) {
             for (Long mediaId : explicitReferenceMediaIds) {
@@ -476,6 +487,46 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             throw new BusinessException("视频生成参考图不能为空，请先选择场景图或角色图");
         }
         return new ArrayList<>(references.values());
+    }
+
+    private boolean shouldUsePreviousTailFrameOnly(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                   AiVideoMediaAssetPo previousTailFrameMedia,
+                                                   List<Long> explicitReferenceMediaIds) {
+        return previousTailFrameMedia != null
+                && isSameScene(shot, previousShot)
+                && !hasExplicitReferences(explicitReferenceMediaIds)
+                && !hasNewCharacters(shot, previousShot);
+    }
+
+    private boolean shouldSendReferenceImageAsFirstFrame(List<AiVideoMediaAssetPo> referenceMedias,
+                                                         AiVideoMediaAssetPo previousTailFrameMedia) {
+        return previousTailFrameMedia != null
+                && referenceMedias != null
+                && referenceMedias.size() == 1
+                && Objects.equals(referenceMedias.get(0).getMediaId(), previousTailFrameMedia.getMediaId());
+    }
+
+    private boolean isSameScene(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        return shot != null
+                && previousShot != null
+                && shot.getSceneId() != null
+                && Objects.equals(shot.getSceneId(), previousShot.getSceneId());
+    }
+
+    private boolean hasExplicitReferences(List<Long> explicitReferenceMediaIds) {
+        return explicitReferenceMediaIds != null && explicitReferenceMediaIds.stream().anyMatch(Objects::nonNull);
+    }
+
+    private boolean hasNewCharacters(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        List<String> currentCharacters = parseCharacterTokens(shot != null ? shot.getCharacterIds() : null);
+        if (currentCharacters.isEmpty()) {
+            return false;
+        }
+        List<String> previousCharacters = parseCharacterTokens(previousShot != null ? previousShot.getCharacterIds() : null);
+        if (previousCharacters.isEmpty()) {
+            return true;
+        }
+        return currentCharacters.stream().anyMatch(character -> !previousCharacters.contains(character));
     }
 
     private void addCharacterReferenceMedias(Long projectId, AiVideoShotPo shot, Map<Long, AiVideoMediaAssetPo> references) {
@@ -948,6 +999,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                                StrategyContext strategy) {
         Map<String, String> variables = new LinkedHashMap<>();
         String referenceImageUrl = referenceImageUrls.get(0);
+        AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
+                containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
         variables.put("projectName", safeValue(project.getProjectName()));
         variables.put("targetPlatform", safeValue(project.getTargetPlatform()));
         variables.put("style", safeValue(strategy.visualStyle()));
@@ -988,12 +1041,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
         variables.put("referenceMediaIds", formatReferenceMediaIds(referenceMedias));
         variables.put("referenceAnchorSummary", buildReferenceAnchorSummary(referenceMedias));
-        variables.put("referenceFrameType", previousTailFrameMedia != null ? "上一分镜尾帧 + 当前场景/角色锚点" : "当前场景图 + 角色锚点");
+        variables.put("referenceFrameType", buildReferenceFrameType(referenceMedias, previousTailFrameMedia));
         variables.put("previousShotNo", previousShot == null ? "无" : String.valueOf(firstInteger(previousShot.getShotNo(), 1)));
         variables.put("previousShotSummary", buildPreviousShotSummary(previousShot));
         variables.put("previousEndState", buildPreviousEndState(previousShot));
-        variables.put("previousTailFrameUrl", previousTailFrameMedia == null ? "" : referenceImageUrl);
-        variables.put("currentStartState", buildCurrentStartState(previousShot, previousTailFrameMedia));
+        variables.put("previousTailFrameUrl", findReferenceImageUrl(referenceMedias, referenceImageUrls, previousTailFrameMedia));
+        variables.put("currentStartState", buildCurrentStartState(previousShot, effectivePreviousTailFrameMedia));
         variables.put("currentEndState", buildCurrentEndState(shot));
         variables.put("motionBoundary", buildMotionBoundary(shot));
         variables.put("continuityNegativePrompt", buildContinuityNegativePrompt(shot));
@@ -1011,6 +1064,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                         List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
                                         StrategyContext strategy) {
         String referenceImageUrl = referenceImageUrls.get(0);
+        AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
+                containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
         String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
         String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
@@ -1069,12 +1124,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 %s
                 禁止水印、logo、无关文字；禁止换角色、换物种、换毛色、换体型、换背景；禁止用眼睛发光替代指定部位发光。
                 """.formatted(
-                previousTailFrameMedia != null ? "上一分镜尾帧参考图" : "当前场景图",
+                buildReferenceFrameType(referenceMedias, previousTailFrameMedia),
                 safeValue(ratio), safeValue(resolution), durationSec, referenceImageUrl,
                 referenceImageUrls.size(), referenceAnchorSummary,
                 previousShot == null ? "无" : "第 " + firstInteger(previousShot.getShotNo(), 1) + " 镜头，" + buildPreviousShotSummary(previousShot),
                 buildPreviousEndState(previousShot),
-                buildCurrentStartState(previousShot, previousTailFrameMedia),
+                buildCurrentStartState(previousShot, effectivePreviousTailFrameMedia),
                 buildCurrentEndState(shot),
                 strategy.continuityLevel(),
                 safeValue(project.getProjectName()), safeValue(strategy.visualStyle()),
@@ -1118,6 +1173,39 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 .orElse("");
     }
 
+    private String buildReferenceFrameType(List<AiVideoMediaAssetPo> referenceMedias,
+                                           AiVideoMediaAssetPo previousTailFrameMedia) {
+        if (!containsReferenceMedia(referenceMedias, previousTailFrameMedia)) {
+            return "当前场景图 + 角色锚点";
+        }
+        if (referenceMedias != null && referenceMedias.size() == 1) {
+            return "上一分镜尾帧首帧模式";
+        }
+        return "多模态参考图（包含上一分镜尾帧连续性参考 + 当前场景/角色锚点）";
+    }
+
+    private String findReferenceImageUrl(List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
+                                         AiVideoMediaAssetPo target) {
+        if (target == null || referenceMedias == null || referenceImageUrls == null) {
+            return "";
+        }
+        for (int i = 0; i < referenceMedias.size() && i < referenceImageUrls.size(); i++) {
+            AiVideoMediaAssetPo media = referenceMedias.get(i);
+            if (media != null && Objects.equals(media.getMediaId(), target.getMediaId())) {
+                return referenceImageUrls.get(i);
+            }
+        }
+        return "";
+    }
+
+    private boolean containsReferenceMedia(List<AiVideoMediaAssetPo> referenceMedias, AiVideoMediaAssetPo target) {
+        return target != null
+                && referenceMedias != null
+                && referenceMedias.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(media -> Objects.equals(media.getMediaId(), target.getMediaId()));
+    }
+
     private String buildReferenceAnchorSummary(List<AiVideoMediaAssetPo> referenceMedias) {
         if (referenceMedias == null || referenceMedias.isEmpty()) {
             return "未传入参考图。";
@@ -1138,9 +1226,6 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private String referenceAnchorRole(AiVideoMediaAssetPo media, int index) {
         String assetType = firstText(media.getAssetType());
-        if (index == 0) {
-            return "first_frame";
-        }
         if ("CHARACTER_IMAGE".equals(assetType)) {
             return "reference_image/character_anchor";
         }
@@ -1148,7 +1233,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             return "reference_image/scene_anchor";
         }
         if ("SHOT_TAIL_FRAME".equals(assetType)) {
-            return "reference_image/tail_frame";
+            return "tail_frame_anchor";
         }
         return "reference_image";
     }
@@ -2008,6 +2093,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             String referenceImageUrl,
             List<String> referenceImageUrls,
             List<AiVideoMediaAssetPo> referenceMedias,
+            boolean referenceImageAsFirstFrame,
             Map<String, String> variables,
             StrategyContext strategy
     ) {

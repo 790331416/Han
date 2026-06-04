@@ -40,6 +40,8 @@ public class AiVideoGenerateRequest implements Serializable {
 
     private List<String> referenceImageUrls;
 
+    private Boolean referenceImageAsFirstFrame;
+
     private String referenceVideoUrl;
 
     private String referenceAudioUrl;

@@ -146,12 +146,13 @@ class AiOpenAiCompatibleClient {
     VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, List<String> referenceImageUrls,
                                           String referenceVideoUrl, String referenceAudioUrl,
                                           Integer durationSec, String ratio, String resolution,
-                                          Boolean returnLastFrame, Boolean generateAudio) {
+                                          Boolean returnLastFrame, Boolean generateAudio,
+                                          Boolean referenceImageAsFirstFrame) {
         List<String> references = normalizeImageReferences(referenceImageUrls);
         validateVideoArguments(model, apiKey, prompt, references);
         VideoGenerationRequest payload = buildVideoRequest(model, prompt, references, referenceVideoUrl,
                 referenceAudioUrl, durationSec, ratio, resolution,
-                returnLastFrame, generateAudio);
+                returnLastFrame, generateAudio, referenceImageAsFirstFrame);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
@@ -306,12 +307,14 @@ class AiOpenAiCompatibleClient {
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, List<String> referenceImageUrls,
                                                      String referenceVideoUrl, String referenceAudioUrl,
                                                      Integer durationSec, String ratio, String resolution,
-                                                     Boolean returnLastFrame, Boolean generateAudio) {
+                                                     Boolean returnLastFrame, Boolean generateAudio,
+                                                     Boolean referenceImageAsFirstFrame) {
         VideoGenerationRequest request = new VideoGenerationRequest();
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
         request.content.add(VideoContentPart.text(prompt));
-        boolean firstFrameMode = useFirstFrameMode(referenceImageUrls, referenceVideoUrl, referenceAudioUrl);
+        boolean firstFrameMode = useFirstFrameMode(referenceImageUrls, referenceVideoUrl, referenceAudioUrl,
+                referenceImageAsFirstFrame);
         for (int i = 0; i < referenceImageUrls.size(); i++) {
             request.content.add(VideoContentPart.image(referenceImageUrls.get(i),
                     firstFrameMode ? "first_frame" : "reference_image"));
@@ -330,8 +333,10 @@ class AiOpenAiCompatibleClient {
         return request;
     }
 
-    private boolean useFirstFrameMode(List<String> referenceImageUrls, String referenceVideoUrl, String referenceAudioUrl) {
-        return referenceImageUrls != null
+    private boolean useFirstFrameMode(List<String> referenceImageUrls, String referenceVideoUrl, String referenceAudioUrl,
+                                      Boolean referenceImageAsFirstFrame) {
+        return Boolean.TRUE.equals(referenceImageAsFirstFrame)
+                && referenceImageUrls != null
                 && referenceImageUrls.size() == 1
                 && !StringUtils.hasText(referenceVideoUrl)
                 && !StringUtils.hasText(referenceAudioUrl);

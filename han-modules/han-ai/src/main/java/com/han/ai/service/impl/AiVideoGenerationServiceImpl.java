@@ -55,7 +55,8 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         AiOpenAiCompatibleClient.VideoGenerationResult result = openAiCompatibleClient.videoGeneration(
                 model, apiKey, prompt, resolveReferenceImageUrls(request), request.getReferenceVideoUrl(),
                 request.getReferenceAudioUrl(), request.getDurationSec(),
-                request.getRatio(), request.getResolution(), request.getReturnLastFrame(), request.getGenerateAudio());
+                request.getRatio(), request.getResolution(), request.getReturnLastFrame(), request.getGenerateAudio(),
+                request.getReferenceImageAsFirstFrame());
 
         AiVideoGenerateResponse response = new AiVideoGenerateResponse();
         response.setModelId(model.getModelId());
