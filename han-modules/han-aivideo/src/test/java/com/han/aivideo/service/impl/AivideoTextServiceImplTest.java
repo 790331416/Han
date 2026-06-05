@@ -291,6 +291,9 @@ class AivideoTextServiceImplTest {
         assertTrue(prompt.contains("stitchGroupNo"));
         assertTrue(prompt.contains("SCENE_CUT"));
         assertTrue(prompt.contains("只有 CONTINUE 才强制使用上一镜尾帧"));
+        assertTrue(prompt.contains("多人同框切单人反应"));
+        assertTrue(prompt.contains("transitionBeforeType 必须写 MONTAGE"));
+        assertTrue(prompt.contains("空镜、环境镜头、主题升华、叠化"));
         assertTrue(prompt.contains("episodeNo 固定为 1"));
     }
 
