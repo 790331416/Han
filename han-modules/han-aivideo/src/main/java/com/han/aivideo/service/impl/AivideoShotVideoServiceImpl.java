@@ -344,7 +344,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         AiVideoMediaAssetPo sceneReferenceMedia = requireReferenceSceneImage(project.getProjectId(), scene.getLockedMediaId());
         AiVideoShotPo previousShot = findPreviousShot(project, shot);
-        if (requireVideoModel) {
+        if (requireVideoModel && shouldRequirePreviousShotVideo(shot, previousShot)) {
             validatePreviousShotReady(previousShot);
         }
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
@@ -449,6 +449,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
     }
 
+    private boolean shouldRequirePreviousShotVideo(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        if (shot == null || previousShot == null) {
+            return false;
+        }
+        String transitionType = shot.getTransitionBeforeType();
+        if (StringUtils.hasText(transitionType)) {
+            return "CONTINUE".equalsIgnoreCase(transitionType.trim());
+        }
+        return "CONTINUE".equals(AivideoTextServiceImpl.normalizeTransitionBeforeType(null, shot, previousShot));
+    }
+
     private AiVideoMediaAssetPo findTailFrameMedia(Long projectId, AiVideoShotPo previousShot) {
         if (previousShot == null || previousShot.getTailFrameMediaId() == null) {
             return null;
@@ -473,9 +484,6 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             addReferenceMedia(references, previousTailFrameMedia);
             return new ArrayList<>(references.values());
         }
-        if (previousTailFrameMedia != null && isSameScene(shot, previousShot)) {
-            addReferenceMedia(references, previousTailFrameMedia);
-        }
         addReferenceMedia(references, sceneReferenceMedia);
         if (explicitReferenceMediaIds != null) {
             for (Long mediaId : explicitReferenceMediaIds) {
@@ -493,9 +501,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                                    AiVideoMediaAssetPo previousTailFrameMedia,
                                                    List<Long> explicitReferenceMediaIds) {
         return previousTailFrameMedia != null
-                && isSameScene(shot, previousShot)
-                && !hasExplicitReferences(explicitReferenceMediaIds)
-                && !hasNewCharacters(shot, previousShot);
+                && shouldRequirePreviousShotVideo(shot, previousShot);
     }
 
     private boolean shouldSendReferenceImageAsFirstFrame(List<AiVideoMediaAssetPo> referenceMedias,
@@ -504,29 +510,6 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 && referenceMedias != null
                 && referenceMedias.size() == 1
                 && Objects.equals(referenceMedias.get(0).getMediaId(), previousTailFrameMedia.getMediaId());
-    }
-
-    private boolean isSameScene(AiVideoShotPo shot, AiVideoShotPo previousShot) {
-        return shot != null
-                && previousShot != null
-                && shot.getSceneId() != null
-                && Objects.equals(shot.getSceneId(), previousShot.getSceneId());
-    }
-
-    private boolean hasExplicitReferences(List<Long> explicitReferenceMediaIds) {
-        return explicitReferenceMediaIds != null && explicitReferenceMediaIds.stream().anyMatch(Objects::nonNull);
-    }
-
-    private boolean hasNewCharacters(AiVideoShotPo shot, AiVideoShotPo previousShot) {
-        List<String> currentCharacters = parseCharacterTokens(shot != null ? shot.getCharacterIds() : null);
-        if (currentCharacters.isEmpty()) {
-            return false;
-        }
-        List<String> previousCharacters = parseCharacterTokens(previousShot != null ? previousShot.getCharacterIds() : null);
-        if (previousCharacters.isEmpty()) {
-            return true;
-        }
-        return currentCharacters.stream().anyMatch(character -> !previousCharacters.contains(character));
     }
 
     private void addCharacterReferenceMedias(Long projectId, AiVideoShotPo shot, Map<Long, AiVideoMediaAssetPo> references) {

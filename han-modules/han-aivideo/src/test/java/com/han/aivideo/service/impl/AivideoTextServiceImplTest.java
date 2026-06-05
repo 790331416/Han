@@ -83,6 +83,14 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotAssetExposesTransitionPlanningFields() {
+        assertDoesNotThrow(() -> AiVideoShotPo.class.getDeclaredField("transitionBeforeType"));
+        assertDoesNotThrow(() -> AiVideoShotPo.class.getDeclaredField("transitionBeforeDesc"));
+        assertDoesNotThrow(() -> AiVideoShotPo.class.getDeclaredField("transitionEffect"));
+        assertDoesNotThrow(() -> AiVideoShotPo.class.getDeclaredField("stitchGroupNo"));
+    }
+
+    @Test
     void characterDesignInstructionSeparates3dAnd2dAnimeAnchors() {
         TestSupport support = new TestSupport();
 
@@ -260,6 +268,47 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void assetPromptRequiresTransitionPlanForEveryShot() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "第3镜在教室准备，第4镜切到文具店采购。");
+
+        assertTrue(prompt.contains("transitionBeforeType"));
+        assertTrue(prompt.contains("transitionBeforeDesc"));
+        assertTrue(prompt.contains("transitionEffect"));
+        assertTrue(prompt.contains("stitchGroupNo"));
+        assertTrue(prompt.contains("SCENE_CUT"));
+        assertTrue(prompt.contains("只有 CONTINUE 才强制使用上一镜尾帧"));
+        assertTrue(prompt.contains("episodeNo 固定为 1"));
+    }
+
+    @Test
+    void transitionInferenceTreatsSameSceneDifferentCharactersAsInsert() {
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("6");
+        AiVideoShotPo currentShot = new AiVideoShotPo();
+        currentShot.setSceneId(12L);
+        currentShot.setCharacterIds("7");
+
+        String transitionType = AivideoTextServiceImpl.normalizeTransitionBeforeType(null, currentShot, previousShot);
+
+        assertEquals("INSERT", transitionType);
+    }
+
+    @Test
     void shotVideoPromptKeepsRoleVoiceWhenVisualCutsAway() throws Exception {
         Field field = AivideoShotVideoServiceImpl.class.getDeclaredField("SHOT_VIDEO_SYSTEM_PROMPT");
         field.setAccessible(true);
@@ -346,8 +395,33 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotVideoOnlyRequiresPreviousVideoForContinueTransition() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo sameSceneShot = new AiVideoShotPo();
+        sameSceneShot.setSceneId(12L);
+        sameSceneShot.setTransitionBeforeType("CONTINUE");
+        AiVideoShotPo sceneCutShot = new AiVideoShotPo();
+        sceneCutShot.setSceneId(13L);
+        sceneCutShot.setTransitionBeforeType("SCENE_CUT");
+        AiVideoShotPo insertShot = new AiVideoShotPo();
+        insertShot.setSceneId(12L);
+        insertShot.setCharacterIds("5,6");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldRequirePreviousShotVideo", AiVideoShotPo.class, AiVideoShotPo.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(service, sameSceneShot, previousShot));
+        assertFalse((Boolean) method.invoke(service, sceneCutShot, previousShot));
+        assertFalse((Boolean) method.invoke(service, insertShot, previousShot));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
-    void shotVideoReferencesKeepTailAsReferenceWhenNewCharacterAppearsInSameScene() throws Exception {
+    void shotVideoReferencesDoNotMixTailFrameWhenNewCharacterAppearsInSameScene() throws Exception {
         AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
                 AiVideoCharacterMapper.class.getClassLoader(),
                 new Class<?>[]{AiVideoCharacterMapper.class},
@@ -391,7 +465,7 @@ class AivideoTextServiceImplTest {
         List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
                 service, 3L, shot, previousShot, scene, tailFrame, List.of());
 
-        assertEquals(List.of("SHOT_TAIL_FRAME", "SCENE_IMAGE", "CHARACTER_IMAGE", "CHARACTER_IMAGE"),
+        assertEquals(List.of("SCENE_IMAGE", "CHARACTER_IMAGE", "CHARACTER_IMAGE"),
                 references.stream().map(AiVideoMediaAssetPo::getAssetType).toList());
     }
 

@@ -1048,6 +1048,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
         int duration = normalizeShotDuration(setting != null ? setting.getDefaultShotDuration() : null);
         index = 1;
+        AiVideoShotPo previousShot = null;
+        int stitchGroupNo = 1;
         for (ShotPayload item : safeList(payload.shots)) {
             AiVideoShotPo shot = new AiVideoShotPo();
             shot.setProjectId(project.getProjectId());
@@ -1060,6 +1062,15 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setShotType(item.shotType);
             shot.setCameraPosition(item.cameraPosition);
             shot.setCameraMovement(item.cameraMovement);
+            String transitionBeforeType = normalizeTransitionBeforeType(item.transitionBeforeType, shot, previousShot);
+            if (previousShot != null && isTransitionBreak(transitionBeforeType)) {
+                stitchGroupNo++;
+            }
+            shot.setTransitionBeforeType(transitionBeforeType);
+            shot.setTransitionBeforeDesc(buildTransitionBeforeDesc(item.transitionBeforeDesc, transitionBeforeType, shot,
+                    previousShot, sceneIdMap));
+            shot.setTransitionEffect(normalizeTransitionEffect(item.transitionEffect, transitionBeforeType));
+            shot.setStitchGroupNo(item.stitchGroupNo != null ? item.stitchGroupNo : stitchGroupNo);
             shot.setActionDesc(item.actionDesc);
             shot.setDialogue(item.dialogue);
             shot.setVoiceOver(item.voiceOver);
@@ -1071,7 +1082,109 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setDelFlag(DEL_FLAG_NORMAL);
             fillCreateAudit(shot);
             shotMapper.insert(shot);
+            previousShot = shot;
         }
+    }
+
+    static String normalizeTransitionBeforeType(String value, AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        String normalized = value != null ? value.trim().toUpperCase() : "";
+        if (previousShot == null) {
+            return "OPENING";
+        }
+        if (!Objects.equals(shot != null ? shot.getSceneId() : null, previousShot.getSceneId())) {
+            return List.of("SCENE_CUT", "TIME_JUMP", "MONTAGE").contains(normalized) ? normalized : "SCENE_CUT";
+        }
+        if (hasNewCharacters(shot, previousShot)) {
+            return List.of("SCENE_CUT", "TIME_JUMP", "MONTAGE").contains(normalized) ? normalized : "INSERT";
+        }
+        return List.of("CONTINUE", "SCENE_CUT", "TIME_JUMP", "MONTAGE", "INSERT").contains(normalized)
+                ? normalized : "CONTINUE";
+    }
+
+    static boolean isTransitionBreak(String transitionBeforeType) {
+        String value = transitionBeforeType != null ? transitionBeforeType.trim().toUpperCase() : "";
+        return !"".equals(value) && !"CONTINUE".equals(value) && !"OPENING".equals(value);
+    }
+
+    static boolean hasNewCharacters(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        List<String> currentCharacters = parseCharacterTokens(shot != null ? shot.getCharacterIds() : null);
+        if (currentCharacters.isEmpty()) {
+            return false;
+        }
+        List<String> previousCharacters = parseCharacterTokens(previousShot != null ? previousShot.getCharacterIds() : null);
+        if (previousCharacters.isEmpty()) {
+            return true;
+        }
+        return currentCharacters.stream().anyMatch(character -> !previousCharacters.contains(character));
+    }
+
+    static List<String> parseCharacterTokens(String value) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        List<String> tokens = new ArrayList<>();
+        for (String token : value.split("[,，、\\s]+")) {
+            if (StringUtils.hasText(token)) {
+                tokens.add(token.trim());
+            }
+        }
+        return tokens;
+    }
+
+    private String buildTransitionBeforeDesc(String explicitDesc, String transitionBeforeType, AiVideoShotPo shot,
+                                             AiVideoShotPo previousShot, Map<String, Long> sceneIdMap) {
+        if (StringUtils.hasText(explicitDesc)) {
+            return explicitDesc.trim();
+        }
+        if (previousShot == null || "OPENING".equals(transitionBeforeType)) {
+            return "开场镜头，建立当前场景。";
+        }
+        String currentSceneName = sceneNameById(sceneIdMap, shot.getSceneId());
+        String previousSceneName = sceneNameById(sceneIdMap, previousShot.getSceneId());
+        if ("CONTINUE".equals(transitionBeforeType)) {
+            return "延续上一镜头，同一场景内连续动作。";
+        }
+        if ("INSERT".equals(transitionBeforeType)) {
+            return "同场景切人/插入镜头，不强制继承上一尾帧。";
+        }
+        if ("SCENE_CUT".equals(transitionBeforeType)) {
+            return "明确切场：" + firstText(previousSceneName, "上一场景") + " -> "
+                    + firstText(currentSceneName, "当前场景") + "。";
+        }
+        if ("TIME_JUMP".equals(transitionBeforeType)) {
+            return "时间跳转后进入当前镜头。";
+        }
+        if ("MONTAGE".equals(transitionBeforeType)) {
+            return "蒙太奇转场进入当前镜头。";
+        }
+        return "插入镜头，不按上一尾帧做连续衔接。";
+    }
+
+    private String normalizeTransitionEffect(String value, String transitionBeforeType) {
+        if (StringUtils.hasText(value)) {
+            return value.trim();
+        }
+        if ("OPENING".equals(transitionBeforeType) || "CONTINUE".equals(transitionBeforeType)) {
+            return "hard_cut";
+        }
+        if ("TIME_JUMP".equals(transitionBeforeType)) {
+            return "fade_black";
+        }
+        if ("MONTAGE".equals(transitionBeforeType)) {
+            return "dissolve";
+        }
+        return "hard_cut";
+    }
+
+    private String sceneNameById(Map<String, Long> sceneIdMap, Long sceneId) {
+        if (sceneId == null || sceneIdMap == null) {
+            return "";
+        }
+        return sceneIdMap.entrySet().stream()
+                .filter(entry -> Objects.equals(entry.getValue(), sceneId))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse("");
     }
 
     private Long resolveSceneId(ShotPayload item, Map<String, Long> sceneIdMap) {
@@ -1497,6 +1610,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "18. 未经剧本铺垫，禁止突然切到狗窝、室内、家里、床下、窝口等新地点；必须先用过渡镜头建立空间关系，或改写为“延续上一镜，镜头回到街边/同一条街道”。\n"
                 + "19. 错误示例：上一镜“广告牌铁架上有小身影”，下一镜“狗狗蜷缩在窝的角落”。正确示例：下一镜“延续上一镜，狗狗在街边抬头望向广告牌铁架，身体绷紧准备冲向商铺雨棚”。\n"
                 + "20. 错误示例：镜头 A 甜玉米说“廉洁不是做给别人看的”，镜头 B 切到喵小萌并把 voiceOver 写成“而是即使无人知晓……”。正确示例：镜头 B voiceOver 写“甜玉米（画外音）：而是即使无人知晓，也选择对集体负责”。\n\n"
+                + "21. 每个分镜必须输出 transitionBeforeType、transitionBeforeDesc、transitionEffect、stitchGroupNo。transitionBeforeType 只能取 OPENING、CONTINUE、SCENE_CUT、TIME_JUMP、MONTAGE、INSERT。\n"
+                + "22. 只有 CONTINUE 才强制使用上一镜尾帧；SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 是明确转场，不要求视频生成阶段继承上一尾帧。\n"
+                + "23. 当 sceneName 与上一镜不同，transitionBeforeType 必须写 SCENE_CUT，并在 transitionBeforeDesc 写清“上一场景 -> 当前场景”；不要把切场伪装成连续动作。\n"
+                + "24. 当 sceneName 与上一镜相同但切到新角色、不同角色视角、物品特写或平行动作时，transitionBeforeType 必须写 INSERT，不要写 CONTINUE；INSERT 不继承上一尾帧。\n"
+                + "25. 除非剧本明确分集，否则所有 shots 的 episodeNo 固定为 1；不要把场次、地点段落或转场编号写进 episodeNo。\n"
+                + "26. stitchGroupNo 表示后期连续拼接组：连续镜头保持同一组，遇到 SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 时组号加 1，方便后期剪辑在组间自动加转场。\n\n"
                 + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","
@@ -1505,7 +1624,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "\"visualFeatures\":\"\",\"colorTone\":\"\",\"props\":\"\",\"negativeElements\":\"\",\"promptText\":\"\",\"completeness\":\"\","
                 + "\"missingFields\":[\"\"]}],"
                 + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":5,\"sceneName\":\"\",\"characterNames\":[\"\"],"
-                + "\"shotType\":\"\",\"cameraPosition\":\"\",\"cameraMovement\":\"\",\"actionDesc\":\"\",\"dialogue\":\"\",\"voiceOver\":\"\","
+                + "\"shotType\":\"\",\"cameraPosition\":\"\",\"cameraMovement\":\"\",\"transitionBeforeType\":\"OPENING\","
+                + "\"transitionBeforeDesc\":\"\",\"transitionEffect\":\"hard_cut\",\"stitchGroupNo\":1,"
+                + "\"actionDesc\":\"\",\"dialogue\":\"\",\"voiceOver\":\"\","
                 + "\"emotion\":\"\",\"promptText\":\"\"}]}\n\n"
                 + "项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform())
@@ -1787,6 +1908,10 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         public String shotType;
         public String cameraPosition;
         public String cameraMovement;
+        public String transitionBeforeType;
+        public String transitionBeforeDesc;
+        public String transitionEffect;
+        public Integer stitchGroupNo;
         public String actionDesc;
         public String dialogue;
         public String voiceOver;

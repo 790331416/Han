@@ -26,6 +26,7 @@
   - `20260602_aivideo_character_turnaround_prompt_sanitize.sql`：AI 短剧角色图模板补充“净化后的角色外观提示词”说明，配合后端净化历史头像/三视图版式词
   - `20260602_aivideo_video_ready_reference_prompts.sql`：AI 短剧角色图/场景图 Prompt 切换为 Seedance 视频参考素材友好规则，强制单主体角色锚点、单镜头场景锚点，并补充分镜视频对角色锚定图的使用边界
   - `20260603_aivideo_shot_spatial_continuity.sql`：AI 短剧分镜提取 Prompt 增加剧情空间连续性硬约束，禁止广告牌/高处危机后无过渡跳到狗窝、室内等未铺垫地点
+  - `20260605_aivideo_shot_transition_plan.sql`：AI 短剧分镜增加转场关系、后期拼接组和默认转场效果字段，区分连续镜头与切场镜头
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -111,3 +112,4 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260602_aivideo_character_turnaround_prompt_sanitize.sql`：更新角色图模板说明为“净化后的角色外观提示词”，配合后端在角色图和分镜视频生成前净化历史头像/三视图版式词。
 - `sql/upgrades/postgres/20260602_aivideo_video_ready_reference_prompts.sql`：把角色图从四方向设定表切换为单主体视频角色锚定图，把场景图强化为可供 Seedance 首帧/环境锚定的单镜头纯场景图，并同步资产提取/角色构建模板和分镜视频角色锚定图使用边界。
 - `sql/upgrades/postgres/20260603_aivideo_shot_spatial_continuity.sql`：更新分镜提取默认模板，增加剧情空间连续性硬约束，要求相邻分镜承接主体位置、危险目标和结尾状态，并禁止无铺垫跳转到狗窝、室内、窝口等新地点。
+- `sql/upgrades/postgres/20260605_aivideo_shot_transition_plan.sql`：新增 `transition_before_type`、`transition_before_desc`、`transition_effect`、`stitch_group_no`，让分镜表显式显示开场/连续/切场，并为后期视频剪辑 API 拼接和转场提供结构化计划。

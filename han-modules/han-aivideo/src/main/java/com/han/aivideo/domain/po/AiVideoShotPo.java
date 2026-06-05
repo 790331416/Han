@@ -37,6 +37,14 @@ public class AiVideoShotPo {
 
     private String cameraMovement;
 
+    private String transitionBeforeType;
+
+    private String transitionBeforeDesc;
+
+    private String transitionEffect;
+
+    private Integer stitchGroupNo;
+
     private String actionDesc;
 
     private String dialogue;

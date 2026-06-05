@@ -150,6 +150,10 @@ export interface AivideoShot {
   shotType?: string
   cameraPosition?: string
   cameraMovement?: string
+  transitionBeforeType?: string
+  transitionBeforeDesc?: string
+  transitionEffect?: string
+  stitchGroupNo?: number
   actionDesc?: string
   dialogue?: string
   voiceOver?: string

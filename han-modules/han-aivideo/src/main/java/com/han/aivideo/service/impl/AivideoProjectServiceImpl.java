@@ -70,8 +70,9 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         vo.setDocuments(selectDocuments(projectId));
         vo.setContentVersions(selectContentVersions(projectId));
         vo.setCharacters(selectCharacters(projectId));
-        vo.setScenes(selectScenes(projectId));
-        vo.setShots(selectShots(projectId));
+        List<AiVideoScenePo> scenes = selectScenes(projectId);
+        vo.setScenes(scenes);
+        vo.setShots(enrichShotTransitions(selectShots(projectId), scenes));
         vo.setLatestTask(selectLatestTask(projectId));
         return vo;
     }
@@ -258,6 +259,66 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
                 .orderByAsc(AiVideoShotPo::getEpisodeNo)
                 .orderByAsc(AiVideoShotPo::getShotNo)
                 .orderByAsc(AiVideoShotPo::getSortOrder));
+    }
+
+    private List<AiVideoShotPo> enrichShotTransitions(List<AiVideoShotPo> shots, List<AiVideoScenePo> scenes) {
+        if (shots == null || shots.isEmpty()) {
+            return shots;
+        }
+        Map<Long, String> sceneNameMap = scenes == null ? Map.of() : scenes.stream()
+                .filter(scene -> scene.getSceneId() != null)
+                .collect(java.util.stream.Collectors.toMap(AiVideoScenePo::getSceneId,
+                        scene -> defaultString(scene.getSceneName(), "场景" + scene.getSceneId()),
+                        (left, right) -> left));
+        AiVideoShotPo previousShot = null;
+        int stitchGroupNo = 1;
+        for (AiVideoShotPo shot : shots) {
+            String type = StringUtils.hasText(shot.getTransitionBeforeType())
+                    ? shot.getTransitionBeforeType()
+                    : AivideoTextServiceImpl.normalizeTransitionBeforeType(null, shot, previousShot);
+            if (shot.getStitchGroupNo() != null) {
+                stitchGroupNo = shot.getStitchGroupNo();
+            } else if (previousShot != null && AivideoTextServiceImpl.isTransitionBreak(type)) {
+                stitchGroupNo++;
+            }
+            shot.setTransitionBeforeType(type);
+            if (!StringUtils.hasText(shot.getTransitionBeforeDesc())) {
+                shot.setTransitionBeforeDesc(defaultTransitionDesc(type, shot, previousShot, sceneNameMap));
+            }
+            if (!StringUtils.hasText(shot.getTransitionEffect())) {
+                shot.setTransitionEffect(defaultTransitionEffect(type));
+            }
+            if (shot.getStitchGroupNo() == null) {
+                shot.setStitchGroupNo(stitchGroupNo);
+            }
+            previousShot = shot;
+        }
+        return shots;
+    }
+
+    private String defaultTransitionDesc(String type, AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                         Map<Long, String> sceneNameMap) {
+        if (previousShot == null || "OPENING".equals(type)) {
+            return "开场镜头，建立当前场景。";
+        }
+        if ("CONTINUE".equals(type)) {
+            return "延续上一镜头，同一场景内连续动作。";
+        }
+        if ("INSERT".equals(type)) {
+            return "同场景切人/插入镜头，不强制继承上一尾帧。";
+        }
+        return "明确切场：" + defaultString(sceneNameMap.get(previousShot.getSceneId()), "上一场景")
+                + " -> " + defaultString(sceneNameMap.get(shot.getSceneId()), "当前场景") + "。";
+    }
+
+    private String defaultTransitionEffect(String type) {
+        if ("TIME_JUMP".equals(type)) {
+            return "fade_black";
+        }
+        if ("MONTAGE".equals(type)) {
+            return "dissolve";
+        }
+        return "hard_cut";
     }
 
     private AiVideoGenerationTaskPo selectLatestTask(Long projectId) {

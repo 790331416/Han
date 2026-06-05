@@ -463,6 +463,16 @@
                 <el-table-column prop="shotNo" label="镜头" width="90" />
                 <el-table-column prop="durationSec" label="秒数" width="90" />
                 <el-table-column prop="cameraMovement" label="运动" min-width="120" />
+                <el-table-column label="衔接/转场" min-width="220">
+                  <template #default="{ row }">
+                    <div class="shot-transition-cell">
+                      <el-tag :type="shotTransitionTagType(row)" effect="plain">
+                        {{ shotTransitionLabel(row) }}
+                      </el-tag>
+                      <span class="shot-transition-desc">{{ shotTransitionDesc(row) }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
                 <el-table-column label="视频" width="160">
                   <template #default="{ row }">
@@ -1382,27 +1392,19 @@ const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotV
 const hasRecoverableShotVideoTask = computed(() => shotVideoTasks.value.some(isRecoverableShotVideoTask))
 const previousShotForVideo = computed(() => {
   const current = selectedShotForVideo.value
-  if (!current) {
-    return undefined
-  }
-  const currentEpisodeNo = Number(current.episodeNo || 1)
-  const currentShotNo = Number(current.shotNo || 0)
-  if (!currentShotNo) {
-    return undefined
-  }
-  return [...shots.value]
-    .filter((item) => String(item.shotId) !== String(current.shotId))
-    .filter((item) => Number(item.episodeNo || 1) === currentEpisodeNo)
-    .filter((item) => Number(item.shotNo || 0) < currentShotNo)
-    .sort((a, b) => Number(b.shotNo || 0) - Number(a.shotNo || 0))[0]
+  return current ? findPreviousShot(current) : undefined
 })
-const previousShotVideoRequired = computed(() => !!previousShotForVideo.value && !previousShotForVideo.value.videoMediaId)
+const previousShotVideoRequired = computed(() => {
+  const current = selectedShotForVideo.value
+  const previous = previousShotForVideo.value
+  return !!current && !!previous && shotRequiresPreviousVideo(current) && !previous.videoMediaId
+})
 const previousShotGateMessage = computed(() => {
   const previous = previousShotForVideo.value
   if (!previous) {
     return ''
   }
-  return `请先为上一分镜（第 ${previous.episodeNo || 1} 集 / 镜头 ${previous.shotNo || '-'}）选择并确认视频，系统会把它的尾帧作为当前分镜衔接参考`
+  return `当前分镜是连续镜头，请先为上一分镜（第 ${previous.episodeNo || 1} 集 / 镜头 ${previous.shotNo || '-'}）选择并确认视频，系统会把它的尾帧作为当前分镜衔接参考`
 })
 const shotVideoActionLocked = computed(() => shotVideoLoading.value
   || shotVideoGenerating.value
@@ -1411,6 +1413,102 @@ const shotVideoActionLocked = computed(() => shotVideoLoading.value
 
 function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
+}
+
+function findPreviousShot(shot?: AivideoShot) {
+  if (!shot) {
+    return undefined
+  }
+  const currentEpisodeNo = Number(shot.episodeNo || 1)
+  const currentShotNo = Number(shot.shotNo || 0)
+  if (!currentShotNo) {
+    return undefined
+  }
+  return [...shots.value]
+    .filter((item) => String(item.shotId) !== String(shot.shotId))
+    .filter((item) => Number(item.episodeNo || 1) === currentEpisodeNo)
+    .filter((item) => Number(item.shotNo || 0) < currentShotNo)
+    .sort((a, b) => Number(b.shotNo || 0) - Number(a.shotNo || 0))[0]
+}
+
+function normalizedShotTransitionType(shot?: AivideoShot) {
+  const raw = String(shot?.transitionBeforeType || '').trim().toUpperCase()
+  if (['OPENING', 'CONTINUE', 'SCENE_CUT', 'TIME_JUMP', 'MONTAGE', 'INSERT'].includes(raw)) {
+    return raw
+  }
+  const previous = findPreviousShot(shot)
+  if (!previous) {
+    return 'OPENING'
+  }
+  if (String(previous.sceneId || '') !== String(shot?.sceneId || '')) {
+    return 'SCENE_CUT'
+  }
+  return hasNewShotCharacters(shot, previous) ? 'INSERT' : 'CONTINUE'
+}
+
+function shotRequiresPreviousVideo(shot?: AivideoShot) {
+  return normalizedShotTransitionType(shot) === 'CONTINUE'
+}
+
+function hasNewShotCharacters(shot?: AivideoShot, previous?: AivideoShot) {
+  const currentCharacters = parseShotCharacterIds(shot?.characterIds)
+  if (!currentCharacters.length) {
+    return false
+  }
+  const previousCharacters = parseShotCharacterIds(previous?.characterIds)
+  if (!previousCharacters.length) {
+    return true
+  }
+  return currentCharacters.some((character) => !previousCharacters.includes(character))
+}
+
+function sceneNameById(sceneId?: string | number) {
+  return scenes.value.find((item) => String(item.sceneId) === String(sceneId))?.sceneName || ''
+}
+
+function shotTransitionLabel(shot?: AivideoShot) {
+  const type = normalizedShotTransitionType(shot)
+  const labels: Record<string, string> = {
+    OPENING: '开场',
+    CONTINUE: '连续',
+    SCENE_CUT: '切场',
+    TIME_JUMP: '时间跳转',
+    MONTAGE: '蒙太奇',
+    INSERT: '插入镜头'
+  }
+  return labels[type] || type
+}
+
+function shotTransitionTagType(shot?: AivideoShot) {
+  const type = normalizedShotTransitionType(shot)
+  if (type === 'CONTINUE') {
+    return 'success'
+  }
+  if (type === 'OPENING') {
+    return 'info'
+  }
+  if (type === 'SCENE_CUT') {
+    return 'warning'
+  }
+  return 'primary'
+}
+
+function shotTransitionDesc(shot?: AivideoShot) {
+  if (shot?.transitionBeforeDesc) {
+    return shot.transitionBeforeDesc
+  }
+  const type = normalizedShotTransitionType(shot)
+  const previous = findPreviousShot(shot)
+  if (type === 'OPENING' || !previous) {
+    return '建立当前场景'
+  }
+  if (type === 'CONTINUE') {
+    return '同一场景，生成时需要上一尾帧'
+  }
+  if (type === 'SCENE_CUT') {
+    return `${sceneNameById(previous.sceneId) || '上一场景'} -> ${sceneNameById(shot?.sceneId) || '当前场景'}，生成时不强制上一尾帧`
+  }
+  return '后期剪辑边界，生成时不强制上一尾帧'
 }
 
 function parseParamsJson(paramsJson?: string) {
@@ -1817,6 +1915,15 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     return []
   }
   const items: ShotVideoPreflightItem[] = []
+  const transitionType = normalizedShotTransitionType(shot)
+  const previousShot = findPreviousShot(shot)
+  items.push({
+    status: transitionType === 'CONTINUE' ? 'pass' : 'warn',
+    title: `镜头衔接：${shotTransitionLabel(shot)}`,
+    detail: transitionType === 'CONTINUE'
+      ? '当前分镜按连续镜头处理，视频生成会优先继承上一镜尾帧。'
+      : `当前分镜是明确转场边界：${shotTransitionDesc(shot)}；后期拼接时应在 ${previousShot?.shotNo || '-'} -> ${shot.shotNo || '-'} 之间加转场。`
+  })
   const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
   if (!scene) {
     items.push({
@@ -3640,6 +3747,22 @@ onBeforeUnmount(() => {
   display: grid;
   align-content: start;
   gap: 10px;
+}
+
+.shot-transition-cell {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+}
+
+.shot-transition-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .flow-item {
