@@ -1610,13 +1610,19 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "18. 未经剧本铺垫，禁止突然切到狗窝、室内、家里、床下、窝口等新地点；必须先用过渡镜头建立空间关系，或改写为“延续上一镜，镜头回到街边/同一条街道”。\n"
                 + "19. 错误示例：上一镜“广告牌铁架上有小身影”，下一镜“狗狗蜷缩在窝的角落”。正确示例：下一镜“延续上一镜，狗狗在街边抬头望向广告牌铁架，身体绷紧准备冲向商铺雨棚”。\n"
                 + "20. 错误示例：镜头 A 甜玉米说“廉洁不是做给别人看的”，镜头 B 切到喵小萌并把 voiceOver 写成“而是即使无人知晓……”。正确示例：镜头 B voiceOver 写“甜玉米（画外音）：而是即使无人知晓，也选择对集体负责”。\n\n"
-                + "21. 每个分镜必须输出 transitionBeforeType、transitionBeforeDesc、transitionEffect、stitchGroupNo。transitionBeforeType 只能取 OPENING、CONTINUE、SCENE_CUT、TIME_JUMP、MONTAGE、INSERT。\n"
-                + "22. 只有 CONTINUE 才强制使用上一镜尾帧；SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 是明确转场，不要求视频生成阶段继承上一尾帧。\n"
-                + "23. 当 sceneName 与上一镜不同，transitionBeforeType 必须写 SCENE_CUT，并在 transitionBeforeDesc 写清“上一场景 -> 当前场景”；不要把切场伪装成连续动作。\n"
-                + "24. 当 sceneName 与上一镜相同但切到新角色、不同角色视角、从多人同框切单人反应/表情、物品/票据/手部特写或平行动作时，transitionBeforeType 必须写 INSERT，不要写 CONTINUE；INSERT 不继承上一尾帧。\n"
-                + "25. 当当前镜头是空镜、环境镜头、主题升华、叠化、闪回、快速串联、片尾总结或跨多个动作的过渡镜头时，transitionBeforeType 必须写 MONTAGE，并把 transitionEffect 写 dissolve 或 fade_black。\n"
-                + "26. 除非剧本明确分集，否则所有 shots 的 episodeNo 固定为 1；不要把场次、地点段落或转场编号写进 episodeNo。\n"
-                + "27. stitchGroupNo 表示后期连续拼接组：连续镜头保持同一组，遇到 SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 时组号加 1，方便后期剪辑在组间自动加转场。\n\n"
+                + "21. 道具交接硬约束：出现接过、递给、展示给、交给、传给、拿给、递来、滚入等动作时，actionDesc/promptText 必须写清 giver、receiver、prop、screenDirection、finalOwner。\n"
+                + "22. 禁止只写“展示给画外”“递给画外”“接过某物”“从画外递来”；必须写成“狗小汪从画面左侧把收纳盒递给喵小萌”这类可拍动作。\n"
+                + "23. 道具交接必须承接上一镜：上一镜要写清递出/展示对象和结尾姿态，下一镜要写清从谁手中接过、道具进入方向、接过后的归属。\n"
+                + "24. 单角色核心镜头如需承接另一个角色递来的道具，必须写“另一角色的手从画面左/右侧入画”，不能让道具凭空出现。\n"
+                + "25. 屏幕方向必须稳定：上一镜写画面右侧的接收者，下一镜就要保持对应入画方向，禁止左右关系随机跳变。\n"
+                + "26. 错误示例：第4镜“展示给画外”，第5镜“接过收纳盒看了看”。正确示例：第4镜“狗小汪转向画面右侧的喵小萌展示并递出收纳盒”，第5镜“狗小汪的手从画面左侧入画，喵小萌从狗小汪手中接过收纳盒”。\n\n"
+                + "27. 每个分镜必须输出 transitionBeforeType、transitionBeforeDesc、transitionEffect、stitchGroupNo。transitionBeforeType 只能取 OPENING、CONTINUE、SCENE_CUT、TIME_JUMP、MONTAGE、INSERT。\n"
+                + "28. 只有 CONTINUE 才强制使用上一镜尾帧；SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 是明确转场，不要求视频生成阶段继承上一尾帧。\n"
+                + "29. 当 sceneName 与上一镜不同，transitionBeforeType 必须写 SCENE_CUT，并在 transitionBeforeDesc 写清“上一场景 -> 当前场景”；不要把切场伪装成连续动作。\n"
+                + "30. 当 sceneName 与上一镜相同但切到新角色、不同角色视角、从多人同框切单人反应/表情、物品/票据/手部特写或平行动作时，transitionBeforeType 必须写 INSERT，不要写 CONTINUE；INSERT 不继承上一尾帧。\n"
+                + "31. 当当前镜头是空镜、环境镜头、主题升华、叠化、闪回、快速串联、片尾总结或跨多个动作的过渡镜头时，transitionBeforeType 必须写 MONTAGE，并把 transitionEffect 写 dissolve 或 fade_black。\n"
+                + "32. 除非剧本明确分集，否则所有 shots 的 episodeNo 固定为 1；不要把场次、地点段落或转场编号写进 episodeNo。\n"
+                + "33. stitchGroupNo 表示后期连续拼接组：连续镜头保持同一组，遇到 SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 时组号加 1，方便后期剪辑在组间自动加转场。\n\n"
                 + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","
@@ -1730,6 +1736,21 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                         + "镜突然切到狗窝/室内/窝口等未铺垫地点。请改为延续上一镜的街道与危险目标，"
                         + "或在 actionDesc 开头补充明确过渡动作。");
             }
+            if (hasAmbiguousOffscreenHandoff(previousText) && hasPropReceiveAction(currentText)) {
+                throw new BusinessException("分镜道具交接失败：第" + shotNo(previous, i)
+                        + "镜使用了“展示给画外/递给画外”等模糊对象，第" + shotNo(current, i + 1)
+                        + "镜又出现接过道具。请写清 giver、receiver、prop、screenDirection、finalOwner，"
+                        + "例如“狗小汪从画面左侧把收纳盒递给喵小萌”。");
+            }
+            if (hasAmbiguousOffscreenHandoff(currentText)) {
+                throw new BusinessException("分镜道具交接失败：第" + shotNo(current, i + 1)
+                        + "镜不能只写展示给画外、递给画外或从画外递来；请写清具体接收角色和画面方向。");
+            }
+            if (hasPropReceiveAction(currentText) && !hasExplicitHandoffSource(currentText)) {
+                throw new BusinessException("分镜道具交接失败：第" + shotNo(current, i + 1)
+                        + "镜出现接过/接住/收下道具，但没有写清从谁手中、从画面哪一侧递来。"
+                        + "请补充交接来源、道具名称、入画方向和接过后的归属。");
+            }
         }
     }
 
@@ -1766,6 +1787,26 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static boolean hasSpatialBridge(String text) {
         return containsAny(text, "延续上一镜", "承接上一镜", "从上一镜", "镜头回到", "切回", "同一条街",
                 "同一街道", "街边", "对面商铺", "广告牌", "铁架", "屋顶", "高处", "雨棚", "抬头望向");
+    }
+
+    private static boolean hasAmbiguousOffscreenHandoff(String text) {
+        return containsAny(text, "展示给画外", "递给画外", "交给画外", "传给画外", "拿给画外",
+                "从画外递来", "画外递来", "画外递出");
+    }
+
+    private static boolean hasPropReceiveAction(String text) {
+        return containsAny(text, "接过", "接住", "收下", "拿过", "接到", "接起");
+    }
+
+    private static boolean hasExplicitHandoffSource(String text) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        return (text.contains("从") && containsAny(text, "手中", "手里", "手上"))
+                || containsAny(text, "手从画面左侧", "手从画面右侧", "手从画面边缘",
+                "手从左侧", "手从右侧")
+                || containsAny(text, "递给", "交给", "传给", "拿给", "递向")
+                || containsAny(text, "递来的", "递过来", "递入画面");
     }
 
     private static boolean containsAny(String text, String... keywords) {

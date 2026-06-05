@@ -243,6 +243,48 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void validateShotSpatialContinuityRejectsAmbiguousPropHandoff() {
+        BusinessException exception = assertThrows(BusinessException.class, () ->
+                AivideoTextServiceImpl.validateShotSpatialContinuity(List.of(
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                4,
+                                "整洁明亮文具店",
+                                "站在货架前，拿起一个收纳盒，眼睛发亮，展示给画外",
+                                ""
+                        ),
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                5,
+                                "整洁明亮文具店",
+                                "接过收纳盒看了看，点头认可，然后转身仔细查看旁边贴纸的价格标签",
+                                ""
+                        )
+                )));
+
+        assertTrue(exception.getMessage().contains("第4镜"));
+        assertTrue(exception.getMessage().contains("第5镜"));
+        assertTrue(exception.getMessage().contains("道具交接"));
+    }
+
+    @Test
+    void validateShotSpatialContinuityAllowsExplicitPropHandoff() {
+        assertDoesNotThrow(() ->
+                AivideoTextServiceImpl.validateShotSpatialContinuity(List.of(
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                4,
+                                "整洁明亮文具店",
+                                "狗小汪站在货架前拿起收纳盒，转向画面右侧的喵小萌展示，结尾停在把收纳盒递向喵小萌的姿态。",
+                                ""
+                        ),
+                        new AivideoTextServiceImpl.ShotContinuitySnapshot(
+                                5,
+                                "整洁明亮文具店",
+                                "狗小汪的手从画面左侧入画，把收纳盒递给喵小萌；喵小萌从狗小汪手中接过收纳盒并点头认可。",
+                                ""
+                        )
+                )));
+    }
+
+    @Test
     void assetPromptRequiresExplicitVoiceOverSpeakerContinuity() throws Exception {
         AivideoTextServiceImpl service = new AivideoTextServiceImpl(
                 null, null, null, null, null, null, null, null, null, null, null, null);
@@ -265,6 +307,33 @@ class AivideoTextServiceImplTest {
         assertTrue(prompt.contains("跨镜头延续同一句话"));
         assertTrue(prompt.contains("甜玉米（画外音）：而是即使无人知晓，也选择对集体负责"));
         assertTrue(prompt.contains("账本文字"));
+    }
+
+    @Test
+    void assetPromptRequiresExplicitPropHandoffContinuity() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "狗小汪展示收纳盒，下一镜喵小萌接过收纳盒。");
+
+        assertTrue(prompt.contains("道具交接硬约束"));
+        assertTrue(prompt.contains("giver"));
+        assertTrue(prompt.contains("receiver"));
+        assertTrue(prompt.contains("screenDirection"));
+        assertTrue(prompt.contains("finalOwner"));
+        assertTrue(prompt.contains("禁止只写“展示给画外”"));
+        assertTrue(prompt.contains("狗小汪从画面左侧把收纳盒递给喵小萌"));
     }
 
     @Test
