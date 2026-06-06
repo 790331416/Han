@@ -635,6 +635,48 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void referenceAudioModeOnlyGeneratesAudioWhenAnchorAudioExists() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldGenerateAudio", String.class, String.class);
+        method.setAccessible(true);
+
+        assertFalse((Boolean) method.invoke(service, "REFERENCE_AUDIO", ""));
+        assertTrue((Boolean) method.invoke(service, "REFERENCE_AUDIO", "https://media.example/shot-4-audio.mp3"));
+        assertTrue((Boolean) method.invoke(service, "NATIVE_AUDIO", ""));
+        assertFalse((Boolean) method.invoke(service, "POST_TTS", "https://media.example/shot-4-audio.mp3"));
+    }
+
+    @Test
+    void referenceAudioModeAllowsFirstShotSeedAudioWithoutAnchor() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldGenerateAudio", String.class, String.class, boolean.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(service, "REFERENCE_AUDIO", "", true));
+        assertFalse((Boolean) method.invoke(service, "REFERENCE_AUDIO", "", false));
+    }
+
+    @Test
+    void shotVideoBuildsPreviousReferenceAudioUrlOnlyForReferenceAudioMode() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoMediaAssetPo previousAudio = media(83L, "SHOT_AUDIO");
+        previousAudio.setFileUrl("https://media.example/shot-4-audio.mp3");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildPreviousReferenceAudioUrl", AiVideoMediaAssetPo.class, strategyClass());
+        method.setAccessible(true);
+
+        assertEquals("https://media.example/shot-4-audio.mp3",
+                method.invoke(service, previousAudio, strategy("REFERENCE_AUDIO")));
+        assertEquals("", method.invoke(service, previousAudio, strategy("NATIVE_AUDIO")));
+        assertEquals("", method.invoke(service, null, strategy("REFERENCE_AUDIO")));
+    }
+
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();
@@ -654,6 +696,20 @@ class AivideoTextServiceImplTest {
         media.setAssetStatus("SELECTED");
         media.setDelFlag(0);
         return media;
+    }
+
+    private Class<?> strategyClass() throws ClassNotFoundException {
+        return Class.forName("com.han.aivideo.service.impl.AivideoShotVideoServiceImpl$StrategyContext");
+    }
+
+    private Object strategy(String audioMode) throws Exception {
+        Constructor<?> constructor = strategyClass().getDeclaredConstructor(
+                String.class, String.class, String.class, String.class, String.class,
+                String.class, String.class, String.class, String.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(
+                "Q版 3D 卡通", "AUTO", audioMode, "NONE", "角色 + 场景",
+                "普通动作", "严格", "单角色优先", "Q版萌系全身");
     }
 
     private static final class TestSupport extends AivideoServiceSupport {

@@ -50,10 +50,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -62,6 +65,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Scene image candidate workflow implementation.
@@ -74,6 +78,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final String ASSET_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
     private static final String ASSET_SHOT_TAIL_FRAME = "SHOT_TAIL_FRAME";
+    private static final String ASSET_SHOT_AUDIO = "SHOT_AUDIO";
     private static final String BIZ_SCENE = "SCENE";
     private static final String BIZ_CHARACTER = "CHARACTER";
     private static final String BIZ_SHOT = "SHOT";
@@ -88,6 +93,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private static final int DEFAULT_CANDIDATE_COUNT = 2;
     private static final int MAX_REFERENCE_IMAGE_COUNT = 9;
     private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+    private static final int MAX_REFERENCE_AUDIO_BYTES = 20 * 1024 * 1024;
+    private static final int REFERENCE_AUDIO_SECONDS = 12;
     private static final String SCENE_IMAGE_SYSTEM_PROMPT = """
             你是 Seedance 视频生成专用场景参考图设计专家。
             核心规则：
@@ -128,6 +136,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     @Value("${han.aivideo.media.public-file-origin:}")
     private String publicFileOrigin;
+
+    @Value("${han.aivideo.audio.ffmpeg-binary:ffmpeg}")
+    private String ffmpegBinary;
 
     @Override
     public AivideoPromptPreviewVo previewSceneImagePrompt(AivideoSceneImageGenerateDto dto) {
@@ -276,6 +287,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             AiVideoShotPo shot = requireShot(project.getProjectId(), media.getBizId());
             before = shot.getVideoMediaId();
             AiVideoMediaAssetPo tailFrame = saveShotTailFrameIfPossible(project, shot, media);
+            saveShotReferenceAudioIfPossible(project, shot, media);
             shot.setVideoMediaId(media.getMediaId());
             if (tailFrame != null) {
                 shot.setTailFrameMediaId(tailFrame.getMediaId());
@@ -653,6 +665,169 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return tailFrame;
     }
 
+    private AiVideoMediaAssetPo saveShotReferenceAudioIfPossible(AiVideoProjectPo project, AiVideoShotPo shot,
+                                                                 AiVideoMediaAssetPo sourceVideo) {
+        clearSelectedShotAudio(project, shot);
+        AudioBytes audioBytes = extractReferenceAudio(sourceVideo);
+        if (audioBytes == null || audioBytes.bytes().length == 0) {
+            return null;
+        }
+        String filename = "aivideo-shot-reference-audio-" + shot.getShotId() + "-" + sourceVideo.getMediaId()
+                + ".mp3";
+        Resource resource = new NamedByteArrayResource(audioBytes.bytes(), filename);
+        R<FileDTO> uploadResult;
+        try {
+            uploadResult = fileServiceClient.upload(resource);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+        if (uploadResult == null || uploadResult.isFail()) {
+            return null;
+        }
+        FileDTO file = uploadResult.getData();
+        if (file == null || file.getId() == null || !StringUtils.hasText(file.getUrl())) {
+            return null;
+        }
+
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("sourceVideoMediaId", String.valueOf(sourceVideo.getMediaId()));
+        params.put("sourceTaskId", sourceVideo.getTaskId() == null ? "" : String.valueOf(sourceVideo.getTaskId()));
+        params.put("durationSec", String.valueOf(REFERENCE_AUDIO_SECONDS));
+        params.put("mimeType", audioBytes.mimeType());
+
+        AiVideoMediaAssetPo audio = new AiVideoMediaAssetPo();
+        audio.setProjectId(project.getProjectId());
+        audio.setTenantId(project.getTenantId());
+        audio.setAssetType(ASSET_SHOT_AUDIO);
+        audio.setBizType(BIZ_SHOT);
+        audio.setBizId(shot.getShotId());
+        audio.setFileId(file.getId());
+        audio.setFileUrl(toFilePublicPath(file.getUrl()));
+        audio.setPromptText("分镜参考音频，来源视频 #" + sourceVideo.getMediaId());
+        audio.setModelId(sourceVideo.getModelId());
+        audio.setTaskId(sourceVideo.getTaskId());
+        audio.setParamsJson(XuJsonUtil.toJsonString(params));
+        audio.setCandidateNo(sourceVideo.getCandidateNo());
+        audio.setSelected(YES);
+        audio.setAssetStatus(STATUS_SELECTED);
+        audio.setDelFlag(DEL_FLAG_NORMAL);
+        fillCreateAudit(audio);
+        mediaAssetMapper.insert(audio);
+        return audio;
+    }
+
+    private void clearSelectedShotAudio(AiVideoProjectPo project, AiVideoShotPo shot) {
+        if (project == null || shot == null || shot.getShotId() == null) {
+            return;
+        }
+        mediaAssetMapper.update(null, new LambdaUpdateWrapper<AiVideoMediaAssetPo>()
+                .eq(AiVideoMediaAssetPo::getProjectId, project.getProjectId())
+                .eq(AiVideoMediaAssetPo::getAssetType, ASSET_SHOT_AUDIO)
+                .eq(AiVideoMediaAssetPo::getBizType, BIZ_SHOT)
+                .eq(AiVideoMediaAssetPo::getBizId, shot.getShotId())
+                .set(AiVideoMediaAssetPo::getSelected, NO)
+                .set(AiVideoMediaAssetPo::getAssetStatus, STATUS_READY)
+                .set(AiVideoMediaAssetPo::getUpdateBy, resolveOperator())
+                .set(AiVideoMediaAssetPo::getUpdateTime, now()));
+    }
+
+    private AudioBytes extractReferenceAudio(AiVideoMediaAssetPo sourceVideo) {
+        if (sourceVideo == null || !StringUtils.hasText(sourceVideo.getFileUrl())) {
+            return null;
+        }
+        Path input = null;
+        Path output = null;
+        try {
+            input = Files.createTempFile("aivideo-shot-video-", ".mp4");
+            output = Files.createTempFile("aivideo-shot-audio-", ".mp3");
+            downloadMediaToFile(buildMediaDownloadUrl(sourceVideo), input, MAX_VIDEO_BYTES);
+            Process process = new ProcessBuilder(
+                    firstText(ffmpegBinary, "ffmpeg"),
+                    "-y",
+                    "-i", input.toString(),
+                    "-map", "0:a:0?",
+                    "-vn",
+                    "-t", String.valueOf(REFERENCE_AUDIO_SECONDS),
+                    "-ac", "1",
+                    "-ar", "44100",
+                    "-b:a", "128k",
+                    output.toString())
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return null;
+            }
+            if (process.exitValue() != 0 || !Files.exists(output) || Files.size(output) <= 0) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(output);
+            if (bytes.length > MAX_REFERENCE_AUDIO_BYTES) {
+                return null;
+            }
+            return new AudioBytes(bytes, "audio/mpeg");
+        } catch (IOException | RuntimeException exception) {
+            return null;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            deleteTempFile(input);
+            deleteTempFile(output);
+        }
+    }
+
+    private String buildMediaDownloadUrl(AiVideoMediaAssetPo media) {
+        String fileUrl = firstText(media != null ? media.getFileUrl() : null);
+        if (fileUrl.startsWith("http")) {
+            return fileUrl;
+        }
+        return buildInternalFileUrl(toFilePublicPath(fileUrl));
+    }
+
+    private void downloadMediaToFile(String mediaUrl, Path target, int maxBytes) throws IOException {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(mediaUrl).openConnection();
+            connection.setConnectTimeout(15_000);
+            connection.setReadTimeout(300_000);
+            connection.setRequestProperty("User-Agent", "Han-AIVideo/1.0");
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                throw new IOException("download failed: " + statusCode);
+            }
+            try (InputStream input = connection.getInputStream(); OutputStream output = Files.newOutputStream(target)) {
+                byte[] buffer = new byte[8192];
+                int total = 0;
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    total += read;
+                    if (total > maxBytes) {
+                        throw new IOException("media file too large");
+                    }
+                    output.write(buffer, 0, read);
+                }
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private void deleteTempFile(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // Temporary extraction files are best-effort cleanup.
+        }
+    }
+
     private void markVideoTaskSuccessIfCandidateReady(AiVideoProjectPo project, AiVideoMediaAssetPo media) {
         if (media == null || media.getTaskId() == null) {
             return;
@@ -698,7 +873,8 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())
                 && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())
                 && !ASSET_SHOT_VIDEO.equals(media.getAssetType())
-                && !ASSET_SHOT_TAIL_FRAME.equals(media.getAssetType())) {
+                && !ASSET_SHOT_TAIL_FRAME.equals(media.getAssetType())
+                && !ASSET_SHOT_AUDIO.equals(media.getAssetType())) {
             throw new BusinessException("当前媒体不是短剧资源");
         }
         if (!StringUtils.hasText(media.getFileUrl())) {
@@ -1288,6 +1464,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private record ImageBytes(byte[] bytes, String mimeType) {
+    }
+
+    private record AudioBytes(byte[] bytes, String mimeType) {
     }
 
     private static final class DisconnectingInputStream extends FilterInputStream {

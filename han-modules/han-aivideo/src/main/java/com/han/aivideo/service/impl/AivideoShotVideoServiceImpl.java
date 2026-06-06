@@ -66,6 +66,7 @@ import java.util.concurrent.CompletableFuture;
 public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implements IAivideoShotVideoService {
 
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
+    private static final String ASSET_SHOT_AUDIO = "SHOT_AUDIO";
     private static final String BIZ_SHOT = "SHOT";
     private static final String TASK_SHOT_VIDEO = "SHOT_VIDEO";
     private static final String STATUS_READY = "READY";
@@ -349,6 +350,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
         AiVideoMediaAssetPo previousVideoMedia = findPreviousVideoMedia(project.getProjectId(), previousShot);
+        AiVideoMediaAssetPo previousAudioMedia = findPreviousAudioMedia(project.getProjectId(), previousShot);
         List<AiVideoMediaAssetPo> referenceMedias = buildShotVideoReferenceMedias(project.getProjectId(), shot,
                 previousShot,
                 sceneReferenceMedia, previousTailFrameMedia, dto.getReferenceMediaIds());
@@ -383,17 +385,21 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         List<String> referenceImageUrls = buildProviderFileUrls(referenceMedias);
         String referenceImageUrl = referenceImageUrls.get(0);
         String referenceVideoUrl = buildPreviousReferenceVideoUrl(shot, previousShot, previousVideoMedia);
+        String referenceAudioUrl = buildPreviousReferenceAudioUrl(previousAudioMedia, strategy);
+        boolean referenceAudioSeedAllowed = previousShot == null;
         Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
-                referenceMedias, referenceImageUrls, referenceVideoUrl, ratio, resolution, durationSec, strategy);
+                referenceMedias, referenceImageUrls, referenceVideoUrl, referenceAudioUrl,
+                referenceAudioSeedAllowed, ratio, resolution, durationSec, strategy);
         String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
-                ratio, resolution, durationSec, referenceMedias, referenceImageUrls, referenceVideoUrl, strategy);
+                ratio, resolution, durationSec, referenceMedias, referenceImageUrls,
+                referenceVideoUrl, referenceAudioUrl, referenceAudioSeedAllowed, strategy);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("referenceImageAsFirstFrame", String.valueOf(referenceImageAsFirstFrame));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
-                referenceImageUrl, referenceImageUrls, referenceVideoUrl, referenceMedias,
-                referenceImageAsFirstFrame, variables, strategy);
+                referenceImageUrl, referenceImageUrls, referenceVideoUrl, referenceAudioUrl, referenceMedias,
+                referenceImageAsFirstFrame, referenceAudioSeedAllowed, variables, strategy);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -405,13 +411,15 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setReferenceImageUrls(context.referenceImageUrls());
         request.setReferenceImageAsFirstFrame(context.referenceImageAsFirstFrame());
         request.setReferenceVideoUrl(context.referenceVideoUrl());
+        request.setReferenceAudioUrl(context.referenceAudioUrl());
         request.setCandidateCount(1);
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
         request.setDurationSec(context.durationSec());
         request.setVariables(context.variables());
         request.setReturnLastFrame(true);
-        request.setGenerateAudio(shouldGenerateAudio(context.strategy().audioMode()));
+        request.setGenerateAudio(shouldGenerateAudio(context.strategy().audioMode(), context.referenceAudioUrl(),
+                context.referenceAudioSeedAllowed()));
         R<AiVideoGenerateResponse> result = aiServiceClient.generateVideo(request);
         if (result == null || result.isFail() || result.getData() == null) {
             throw new BusinessException(result == null ? "AI服务无响应" : result.getMsg());
@@ -492,6 +500,26 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return media;
     }
 
+    private AiVideoMediaAssetPo findPreviousAudioMedia(Long projectId, AiVideoShotPo previousShot) {
+        if (previousShot == null || previousShot.getShotId() == null) {
+            return null;
+        }
+        return mediaAssetMapper.selectList(new LambdaQueryWrapper<AiVideoMediaAssetPo>()
+                        .eq(AiVideoMediaAssetPo::getProjectId, projectId)
+                        .eq(AiVideoMediaAssetPo::getAssetType, ASSET_SHOT_AUDIO)
+                        .eq(AiVideoMediaAssetPo::getBizType, BIZ_SHOT)
+                        .eq(AiVideoMediaAssetPo::getBizId, previousShot.getShotId())
+                        .eq(AiVideoMediaAssetPo::getSelected, YES)
+                        .eq(AiVideoMediaAssetPo::getDelFlag, DEL_FLAG_NORMAL)
+                        .orderByDesc(AiVideoMediaAssetPo::getUpdateTime)
+                        .orderByDesc(AiVideoMediaAssetPo::getMediaId)
+                        .last("limit 1"))
+                .stream()
+                .filter(media -> StringUtils.hasText(media.getFileUrl()))
+                .findFirst()
+                .orElse(null);
+    }
+
     private List<AiVideoMediaAssetPo> buildShotVideoReferenceMedias(Long projectId, AiVideoShotPo shot,
                                                                     AiVideoShotPo previousShot,
                                                                     AiVideoMediaAssetPo sceneReferenceMedia,
@@ -538,6 +566,18 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             return "";
         }
         return buildProviderFileUrl(previousVideoMedia.getFileUrl());
+    }
+
+    private String buildPreviousReferenceAudioUrl(AiVideoMediaAssetPo previousAudioMedia, StrategyContext strategy) {
+        String mode = firstText(strategy != null ? strategy.audioMode() : null, DEFAULT_AUDIO_MODE)
+                .toUpperCase(Locale.ROOT);
+        if (!"REFERENCE_AUDIO".equals(mode)
+                || previousAudioMedia == null
+                || !ASSET_SHOT_AUDIO.equals(previousAudioMedia.getAssetType())
+                || !StringUtils.hasText(previousAudioMedia.getFileUrl())) {
+            return "";
+        }
+        return buildProviderFileUrl(previousAudioMedia.getFileUrl());
     }
 
     private boolean shouldUsePreviousVideoAsReference(AiVideoShotPo shot, AiVideoShotPo previousShot,
@@ -1039,7 +1079,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private Map<String, String> buildVariables(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                                AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                                List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
-                                               String referenceVideoUrl, String ratio, String resolution, int durationSec,
+                                               String referenceVideoUrl, String referenceAudioUrl,
+                                               boolean referenceAudioSeedAllowed,
+                                               String ratio, String resolution, int durationSec,
                                                StrategyContext strategy) {
         Map<String, String> variables = new LinkedHashMap<>();
         String referenceImageUrl = referenceImageUrls.get(0);
@@ -1071,7 +1113,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())));
         variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds()));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
-        variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy));
+        variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
+                referenceAudioSeedAllowed));
         variables.put("shotType", safeValue(shot.getShotType()));
         variables.put("cameraPosition", safeValue(shot.getCameraPosition()));
         variables.put("cameraMovement", safeValue(shot.getCameraMovement()));
@@ -1085,6 +1128,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
         variables.put("referenceVideoUrl", safeValue(referenceVideoUrl));
         variables.put("referenceVideoProtocol", buildReferenceVideoProtocol(referenceVideoUrl));
+        variables.put("referenceAudioUrl", safeValue(referenceAudioUrl));
+        variables.put("referenceAudioProtocol", buildReferenceAudioProtocol(referenceAudioUrl, strategy,
+                referenceAudioSeedAllowed));
         variables.put("referenceMediaIds", formatReferenceMediaIds(referenceMedias));
         variables.put("referenceAnchorSummary", buildReferenceAnchorSummary(referenceMedias));
         variables.put("referenceFrameType", buildReferenceFrameType(referenceMedias, previousTailFrameMedia));
@@ -1108,7 +1154,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec,
                                         List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
-                                        String referenceVideoUrl, StrategyContext strategy) {
+                                        String referenceVideoUrl, String referenceAudioUrl,
+                                        boolean referenceAudioSeedAllowed, StrategyContext strategy) {
         String referenceImageUrl = referenceImageUrls.get(0);
         AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
                 containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
@@ -1116,7 +1163,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
-        String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy);
+        String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
+                referenceAudioSeedAllowed);
         String actionBeats = buildActionBeats(shot, durationSec);
         String timingPlan = buildTimingPlan(shot, durationSec);
         String compositionRequirement = buildCompositionRequirement(shot);
@@ -1139,6 +1187,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 多参考图优先级：图片1作为主锚点决定起始姿态/空间连续性；场景图锁定空间、天气、光线和道具；角色图锁定身份、体型比例、脸型、服装/毛色和标志物。
                 - 角色锚定图使用规则：角色图优先于角色文字描述；若文字描述与角色图冲突，必须以角色图中的造型、比例、服装、发型、猫耳/猫尾等标志物为准；不得把白底/浅灰棚拍背景带入剧情场景，不得把单主体锚定图复制成多只同款主体。
                 - 参考视频规则：%s
+                - 参考音频规则：%s
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
@@ -1180,6 +1229,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 buildCurrentEndState(shot),
                 strategy.continuityLevel(),
                 buildReferenceVideoProtocol(referenceVideoUrl),
+                buildReferenceAudioProtocol(referenceAudioUrl, strategy, referenceAudioSeedAllowed),
                 safeValue(project.getProjectName()), safeValue(strategy.visualStyle()),
                 strategy.generationStrategy(), strategy.referenceStrategy(), strategy.actionIntensity(), strategy.multiRoleStrategy(),
                 strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()),
@@ -1278,6 +1328,27 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         return "已传入上一分镜完整视频作为 reference_video。必须参考视频1的同场景空间、光影、运镜节奏、角色相对位置和道具交接动作逻辑；"
                 + "本镜头从视频1结尾动作之后承接，但不要复刻整段上一镜，不要把 reference_video 当成 first_frame/last_frame，不要忽略当前场景图和角色图锚点。";
+    }
+
+    private String buildReferenceAudioProtocol(String referenceAudioUrl, StrategyContext strategy) {
+        return buildReferenceAudioProtocol(referenceAudioUrl, strategy, false);
+    }
+
+    private String buildReferenceAudioProtocol(String referenceAudioUrl, StrategyContext strategy,
+                                               boolean referenceAudioSeedAllowed) {
+        String mode = firstText(strategy != null ? strategy.audioMode() : null, DEFAULT_AUDIO_MODE)
+                .toUpperCase(Locale.ROOT);
+        if (!"REFERENCE_AUDIO".equals(mode)) {
+            return "当前声音模式不是参考音频有声；不传入 reference_audio。";
+        }
+        if (referenceAudioSeedAllowed && !StringUtils.hasText(referenceAudioUrl)) {
+            return "参考音频有声模式的首镜/无上一镜：允许本镜生成第一段种子音频；确认本镜视频后系统会提取该音频，供后续分镜作为 reference_audio。";
+        }
+        if (!StringUtils.hasText(referenceAudioUrl)) {
+            return "参考音频有声模式但上一镜未归档可用音频；本次 generate_audio=false，避免模型随机改写声线。";
+        }
+        return "已传入上一分镜提取音频作为 reference_audio。只允许继承音色、语速、口吻、旁白/角色声线和环境声风格；"
+                + "不得复读上一镜台词，不得照搬上一镜音轨内容，本镜仍必须按当前对白和旁白生成新声音。";
     }
 
     private String referenceAnchorRole(AiVideoMediaAssetPo media, int index) {
@@ -1399,12 +1470,27 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         );
     }
 
-    private boolean shouldGenerateAudio(String audioMode) {
+    private boolean shouldGenerateAudio(String audioMode, String referenceAudioUrl) {
+        return shouldGenerateAudio(audioMode, referenceAudioUrl, false);
+    }
+
+    private boolean shouldGenerateAudio(String audioMode, String referenceAudioUrl, boolean referenceAudioSeedAllowed) {
         String mode = firstText(audioMode, DEFAULT_AUDIO_MODE).toUpperCase(Locale.ROOT);
-        return "NATIVE_AUDIO".equals(mode) || "REFERENCE_AUDIO".equals(mode);
+        return "NATIVE_AUDIO".equals(mode)
+                || ("REFERENCE_AUDIO".equals(mode)
+                && (StringUtils.hasText(referenceAudioUrl) || referenceAudioSeedAllowed));
     }
 
     private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy) {
+        return buildAudioVisualProtocol(shot, strategy, "");
+    }
+
+    private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy, String referenceAudioUrl) {
+        return buildAudioVisualProtocol(shot, strategy, referenceAudioUrl, false);
+    }
+
+    private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy, String referenceAudioUrl,
+                                            boolean referenceAudioSeedAllowed) {
         String dialogue = firstText(shot != null ? shot.getDialogue() : null, "无");
         String voiceOver = firstText(shot != null ? shot.getVoiceOver() : null, "无");
         String mode = firstText(strategy.audioMode(), DEFAULT_AUDIO_MODE).toUpperCase(Locale.ROOT);
@@ -1412,7 +1498,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if ("NATIVE_AUDIO".equals(mode)) {
             audioRule = "声音模式=原生有声：允许视频模型生成本镜头声音，但必须严格沿用项目声线设定，不得随机改变旁白/角色音色、BGM 或音效风格。";
         } else if ("REFERENCE_AUDIO".equals(mode)) {
-            audioRule = "声音模式=参考音频有声：必须使用参考音频作为音色锚点；没有参考音频时不要自行发明新声线，优先保持画面生成稳定。";
+            audioRule = referenceAudioSeedAllowed && !StringUtils.hasText(referenceAudioUrl)
+                    ? "声音模式=参考音频有声：本镜是首镜/无上一镜，允许生成第一段种子音频；必须严格按项目声线设定生成，确认后会被提取为后续 reference_audio。"
+                    : StringUtils.hasText(referenceAudioUrl)
+                    ? "声音模式=参考音频有声：已传入上一镜 reference_audio；必须使用它作为音色锚点，只继承音色、语速、口吻和环境声风格，不得复读上一镜台词或照搬上一镜音轨。"
+                    : "声音模式=参考音频有声：当前没有可用参考音频，本次强制 generate_audio=false，不让模型自行发明新声线。";
         } else if ("POST_TTS".equals(mode)) {
             audioRule = "声音模式=后期 TTS：本阶段只生成画面，不生成配音、BGM 或音效；对白和旁白只作为后期配音脚本保留。";
         } else {
@@ -2149,8 +2239,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             String referenceImageUrl,
             List<String> referenceImageUrls,
             String referenceVideoUrl,
+            String referenceAudioUrl,
             List<AiVideoMediaAssetPo> referenceMedias,
             boolean referenceImageAsFirstFrame,
+            boolean referenceAudioSeedAllowed,
             Map<String, String> variables,
             StrategyContext strategy
     ) {

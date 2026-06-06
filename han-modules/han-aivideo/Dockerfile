@@ -5,7 +5,7 @@ ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Djava.ne
     LANG=C.UTF-8 \
     SERVER_PORT=9209
 
-RUN apk add --no-cache tzdata curl && \
+RUN apk add --no-cache tzdata curl ffmpeg && \
     cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
