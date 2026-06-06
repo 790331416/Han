@@ -474,13 +474,21 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
-                <el-table-column label="视频" width="160">
+                <el-table-column label="视频资产" width="210">
                   <template #default="{ row }">
-                    <el-tag v-if="row.videoMediaId" type="success">已选 #{{ row.videoMediaId }}</el-tag>
-                    <el-tag v-else type="info">未选</el-tag>
-                    <el-tag v-if="row.tailFrameMediaId" class="shot-tail-frame-tag" type="success" effect="plain">
-                      尾帧 #{{ row.tailFrameMediaId }}
-                    </el-tag>
+                    <div class="shot-media-cell">
+                      <el-tag v-if="row.videoMediaId" type="success">视频 #{{ row.videoMediaId }}</el-tag>
+                      <el-tag v-else type="info">视频未选</el-tag>
+                      <el-tag v-if="shotVideoTaskId(row)" type="info" effect="plain">
+                        任务 #{{ shotVideoTaskId(row) }}
+                      </el-tag>
+                      <el-tag v-if="row.tailFrameMediaId" type="success" effect="plain">
+                        尾帧 #{{ row.tailFrameMediaId }}
+                      </el-tag>
+                      <el-tag v-if="shotAudioMediaId(row)" type="warning" effect="plain">
+                        音频 #{{ shotAudioMediaId(row) }}
+                      </el-tag>
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
@@ -1047,9 +1055,10 @@
               />
               <el-empty v-else description="视频加载中" />
             </div>
-            <div class="scene-image-meta">
+            <div class="scene-image-meta shot-video-candidate-meta">
               <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
-              <span v-if="item.taskId">任务 {{ item.taskId }}</span>
+              <span>视频 #{{ item.mediaId }}</span>
+              <span v-if="item.taskId">任务 #{{ item.taskId }}</span>
             </div>
             <el-button
               type="success"
@@ -1217,6 +1226,7 @@ const selectedShotForVideo = ref<AivideoShot>()
 const shotVideoPromptPreviewText = ref('')
 const shotVideoLoading = ref(false)
 const shotVideoGenerating = ref(false)
+const shotMediaAssets = ref<AivideoMediaAsset[]>([])
 const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
@@ -1245,6 +1255,7 @@ let shotVideoRecoveryTimer: ReturnType<typeof setTimeout> | undefined
 const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
 const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
+type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO'
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -1420,6 +1431,19 @@ const shotVideoActionLocked = computed(() => shotVideoLoading.value
   || shotVideoGenerating.value
   || hasRunningShotVideoTask.value
   || previousShotVideoRequired.value)
+const shotMediaByShotId = computed(() => {
+  const result = new Map<string, AivideoMediaAsset[]>()
+  shotMediaAssets.value.forEach((item) => {
+    if (String(item.bizType || '').toUpperCase() !== 'SHOT' || !item.bizId) {
+      return
+    }
+    const shotId = String(item.bizId)
+    const next = result.get(shotId) || []
+    next.push(item)
+    result.set(shotId, next)
+  })
+  return result
+})
 
 function getStageLabel(value?: string) {
   return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
@@ -1519,6 +1543,55 @@ function shotTransitionDesc(shot?: AivideoShot) {
     return `${sceneNameById(previous.sceneId) || '上一场景'} -> ${sceneNameById(shot?.sceneId) || '当前场景'}，生成时不强制上一尾帧`
   }
   return '后期剪辑边界，生成时不强制上一尾帧'
+}
+
+function isSelectedMediaAsset(item?: AivideoMediaAsset) {
+  return String(item?.selected || '') === '1'
+}
+
+function isShotMediaAssetOfType(item: AivideoMediaAsset, assetType: ShotMediaAssetType) {
+  return String(item.assetType || '').toUpperCase() === assetType
+}
+
+function compareMediaAssetDesc(a: AivideoMediaAsset, b: AivideoMediaAsset) {
+  const mediaDiff = Number(b.mediaId) - Number(a.mediaId)
+  if (Number.isFinite(mediaDiff) && mediaDiff !== 0) {
+    return mediaDiff
+  }
+  return String(b.createTime || '').localeCompare(String(a.createTime || ''))
+}
+
+function findShotMediaAsset(shot: AivideoShot, assetType: ShotMediaAssetType) {
+  const shotId = String(shot.shotId)
+  const assets = (shotMediaByShotId.value.get(shotId) || [])
+    .filter((item) => isShotMediaAssetOfType(item, assetType))
+    .sort(compareMediaAssetDesc)
+  const fixedMediaId = assetType === 'SHOT_VIDEO'
+    ? shot.videoMediaId
+    : assetType === 'SHOT_TAIL_FRAME'
+      ? shot.tailFrameMediaId
+      : undefined
+  if (fixedMediaId) {
+    const fixedAsset = assets.find((item) => String(item.mediaId) === String(fixedMediaId))
+    if (fixedAsset) {
+      return fixedAsset
+    }
+    return {
+      mediaId: fixedMediaId,
+      assetType,
+      bizType: 'SHOT',
+      bizId: shot.shotId
+    } as AivideoMediaAsset
+  }
+  return assets.find(isSelectedMediaAsset) || assets[0]
+}
+
+function shotVideoTaskId(shot: AivideoShot) {
+  return findShotMediaAsset(shot, 'SHOT_VIDEO')?.taskId
+}
+
+function shotAudioMediaId(shot: AivideoShot) {
+  return findShotMediaAsset(shot, 'SHOT_AUDIO')?.mediaId
 }
 
 function parseParamsJson(paramsJson?: string) {
@@ -2182,6 +2255,18 @@ function scopedCustomPrompt(scope: PromptScope) {
     .join('\n\n')
 }
 
+async function refreshShotMediaAssets() {
+  try {
+    const res = await listAivideoMedia({
+      projectId: projectId.value,
+      bizType: 'SHOT'
+    })
+    shotMediaAssets.value = (res.data || []).filter((item) => String(item.bizType || '').toUpperCase() === 'SHOT')
+  } catch (_error) {
+    shotMediaAssets.value = []
+  }
+}
+
 async function loadDetail() {
   loading.value = true
   try {
@@ -2216,6 +2301,7 @@ async function loadDetail() {
         shotVideo: strategyValue(settingParams, 'shotVideoPrompt', '')
       })
     }
+    await refreshShotMediaAssets()
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
     await refreshAssetPromptPreview()
@@ -4262,8 +4348,12 @@ onBeforeUnmount(() => {
   }
 }
 
-.shot-tail-frame-tag {
-  margin-left: 6px;
+.shot-media-cell,
+.shot-video-candidate-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .shot-video-task-list {
