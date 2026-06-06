@@ -542,6 +542,99 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void shotVideoReferencesIncludeTailFrameForInsertPropHandoff() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(6L).equals(args[0])) {
+                        var character = new com.han.aivideo.domain.po.AiVideoCharacterPo();
+                        character.setCharacterId(6L);
+                        character.setProjectId(3L);
+                        character.setLockedMediaId(66L);
+                        character.setDelFlag(0);
+                        return character;
+                    }
+                    return null;
+                });
+        AiVideoMediaAssetMapper mediaMapper = (AiVideoMediaAssetMapper) Proxy.newProxyInstance(
+                AiVideoMediaAssetMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoMediaAssetMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(66L).equals(args[0])) {
+                        return media(66L, "CHARACTER_IMAGE");
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, mediaMapper, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("6");
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景道具交接插入镜头：承接上一镜狗小汪展示并递出收纳盒，切到喵小萌从狗小汪手中接过。");
+        shot.setActionDesc("喵小萌从狗小汪手中接过收纳盒，低头查看并点头认可。");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5");
+        AiVideoMediaAssetPo scene = media(30L, "SCENE_IMAGE");
+        AiVideoMediaAssetPo tailFrame = media(47L, "SHOT_TAIL_FRAME");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, scene, tailFrame, List.of());
+
+        assertEquals(List.of("SHOT_TAIL_FRAME", "SCENE_IMAGE", "CHARACTER_IMAGE"),
+                references.stream().map(AiVideoMediaAssetPo::getAssetType).toList());
+    }
+
+    @Test
+    void shotVideoUsesPreviousVideoAsReferenceForInsertPropHandoff() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景道具交接插入镜头，承接上一镜递出动作。");
+        shot.setActionDesc("从狗小汪手中接过收纳盒。");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        AiVideoMediaAssetPo previousVideo = media(81L, "SHOT_VIDEO");
+        previousVideo.setFileUrl("/file/public/shot-4.mp4");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldUsePreviousVideoAsReference", AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(service, shot, previousShot, previousVideo));
+    }
+
+    @Test
+    void shotVideoDoesNotUsePreviousVideoForGenericInsertAction() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景切人插入镜头，观察当前人物动作。");
+        shot.setActionDesc("喵小萌从书包里拿出笔，在桌面上认真写字。");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        AiVideoMediaAssetPo previousVideo = media(81L, "SHOT_VIDEO");
+        previousVideo.setFileUrl("/file/public/shot-4.mp4");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldUsePreviousVideoAsReference", AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class);
+        method.setAccessible(true);
+
+        assertFalse((Boolean) method.invoke(service, shot, previousShot, previousVideo));
+    }
+
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();

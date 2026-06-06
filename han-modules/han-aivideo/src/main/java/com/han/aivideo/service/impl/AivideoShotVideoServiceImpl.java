@@ -348,6 +348,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             validatePreviousShotReady(previousShot);
         }
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
+        AiVideoMediaAssetPo previousVideoMedia = findPreviousVideoMedia(project.getProjectId(), previousShot);
         List<AiVideoMediaAssetPo> referenceMedias = buildShotVideoReferenceMedias(project.getProjectId(), shot,
                 previousShot,
                 sceneReferenceMedia, previousTailFrameMedia, dto.getReferenceMediaIds());
@@ -381,16 +382,18 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         StrategyContext strategy = resolveStrategy(dto, projectSetting, globalSetting);
         List<String> referenceImageUrls = buildProviderFileUrls(referenceMedias);
         String referenceImageUrl = referenceImageUrls.get(0);
+        String referenceVideoUrl = buildPreviousReferenceVideoUrl(shot, previousShot, previousVideoMedia);
         Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
-                referenceMedias, referenceImageUrls, ratio, resolution, durationSec, strategy);
+                referenceMedias, referenceImageUrls, referenceVideoUrl, ratio, resolution, durationSec, strategy);
         String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
-                ratio, resolution, durationSec, referenceMedias, referenceImageUrls, strategy);
+                ratio, resolution, durationSec, referenceMedias, referenceImageUrls, referenceVideoUrl, strategy);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("referenceImageAsFirstFrame", String.valueOf(referenceImageAsFirstFrame));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
-                referenceImageUrl, referenceImageUrls, referenceMedias, referenceImageAsFirstFrame, variables, strategy);
+                referenceImageUrl, referenceImageUrls, referenceVideoUrl, referenceMedias,
+                referenceImageAsFirstFrame, variables, strategy);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -401,6 +404,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         request.setReferenceImageUrl(context.referenceImageUrl());
         request.setReferenceImageUrls(context.referenceImageUrls());
         request.setReferenceImageAsFirstFrame(context.referenceImageAsFirstFrame());
+        request.setReferenceVideoUrl(context.referenceVideoUrl());
         request.setCandidateCount(1);
         request.setRatio(context.ratio());
         request.setResolution(context.resolution());
@@ -474,6 +478,20 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return media;
     }
 
+    private AiVideoMediaAssetPo findPreviousVideoMedia(Long projectId, AiVideoShotPo previousShot) {
+        if (previousShot == null || previousShot.getVideoMediaId() == null) {
+            return null;
+        }
+        AiVideoMediaAssetPo media = mediaAssetMapper.selectById(previousShot.getVideoMediaId());
+        if (media == null || !Objects.equals(projectId, media.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())
+                || !ASSET_SHOT_VIDEO.equals(media.getAssetType())
+                || !StringUtils.hasText(media.getFileUrl())) {
+            return null;
+        }
+        return media;
+    }
+
     private List<AiVideoMediaAssetPo> buildShotVideoReferenceMedias(Long projectId, AiVideoShotPo shot,
                                                                     AiVideoShotPo previousShot,
                                                                     AiVideoMediaAssetPo sceneReferenceMedia,
@@ -483,6 +501,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (shouldUsePreviousTailFrameOnly(shot, previousShot, previousTailFrameMedia, explicitReferenceMediaIds)) {
             addReferenceMedia(references, previousTailFrameMedia);
             return new ArrayList<>(references.values());
+        }
+        if (shouldUsePreviousTailFrameAsReference(shot, previousShot, previousTailFrameMedia)) {
+            addReferenceMedia(references, previousTailFrameMedia);
         }
         addReferenceMedia(references, sceneReferenceMedia);
         if (explicitReferenceMediaIds != null) {
@@ -502,6 +523,46 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                                    List<Long> explicitReferenceMediaIds) {
         return previousTailFrameMedia != null
                 && shouldRequirePreviousShotVideo(shot, previousShot);
+    }
+
+    private boolean shouldUsePreviousTailFrameAsReference(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                          AiVideoMediaAssetPo previousTailFrameMedia) {
+        return previousTailFrameMedia != null
+                && !shouldRequirePreviousShotVideo(shot, previousShot)
+                && shouldUsePreviousVisualReferenceForInsertHandoff(shot, previousShot);
+    }
+
+    private String buildPreviousReferenceVideoUrl(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                  AiVideoMediaAssetPo previousVideoMedia) {
+        if (!shouldUsePreviousVideoAsReference(shot, previousShot, previousVideoMedia)) {
+            return "";
+        }
+        return buildProviderFileUrl(previousVideoMedia.getFileUrl());
+    }
+
+    private boolean shouldUsePreviousVideoAsReference(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                      AiVideoMediaAssetPo previousVideoMedia) {
+        return previousVideoMedia != null
+                && StringUtils.hasText(previousVideoMedia.getFileUrl())
+                && shouldUsePreviousVisualReferenceForInsertHandoff(shot, previousShot);
+    }
+
+    private boolean shouldUsePreviousVisualReferenceForInsertHandoff(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        if (shot == null || previousShot == null || !Objects.equals(shot.getSceneId(), previousShot.getSceneId())) {
+            return false;
+        }
+        String transitionType = firstText(shot.getTransitionBeforeType());
+        String text = String.join(" ",
+                firstText(shot.getTransitionBeforeType()),
+                firstText(shot.getTransitionBeforeDesc()),
+                firstText(shot.getActionDesc()),
+                firstText(shot.getPromptText()));
+        boolean insertLike = "INSERT".equalsIgnoreCase(transitionType)
+                || containsAny(text, "插入镜头", "同场景切人", "同场景道具交接");
+        boolean handoffLike = containsAny(text,
+                "承接上一镜", "上一镜", "尾帧", "道具交接", "接过", "接住", "收下",
+                "递给", "递出", "交给", "传给");
+        return insertLike && handoffLike;
     }
 
     private boolean shouldSendReferenceImageAsFirstFrame(List<AiVideoMediaAssetPo> referenceMedias,
@@ -978,7 +1039,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private Map<String, String> buildVariables(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                                AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                                List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
-                                               String ratio, String resolution, int durationSec,
+                                               String referenceVideoUrl, String ratio, String resolution, int durationSec,
                                                StrategyContext strategy) {
         Map<String, String> variables = new LinkedHashMap<>();
         String referenceImageUrl = referenceImageUrls.get(0);
@@ -1022,6 +1083,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("referenceImageUrl", referenceImageUrl);
         variables.put("referenceImageUrls", formatReferenceImageUrls(referenceImageUrls));
         variables.put("referenceImageCount", String.valueOf(referenceImageUrls.size()));
+        variables.put("referenceVideoUrl", safeValue(referenceVideoUrl));
+        variables.put("referenceVideoProtocol", buildReferenceVideoProtocol(referenceVideoUrl));
         variables.put("referenceMediaIds", formatReferenceMediaIds(referenceMedias));
         variables.put("referenceAnchorSummary", buildReferenceAnchorSummary(referenceMedias));
         variables.put("referenceFrameType", buildReferenceFrameType(referenceMedias, previousTailFrameMedia));
@@ -1045,7 +1108,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec,
                                         List<AiVideoMediaAssetPo> referenceMedias, List<String> referenceImageUrls,
-                                        StrategyContext strategy) {
+                                        String referenceVideoUrl, StrategyContext strategy) {
         String referenceImageUrl = referenceImageUrls.get(0);
         AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
                 containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
@@ -1075,6 +1138,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 连续性强度：%s。若为极严格，必须同时继承上一尾帧、同场景锚点和角色锚点；缺少任一锚点时不得擅自改背景或主体。
                 - 多参考图优先级：图片1作为主锚点决定起始姿态/空间连续性；场景图锁定空间、天气、光线和道具；角色图锁定身份、体型比例、脸型、服装/毛色和标志物。
                 - 角色锚定图使用规则：角色图优先于角色文字描述；若文字描述与角色图冲突，必须以角色图中的造型、比例、服装、发型、猫耳/猫尾等标志物为准；不得把白底/浅灰棚拍背景带入剧情场景，不得把单主体锚定图复制成多只同款主体。
+                - 参考视频规则：%s
 
                 ## 主体、场景、构图
                 - 项目/风格：%s / %s。
@@ -1115,6 +1179,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 buildCurrentStartState(previousShot, effectivePreviousTailFrameMedia),
                 buildCurrentEndState(shot),
                 strategy.continuityLevel(),
+                buildReferenceVideoProtocol(referenceVideoUrl),
                 safeValue(project.getProjectName()), safeValue(strategy.visualStyle()),
                 strategy.generationStrategy(), strategy.referenceStrategy(), strategy.actionIntensity(), strategy.multiRoleStrategy(),
                 strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()),
@@ -1205,6 +1270,14 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                     .append(referenceAnchorDescription(media));
         }
         return builder.toString();
+    }
+
+    private String buildReferenceVideoProtocol(String referenceVideoUrl) {
+        if (!StringUtils.hasText(referenceVideoUrl)) {
+            return "未传入参考视频；仅依据参考图、分镜文本和上一镜头摘要保持连续。";
+        }
+        return "已传入上一分镜完整视频作为 reference_video。必须参考视频1的同场景空间、光影、运镜节奏、角色相对位置和道具交接动作逻辑；"
+                + "本镜头从视频1结尾动作之后承接，但不要复刻整段上一镜，不要把 reference_video 当成 first_frame/last_frame，不要忽略当前场景图和角色图锚点。";
     }
 
     private String referenceAnchorRole(AiVideoMediaAssetPo media, int index) {
@@ -2075,6 +2148,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             String prompt,
             String referenceImageUrl,
             List<String> referenceImageUrls,
+            String referenceVideoUrl,
             List<AiVideoMediaAssetPo> referenceMedias,
             boolean referenceImageAsFirstFrame,
             Map<String, String> variables,

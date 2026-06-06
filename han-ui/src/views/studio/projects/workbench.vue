@@ -923,13 +923,21 @@
       <div v-if="selectedShotForVideo" class="scene-image-drawer">
         <section class="shot-reference-panel">
           <div class="panel-title-row">
-            <strong>当前分镜参考图</strong>
-            <small>来自已确认的场景图和角色图，仅展示当前视频生成会依赖的锚点</small>
+            <strong>当前分镜参考素材</strong>
+            <small>来自上一镜尾帧/参考视频、已确认场景图和角色图，仅展示当前视频生成会依赖的锚点</small>
           </div>
           <div v-if="shotVideoReferenceOptions.length" class="shot-reference-grid">
             <article v-for="option in shotVideoReferenceOptions" :key="option.mediaId" class="shot-reference-card">
+              <video
+                v-if="option.mediaKind === 'video' && referencePreviewUrls[option.mediaId]"
+                class="shot-reference-thumb shot-reference-video"
+                :src="referencePreviewUrls[option.mediaId]"
+                muted
+                controls
+                playsinline
+              />
               <el-image
-                v-if="referencePreviewUrls[option.mediaId]"
+                v-else-if="referencePreviewUrls[option.mediaId]"
                 class="shot-reference-thumb"
                 :src="referencePreviewUrls[option.mediaId]"
                 :preview-src-list="shotVideoReferencePreviewList"
@@ -943,7 +951,7 @@
               </div>
             </article>
           </div>
-          <el-empty v-else class="reference-empty" description="当前分镜暂无已确认场景图或角色图可参考" />
+          <el-empty v-else class="reference-empty" description="当前分镜暂无已确认场景图、角色图或上一镜参考素材" />
         </section>
 
         <el-form class="shot-video-strategy" label-position="top">
@@ -1153,6 +1161,7 @@ interface ReferenceImageOption {
   label: string
   subtitle: string
   sourceName: string
+  mediaKind?: 'image' | 'video'
 }
 
 interface ShotVideoPreflightItem {
@@ -1323,6 +1332,7 @@ const characterSelectedReferenceOptions = computed(() => selectedReferenceOption
 const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
 const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
+  .filter((item) => item.mediaKind !== 'video')
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
@@ -1830,13 +1840,35 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
     return []
   }
   const options: ReferenceImageOption[] = []
+  const previousShot = findPreviousShotForVideo(shot)
+  if (shouldUsePreviousShotReferenceForInsertHandoff(shot, previousShot)) {
+    if (previousShot?.tailFrameMediaId) {
+      options.push({
+        mediaId: String(previousShot.tailFrameMediaId),
+        label: `上一镜尾帧：第 ${previousShot.shotNo || ''} 镜 #${previousShot.tailFrameMediaId}`,
+        subtitle: '锁定本镜头开头的姿态、道具位置、光影和空间连续性',
+        sourceName: '上一镜尾帧',
+        mediaKind: 'image'
+      })
+    }
+    if (previousShot?.videoMediaId) {
+      options.push({
+        mediaId: String(previousShot.videoMediaId),
+        label: `上一镜参考视频：第 ${previousShot.shotNo || ''} 镜 #${previousShot.videoMediaId}`,
+        subtitle: '作为 reference_video 参考上一镜动作逻辑、运镜节奏和道具交接关系',
+        sourceName: '上一镜参考视频',
+        mediaKind: 'video'
+      })
+    }
+  }
   const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
   if (scene?.lockedMediaId) {
     options.push({
       mediaId: String(scene.lockedMediaId),
       label: `场景：${scene.sceneName || '未命名场景'} #${scene.lockedMediaId}`,
       subtitle: [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '当前分镜场景图',
-      sourceName: scene.sceneName || '当前分镜场景'
+      sourceName: scene.sceneName || '当前分镜场景',
+      mediaKind: 'image'
     })
   }
   const characterIdSet = new Set(parseShotCharacterIds(shot.characterIds))
@@ -1847,14 +1879,41 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
         mediaId: String(item.lockedMediaId),
         label: `角色：${item.characterName || '未命名角色'} #${item.lockedMediaId}`,
         subtitle: [item.storyRole, item.appearance].filter(Boolean).join(' / ') || '当前分镜角色图',
-        sourceName: item.characterName || '当前分镜角色'
+        sourceName: item.characterName || '当前分镜角色',
+        mediaKind: 'image'
       })
     })
   return options
 }
 
 function currentShotVideoReferenceMediaIds() {
-  return shotVideoReferenceOptions.value.map((item) => item.mediaId)
+  return shotVideoReferenceOptions.value
+    .filter((item) => item.mediaKind !== 'video')
+    .map((item) => item.mediaId)
+}
+
+function findPreviousShotForVideo(shot: AivideoShot) {
+  const orderedShots = [...shots.value]
+    .filter((item) => item.episodeNo === shot.episodeNo || item.episodeNo == null || shot.episodeNo == null)
+    .sort((left, right) => Number(left.shotNo || 0) - Number(right.shotNo || 0))
+  const currentIndex = orderedShots.findIndex((item) => String(item.shotId) === String(shot.shotId))
+  return currentIndex > 0 ? orderedShots[currentIndex - 1] : undefined
+}
+
+function shouldUsePreviousShotReferenceForInsertHandoff(shot?: AivideoShot, previousShot?: AivideoShot) {
+  if (!shot || !previousShot || String(shot.sceneId || '') !== String(previousShot.sceneId || '')) {
+    return false
+  }
+  const transitionType = String(shot.transitionBeforeType || '').toUpperCase()
+  const text = [
+    shot.transitionBeforeType,
+    shot.transitionBeforeDesc,
+    shot.actionDesc,
+    shot.promptText
+  ].filter(Boolean).join(' ')
+  const insertLike = transitionType === 'INSERT' || /插入镜头|同场景切人|同场景道具交接/.test(text)
+  const handoffLike = /承接上一镜|上一镜|尾帧|道具交接|接过|接住|收下|递给|递出|交给|传给/.test(text)
+  return insertLike && handoffLike
 }
 
 function resolveEffectiveCharacterDesignType() {
@@ -1996,7 +2055,8 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     detail: characterDesignPreflightRule(effectiveType)
   })
 
-  const referenceCount = shotVideoReferenceOptions.value.length
+  const referenceCount = currentShotVideoReferenceMediaIds().length
+  const hasReferenceVideo = shotVideoReferenceOptions.value.some((item) => item.mediaKind === 'video')
   if (referenceCount > 5) {
     items.push({
       status: 'warn',
@@ -2008,6 +2068,13 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       status: 'pass',
       title: `参考图数量：${referenceCount} 张`,
       detail: '当前参考图数量处于可控范围；如果出现风格冲突，优先减少非必要参考图。'
+    })
+  }
+  if (hasReferenceVideo) {
+    items.push({
+      status: 'pass',
+      title: '上一镜参考视频：已纳入',
+      detail: '当前分镜会由后端自动传入上一镜已选视频作为 reference_video，用于承接动作逻辑、运镜节奏和空间关系。'
     })
   }
   return items
@@ -4157,6 +4224,12 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: #f3f4f6;
   cursor: zoom-in;
+}
+
+.shot-reference-video {
+  display: block;
+  object-fit: cover;
+  cursor: default;
 }
 
 .shot-reference-placeholder {
