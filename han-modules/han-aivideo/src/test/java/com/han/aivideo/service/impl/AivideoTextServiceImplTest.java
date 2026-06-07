@@ -360,10 +360,19 @@ class AivideoTextServiceImplTest {
         assertTrue(prompt.contains("stitchGroupNo"));
         assertTrue(prompt.contains("SCENE_CUT"));
         assertTrue(prompt.contains("只有 CONTINUE 才强制使用上一镜尾帧"));
+        assertTrue(prompt.contains("INSERT 仍属于同一剪辑组"));
         assertTrue(prompt.contains("多人同框切单人反应"));
         assertTrue(prompt.contains("transitionBeforeType 必须写 MONTAGE"));
         assertTrue(prompt.contains("空镜、环境镜头、主题升华、叠化"));
         assertTrue(prompt.contains("episodeNo 固定为 1"));
+    }
+
+    @Test
+    void transitionBreakDoesNotSplitInsertShotFromSameEditingGroup() {
+        assertFalse(AivideoTextServiceImpl.isTransitionBreak("INSERT"));
+        assertTrue(AivideoTextServiceImpl.isTransitionBreak("SCENE_CUT"));
+        assertTrue(AivideoTextServiceImpl.isTransitionBreak("TIME_JUMP"));
+        assertTrue(AivideoTextServiceImpl.isTransitionBreak("MONTAGE"));
     }
 
     @Test
@@ -666,14 +675,47 @@ class AivideoTextServiceImplTest {
                 null, null, null, null, null, null, null, null, null, null);
         AiVideoMediaAssetPo previousAudio = media(83L, "SHOT_AUDIO");
         previousAudio.setFileUrl("https://media.example/shot-4-audio.mp3");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        AiVideoShotPo continueShot = new AiVideoShotPo();
+        continueShot.setSceneId(12L);
+        continueShot.setTransitionBeforeType("CONTINUE");
+        AiVideoShotPo sceneCutShot = new AiVideoShotPo();
+        sceneCutShot.setSceneId(13L);
+        sceneCutShot.setTransitionBeforeType("SCENE_CUT");
+        AiVideoShotPo insertHandoffShot = new AiVideoShotPo();
+        insertHandoffShot.setSceneId(12L);
+        insertHandoffShot.setTransitionBeforeType("INSERT");
+        insertHandoffShot.setTransitionBeforeDesc("同场景道具交接插入镜头，承接上一镜递出动作。");
+        insertHandoffShot.setActionDesc("喵小萌从狗小汪手中接过收纳盒。");
         Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
-                "buildPreviousReferenceAudioUrl", AiVideoMediaAssetPo.class, strategyClass());
+                "buildPreviousReferenceAudioUrl", AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, strategyClass());
         method.setAccessible(true);
 
         assertEquals("https://media.example/shot-4-audio.mp3",
-                method.invoke(service, previousAudio, strategy("REFERENCE_AUDIO")));
-        assertEquals("", method.invoke(service, previousAudio, strategy("NATIVE_AUDIO")));
-        assertEquals("", method.invoke(service, null, strategy("REFERENCE_AUDIO")));
+                method.invoke(service, continueShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
+        assertEquals("https://media.example/shot-4-audio.mp3",
+                method.invoke(service, insertHandoffShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
+        assertEquals("", method.invoke(service, sceneCutShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
+        assertEquals("", method.invoke(service, continueShot, previousShot, previousAudio, strategy("NATIVE_AUDIO")));
+        assertEquals("", method.invoke(service, continueShot, previousShot, null, strategy("REFERENCE_AUDIO")));
+    }
+
+    @Test
+    void qVersionCharacterDesignForcesChibiVideoVisualStyle() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "resolveEffectiveVideoVisualStyle", String.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals("Q版3D卡通少儿绘本风",
+                method.invoke(service, "3D 国漫 CG", "CHIBI_FULL_BODY"));
+        assertEquals("Q版3D卡通少儿绘本风",
+                method.invoke(service, "写实电影感", "Q版萌系全身"));
+        assertEquals("写实电影感",
+                method.invoke(service, "写实电影感", "REALISTIC_NATURAL"));
     }
 
     @Test

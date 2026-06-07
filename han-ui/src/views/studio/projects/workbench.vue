@@ -521,6 +521,146 @@
                 </el-table-column>
               </el-table>
             </el-tab-pane>
+            <el-tab-pane label="剪辑" name="edit">
+              <div class="project-edit-panel" v-loading="projectEditLoading">
+                <div class="project-edit-toolbar">
+                  <div>
+                    <h4>剪辑成片预检</h4>
+                    <p>按已确认分镜顺序，把每个镜头“已选视频”拼接成一条成片。</p>
+                  </div>
+                  <div class="project-edit-actions">
+                    <el-button :icon="Refresh" @click="refreshProjectEditPanel">刷新预检</el-button>
+                    <el-button
+                      type="primary"
+                      :icon="Film"
+                      :loading="projectEditGenerating"
+                      :disabled="!projectEditReady || hasRunningProjectEditTask"
+                      @click="handleGenerateProjectEdit"
+                    >
+                      生成剪辑成片
+                    </el-button>
+                  </div>
+                </div>
+
+                <el-alert
+                  v-if="projectEditErrors.length"
+                  class="project-edit-alert"
+                  title="剪辑预检未通过"
+                  type="warning"
+                  show-icon
+                  :closable="false"
+                >
+                  <ul>
+                    <li v-for="item in projectEditErrors" :key="item">{{ item }}</li>
+                  </ul>
+                </el-alert>
+                <el-alert
+                  v-else-if="projectEditReady"
+                  class="project-edit-alert"
+                  title="剪辑预检通过"
+                  type="success"
+                  description="所有已确认分镜都有已选视频，可以提交剪辑任务。"
+                  show-icon
+                  :closable="false"
+                />
+                <el-alert
+                  v-if="projectEditWarnings.length"
+                  class="project-edit-alert"
+                  title="剪辑衔接提示"
+                  type="info"
+                  show-icon
+                  :closable="false"
+                >
+                  <ul>
+                    <li v-for="item in projectEditWarnings" :key="item">{{ item }}</li>
+                  </ul>
+                </el-alert>
+
+                <el-descriptions class="project-edit-summary" :column="3" border>
+                  <el-descriptions-item label="可剪辑片段">{{ projectEditPreflight?.clipCount || 0 }}</el-descriptions-item>
+                  <el-descriptions-item label="缺少视频镜头">{{ projectEditPreflight?.missingShotCount || 0 }}</el-descriptions-item>
+                  <el-descriptions-item label="预计总时长">{{ projectEditPreflight?.totalDurationSec || 0 }} 秒</el-descriptions-item>
+                </el-descriptions>
+
+                <el-table class="project-edit-table" :data="projectEditClips" border empty-text="暂无可剪辑片段">
+                  <el-table-column label="镜头" width="90">
+                    <template #default="{ row }">
+                      {{ row.shotNo || '-' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="时长" width="90">
+                    <template #default="{ row }">
+                      {{ row.durationSec || 0 }} 秒
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="衔接/转场" min-width="180">
+                    <template #default="{ row }">
+                      <div class="shot-transition-cell">
+                        <el-tag effect="plain">{{ row.transitionBeforeType || '-' }}</el-tag>
+                        <span class="shot-transition-desc">{{ row.transitionBeforeDesc || row.transitionEffect || '-' }}</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="动作" min-width="260" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.actionDesc || '-' }}</template>
+                  </el-table-column>
+                  <el-table-column label="视频资产" width="130">
+                    <template #default="{ row }">
+                      <el-tag type="success">#{{ row.videoMediaId }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="时间线" width="180">
+                    <template #default="{ row }">
+                      {{ formatTimeline(row.timelineStartMs) }} - {{ formatTimeline(row.timelineEndMs) }}
+                    </template>
+                  </el-table-column>
+                </el-table>
+
+                <div class="project-edit-subsection">
+                  <h4>剪辑任务</h4>
+                  <div v-if="projectEditTasks.length" class="project-edit-task-list">
+                    <article v-for="task in projectEditTasks" :key="task.taskId" class="project-edit-task-card">
+                      <div class="task-card-head">
+                        <strong>任务 {{ task.taskId }}</strong>
+                        <el-tag :type="getTaskStatusTagType(task.taskStatus)">
+                          {{ formatTaskStatus(task.taskStatus) }}
+                        </el-tag>
+                      </div>
+                      <el-progress
+                        :percentage="normalizeTaskProgress(task)"
+                        :status="getTaskProgressStatus(task.taskStatus)"
+                      />
+                      <p v-if="task.providerTaskId" class="muted-line">火山任务 {{ task.providerTaskId }}</p>
+                      <p v-if="shouldShowTaskMessage(task)" class="task-error">{{ task.errorMessage }}</p>
+                    </article>
+                  </div>
+                  <el-empty v-else description="暂无剪辑任务" />
+                </div>
+
+                <div class="project-edit-subsection">
+                  <h4>成片资产</h4>
+                  <div v-if="projectEditVideos.length" class="project-edit-video-grid">
+                    <article v-for="asset in projectEditVideos" :key="asset.mediaId" class="project-edit-video-card">
+                      <video
+                        v-if="projectEditPlayableUrl(asset)"
+                        :src="projectEditPlayableUrl(asset)"
+                        controls
+                        playsinline
+                      />
+                      <div v-else class="project-edit-vod-placeholder">
+                        <strong>VOD 成片</strong>
+                        <span>{{ projectEditVodId(asset) || `媒体 #${asset.mediaId}` }}</span>
+                      </div>
+                      <div class="project-edit-video-meta">
+                        <strong>成片 #{{ asset.mediaId }}</strong>
+                        <el-tag type="success" effect="plain">{{ asset.assetStatus || 'SELECTED' }}</el-tag>
+                      </div>
+                    </article>
+                  </div>
+                  <el-empty v-else description="暂无成片资产" />
+                </div>
+              </div>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
@@ -1121,12 +1261,16 @@ import {
   confirmAivideoPolish,
   confirmAivideoScript,
   generationStrategyOptions,
+  generateAivideoProjectEdit,
+  getAivideoProjectEditPreflight,
   getAivideoStudioTask,
   getLatestAivideoAssetTask,
   getAivideoProject,
   listAivideoMedia,
+  listAivideoProjectEditTasks,
   listAivideoShotVideoTasks,
   multiRoleStrategyOptions,
+  pollAivideoProjectEditTask,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
   previewAivideoCharacterImagePrompt,
@@ -1144,6 +1288,7 @@ import {
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
+  type AivideoProjectEditPreflight,
   type AivideoProjectDetail,
   type AivideoScene,
   type AivideoShot,
@@ -1231,6 +1376,11 @@ const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
+const projectEditPreflight = ref<AivideoProjectEditPreflight>()
+const projectEditTasks = ref<AivideoTask[]>([])
+const projectEditVideos = ref<AivideoMediaAsset[]>([])
+const projectEditLoading = ref(false)
+const projectEditGenerating = ref(false)
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
@@ -1252,9 +1402,11 @@ const detail = reactive<AivideoProjectDetail>({})
 let promptPreviewTimer: ReturnType<typeof setTimeout> | undefined
 let assetTaskPollTimer: ReturnType<typeof setTimeout> | undefined
 let shotVideoRecoveryTimer: ReturnType<typeof setTimeout> | undefined
+let projectEditPollTimer: ReturnType<typeof setTimeout> | undefined
 const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
 const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
+const PROJECT_EDIT_POLL_INTERVAL = 5_000
 type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO'
 
 const sourceDraft = reactive({
@@ -1406,11 +1558,16 @@ const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
   { label: '剧本', name: 'script' as WorkbenchTab, icon: Tickets, count: scriptVersions.value.length },
-  { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + shots.value.length },
+  { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + shots.value.length + projectEditVideos.value.length },
   { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
 ])
 const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotVideoTaskInFlight))
 const hasRecoverableShotVideoTask = computed(() => shotVideoTasks.value.some(isRecoverableShotVideoTask))
+const projectEditClips = computed(() => projectEditPreflight.value?.clips || [])
+const projectEditErrors = computed(() => projectEditPreflight.value?.errors || [])
+const projectEditWarnings = computed(() => projectEditPreflight.value?.warnings || [])
+const projectEditReady = computed(() => !!projectEditPreflight.value?.ready)
+const hasRunningProjectEditTask = computed(() => projectEditTasks.value.some(isShotVideoTaskInFlight))
 const previousShotForVideo = computed(() => {
   const current = selectedShotForVideo.value
   return current ? findPreviousShot(current) : undefined
@@ -2267,6 +2424,159 @@ async function refreshShotMediaAssets() {
   }
 }
 
+async function loadProjectEditPreflight() {
+  try {
+    const res = await getAivideoProjectEditPreflight(projectId.value)
+    projectEditPreflight.value = res.data
+  } catch (_error) {
+    projectEditPreflight.value = {
+      ready: false,
+      clipCount: 0,
+      missingShotCount: 0,
+      totalDurationSec: 0,
+      clips: [],
+      warnings: [],
+      errors: ['剪辑预检接口请求失败，请稍后刷新']
+    }
+  }
+}
+
+async function loadProjectEditTasks() {
+  try {
+    const res = await listAivideoProjectEditTasks(projectId.value)
+    projectEditTasks.value = res.data || []
+    scheduleProjectEditPolling()
+  } catch (_error) {
+    projectEditTasks.value = []
+  }
+}
+
+async function loadProjectEditVideos() {
+  try {
+    const res = await listAivideoMedia({
+      projectId: projectId.value,
+      assetType: 'PROJECT_EDIT_VIDEO',
+      bizType: 'PROJECT',
+      bizId: projectId.value
+    })
+    projectEditVideos.value = res.data || []
+  } catch (_error) {
+    projectEditVideos.value = []
+  }
+}
+
+async function refreshProjectEditPanel() {
+  projectEditLoading.value = true
+  try {
+    await Promise.all([
+      loadProjectEditPreflight(),
+      loadProjectEditTasks(),
+      loadProjectEditVideos()
+    ])
+  } finally {
+    projectEditLoading.value = false
+  }
+}
+
+function clearProjectEditPollingTimer() {
+  if (projectEditPollTimer) {
+    clearTimeout(projectEditPollTimer)
+    projectEditPollTimer = undefined
+  }
+}
+
+function scheduleProjectEditPolling(delay = PROJECT_EDIT_POLL_INTERVAL) {
+  clearProjectEditPollingTimer()
+  const running = projectEditTasks.value.find(isShotVideoTaskInFlight)
+  if (!running || projectEditGenerating.value) {
+    return
+  }
+  projectEditPollTimer = setTimeout(() => {
+    void pollProjectEditTask(running.taskId)
+  }, delay)
+}
+
+function upsertProjectEditTask(task?: AivideoTask) {
+  if (!task?.taskId) {
+    return
+  }
+  const key = String(task.taskId)
+  const next = projectEditTasks.value.filter((item) => String(item.taskId) !== key)
+  projectEditTasks.value = [task, ...next]
+}
+
+async function pollProjectEditTask(taskId: string | number) {
+  try {
+    const res = await pollAivideoProjectEditTask(projectId.value, taskId)
+    if (res.data) {
+      upsertProjectEditTask(res.data)
+      if (isShotVideoTaskInFlight(res.data)) {
+        scheduleProjectEditPolling()
+        return
+      }
+    }
+    await refreshProjectEditPanel()
+  } catch (_error) {
+    scheduleProjectEditPolling(PROJECT_EDIT_POLL_INTERVAL * 2)
+  }
+}
+
+function projectEditPlayableUrl(asset: AivideoMediaAsset) {
+  return resolveShotVideoDirectUrl(asset)
+}
+
+function projectEditVodId(asset: AivideoMediaAsset) {
+  const url = String(asset.fileUrl || '')
+  return url.startsWith('vod://') ? url.slice('vod://'.length) : ''
+}
+
+function formatTimeline(ms?: number) {
+  const value = Number(ms || 0)
+  if (Number.isNaN(value)) {
+    return '0.0s'
+  }
+  return `${(value / 1000).toFixed(1)}s`
+}
+
+async function handleGenerateProjectEdit() {
+  if (projectEditGenerating.value || hasRunningProjectEditTask.value) {
+    return
+  }
+  await loadProjectEditPreflight()
+  if (!projectEditReady.value) {
+    ElMessage.warning(projectEditErrors.value[0] || '剪辑预检未通过，请先补齐已选分镜视频')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将按 ${projectEditPreflight.value?.clipCount || 0} 个已选分镜视频生成成片，总时长约 ${projectEditPreflight.value?.totalDurationSec || 0} 秒。是否继续？`,
+      '生成剪辑成片',
+      { type: 'warning', confirmButtonText: '生成成片', cancelButtonText: '取消' }
+    )
+  } catch (_error) {
+    return
+  }
+  projectEditGenerating.value = true
+  try {
+    const res = await generateAivideoProjectEdit({
+      projectId: projectId.value,
+      videoName: `${detail.project?.projectName || 'AI短剧'} 成片`,
+      includeAudio: params.audioMode !== 'SILENT'
+    })
+    if (res.data) {
+      upsertProjectEditTask(res.data)
+      scheduleProjectEditPolling(1000)
+    }
+    ElMessage.success('剪辑任务已提交')
+    await refreshProjectEditPanel()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '剪辑成片生成失败')
+  } finally {
+    projectEditGenerating.value = false
+    scheduleProjectEditPolling()
+  }
+}
+
 async function loadDetail() {
   loading.value = true
   try {
@@ -2302,6 +2612,7 @@ async function loadDetail() {
       })
     }
     await refreshShotMediaAssets()
+    await refreshProjectEditPanel()
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
     await refreshAssetPromptPreview()
@@ -3849,6 +4160,7 @@ onBeforeUnmount(() => {
   }
   clearAssetTaskPollingTimer()
   clearShotVideoRecoveryTimer()
+  clearProjectEditPollingTimer()
   revokeReferencePreviewUrls()
   revokeCharacterImagePreviewUrls()
   revokeSceneImagePreviewUrls()
@@ -4387,6 +4699,121 @@ onBeforeUnmount(() => {
 
 .shot-video-task-message {
   margin: 0;
+}
+
+.project-edit-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.project-edit-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  h4 {
+    margin: 0 0 4px;
+  }
+
+  p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 13px;
+  }
+}
+
+.project-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-edit-alert {
+  ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+}
+
+.project-edit-summary,
+.project-edit-table {
+  margin-top: 2px;
+}
+
+.project-edit-subsection {
+  display: grid;
+  gap: 10px;
+
+  h4 {
+    margin: 4px 0 0;
+  }
+}
+
+.project-edit-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-edit-task-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fbff;
+}
+
+.task-card-head,
+.project-edit-video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.muted-line,
+.task-error {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.task-error {
+  color: #dc2626;
+}
+
+.project-edit-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.project-edit-video-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+
+  video {
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #111827;
+  }
+}
+
+.project-edit-vod-placeholder {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 260px;
+  color: #6b7280;
+  border-radius: 6px;
+  background: #f3f4f6;
 }
 
 .scene-image-grid {

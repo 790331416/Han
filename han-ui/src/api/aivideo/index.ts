@@ -199,6 +199,39 @@ export interface AivideoTask {
   updateTime?: string
 }
 
+export interface AivideoProjectEditClip {
+  shotId: string | number
+  episodeNo?: number
+  shotNo?: number
+  durationSec?: number
+  stitchGroupNo?: number
+  transitionBeforeType?: string
+  transitionBeforeDesc?: string
+  transitionEffect?: string
+  actionDesc?: string
+  videoMediaId?: string | number
+  videoUrl?: string
+  timelineStartMs?: number
+  timelineEndMs?: number
+}
+
+export interface AivideoProjectEditPreflight {
+  ready?: boolean
+  clipCount?: number
+  missingShotCount?: number
+  totalDurationSec?: number
+  clips?: AivideoProjectEditClip[]
+  warnings?: string[]
+  errors?: string[]
+}
+
+export interface AivideoProjectEditGenerateRequest {
+  projectId: string | number
+  videoName?: string
+  includeAudio?: boolean
+  priority?: number
+}
+
 export interface AivideoTaskQuery extends PageQuery {
   projectId?: string | number
   tenantId?: string | number
@@ -506,6 +539,22 @@ export function listAivideoMedia(query: {
   bizId?: string | number
 }) {
   return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query)
+}
+
+export function getAivideoProjectEditPreflight(projectId: string | number) {
+  return get<AivideoProjectEditPreflight>('/aivideo/studio/edit/preflight', { projectId }, { silentError: true })
+}
+
+export function generateAivideoProjectEdit(data: AivideoProjectEditGenerateRequest) {
+  return post<AivideoTask>('/aivideo/studio/edit/generate', data)
+}
+
+export function pollAivideoProjectEditTask(projectId: string | number, taskId: string | number) {
+  return get<AivideoTask>(`/aivideo/studio/edit/task/${taskId}/poll`, { projectId }, { silentError: true })
+}
+
+export function listAivideoProjectEditTasks(projectId: string | number) {
+  return get<AivideoTask[]>('/aivideo/studio/edit/tasks', { projectId }, { silentError: true })
 }
 
 export function previewAivideoMedia(mediaId: string | number) {

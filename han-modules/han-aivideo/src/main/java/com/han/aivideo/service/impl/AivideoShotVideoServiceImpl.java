@@ -385,7 +385,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         List<String> referenceImageUrls = buildProviderFileUrls(referenceMedias);
         String referenceImageUrl = referenceImageUrls.get(0);
         String referenceVideoUrl = buildPreviousReferenceVideoUrl(shot, previousShot, previousVideoMedia);
-        String referenceAudioUrl = buildPreviousReferenceAudioUrl(previousAudioMedia, strategy);
+        String referenceAudioUrl = buildPreviousReferenceAudioUrl(shot, previousShot, previousAudioMedia, strategy);
         boolean referenceAudioSeedAllowed = previousShot == null;
         Map<String, String> variables = buildVariables(project, scene, shot, previousShot, previousTailFrameMedia,
                 referenceMedias, referenceImageUrls, referenceVideoUrl, referenceAudioUrl,
@@ -568,13 +568,19 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return buildProviderFileUrl(previousVideoMedia.getFileUrl());
     }
 
-    private String buildPreviousReferenceAudioUrl(AiVideoMediaAssetPo previousAudioMedia, StrategyContext strategy) {
+    private String buildPreviousReferenceAudioUrl(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                  AiVideoMediaAssetPo previousAudioMedia, StrategyContext strategy) {
         String mode = firstText(strategy != null ? strategy.audioMode() : null, DEFAULT_AUDIO_MODE)
                 .toUpperCase(Locale.ROOT);
         if (!"REFERENCE_AUDIO".equals(mode)
                 || previousAudioMedia == null
                 || !ASSET_SHOT_AUDIO.equals(previousAudioMedia.getAssetType())
                 || !StringUtils.hasText(previousAudioMedia.getFileUrl())) {
+            return "";
+        }
+        boolean canInheritPreviousAudio = shouldRequirePreviousShotVideo(shot, previousShot)
+                || shouldUsePreviousVisualReferenceForInsertHandoff(shot, previousShot);
+        if (!canInheritPreviousAudio) {
             return "";
         }
         return buildProviderFileUrl(previousAudioMedia.getFileUrl());
@@ -1448,9 +1454,14 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private StrategyContext resolveStrategy(AivideoShotVideoGenerateDto dto,
                                             AiVideoProjectSettingPo projectSetting,
                                             AiVideoProjectSettingPo globalSetting) {
-        return new StrategyContext(
+        String characterDesignType = firstText(dto.getCharacterDesignType(),
+                strategyText(projectSetting, globalSetting, PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE));
+        String visualStyle = resolveEffectiveVideoVisualStyle(
                 firstText(dto.getDefaultStyle(),
                         strategyText(projectSetting, globalSetting, PARAM_DEFAULT_STYLE, DEFAULT_STYLE)),
+                characterDesignType);
+        return new StrategyContext(
+                visualStyle,
                 firstText(dto.getGenerationStrategy(),
                         strategyText(projectSetting, globalSetting, PARAM_GENERATION_STRATEGY, DEFAULT_GENERATION_STRATEGY)),
                 firstText(dto.getAudioMode(),
@@ -1465,9 +1476,20 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                         strategyText(projectSetting, globalSetting, PARAM_CONTINUITY_LEVEL, DEFAULT_CONTINUITY_LEVEL)),
                 firstText(dto.getMultiRoleStrategy(),
                         strategyText(projectSetting, globalSetting, PARAM_MULTI_ROLE_STRATEGY, DEFAULT_MULTI_ROLE_STRATEGY)),
-                firstText(dto.getCharacterDesignType(),
-                        strategyText(projectSetting, globalSetting, PARAM_CHARACTER_DESIGN_TYPE, DEFAULT_CHARACTER_DESIGN_TYPE))
+                characterDesignType
         );
+    }
+
+    private String resolveEffectiveVideoVisualStyle(String visualStyle, String characterDesignType) {
+        String type = firstText(characterDesignType).toUpperCase(Locale.ROOT);
+        String rawType = firstText(characterDesignType);
+        if ("CHIBI_FULL_BODY".equals(type)
+                || rawType.contains("Q版")
+                || rawType.contains("萌系")
+                || rawType.contains("大头")) {
+            return "Q版3D卡通少儿绘本风";
+        }
+        return firstText(visualStyle, DEFAULT_STYLE);
     }
 
     private boolean shouldGenerateAudio(String audioMode, String referenceAudioUrl) {

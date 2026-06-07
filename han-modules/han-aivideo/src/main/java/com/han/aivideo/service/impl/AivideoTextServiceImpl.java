@@ -1103,7 +1103,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     static boolean isTransitionBreak(String transitionBeforeType) {
         String value = transitionBeforeType != null ? transitionBeforeType.trim().toUpperCase() : "";
-        return !"".equals(value) && !"CONTINUE".equals(value) && !"OPENING".equals(value);
+        return "SCENE_CUT".equals(value) || "TIME_JUMP".equals(value) || "MONTAGE".equals(value);
     }
 
     static boolean hasNewCharacters(AiVideoShotPo shot, AiVideoShotPo previousShot) {
@@ -1622,7 +1622,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "30. 当 sceneName 与上一镜相同但切到新角色、不同角色视角、从多人同框切单人反应/表情、物品/票据/手部特写或平行动作时，transitionBeforeType 必须写 INSERT，不要写 CONTINUE；INSERT 不继承上一尾帧。\n"
                 + "31. 当当前镜头是空镜、环境镜头、主题升华、叠化、闪回、快速串联、片尾总结或跨多个动作的过渡镜头时，transitionBeforeType 必须写 MONTAGE，并把 transitionEffect 写 dissolve 或 fade_black。\n"
                 + "32. 除非剧本明确分集，否则所有 shots 的 episodeNo 固定为 1；不要把场次、地点段落或转场编号写进 episodeNo。\n"
-                + "33. stitchGroupNo 表示后期连续拼接组：连续镜头保持同一组，遇到 SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 时组号加 1，方便后期剪辑在组间自动加转场。\n\n"
+                + "33. stitchGroupNo 表示后期连续拼接组：连续镜头保持同一组，只有遇到 SCENE_CUT/TIME_JUMP/MONTAGE 时组号加 1；INSERT 仍属于同一剪辑组，仅表示同场景切人、插入特写或道具交接，不要在 INSERT 处自动断组。\n\n"
                 + "【输出 JSON 结构】\n"
                 + "{\"characters\":[{\"characterName\":\"\",\"gender\":\"\",\"ageDesc\":\"\",\"identityDesc\":\"\",\"personalityTags\":[\"\"],"
                 + "\"storyRole\":\"\",\"relationshipDesc\":\"\",\"appearance\":\"\",\"hairStyle\":\"\",\"costume\":\"\",\"colorStyle\":\"\","

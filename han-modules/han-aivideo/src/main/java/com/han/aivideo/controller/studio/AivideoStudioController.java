@@ -8,6 +8,7 @@ import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
+import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
@@ -19,7 +20,9 @@ import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
+import com.han.aivideo.domain.vo.AivideoProjectEditPreflightVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
+import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoShotVideoService;
@@ -49,8 +52,9 @@ public class AivideoStudioController extends BAivideoStudioController {
 
     public AivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
                                    IAivideoSceneImageService sceneImageService,
-                                   IAivideoShotVideoService shotVideoService) {
-        super(projectService, textService, sceneImageService, shotVideoService);
+                                   IAivideoShotVideoService shotVideoService,
+                                   IAivideoProjectEditService projectEditService) {
+        super(projectService, textService, sceneImageService, shotVideoService, projectEditService);
     }
 
     @GetMapping("/project/list")
@@ -249,6 +253,30 @@ public class AivideoStudioController extends BAivideoStudioController {
     public R<List<AiVideoGenerationTaskPo>> listShotVideoTaskHistory(@RequestParam Long projectId,
                                                                      @RequestParam Long shotId) {
         return listShotVideoTasks(projectId, shotId);
+    }
+
+    @GetMapping("/edit/preflight")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoProjectEditPreflightVo> previewEdit(@RequestParam Long projectId) {
+        return previewProjectEdit(projectId);
+    }
+
+    @PostMapping("/edit/generate")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AiVideoGenerationTaskPo> generateEdit(@Valid @RequestBody AivideoProjectEditGenerateDto dto) {
+        return generateProjectEdit(dto);
+    }
+
+    @GetMapping("/edit/task/{taskId}/poll")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AiVideoGenerationTaskPo> pollEditTask(@PathVariable Long taskId, @RequestParam Long projectId) {
+        return pollProjectEdit(projectId, taskId);
+    }
+
+    @GetMapping("/edit/tasks")
+    @PreAuthorize("@ss.isLogin()")
+    public R<List<AiVideoGenerationTaskPo>> listEditTaskHistory(@RequestParam Long projectId) {
+        return listProjectEditTasks(projectId);
     }
 
     @GetMapping("/media/list")

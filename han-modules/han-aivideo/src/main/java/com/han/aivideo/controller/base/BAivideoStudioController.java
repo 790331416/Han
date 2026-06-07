@@ -7,6 +7,7 @@ import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
+import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
@@ -19,7 +20,9 @@ import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
+import com.han.aivideo.domain.vo.AivideoProjectEditPreflightVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
+import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoShotVideoService;
@@ -41,14 +44,17 @@ public class BAivideoStudioController {
     private final IAivideoTextService textService;
     private final IAivideoSceneImageService sceneImageService;
     private final IAivideoShotVideoService shotVideoService;
+    private final IAivideoProjectEditService projectEditService;
 
     protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
                                        IAivideoSceneImageService sceneImageService,
-                                       IAivideoShotVideoService shotVideoService) {
+                                       IAivideoShotVideoService shotVideoService,
+                                       IAivideoProjectEditService projectEditService) {
         this.projectService = projectService;
         this.textService = textService;
         this.sceneImageService = sceneImageService;
         this.shotVideoService = shotVideoService;
+        this.projectEditService = projectEditService;
     }
 
     protected R<PageResult<AiVideoProjectPo>> listProjects(AivideoProjectQuery query) {
@@ -181,6 +187,22 @@ public class BAivideoStudioController {
 
     protected R<List<AiVideoGenerationTaskPo>> listShotVideoTasks(Long projectId, Long shotId) {
         return R.ok(shotVideoService.listShotVideoTasks(projectId, shotId));
+    }
+
+    protected R<AivideoProjectEditPreflightVo> previewProjectEdit(Long projectId) {
+        return R.ok(projectEditService.previewProjectEdit(projectId));
+    }
+
+    protected R<AiVideoGenerationTaskPo> generateProjectEdit(AivideoProjectEditGenerateDto dto) {
+        return R.ok(projectEditService.submitProjectEdit(dto));
+    }
+
+    protected R<AiVideoGenerationTaskPo> pollProjectEdit(Long projectId, Long taskId) {
+        return R.ok(projectEditService.pollProjectEditTask(projectId, taskId));
+    }
+
+    protected R<List<AiVideoGenerationTaskPo>> listProjectEditTasks(Long projectId) {
+        return R.ok(projectEditService.listProjectEditTasks(projectId));
     }
 
     protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {
