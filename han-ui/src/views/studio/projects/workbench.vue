@@ -1156,7 +1156,11 @@
                     :disabled="!scene.lockedMediaId || isAutoShotReferenceMedia(selectedShotForVideo, scene.lockedMediaId)"
                   >
                     <div class="shot-reference-add-option">
-                      <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
+                      <img
+                        v-if="scene.lockedMediaId && referencePreviewUrls[String(scene.lockedMediaId)]"
+                        :src="referencePreviewUrls[String(scene.lockedMediaId)]"
+                        alt="场景缩略图"
+                      />
                       <span v-else class="shot-reference-add-placeholder">无图</span>
                       <div>
                         <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
@@ -1185,7 +1189,11 @@
                     :disabled="!character.lockedMediaId || isAutoShotReferenceMedia(selectedShotForVideo, character.lockedMediaId)"
                   >
                     <div class="shot-reference-add-option">
-                      <img v-if="character.lockedMediaId" :src="getPublicAivideoMediaPreviewUrl(character.lockedMediaId)" alt="角色缩略图" />
+                      <img
+                        v-if="character.lockedMediaId && referencePreviewUrls[String(character.lockedMediaId)]"
+                        :src="referencePreviewUrls[String(character.lockedMediaId)]"
+                        alt="角色缩略图"
+                      />
                       <span v-else class="shot-reference-add-placeholder">无图</span>
                       <div>
                         <strong>{{ character.characterName || `角色 ${character.characterId}` }}</strong>
@@ -1364,7 +1372,6 @@ import {
   getAivideoStudioTask,
   getLatestAivideoAssetTask,
   getAivideoProject,
-  getPublicAivideoMediaPreviewUrl,
   listAivideoMedia,
   listAivideoProjectEditTasks,
   listAivideoShotVideoTasks,
@@ -1596,6 +1603,10 @@ const sceneReferenceOptions = computed(() => scenes.value
 const characterSelectedReferenceOptions = computed(() => selectedReferenceOptions(characterReferenceMediaIds.value, characterReferenceOptions.value))
 const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
 const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
+const shotVideoAddableReferenceOptions = computed(() => [
+  ...sceneReferenceOptions.value,
+  ...characterReferenceOptions.value
+])
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
   .filter((item) => (item.mediaKind || 'image') === 'image')
   .map((item) => referencePreviewUrls.value[item.mediaId])
@@ -1764,10 +1775,6 @@ function findSceneById(sceneId?: string | number) {
 
 function sceneNameById(sceneId?: string | number) {
   return findSceneById(sceneId)?.sceneName || ''
-}
-
-function scenePreviewUrl(scene?: AivideoScene) {
-  return scene?.lockedMediaId ? getPublicAivideoMediaPreviewUrl(scene.lockedMediaId) : ''
 }
 
 function shotTransitionLabel(shot?: AivideoShot) {
@@ -3307,7 +3314,10 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   shotVideoLoading.value = true
   try {
     await Promise.all([
-      loadReferencePreviewUrls(shotVideoReferenceOptions.value),
+      loadReferencePreviewUrls([
+        ...shotVideoReferenceOptions.value,
+        ...shotVideoAddableReferenceOptions.value
+      ]),
       refreshShotVideoPromptPreview(),
       loadShotVideoTasks(),
       loadShotVideoCandidates()

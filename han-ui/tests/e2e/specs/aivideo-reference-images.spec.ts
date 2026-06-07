@@ -324,6 +324,18 @@ test('aivideo workbench should use confirmed images through reusable reference p
   const shotReferenceImage = shotReferenceCards.first().locator('.el-image')
   await expect.poll(async () => (await shotReferenceImage.boundingBox())?.width ?? 0).toBeLessThanOrEqual(160)
   await expect.poll(async () => (await shotReferenceImage.boundingBox())?.height ?? 0).toBeLessThanOrEqual(120)
+  await page.locator('.shot-reference-add-card').click()
+  const shotReferenceAddPopper = page.locator('.shot-reference-add-popper')
+  await expect(shotReferenceAddPopper).toBeVisible()
+  await shotReferenceAddPopper.locator('.el-select').first().click()
+  const shotReferenceSelectPopper = page.locator('.el-select__popper:visible').last()
+  await expect(shotReferenceSelectPopper).toBeVisible()
+  await expect.poll(async () => shotReferenceSelectPopper.locator('img').evaluateAll((images) => images
+    .map((image) => (image as HTMLImageElement).src)
+    .filter((src) => src.startsWith('blob:')).length)).toBeGreaterThanOrEqual(2)
+  await expect.poll(async () => shotReferenceSelectPopper.locator('img').evaluateAll((images) => images
+    .some((image) => (image as HTMLImageElement).src.includes('/aivideo/public/media/')))).toBe(false)
+  await page.keyboard.press('Escape')
   await shotReferenceCards.first().locator('img').click()
   await expect(page.locator('.el-image-viewer__wrapper')).toBeVisible()
   await page.locator('.el-image-viewer__close').click()
