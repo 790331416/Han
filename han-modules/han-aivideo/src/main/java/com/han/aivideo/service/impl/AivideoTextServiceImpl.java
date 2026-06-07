@@ -50,9 +50,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -1198,21 +1200,58 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private String resolveCharacterIds(ShotPayload item, Map<String, Long> characterIdMap) {
-        if (StringUtils.hasText(item.characterIds)) {
-            return item.characterIds.trim();
-        }
-        if (item.characterNames == null || item.characterNames.isEmpty()) {
+        if (item == null) {
             return null;
         }
-        List<String> ids = new ArrayList<>();
-        for (String name : item.characterNames) {
-            if (!StringUtils.hasText(name)) {
+        Set<String> ids = new LinkedHashSet<>();
+        if (StringUtils.hasText(item.characterIds)) {
+            ids.addAll(parseCharacterTokens(item.characterIds));
+        }
+        if (item.characterNames != null) {
+            for (String name : item.characterNames) {
+                if (!StringUtils.hasText(name)) {
+                    continue;
+                }
+                Long id = characterIdMap.get(name.trim());
+                ids.add(id == null ? name.trim() : String.valueOf(id));
+            }
+        }
+        addMentionedRelationCharacterIds(ids, characterIdMap, collectShotPayloadText(item));
+        return ids.isEmpty() ? null : String.join(",", ids);
+    }
+
+    private void addMentionedRelationCharacterIds(Set<String> ids, Map<String, Long> characterIdMap, String text) {
+        if (ids == null || characterIdMap == null || characterIdMap.isEmpty()
+                || !isRelationshipActionText(text)) {
+            return;
+        }
+        for (Map.Entry<String, Long> entry : characterIdMap.entrySet()) {
+            String name = entry.getKey();
+            Long id = entry.getValue();
+            if (!StringUtils.hasText(name) || id == null || !text.contains(name.trim())) {
                 continue;
             }
-            Long id = characterIdMap.get(name.trim());
-            ids.add(id == null ? name.trim() : String.valueOf(id));
+            String idText = String.valueOf(id);
+            if (!ids.contains(idText) && !ids.contains(name.trim())) {
+                ids.add(idText);
+            }
         }
-        return String.join(",", ids);
+    }
+
+    private String collectShotPayloadText(ShotPayload item) {
+        if (item == null) {
+            return "";
+        }
+        return firstText(item.actionDesc, "") + "\n"
+                + firstText(item.promptText, "") + "\n"
+                + firstText(item.dialogue, "") + "\n"
+                + firstText(item.voiceOver, "") + "\n"
+                + firstText(item.transitionBeforeDesc, "");
+    }
+
+    private boolean isRelationshipActionText(String text) {
+        return containsAny(text, "靠近", "凑近", "走向", "看向", "望向", "旁边", "身边",
+                "递给", "交给", "传给", "拿给", "接过", "接住", "从", "对话");
     }
 
     private AssetPayload parseAssetPayload(String content) {

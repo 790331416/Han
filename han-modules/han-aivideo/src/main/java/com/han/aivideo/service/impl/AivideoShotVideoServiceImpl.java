@@ -52,10 +52,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -620,7 +622,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private void addCharacterReferenceMedias(Long projectId, AiVideoShotPo shot, Map<Long, AiVideoMediaAssetPo> references) {
-        for (String token : parseCharacterTokens(shot.getCharacterIds())) {
+        for (String token : parseCharacterTokens(resolveEffectiveCharacterIds(projectId, shot))) {
             try {
                 Long characterId = Long.parseLong(token);
                 AiVideoCharacterPo character = characterMapper.selectById(characterId);
@@ -1116,8 +1118,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("weather", safeValue(scene.getWeather()));
         variables.put("atmosphere", safeValue(scene.getAtmosphere()));
         variables.put("visualFeatures", safeValue(scene.getVisualFeatures()));
-        variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds())));
-        variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds()));
+        String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
+        variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), effectiveCharacterIds)));
+        variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
         variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
                 referenceAudioSeedAllowed));
@@ -1166,8 +1169,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
                 containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
         String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
-        String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), shot.getCharacterIds()));
-        String characterContinuity = buildCharacterContinuity(project.getProjectId(), shot.getCharacterIds());
+        String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
+        String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), effectiveCharacterIds));
+        String characterContinuity = buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds);
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
         String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
                 referenceAudioSeedAllowed);
@@ -1612,12 +1616,32 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private String buildCompositionRequirement(AiVideoShotPo shot) {
-        List<String> parts = detectTargetParts(collectShotText(shot));
+        String text = collectShotText(shot);
+        String relationshipRequirement = buildRelationshipCompositionRequirement(text);
+        List<String> parts = detectTargetParts(text);
+        if (StringUtils.hasText(relationshipRequirement)) {
+            if (parts.isEmpty()) {
+                return relationshipRequirement;
+            }
+            return relationshipRequirement + " 同时必须使用半身或全身构图，镜头内持续露出"
+                    + String.join("、", parts) + "，不要只拍脸部特写。";
+        }
         if (parts.isEmpty()) {
             return "保持参考图主体清晰，优先中景或近景，避免无故切到纯脸部大特写导致动作丢失。";
         }
         return "必须使用半身或全身构图，镜头内持续露出" + String.join("、", parts)
                 + "，不要只拍脸部特写。";
+    }
+
+    private String buildRelationshipCompositionRequirement(String text) {
+        if (!isRelationshipActionText(text)) {
+            return "";
+        }
+        List<String> targetNames = detectRelationshipTargetNames(text);
+        String target = targetNames.isEmpty() ? "被靠近/看向/交接的目标角色" : String.join("、", targetNames);
+        return "双角色同框：动作发起者和" + target
+                + "必须同时出现在画面中，保持二者空间距离和朝向关系清楚；镜头推近的是两者关系，不是单独拍某一个角色脸部。"
+                + " 禁止只出现单个角色，禁止把另一名角色放到画外，禁止只用眼神或画外方向代替目标角色。";
     }
 
     private String buildBodyPartRequirement(AiVideoShotPo shot) {
@@ -1782,7 +1806,87 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return firstText(shot.getActionDesc()) + "\n"
                 + firstText(shot.getPromptText()) + "\n"
                 + firstText(shot.getVoiceOver()) + "\n"
-                + firstText(shot.getDialogue());
+                + firstText(shot.getDialogue()) + "\n"
+                + firstText(shot.getTransitionBeforeDesc());
+    }
+
+    private String resolveEffectiveCharacterIds(Long projectId, AiVideoShotPo shot) {
+        Set<String> ids = new LinkedHashSet<>(parseCharacterTokens(shot != null ? shot.getCharacterIds() : null));
+        addMentionedRelationCharacterIds(projectId, collectShotText(shot), ids);
+        return String.join(",", ids);
+    }
+
+    private void addMentionedRelationCharacterIds(Long projectId, String text, Set<String> ids) {
+        if (projectId == null || characterMapper == null || ids == null || !isRelationshipActionText(text)) {
+            return;
+        }
+        for (AiVideoCharacterPo character : selectProjectCharacters(projectId)) {
+            if (character == null || character.getCharacterId() == null
+                    || !StringUtils.hasText(character.getCharacterName())
+                    || !text.contains(character.getCharacterName().trim())) {
+                continue;
+            }
+            String idText = String.valueOf(character.getCharacterId());
+            String name = character.getCharacterName().trim();
+            if (!ids.contains(idText) && !ids.contains(name)) {
+                ids.add(idText);
+            }
+        }
+    }
+
+    private List<AiVideoCharacterPo> selectProjectCharacters(Long projectId) {
+        if (projectId == null || characterMapper == null) {
+            return List.of();
+        }
+        List<AiVideoCharacterPo> characters = characterMapper.selectList(new LambdaQueryWrapper<AiVideoCharacterPo>()
+                .eq(AiVideoCharacterPo::getProjectId, projectId)
+                .eq(AiVideoCharacterPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByAsc(AiVideoCharacterPo::getSortOrder));
+        return characters == null ? List.of() : characters;
+    }
+
+    private boolean isRelationshipActionText(String text) {
+        return containsAny(text, "靠近", "凑近", "走向", "看向", "望向", "旁边", "身边",
+                "递给", "交给", "传给", "拿给", "递向", "接过", "接住", "收下", "对话");
+    }
+
+    private List<String> detectRelationshipTargetNames(String text) {
+        if (!StringUtils.hasText(text) || !isRelationshipActionText(text)) {
+            return List.of();
+        }
+        Set<String> names = new LinkedHashSet<>();
+        for (String cue : List.of("旁边的", "身边的", "靠近", "凑近", "靠向", "走向",
+                "看向", "望向", "递给", "交给", "传给", "拿给", "递向", "面对")) {
+            String name = readNameAfterCue(text, cue);
+            if (StringUtils.hasText(name)) {
+                names.add(name);
+            }
+        }
+        return new ArrayList<>(names);
+    }
+
+    private String readNameAfterCue(String text, String cue) {
+        int index = text.indexOf(cue);
+        if (index < 0) {
+            return "";
+        }
+        String value = text.substring(index + cue.length()).trim();
+        for (String prefix : List.of("旁边的", "身边的", "旁边", "身边", "画面中的", "画面里", "的", "向", "到")) {
+            while (value.startsWith(prefix)) {
+                value = value.substring(prefix.length()).trim();
+            }
+        }
+        StringBuilder name = new StringBuilder();
+        for (int i = 0; i < value.length() && name.length() < 8; i++) {
+            char ch = value.charAt(i);
+            if (Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN
+                    || Character.isLetterOrDigit(ch) || ch == '_') {
+                name.append(ch);
+                continue;
+            }
+            break;
+        }
+        return name.toString();
     }
 
     private boolean containsAny(String text, String... keywords) {

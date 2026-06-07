@@ -5,6 +5,7 @@ import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
+import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
@@ -719,6 +720,95 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void resolveCharacterIdsAddsKnownTargetCharacterMentionedInRelationshipAction() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        Class<?> payloadClass = Class.forName("com.han.aivideo.service.impl.AivideoTextServiceImpl$ShotPayload");
+        Constructor<?> constructor = payloadClass.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Object payload = constructor.newInstance();
+        Field characterIds = payloadClass.getDeclaredField("characterIds");
+        characterIds.setAccessible(true);
+        characterIds.set(payload, "6");
+        Field actionDesc = payloadClass.getDeclaredField("actionDesc");
+        actionDesc.setAccessible(true);
+        actionDesc.set(payload, "听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌");
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "resolveCharacterIds", payloadClass, Map.class);
+        method.setAccessible(true);
+
+        String resolved = (String) method.invoke(service, payload, Map.of("喵小萌", 5L, "狗小汪", 6L));
+
+        assertEquals("6,5", resolved);
+    }
+
+    @Test
+    void shotVideoReferenceMediasIncludeCharacterMentionedInRelationshipAction() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(5L).equals(args[0])) {
+                        return character(5L, "喵小萌", 59L);
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(6L).equals(args[0])) {
+                        return character(6L, "狗小汪", 53L);
+                    }
+                    if ("selectList".equals(method.getName())) {
+                        return List.of(character(5L, "喵小萌", 59L), character(6L, "狗小汪", 53L));
+                    }
+                    return null;
+                });
+        AiVideoMediaAssetMapper mediaMapper = (AiVideoMediaAssetMapper) Proxy.newProxyInstance(
+                AiVideoMediaAssetMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoMediaAssetMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(53L).equals(args[0])) {
+                        return media(53L, "CHARACTER_IMAGE");
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(59L).equals(args[0])) {
+                        return media(59L, "CHARACTER_IMAGE");
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, mediaMapper, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("6");
+        shot.setActionDesc("听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, null, media(30L, "SCENE_IMAGE"), null, List.of());
+
+        assertEquals(List.of(30L, 53L, 59L),
+                references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+    }
+
+    @Test
+    void relationshipActionForcesTwoCharacterCompositionRequirement() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setCharacterIds("6");
+        shot.setActionDesc("听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildCompositionRequirement", AiVideoShotPo.class);
+        method.setAccessible(true);
+
+        String requirement = (String) method.invoke(service, shot);
+
+        assertTrue(requirement.contains("双角色同框"));
+        assertTrue(requirement.contains("喵小萌"));
+        assertTrue(requirement.contains("禁止只出现单个角色"));
+    }
+
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();
@@ -738,6 +828,16 @@ class AivideoTextServiceImplTest {
         media.setAssetStatus("SELECTED");
         media.setDelFlag(0);
         return media;
+    }
+
+    private AiVideoCharacterPo character(Long characterId, String characterName, Long lockedMediaId) {
+        AiVideoCharacterPo character = new AiVideoCharacterPo();
+        character.setCharacterId(characterId);
+        character.setProjectId(3L);
+        character.setCharacterName(characterName);
+        character.setLockedMediaId(lockedMediaId);
+        character.setDelFlag(0);
+        return character;
     }
 
     private Class<?> strategyClass() throws ClassNotFoundException {
