@@ -463,39 +463,6 @@
                 <el-table-column prop="shotNo" label="镜头" width="90" />
                 <el-table-column prop="durationSec" label="秒数" width="90" />
                 <el-table-column prop="cameraMovement" label="运动" min-width="120" />
-                <el-table-column label="场景绑定" min-width="260">
-                  <template #default="{ row }">
-                    <div class="shot-scene-cell">
-                      <el-select
-                        :model-value="shotSceneSelectValue(row)"
-                        size="small"
-                        filterable
-                        placeholder="手动选择当前分镜场景"
-                        popper-class="shot-scene-select-popper"
-                        :loading="isShotSceneUpdating(row)"
-                        :disabled="isShotSceneUpdating(row)"
-                        @change="(value) => handleUpdateShotScene(row, value)"
-                      >
-                        <el-option
-                          v-for="scene in confirmedSceneOptions"
-                          :key="scene.sceneId"
-                          :label="scene.sceneName || `场景 ${scene.sceneId}`"
-                          :value="String(scene.sceneId)"
-                        >
-                          <div class="shot-scene-option">
-                            <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
-                            <span v-else class="shot-scene-option-placeholder">无图</span>
-                            <div>
-                              <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
-                              <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
-                            </div>
-                          </div>
-                        </el-option>
-                      </el-select>
-                      <small>{{ shotSceneSubtitle(row) }}</small>
-                    </div>
-                  </template>
-                </el-table-column>
                 <el-table-column label="衔接/转场" min-width="220">
                   <template #default="{ row }">
                     <div class="shot-transition-cell">
@@ -510,13 +477,13 @@
                 <el-table-column label="视频资产" width="210">
                   <template #default="{ row }">
                     <div class="shot-media-cell">
-                      <el-tag v-if="row.videoMediaId" type="success">视频 #{{ row.videoMediaId }}</el-tag>
+                      <el-tag v-if="shotVideoMediaId(row)" type="success">视频 #{{ shotVideoMediaId(row) }}</el-tag>
                       <el-tag v-else type="info">视频未选</el-tag>
                       <el-tag v-if="shotVideoTaskId(row)" type="info" effect="plain">
                         任务 #{{ shotVideoTaskId(row) }}
                       </el-tag>
-                      <el-tag v-if="row.tailFrameMediaId" type="success" effect="plain">
-                        尾帧 #{{ row.tailFrameMediaId }}
+                      <el-tag v-if="shotTailFrameMediaId(row)" type="success" effect="plain">
+                        尾帧 #{{ shotTailFrameMediaId(row) }}
                       </el-tag>
                       <el-tag v-if="shotAudioMediaId(row)" type="warning" effect="plain">
                         音频 #{{ shotAudioMediaId(row) }}
@@ -1105,10 +1072,14 @@
         <section class="shot-reference-panel">
           <div class="panel-title-row">
             <strong>当前分镜参考素材</strong>
-            <small>来自上一镜尾帧/参考视频、已确认场景图和角色图，仅展示当前视频生成会依赖的锚点</small>
+            <small>来自上一镜尾帧/参考视频/参考音频、已确认场景图和角色图；点 + 可为当前分镜临时追加人物或场景参考</small>
           </div>
-          <div v-if="shotVideoReferenceOptions.length" class="shot-reference-grid">
-            <article v-for="option in shotVideoReferenceOptions" :key="option.mediaId" class="shot-reference-card">
+          <div class="shot-reference-grid">
+            <article
+              v-for="option in shotVideoReferenceOptions"
+              :key="`${option.mediaKind || 'image'}-${option.mediaId}`"
+              class="shot-reference-card"
+            >
               <video
                 v-if="option.mediaKind === 'video' && referencePreviewUrls[option.mediaId]"
                 class="shot-reference-thumb shot-reference-video"
@@ -1117,6 +1088,18 @@
                 controls
                 playsinline
               />
+              <div
+                v-else-if="option.mediaKind === 'audio'"
+                class="shot-reference-thumb shot-reference-audio"
+              >
+                <audio
+                  v-if="referencePreviewUrls[option.mediaId]"
+                  :src="referencePreviewUrls[option.mediaId]"
+                  controls
+                  preload="metadata"
+                />
+                <span v-else>音频加载中</span>
+              </div>
               <el-image
                 v-else-if="referencePreviewUrls[option.mediaId]"
                 class="shot-reference-thumb"
@@ -1130,42 +1113,91 @@
                 <strong>{{ option.label }}</strong>
                 <small>{{ option.subtitle }}</small>
               </div>
+              <el-button
+                v-if="option.removable"
+                class="shot-reference-remove"
+                type="danger"
+                link
+                @click="removeManualShotReference(selectedShotForVideo, option.mediaId)"
+              >
+                移除
+              </el-button>
             </article>
-          </div>
-          <el-empty v-else class="reference-empty" description="当前分镜暂无已确认场景图、角色图或上一镜参考素材" />
-        </section>
-
-        <section class="shot-scene-selector-panel">
-          <div class="panel-title-row">
-            <strong>当前分镜场景</strong>
-            <small>如果场景缺失或识别错误，可在这里手动选择已确认场景，保存后会同步刷新参考素材和提示词预览</small>
-          </div>
-          <el-select
-            :model-value="shotSceneSelectValue(selectedShotForVideo)"
-            filterable
-            placeholder="选择当前分镜场景"
-            popper-class="shot-scene-select-popper"
-            :loading="isShotSceneUpdating(selectedShotForVideo)"
-            :disabled="shotVideoGenerating || isShotSceneUpdating(selectedShotForVideo)"
-            @change="(value) => selectedShotForVideo && handleUpdateShotScene(selectedShotForVideo, value)"
-          >
-            <el-option
-              v-for="scene in confirmedSceneOptions"
-              :key="scene.sceneId"
-              :label="scene.sceneName || `场景 ${scene.sceneId}`"
-              :value="String(scene.sceneId)"
+            <el-popover
+              placement="bottom-start"
+              width="460"
+              trigger="click"
+              popper-class="shot-reference-add-popper"
             >
-              <div class="shot-scene-option">
-                <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
-                <span v-else class="shot-scene-option-placeholder">无图</span>
-                <div>
-                  <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
-                  <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
-                </div>
+              <template #reference>
+                <button class="shot-reference-add-card" type="button">
+                  <span>+</span>
+                  <strong>添加参考素材</strong>
+                  <small>补人物 / 场景</small>
+                </button>
+              </template>
+              <div class="shot-reference-add-panel">
+                <label>追加场景图</label>
+                <el-select
+                  :model-value="manualShotSceneReferenceIds(selectedShotForVideo)"
+                  multiple
+                  filterable
+                  clearable
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择已确认场景图"
+                  @change="(value) => handleManualShotSceneReferenceChange(selectedShotForVideo, value)"
+                >
+                  <el-option
+                    v-for="scene in confirmedSceneOptions"
+                    :key="scene.sceneId"
+                    :label="scene.sceneName || `场景 ${scene.sceneId}`"
+                    :value="String(scene.lockedMediaId || '')"
+                    :disabled="!scene.lockedMediaId || isAutoShotReferenceMedia(selectedShotForVideo, scene.lockedMediaId)"
+                  >
+                    <div class="shot-reference-add-option">
+                      <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
+                      <span v-else class="shot-reference-add-placeholder">无图</span>
+                      <div>
+                        <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
+                        <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
+                      </div>
+                    </div>
+                  </el-option>
+                </el-select>
+
+                <label>追加角色图</label>
+                <el-select
+                  :model-value="manualShotCharacterReferenceIds(selectedShotForVideo)"
+                  multiple
+                  filterable
+                  clearable
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择已确认角色图"
+                  @change="(value) => handleManualShotCharacterReferenceChange(selectedShotForVideo, value)"
+                >
+                  <el-option
+                    v-for="character in characters"
+                    :key="character.characterId"
+                    :label="character.characterName || `角色 ${character.characterId}`"
+                    :value="String(character.lockedMediaId || '')"
+                    :disabled="!character.lockedMediaId || isAutoShotReferenceMedia(selectedShotForVideo, character.lockedMediaId)"
+                  >
+                    <div class="shot-reference-add-option">
+                      <img v-if="character.lockedMediaId" :src="getPublicAivideoMediaPreviewUrl(character.lockedMediaId)" alt="角色缩略图" />
+                      <span v-else class="shot-reference-add-placeholder">无图</span>
+                      <div>
+                        <strong>{{ character.characterName || `角色 ${character.characterId}` }}</strong>
+                        <small>{{ [character.storyRole, character.appearance].filter(Boolean).join(' / ') || '已确认角色' }}</small>
+                      </div>
+                    </div>
+                  </el-option>
+                </el-select>
+                <small>已在当前分镜自动使用的素材会置灰，避免重复塞图。</small>
               </div>
-            </el-option>
-          </el-select>
-          <small>{{ shotSceneSubtitle(selectedShotForVideo) }}</small>
+            </el-popover>
+          </div>
         </section>
 
         <el-form class="shot-video-strategy" label-position="top">
@@ -1351,7 +1383,6 @@ import {
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoProject,
-  updateAivideoShotScene,
   uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
@@ -1383,7 +1414,8 @@ interface ReferenceImageOption {
   label: string
   subtitle: string
   sourceName: string
-  mediaKind?: 'image' | 'video'
+  mediaKind?: 'image' | 'video' | 'audio'
+  removable?: boolean
 }
 
 interface ShotVideoPreflightItem {
@@ -1444,7 +1476,7 @@ const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
-const shotSceneUpdatingIds = ref<Set<string>>(new Set())
+const shotManualReferenceMediaIdsByShotId = ref<Record<string, string[]>>({})
 const projectEditPreflight = ref<AivideoProjectEditPreflight>()
 const projectEditTasks = ref<AivideoTask[]>([])
 const projectEditVideos = ref<AivideoMediaAsset[]>([])
@@ -1565,7 +1597,7 @@ const characterSelectedReferenceOptions = computed(() => selectedReferenceOption
 const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
 const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
-  .filter((item) => item.mediaKind !== 'video')
+  .filter((item) => (item.mediaKind || 'image') === 'image')
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
@@ -1734,28 +1766,8 @@ function sceneNameById(sceneId?: string | number) {
   return findSceneById(sceneId)?.sceneName || ''
 }
 
-function shotSceneSelectValue(shot?: AivideoShot) {
-  return shot?.sceneId == null || shot.sceneId === '' ? '' : String(shot.sceneId)
-}
-
 function scenePreviewUrl(scene?: AivideoScene) {
   return scene?.lockedMediaId ? getPublicAivideoMediaPreviewUrl(scene.lockedMediaId) : ''
-}
-
-function shotSceneSubtitle(shot?: AivideoShot) {
-  const scene = findSceneById(shot?.sceneId)
-  if (!scene) {
-    return '未绑定场景；请手动选择一个已确认场景'
-  }
-  const desc = [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures]
-    .filter(Boolean)
-    .join(' / ')
-  const mediaText = scene.lockedMediaId ? `已选场景图 #${scene.lockedMediaId}` : '场景图未选'
-  return [mediaText, desc].filter(Boolean).join('；')
-}
-
-function isShotSceneUpdating(shot?: AivideoShot) {
-  return !!shot?.shotId && shotSceneUpdatingIds.value.has(String(shot.shotId))
 }
 
 function shotTransitionLabel(shot?: AivideoShot) {
@@ -1846,6 +1858,14 @@ function findShotMediaAsset(shot: AivideoShot, assetType: ShotMediaAssetType) {
 
 function shotVideoTaskId(shot: AivideoShot) {
   return findShotMediaAsset(shot, 'SHOT_VIDEO')?.taskId
+}
+
+function shotVideoMediaId(shot: AivideoShot) {
+  return findShotMediaAsset(shot, 'SHOT_VIDEO')?.mediaId
+}
+
+function shotTailFrameMediaId(shot: AivideoShot) {
+  return findShotMediaAsset(shot, 'SHOT_TAIL_FRAME')?.mediaId
 }
 
 function shotAudioMediaId(shot: AivideoShot) {
@@ -2210,35 +2230,65 @@ function autoAddedShotCharacters(shot?: AivideoShot) {
   })
 }
 
-function buildShotVideoReferenceOptions(shot?: AivideoShot) {
+function addShotReferenceOption(options: ReferenceImageOption[], option?: ReferenceImageOption) {
+  if (!option?.mediaId || options.some((item) => String(item.mediaId) === String(option.mediaId))) {
+    return
+  }
+  options.push(option)
+}
+
+function shouldUsePreviousVisualReferenceForShot(shot?: AivideoShot, previousShot?: AivideoShot) {
+  return !!shot
+    && !!previousShot
+    && (shotRequiresPreviousVideo(shot) || shouldUsePreviousShotReferenceForInsertHandoff(shot, previousShot))
+}
+
+function shouldUsePreviousAudioReference(shot?: AivideoShot, previousShot?: AivideoShot) {
+  return String(params.audioMode || '').toUpperCase() === 'REFERENCE_AUDIO'
+    && shouldUsePreviousVisualReferenceForShot(shot, previousShot)
+}
+
+function buildShotVideoAutoReferenceOptions(shot?: AivideoShot) {
   if (!shot) {
     return []
   }
   const options: ReferenceImageOption[] = []
   const previousShot = findPreviousShotForVideo(shot)
-  if (shouldUsePreviousShotReferenceForInsertHandoff(shot, previousShot)) {
-    if (previousShot?.tailFrameMediaId) {
-      options.push({
-        mediaId: String(previousShot.tailFrameMediaId),
-        label: `上一镜尾帧：第 ${previousShot.shotNo || ''} 镜 #${previousShot.tailFrameMediaId}`,
+  if (shouldUsePreviousVisualReferenceForShot(shot, previousShot) && previousShot) {
+    const previousTailFrameMediaId = shotTailFrameMediaId(previousShot)
+    const previousVideoMediaId = shotVideoMediaId(previousShot)
+    const previousAudioMediaId = shotAudioMediaId(previousShot)
+    if (previousTailFrameMediaId) {
+      addShotReferenceOption(options, {
+        mediaId: String(previousTailFrameMediaId),
+        label: `上一镜尾帧：第 ${previousShot.shotNo || ''} 镜 #${previousTailFrameMediaId}`,
         subtitle: '锁定本镜头开头的姿态、道具位置、光影和空间连续性',
         sourceName: '上一镜尾帧',
         mediaKind: 'image'
       })
     }
-    if (previousShot?.videoMediaId) {
-      options.push({
-        mediaId: String(previousShot.videoMediaId),
-        label: `上一镜参考视频：第 ${previousShot.shotNo || ''} 镜 #${previousShot.videoMediaId}`,
+    if (shouldUsePreviousShotReferenceForInsertHandoff(shot, previousShot) && previousVideoMediaId) {
+      addShotReferenceOption(options, {
+        mediaId: String(previousVideoMediaId),
+        label: `上一镜参考视频：第 ${previousShot.shotNo || ''} 镜 #${previousVideoMediaId}`,
         subtitle: '作为 reference_video 参考上一镜动作逻辑、运镜节奏和道具交接关系',
         sourceName: '上一镜参考视频',
         mediaKind: 'video'
       })
     }
+    if (shouldUsePreviousAudioReference(shot, previousShot) && previousAudioMediaId) {
+      addShotReferenceOption(options, {
+        mediaId: String(previousAudioMediaId),
+        label: `上一镜参考音频：第 ${previousShot.shotNo || ''} 镜 #${previousAudioMediaId}`,
+        subtitle: '作为 reference_audio 继承音色、语速、口吻和环境声风格；不复读上一镜台词',
+        sourceName: '上一镜参考音频',
+        mediaKind: 'audio'
+      })
+    }
   }
   const scene = findSceneById(shot.sceneId)
   if (scene?.lockedMediaId) {
-    options.push({
+    addShotReferenceOption(options, {
       mediaId: String(scene.lockedMediaId),
       label: `场景：${scene.sceneName || '未命名场景'} #${scene.lockedMediaId}`,
       subtitle: [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '当前分镜场景图',
@@ -2250,7 +2300,7 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
   characters.value
     .filter((item) => item.lockedMediaId && characterIdSet.has(String(item.characterId)))
     .forEach((item) => {
-      options.push({
+      addShotReferenceOption(options, {
         mediaId: String(item.lockedMediaId),
         label: `角色：${item.characterName || '未命名角色'} #${item.lockedMediaId}`,
         subtitle: [item.storyRole, item.appearance].filter(Boolean).join(' / ') || '当前分镜角色图',
@@ -2261,9 +2311,73 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
   return options
 }
 
+function shotManualReferenceMediaIds(shot?: AivideoShot) {
+  if (!shot?.shotId) {
+    return []
+  }
+  return shotManualReferenceMediaIdsByShotId.value[String(shot.shotId)] || []
+}
+
+function referenceOptionIdsByType(type: 'scene' | 'character') {
+  const options = type === 'scene' ? sceneReferenceOptions.value : characterReferenceOptions.value
+  return new Set(options.map((item) => String(item.mediaId)))
+}
+
+function manualShotSceneReferenceIds(shot?: AivideoShot) {
+  const sceneIds = referenceOptionIdsByType('scene')
+  return shotManualReferenceMediaIds(shot).filter((id) => sceneIds.has(String(id)))
+}
+
+function manualShotCharacterReferenceIds(shot?: AivideoShot) {
+  const characterIds = referenceOptionIdsByType('character')
+  return shotManualReferenceMediaIds(shot).filter((id) => characterIds.has(String(id)))
+}
+
+function manualShotReferenceOptionByMediaId(mediaId: string) {
+  const sceneOption = sceneReferenceOptions.value.find((item) => String(item.mediaId) === String(mediaId))
+  if (sceneOption) {
+    return {
+      ...sceneOption,
+      label: `追加场景：${sceneOption.sourceName} #${sceneOption.mediaId}`,
+      removable: true
+    } as ReferenceImageOption
+  }
+  const characterOption = characterReferenceOptions.value.find((item) => String(item.mediaId) === String(mediaId))
+  if (characterOption) {
+    return {
+      ...characterOption,
+      label: `追加角色：${characterOption.sourceName} #${characterOption.mediaId}`,
+      removable: true
+    } as ReferenceImageOption
+  }
+  return undefined
+}
+
+function isAutoShotReferenceMedia(shot?: AivideoShot, mediaId?: string | number) {
+  if (!shot || mediaId == null || mediaId === '') {
+    return false
+  }
+  return buildShotVideoAutoReferenceOptions(shot)
+    .some((item) => String(item.mediaId) === String(mediaId))
+}
+
+function buildShotVideoReferenceOptions(shot?: AivideoShot) {
+  const options = buildShotVideoAutoReferenceOptions(shot)
+  const existing = new Set(options.map((item) => String(item.mediaId)))
+  shotManualReferenceMediaIds(shot).forEach((mediaId) => {
+    const option = manualShotReferenceOptionByMediaId(String(mediaId))
+    if (!option || existing.has(String(option.mediaId))) {
+      return
+    }
+    options.push(option)
+    existing.add(String(option.mediaId))
+  })
+  return options
+}
+
 function currentShotVideoReferenceMediaIds() {
   return shotVideoReferenceOptions.value
-    .filter((item) => item.mediaKind !== 'video')
+    .filter((item) => (item.mediaKind || 'image') === 'image')
     .map((item) => item.mediaId)
 }
 
@@ -2445,6 +2559,8 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
 
   const referenceCount = currentShotVideoReferenceMediaIds().length
   const hasReferenceVideo = shotVideoReferenceOptions.value.some((item) => item.mediaKind === 'video')
+  const hasReferenceAudio = shotVideoReferenceOptions.value.some((item) => item.mediaKind === 'audio')
+  const manualReferenceCount = shotManualReferenceMediaIds(shot).length
   if (referenceCount > 5) {
     items.push({
       status: 'warn',
@@ -2458,12 +2574,42 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       detail: '当前参考图数量处于可控范围；如果出现风格冲突，优先减少非必要参考图。'
     })
   }
+  if (manualReferenceCount > 0) {
+    items.push({
+      status: 'pass',
+      title: `手动追加参考素材：${manualReferenceCount} 张`,
+      detail: '这些素材只作用于当前分镜本次视频生成；自动场景/角色/上一镜锚点仍保持优先。'
+    })
+  }
   if (hasReferenceVideo) {
     items.push({
       status: 'pass',
       title: '上一镜参考视频：已纳入',
       detail: '当前分镜会由后端自动传入上一镜已选视频作为 reference_video，用于承接动作逻辑、运镜节奏和空间关系。'
     })
+  }
+  if (String(params.audioMode || '').toUpperCase() === 'REFERENCE_AUDIO') {
+    if (!previousShot) {
+      items.push({
+        status: 'warn',
+        title: '参考音频：首镜种子音频',
+        detail: '当前分镜没有上一镜；后端允许本镜生成第一段种子音频，确认后会提取为后续分镜 reference_audio。'
+      })
+    } else if (shouldUsePreviousAudioReference(shot, previousShot)) {
+      items.push({
+        status: hasReferenceAudio ? 'pass' : 'warn',
+        title: hasReferenceAudio ? '上一镜参考音频：已纳入' : '上一镜参考音频：未就绪',
+        detail: hasReferenceAudio
+          ? '当前分镜会继承上一镜音色、语速、口吻和环境声风格，但仍按当前台词生成新声音。'
+          : '当前声音模式需要上一镜提取音频；如果上一镜视频已选但音频未归档，本次后端会强制不让模型随机发声。'
+      })
+    } else {
+      items.push({
+        status: 'pass',
+        title: '参考音频：当前镜头不继承',
+        detail: '当前分镜是开场、切场或非连续关系，音频可以作为新的声音边界，不强行继承上一镜。'
+      })
+    }
   }
   return items
 }
@@ -2939,6 +3085,48 @@ function normalizeReferenceMediaSelection(ids: Array<string | number>) {
   return unique
 }
 
+async function updateManualShotReferenceIds(shot: AivideoShot | undefined, type: 'scene' | 'character', ids: Array<string | number>) {
+  if (!shot?.shotId) {
+    return
+  }
+  const shotId = String(shot.shotId)
+  const autoIds = new Set(buildShotVideoAutoReferenceOptions(shot).map((item) => String(item.mediaId)))
+  const typeIds = referenceOptionIdsByType(type)
+  const currentIds = shotManualReferenceMediaIds(shot)
+  const preservedIds = currentIds.filter((id) => !typeIds.has(String(id)))
+  const selectedIds = normalizeReferenceMediaSelection(ids)
+    .filter((id) => typeIds.has(String(id)) && !autoIds.has(String(id)))
+  const nextIds = normalizeReferenceMediaSelection([...preservedIds, ...selectedIds])
+  shotManualReferenceMediaIdsByShotId.value = {
+    ...shotManualReferenceMediaIdsByShotId.value,
+    [shotId]: nextIds
+  }
+  await loadReferencePreviewUrls(shotVideoReferenceOptions.value)
+  await refreshShotVideoPromptPreview()
+}
+
+async function handleManualShotSceneReferenceChange(shot: AivideoShot | undefined, ids: Array<string | number>) {
+  await updateManualShotReferenceIds(shot, 'scene', ids)
+}
+
+async function handleManualShotCharacterReferenceChange(shot: AivideoShot | undefined, ids: Array<string | number>) {
+  await updateManualShotReferenceIds(shot, 'character', ids)
+}
+
+async function removeManualShotReference(shot: AivideoShot | undefined, mediaId: string | number) {
+  if (!shot?.shotId) {
+    return
+  }
+  const shotId = String(shot.shotId)
+  const nextIds = shotManualReferenceMediaIds(shot).filter((id) => String(id) !== String(mediaId))
+  shotManualReferenceMediaIdsByShotId.value = {
+    ...shotManualReferenceMediaIdsByShotId.value,
+    [shotId]: nextIds
+  }
+  await loadReferencePreviewUrls(shotVideoReferenceOptions.value)
+  await refreshShotVideoPromptPreview()
+}
+
 async function loadReferencePreviewUrl(mediaId: string | number) {
   const key = String(mediaId)
   if (!key || referencePreviewUrls.value[key]) {
@@ -3119,44 +3307,6 @@ async function openShotVideoDrawer(shot: AivideoShot) {
       shotVideoLoading.value = false
       scheduleShotVideoRecovery()
     }
-  }
-}
-
-function setShotSceneUpdating(shotId: string | number, updating: boolean) {
-  const key = String(shotId)
-  const next = new Set(shotSceneUpdatingIds.value)
-  if (updating) {
-    next.add(key)
-  } else {
-    next.delete(key)
-  }
-  shotSceneUpdatingIds.value = next
-}
-
-async function handleUpdateShotScene(shot: AivideoShot, sceneId: string | number) {
-  if (!shot?.shotId || !sceneId || String(shot.sceneId || '') === String(sceneId)) {
-    return
-  }
-  const shotId = String(shot.shotId)
-  setShotSceneUpdating(shotId, true)
-  try {
-    await updateAivideoShotScene({
-      projectId: projectId.value,
-      shotId: shot.shotId,
-      sceneId
-    })
-    ElMessage.success('分镜场景已更新')
-    await loadDetail()
-    const refreshedShot = shots.value.find((item) => String(item.shotId) === shotId)
-    if (refreshedShot && isCurrentShotVideoTarget(shotId)) {
-      selectedShotForVideo.value = refreshedShot
-      await loadReferencePreviewUrls(shotVideoReferenceOptions.value)
-      await refreshShotVideoPromptPreview()
-    }
-  } catch (error: any) {
-    ElMessage.error(error?.message || '分镜场景更新失败')
-  } finally {
-    setShotSceneUpdating(shotId, false)
   }
 }
 
@@ -4426,85 +4576,6 @@ onBeforeUnmount(() => {
   -webkit-box-orient: vertical;
 }
 
-.shot-scene-cell {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-
-  small {
-    display: -webkit-box;
-    overflow: hidden;
-    color: #667085;
-    font-size: 12px;
-    line-height: 1.45;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-}
-
-.shot-scene-selector-panel {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  margin-bottom: 12px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #f8fbff;
-
-  small {
-    color: #667085;
-    line-height: 1.5;
-  }
-}
-
-:global(.shot-scene-select-popper) {
-  min-width: 440px;
-}
-
-.shot-scene-option {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  min-height: 58px;
-  padding: 4px 0;
-
-  img,
-  .shot-scene-option-placeholder {
-    width: 56px;
-    height: 42px;
-    border-radius: 6px;
-    object-fit: cover;
-    background: #f3f4f6;
-  }
-
-  .shot-scene-option-placeholder {
-    display: grid;
-    place-items: center;
-    color: #94a3b8;
-    font-size: 12px;
-  }
-
-  strong,
-  small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: #111827;
-    font-size: 13px;
-  }
-
-  small {
-    margin-top: 3px;
-    color: #667085;
-    font-size: 12px;
-  }
-}
-
 .flow-item {
   display: grid;
   grid-template-columns: 24px 1fr auto;
@@ -4880,11 +4951,13 @@ onBeforeUnmount(() => {
 }
 
 .shot-reference-card {
+  position: relative;
   display: grid;
   grid-template-columns: 136px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
+  min-height: 110px;
   padding: 8px;
   border: 1px solid #dbeafe;
   border-radius: 8px;
@@ -4903,6 +4976,21 @@ onBeforeUnmount(() => {
   display: block;
   object-fit: cover;
   cursor: default;
+}
+
+.shot-reference-audio {
+  display: grid;
+  place-items: center;
+  cursor: default;
+
+  audio {
+    width: 124px;
+  }
+
+  span {
+    color: #94a3b8;
+    font-size: 12px;
+  }
 }
 
 .shot-reference-placeholder {
@@ -4932,6 +5020,107 @@ onBeforeUnmount(() => {
     white-space: normal;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+  }
+}
+
+.shot-reference-remove {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+}
+
+.shot-reference-add-card {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  min-height: 110px;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #2563eb;
+    background: #dbeafe;
+  }
+
+  span {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  strong {
+    color: #1d4ed8;
+    font-size: 14px;
+  }
+
+  small {
+    color: #64748b;
+  }
+}
+
+.shot-reference-add-panel {
+  display: grid;
+  gap: 10px;
+
+  label {
+    color: #111827;
+    font-weight: 600;
+  }
+
+  small {
+    color: #64748b;
+    line-height: 1.5;
+  }
+}
+
+:global(.shot-reference-add-popper) {
+  padding: 12px;
+}
+
+.shot-reference-add-option {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 4px 0;
+
+  img,
+  .shot-reference-add-placeholder {
+    width: 56px;
+    height: 42px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #f3f4f6;
+  }
+
+  .shot-reference-add-placeholder {
+    display: grid;
+    place-items: center;
+    color: #94a3b8;
+    font-size: 12px;
+  }
+
+  strong,
+  small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #111827;
+    font-size: 13px;
+  }
+
+  small {
+    margin-top: 3px;
+    color: #667085;
+    font-size: 12px;
   }
 }
 
