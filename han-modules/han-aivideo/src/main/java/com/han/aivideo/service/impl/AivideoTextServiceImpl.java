@@ -1652,7 +1652,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "镜头描述要能继续拆分为分镜，避免空泛形容；每个场次必须增加“镜头拆分建议”，写清这段适合拆成几个镜头、"
                 + "每个镜头的主动作、是否包含强动作、建议时长 5/6/8 秒；超过 3 个动作 beat 必须建议拆镜，不要硬塞进一个镜头；"
                 + "对白、旁白/画外音、心声/心理活动必须三轨分清：对白是角色说出口并可口型同步的台词；旁白/画外音是可发声但角色不张嘴的内容；"
-                + "心声/心理活动默认不朗读，优先写成眼神、动作、环境空镜或画面隐喻。对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。\n\n项目：" + project.getProjectName()
+                + "心声/心理活动默认不朗读，优先写成眼神、动作、环境空镜或画面隐喻；低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，"
+                + "禁止写成旁白、画外音或心声。对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。\n\n项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform()) + "\n画幅：" + safeValue(project.getDefaultRatio())
                 + "\n\n润色文本：\n" + polishedText;
     }

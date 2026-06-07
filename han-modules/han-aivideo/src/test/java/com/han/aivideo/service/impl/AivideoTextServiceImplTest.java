@@ -468,6 +468,27 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void scriptPromptForbidsLowVoiceAsVoiceOver() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildScriptPrompt", AiVideoProjectPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project,
+                "甜玉米低声报数，喵小萌脑海里闪过奶茶的触感。");
+
+        assertTrue(prompt.contains("对白、旁白/画外音、心声/心理活动必须三轨分清"));
+        assertTrue(prompt.contains("心声/心理活动默认不朗读"));
+        assertTrue(prompt.contains("低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白"));
+        assertTrue(prompt.contains("禁止写成旁白、画外音或心声"));
+    }
+
+    @Test
     void assetPromptForbidsMentalActivityAsOrdinaryVoiceOver() throws Exception {
         AivideoTextServiceImpl service = new AivideoTextServiceImpl(
                 null, null, null, null, null, null, null, null, null, null, null, null);
