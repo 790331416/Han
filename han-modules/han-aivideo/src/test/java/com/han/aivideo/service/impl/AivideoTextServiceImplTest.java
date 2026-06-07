@@ -430,6 +430,70 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotVideoProtocolTreatsHeartVoiceAsSilentThought() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setDialogue("喵小萌：可是，这钱是班费……");
+        shot.setVoiceOver("喵小萌（心声）：脑海里闪过奶茶冰凉甜润的触感。");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildAudioVisualProtocol", AiVideoShotPo.class, strategyClass());
+        method.setAccessible(true);
+
+        String protocol = (String) method.invoke(service, shot, strategy("NATIVE_AUDIO"));
+
+        assertTrue(protocol.contains("对白（说出口/口型同步）：喵小萌：可是，这钱是班费……"));
+        assertTrue(protocol.contains("旁白/画外音（可发声/不口型）：无"));
+        assertTrue(protocol.contains("心声/心理活动（不发声/不口型，仅画面表现）：喵小萌（心声）：脑海里闪过奶茶冰凉甜润的触感。"));
+        assertTrue(protocol.contains("心声和心理画面默认不可朗读"));
+        assertFalse(protocol.contains("旁白/画外音（可发声/不口型）：喵小萌（心声）"));
+    }
+
+    @Test
+    void shotVideoProtocolPromotesLowVoiceOverToSpokenDialogue() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setDialogue("");
+        shot.setVoiceOver("甜玉米（低声报数）：五个收纳盒共六十，标签纸十八……");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildAudioVisualProtocol", AiVideoShotPo.class, strategyClass());
+        method.setAccessible(true);
+
+        String protocol = (String) method.invoke(service, shot, strategy("NATIVE_AUDIO"));
+
+        assertTrue(protocol.contains("对白（说出口/口型同步）：甜玉米（低声报数）：五个收纳盒共六十，标签纸十八……"));
+        assertTrue(protocol.contains("旁白/画外音（可发声/不口型）：无"));
+        assertFalse(protocol.contains("旁白/画外音（可发声/不口型）：甜玉米（低声报数）"));
+    }
+
+    @Test
+    void assetPromptForbidsMentalActivityAsOrdinaryVoiceOver() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "喵小萌脑海里闪过奶茶冰凉甜润的触感，但她说这钱是班费。");
+
+        assertTrue(prompt.contains("心理活动默认不写入 voiceOver"));
+        assertTrue(prompt.contains("脑海里闪过、想到、意识到、想象、回忆、触感"));
+        assertTrue(prompt.contains("低声报数、低声说、耳语、小声说、念出、读出"));
+        assertTrue(prompt.contains("写入 dialogue"));
+        assertTrue(prompt.contains("错误示例：voiceOver 写“喵小萌（心声）：脑海里闪过奶茶"));
+        assertTrue(prompt.contains("正确示例：actionDesc 写“喵小萌眼神短暂游离"));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void shotVideoReferencesUseTailOnlyForSameSceneWithoutNewCharacters() throws Exception {
         AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(

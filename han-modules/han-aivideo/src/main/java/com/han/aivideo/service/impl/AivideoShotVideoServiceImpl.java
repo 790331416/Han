@@ -88,7 +88,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             1. 基于已确认场景图生成单个短剧镜头视频，不生成整剧，不跨镜头。
             2. 必须严格执行镜头连续性协议：上一镜头结束姿态就是本镜头起始姿态，不允许跳切、瞬移、突然换姿态。
             3. 必须保持参考图的空间关系、时间、天气、色调和主体环境稳定；若参考图为上一镜头尾帧，优先继承尾帧中的主体位置和姿态。
-            4. 严格执行音画双轨协议：视频阶段只负责画面，不新增、不改写、不替换配音、旁白声线、BGM 或音效；对白才允许口型同步，旁白和心理活动必须作为画外音处理，角色不张嘴；带“角色名（画外音）”的旁白必须继承该角色声线，不得切成当前画面角色声线。
+            4. 严格执行音画三轨协议：对白=说出口并允许口型同步；旁白/画外音=可发声但角色不张嘴；心声/心理活动=默认不朗读、不口型，只通过眼神、表情、动作和画面隐喻表现。带“角色名（画外音）”的旁白必须继承该角色声线，不得切成当前画面角色声线。
             5. 同一角色、动物或宠物必须保持同一身份与外观锚点，禁止跨镜头换物种、换毛色、换体型、换脸型、换年龄感或丢失项圈/斑纹等标志物。
             6. 若角色参考图是纯白/浅灰棚拍的单主体锚定图，只提取角色身份与外观，不继承白底棚拍背景，不复制同款分身，不把单主体误识别成多个主体。
             7. 同一场景必须保持背景空间、光线、天气、色调、道具和前中后景关系稳定；除非分镜明确切场，不得无故换地点或换背景。
@@ -1124,11 +1124,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("atmosphere", safeValue(scene.getAtmosphere()));
         variables.put("visualFeatures", safeValue(scene.getVisualFeatures()));
         String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
-        variables.put("characterNames", safeValue(resolveCharacterNames(project.getProjectId(), effectiveCharacterIds)));
+        String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
+        variables.put("characterNames", safeValue(characterNames));
         variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
         variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
-                referenceAudioSeedAllowed));
+                referenceAudioSeedAllowed, characterNames));
         variables.put("shotType", safeValue(shot.getShotType()));
         variables.put("cameraPosition", safeValue(shot.getCameraPosition()));
         variables.put("cameraMovement", safeValue(shot.getCameraMovement()));
@@ -1175,11 +1176,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
         String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
         String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
-        String characterNames = safeValue(resolveCharacterNames(project.getProjectId(), effectiveCharacterIds));
+        String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds);
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
         String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
-                referenceAudioSeedAllowed);
+                referenceAudioSeedAllowed, characterNames);
         String actionBeats = buildActionBeats(shot, durationSec);
         String timingPlan = buildTimingPlan(shot, durationSec);
         String compositionRequirement = buildCompositionRequirement(shot);
@@ -1250,7 +1251,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
-                characterNames, characterContinuity, sceneContinuity,
+                safeValue(characterNames), characterContinuity, sceneContinuity,
                 compositionRequirement, bodyPartRequirement, glowRequirement,
                 actionBeats, timingPlan,
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
@@ -1522,8 +1523,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy, String referenceAudioUrl,
                                             boolean referenceAudioSeedAllowed) {
-        String dialogue = firstText(shot != null ? shot.getDialogue() : null, "无");
-        String voiceOver = firstText(shot != null ? shot.getVoiceOver() : null, "无");
+        return buildAudioVisualProtocol(shot, strategy, referenceAudioUrl, referenceAudioSeedAllowed, "");
+    }
+
+    private String buildAudioVisualProtocol(AiVideoShotPo shot, StrategyContext strategy, String referenceAudioUrl,
+                                            boolean referenceAudioSeedAllowed, String characterNames) {
+        ShotAudioTracks tracks = resolveShotAudioTracks(shot, characterNames);
         String mode = firstText(strategy.audioMode(), DEFAULT_AUDIO_MODE).toUpperCase(Locale.ROOT);
         String audioRule;
         if ("NATIVE_AUDIO".equals(mode)) {
@@ -1539,12 +1544,88 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         } else {
             audioRule = "声音模式=静音：本阶段只生成画面，generate_audio=false，不生成、不替换、不改变配音、旁白声线、BGM 或音效。";
         }
-        return audioRule + " 对白：" + dialogue
-                + "；旁白：" + voiceOver
-                + "。只有对白允许角色张嘴和口型同步；旁白、心理活动和环境描述必须作为画外音处理，角色不张嘴、不做口型，用眼神、呼吸、姿态和环境变化承接情绪。"
-                + "如果旁白以“角色名（画外音）”或“角色名（心声）”开头，必须沿用该角色声线，即使画面切到其他角色也不能换声线；"
-                + "如果旁白以“旁白：”开头，必须使用统一旁白声线。海报文字、账本文字、屏幕字卡只作为画面可见内容，不要自动朗读。"
+        return audioRule
+                + " 对白（说出口/口型同步）：" + tracks.spokenDialogue()
+                + "；旁白/画外音（可发声/不口型）：" + tracks.audibleVoiceOver()
+                + "；心声/心理活动（不发声/不口型，仅画面表现）：" + tracks.internalThought()
+                + "。只有对白允许角色张嘴和口型同步；旁白/画外音可发声但画面中的角色不张嘴、不做口型。"
+                + "心声和心理画面默认不可朗读，必须用眼神、呼吸、姿态、手部迟疑、环境空镜或画面隐喻承接情绪；"
+                + "只有明确写成“角色名（内心独白）”或“角色名（旁白）”时，才可作为可发声旁白。"
+                + "如果旁白以“角色名（画外音）”或“角色名（旁白）”开头，必须沿用该角色声线，即使画面切到其他角色也不能换声线；"
+                + "如果旁白以“旁白：”开头，必须使用统一旁白声线。低声报数、低声说、耳语、小声说、念出、读出属于说出口的对白，不要放到旁白轨。"
+                + "海报文字、账本文字、屏幕字卡只作为画面可见内容，不要自动朗读。"
                 + "分镜之间保持同一旁白/配音口吻、语速、性别/年龄感和情绪连续，禁止声线突变。";
+    }
+
+    private ShotAudioTracks resolveShotAudioTracks(AiVideoShotPo shot, String characterNames) {
+        List<String> spoken = new ArrayList<>();
+        List<String> audible = new ArrayList<>();
+        List<String> thought = new ArrayList<>();
+        String dialogue = firstText(shot != null ? shot.getDialogue() : null);
+        if (StringUtils.hasText(dialogue)) {
+            spoken.add(normalizeDialogueSpeaker(dialogue, characterNames));
+        }
+        String voiceOver = firstText(shot != null ? shot.getVoiceOver() : null);
+        if (StringUtils.hasText(voiceOver)) {
+            if (isSpokenLikeVoiceOver(voiceOver)) {
+                spoken.add(voiceOver.trim());
+            } else if (isInternalThoughtVoiceOver(voiceOver)) {
+                thought.add(voiceOver.trim());
+            } else {
+                audible.add(voiceOver.trim());
+            }
+        }
+        return new ShotAudioTracks(
+                firstText(String.join("；", spoken), "无"),
+                firstText(String.join("；", audible), "无"),
+                firstText(String.join("；", thought), "无"));
+    }
+
+    private String normalizeDialogueSpeaker(String dialogue, String characterNames) {
+        String text = dialogue.trim();
+        if (containsAny(text, "：", ":")) {
+            return text;
+        }
+        List<String> names = splitCharacterNames(characterNames);
+        return names.size() == 1 ? names.get(0) + "：" + text : text;
+    }
+
+    private List<String> splitCharacterNames(String characterNames) {
+        if (!StringUtils.hasText(characterNames) || "未填写".equals(characterNames.trim())) {
+            return List.of();
+        }
+        String normalized = characterNames.replace('，', '、')
+                .replace(',', '、')
+                .replace(' ', '、');
+        return Arrays.stream(normalized.split("、"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .filter(name -> !"未填写".equals(name))
+                .toList();
+    }
+
+    private boolean isSpokenLikeVoiceOver(String text) {
+        if (!StringUtils.hasText(text) || containsAny(text, "（画外音）", "(画外音)", "（旁白）", "(旁白)", "旁白：")) {
+            return false;
+        }
+        return containsAny(text,
+                "（低声报数）", "(低声报数)", "（低声）", "(低声)", "（小声）", "(小声)",
+                "（耳语）", "(耳语)", "低声说", "低声报数", "小声说", "耳语",
+                "念出", "读出", "说：", "问：", "回答：", "喊：");
+    }
+
+    private boolean isInternalThoughtVoiceOver(String text) {
+        if (!StringUtils.hasText(text) || containsAny(text, "（内心独白）", "(内心独白)")) {
+            return false;
+        }
+        if (containsAny(text, "（心声）", "(心声)", "心声：", "心理活动")) {
+            return true;
+        }
+        return containsAny(text, "脑海里", "心里", "想到", "意识到", "想象", "回忆", "闪过", "触感", "念头")
+                && !containsAny(text, "（画外音）", "(画外音)", "（旁白）", "(旁白)", "旁白：");
+    }
+
+    private record ShotAudioTracks(String spokenDialogue, String audibleVoiceOver, String internalThought) {
     }
 
     private String buildPreviousShotSummary(AiVideoShotPo previousShot) {

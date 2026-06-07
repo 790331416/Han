@@ -1651,7 +1651,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return "请将以下润色文本改写为短剧剧本。要求：按场次组织，包含角色、场景、动作、对白、旁白和情绪提示；"
                 + "镜头描述要能继续拆分为分镜，避免空泛形容；每个场次必须增加“镜头拆分建议”，写清这段适合拆成几个镜头、"
                 + "每个镜头的主动作、是否包含强动作、建议时长 5/6/8 秒；超过 3 个动作 beat 必须建议拆镜，不要硬塞进一个镜头；"
-                + "对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。\n\n项目：" + project.getProjectName()
+                + "对白、旁白/画外音、心声/心理活动必须三轨分清：对白是角色说出口并可口型同步的台词；旁白/画外音是可发声但角色不张嘴的内容；"
+                + "心声/心理活动默认不朗读，优先写成眼神、动作、环境空镜或画面隐喻。对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。\n\n项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform()) + "\n画幅：" + safeValue(project.getDefaultRatio())
                 + "\n\n润色文本：\n" + polishedText;
     }
@@ -1663,7 +1664,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "【最高优先级：紧凑输出，防止 JSON 被截断】\n"
                 + "1. 资产阶段只输出可入库的稳定锚点，不在这里写长篇图片/视频执行提示词；角色图、场景图、分镜视频会在后续阶段再扩写 prompt。\n"
                 + "2. promptText 必须是短提示：角色/场景不超过 80 个中文字符，分镜不超过 100 个中文字符；禁止写长句、禁止重复画幅/风格堆叠。\n"
-                + "3. actionDesc 不超过 60 个中文字符，voiceOver 不超过 80 个中文字符；保留动作节拍核心即可，不能把整段旁白塞进一个字段。\n"
+                + "3. actionDesc 不超过 60 个中文字符，voiceOver 不超过 80 个中文字符；保留动作节拍核心即可，不能把整段旁白塞进一个字段；心理活动默认不写入 voiceOver。\n"
                 + "4. 每个数组元素只保留必要信息，不输出解释性备注、Markdown、编号标题或额外字段；如果信息缺失，用空字符串或空数组。\n"
                 + "5. 必须输出完整闭合 JSON，最后一个字符必须是 }。\n\n"
                 + "【角色构建规则】\n"
@@ -1682,11 +1683,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "【剧本分镜规则】\n"
                 + "1. 你是顶级影视剧导演与分镜规划专家，需要面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。\n"
                 + "2. 全局禁止出现其他人；画面必须通过单人特写、主观视角或环境遮挡，把视觉重心锁定在当前核心主角。\n"
-                + "3. 严格区分 dialogue 和 voiceOver：角色直接说的话写入 dialogue；旁白、心理活动、环境氛围写入 voiceOver。\n"
-                + "4. dialogue 必须只写当前 characterNames 中角色能直接说出口的话；多角色同镜时必须写成“角色名：台词”，禁止让未入镜或非当前角色突然说话。\n"
-                + "5. voiceOver 必须显式标注说话人：统一旁白写“旁白：内容”，角色画外音写“角色名（画外音）：内容”，心理活动写“角色名（心声）：内容”。\n"
+                + "3. 严格区分 dialogue、voiceOver 和心理画面：dialogue 只写角色说出口并可口型同步的话；voiceOver 只写可发声但角色不张嘴的旁白/画外音；心理活动默认不写入 voiceOver。\n"
+                + "4. dialogue 必须只写当前 characterNames 中角色能直接说出口的话；多角色同镜时必须写成“角色名：台词”。低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，必须写入 dialogue，禁止塞进 voiceOver。\n"
+                + "5. voiceOver 必须显式标注说话人：统一旁白写“旁白：内容”，角色画外音写“角色名（画外音）：内容”，角色旁白写“角色名（旁白）：内容”；只有确实要被听见的内心独白才写“角色名（内心独白）：内容”。\n"
                 + "6. 严禁把海报文字、账本文字、屏幕字卡、价格标签、公告栏文字写入 voiceOver；这类可见文字必须写在 actionDesc 或 promptText 中，除非确实需要旁白朗读。\n"
                 + "7. 跨镜头延续同一句话、同一论点或同一段劝说时，必须保持同一说话人；如果画面切到其他角色，必须用“原说话人（画外音）”承接，禁止声线无提示跳到当前画面角色。\n"
+                + "7A. 脑海里闪过、想到、意识到、想象、回忆、触感、心里一动等心理内容默认写入 actionDesc/promptText/emotion，用画面表现，不要写成普通 voiceOver。错误示例：voiceOver 写“喵小萌（心声）：脑海里闪过奶茶冰凉甜润的触感”。正确示例：actionDesc 写“喵小萌眼神短暂游离，像想到奶茶的清凉触感，随后握紧班费账本”。\n"
                 + "8. 每个分镜必须明确地点；延续场景时在 sceneName 或 actionDesc 中体现“延续上个分镜场景，机位微调”。\n"
                 + "9. 动作要衔接，不能瞬移；镜头需包含微动作、眼神、呼吸、肢体、环境变化等可拍内容。\n"
                 + "10. shotType、cameraPosition、cameraMovement 要优先使用专业运镜词，如极焦特写、近景推轨、环绕摇镜、慢动作/延时、手持震动。\n"
