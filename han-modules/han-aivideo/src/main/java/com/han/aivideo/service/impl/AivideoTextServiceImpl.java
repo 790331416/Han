@@ -7,6 +7,7 @@ import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
+import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
@@ -1519,6 +1520,56 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             }
             default -> throw new BusinessException("不支持的资产取消确认类型");
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateShotScene(AivideoShotSceneUpdateDto dto) {
+        if (dto == null || dto.getProjectId() == null || dto.getShotId() == null || dto.getSceneId() == null) {
+            throw new BusinessException("项目ID、分镜ID和场景ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoShotPo shot = shotMapper.selectById(dto.getShotId());
+        if (shot == null || !Objects.equals(project.getProjectId(), shot.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(shot.getDelFlag())) {
+            throw new BusinessException("分镜不存在或不属于当前项目");
+        }
+        AiVideoScenePo scene = sceneMapper.selectById(dto.getSceneId());
+        if (scene == null || !Objects.equals(project.getProjectId(), scene.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(scene.getDelFlag())) {
+            throw new BusinessException("场景不存在或不属于当前项目");
+        }
+        shot.setSceneId(scene.getSceneId());
+        refreshShotTransition(project.getProjectId(), shot);
+        fillUpdateAudit(shot);
+        shotMapper.updateById(shot);
+    }
+
+    private void refreshShotTransition(Long projectId, AiVideoShotPo shot) {
+        List<AiVideoShotPo> orderedShots = selectShots(projectId);
+        if (orderedShots == null || orderedShots.isEmpty()) {
+            return;
+        }
+        AiVideoShotPo previousShot = null;
+        for (int i = 0; i < orderedShots.size(); i++) {
+            AiVideoShotPo item = orderedShots.get(i);
+            if (Objects.equals(item.getShotId(), shot.getShotId())) {
+                previousShot = i > 0 ? orderedShots.get(i - 1) : null;
+                break;
+            }
+        }
+        String transitionType = normalizeTransitionBeforeType(null, shot, previousShot);
+        List<AiVideoScenePo> projectScenes = selectScenes(projectId);
+        if (projectScenes == null) {
+            projectScenes = List.of();
+        }
+        Map<String, Long> sceneIdMap = projectScenes.stream()
+                .filter(item -> item.getSceneId() != null && StringUtils.hasText(item.getSceneName()))
+                .collect(Collectors.toMap(AiVideoScenePo::getSceneName, AiVideoScenePo::getSceneId,
+                        (left, right) -> left, LinkedHashMap::new));
+        shot.setTransitionBeforeType(transitionType);
+        shot.setTransitionBeforeDesc(buildTransitionBeforeDesc(null, transitionType, shot, previousShot, sceneIdMap));
+        shot.setTransitionEffect(normalizeTransitionEffect(null, transitionType));
     }
 
     private boolean hasAsset(Long projectId) {

@@ -467,6 +467,14 @@ export function cancelConfirmAivideoAsset(data: {
   return post<void>('/aivideo/studio/assets/confirm/cancel', data)
 }
 
+export function updateAivideoShotScene(data: {
+  projectId: string | number
+  shotId: string | number
+  sceneId: string | number
+}) {
+  return post<void>('/aivideo/studio/assets/shot/scene', data)
+}
+
 export function previewAivideoSceneImagePrompt(data: {
   projectId: string | number
   sceneId: string | number

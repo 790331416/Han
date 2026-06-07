@@ -6,9 +6,13 @@ import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
+import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
+import com.han.aivideo.mapper.AiVideoProjectMapper;
+import com.han.aivideo.mapper.AiVideoSceneMapper;
+import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.api.ai.domain.AiVideoGenerateRequest;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -20,6 +24,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -788,6 +793,117 @@ class AivideoTextServiceImplTest {
 
         assertEquals(List.of(30L, 53L, 59L),
                 references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+    }
+
+    @Test
+    void shotVideoReferencesDoNotTreatNegativeInsertTailTextAsPreviousTail() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(5L).equals(args[0])) {
+                        return character(5L, "喵小萌", 59L);
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(6L).equals(args[0])) {
+                        return character(6L, "狗小汪", 53L);
+                    }
+                    if ("selectList".equals(method.getName())) {
+                        return List.of(character(5L, "喵小萌", 59L), character(6L, "狗小汪", 53L));
+                    }
+                    return null;
+                });
+        AiVideoMediaAssetMapper mediaMapper = (AiVideoMediaAssetMapper) Proxy.newProxyInstance(
+                AiVideoMediaAssetMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoMediaAssetMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(53L).equals(args[0])) {
+                        return media(53L, "CHARACTER_IMAGE");
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(59L).equals(args[0])) {
+                        return media(59L, "CHARACTER_IMAGE");
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, mediaMapper, null, null, null);
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5");
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("6");
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景切人/插入镜头，不强制继承上一尾帧。");
+        shot.setActionDesc("听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, media(64L, "SCENE_IMAGE"), media(109L, "SHOT_TAIL_FRAME"), List.of());
+
+        assertEquals(List.of(64L, 53L, 59L),
+                references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+    }
+
+    @Test
+    void updateShotSceneOnlyChangesShotWithinSameProject() {
+        AiVideoProjectMapper projectMapper = (AiVideoProjectMapper) Proxy.newProxyInstance(
+                AiVideoProjectMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoProjectMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        AiVideoProjectPo project = new AiVideoProjectPo();
+                        project.setProjectId(3L);
+                        project.setDelFlag(0);
+                        return project;
+                    }
+                    return null;
+                });
+        AiVideoSceneMapper sceneMapper = (AiVideoSceneMapper) Proxy.newProxyInstance(
+                AiVideoSceneMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoSceneMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        AiVideoScenePo scene = new AiVideoScenePo();
+                        scene.setProjectId(3L);
+                        scene.setSceneId(14L);
+                        scene.setDelFlag(0);
+                        return scene;
+                    }
+                    return null;
+                });
+        AtomicReference<AiVideoShotPo> updated = new AtomicReference<>();
+        AiVideoShotMapper shotMapper = (AiVideoShotMapper) Proxy.newProxyInstance(
+                AiVideoShotMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoShotMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        AiVideoShotPo shot = new AiVideoShotPo();
+                        shot.setProjectId(3L);
+                        shot.setShotId(34L);
+                        shot.setSceneId(12L);
+                        shot.setDelFlag(0);
+                        return shot;
+                    }
+                    if ("updateById".equals(method.getName())) {
+                        updated.set((AiVideoShotPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                projectMapper, null, null, null, null, null, sceneMapper, shotMapper, null, null, null, null);
+        var dto = new com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto();
+        dto.setProjectId(3L);
+        dto.setShotId(34L);
+        dto.setSceneId(14L);
+
+        service.updateShotScene(dto);
+
+        assertEquals(14L, updated.get().getSceneId());
     }
 
     @Test

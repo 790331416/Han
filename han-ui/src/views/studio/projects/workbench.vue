@@ -463,6 +463,39 @@
                 <el-table-column prop="shotNo" label="镜头" width="90" />
                 <el-table-column prop="durationSec" label="秒数" width="90" />
                 <el-table-column prop="cameraMovement" label="运动" min-width="120" />
+                <el-table-column label="场景绑定" min-width="260">
+                  <template #default="{ row }">
+                    <div class="shot-scene-cell">
+                      <el-select
+                        :model-value="shotSceneSelectValue(row)"
+                        size="small"
+                        filterable
+                        placeholder="手动选择当前分镜场景"
+                        popper-class="shot-scene-select-popper"
+                        :loading="isShotSceneUpdating(row)"
+                        :disabled="isShotSceneUpdating(row)"
+                        @change="(value) => handleUpdateShotScene(row, value)"
+                      >
+                        <el-option
+                          v-for="scene in confirmedSceneOptions"
+                          :key="scene.sceneId"
+                          :label="scene.sceneName || `场景 ${scene.sceneId}`"
+                          :value="String(scene.sceneId)"
+                        >
+                          <div class="shot-scene-option">
+                            <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
+                            <span v-else class="shot-scene-option-placeholder">无图</span>
+                            <div>
+                              <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
+                              <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
+                            </div>
+                          </div>
+                        </el-option>
+                      </el-select>
+                      <small>{{ shotSceneSubtitle(row) }}</small>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="衔接/转场" min-width="220">
                   <template #default="{ row }">
                     <div class="shot-transition-cell">
@@ -1102,6 +1135,39 @@
           <el-empty v-else class="reference-empty" description="当前分镜暂无已确认场景图、角色图或上一镜参考素材" />
         </section>
 
+        <section class="shot-scene-selector-panel">
+          <div class="panel-title-row">
+            <strong>当前分镜场景</strong>
+            <small>如果场景缺失或识别错误，可在这里手动选择已确认场景，保存后会同步刷新参考素材和提示词预览</small>
+          </div>
+          <el-select
+            :model-value="shotSceneSelectValue(selectedShotForVideo)"
+            filterable
+            placeholder="选择当前分镜场景"
+            popper-class="shot-scene-select-popper"
+            :loading="isShotSceneUpdating(selectedShotForVideo)"
+            :disabled="shotVideoGenerating || isShotSceneUpdating(selectedShotForVideo)"
+            @change="(value) => selectedShotForVideo && handleUpdateShotScene(selectedShotForVideo, value)"
+          >
+            <el-option
+              v-for="scene in confirmedSceneOptions"
+              :key="scene.sceneId"
+              :label="scene.sceneName || `场景 ${scene.sceneId}`"
+              :value="String(scene.sceneId)"
+            >
+              <div class="shot-scene-option">
+                <img v-if="scenePreviewUrl(scene)" :src="scenePreviewUrl(scene)" alt="场景缩略图" />
+                <span v-else class="shot-scene-option-placeholder">无图</span>
+                <div>
+                  <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
+                  <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
+                </div>
+              </div>
+            </el-option>
+          </el-select>
+          <small>{{ shotSceneSubtitle(selectedShotForVideo) }}</small>
+        </section>
+
         <el-form class="shot-video-strategy" label-position="top">
           <el-row :gutter="12">
             <el-col :span="8">
@@ -1266,6 +1332,7 @@ import {
   getAivideoStudioTask,
   getLatestAivideoAssetTask,
   getAivideoProject,
+  getPublicAivideoMediaPreviewUrl,
   listAivideoMedia,
   listAivideoProjectEditTasks,
   listAivideoShotVideoTasks,
@@ -1284,6 +1351,7 @@ import {
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoProject,
+  updateAivideoShotScene,
   uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
@@ -1376,6 +1444,7 @@ const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
+const shotSceneUpdatingIds = ref<Set<string>>(new Set())
 const projectEditPreflight = ref<AivideoProjectEditPreflight>()
 const projectEditTasks = ref<AivideoTask[]>([])
 const projectEditVideos = ref<AivideoMediaAsset[]>([])
@@ -1485,6 +1554,7 @@ const assetPreviewText = computed(() => assetStreamText.value || latestAssetExtr
 const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
 const shots = computed(() => detail.shots || [])
+const confirmedSceneOptions = computed(() => scenes.value.filter((item) => String(item.confirmStatus || '').toUpperCase() === 'APPROVED'))
 const characterReferenceOptions = computed(() => characters.value
   .filter((item) => !!item.lockedMediaId)
   .map(characterToReferenceOption))
@@ -1653,8 +1723,39 @@ function hasNewShotCharacters(shot?: AivideoShot, previous?: AivideoShot) {
   return currentCharacters.some((character) => !previousCharacters.includes(character))
 }
 
+function findSceneById(sceneId?: string | number) {
+  if (sceneId == null || sceneId === '') {
+    return undefined
+  }
+  return scenes.value.find((item) => String(item.sceneId) === String(sceneId))
+}
+
 function sceneNameById(sceneId?: string | number) {
-  return scenes.value.find((item) => String(item.sceneId) === String(sceneId))?.sceneName || ''
+  return findSceneById(sceneId)?.sceneName || ''
+}
+
+function shotSceneSelectValue(shot?: AivideoShot) {
+  return shot?.sceneId == null || shot.sceneId === '' ? '' : String(shot.sceneId)
+}
+
+function scenePreviewUrl(scene?: AivideoScene) {
+  return scene?.lockedMediaId ? getPublicAivideoMediaPreviewUrl(scene.lockedMediaId) : ''
+}
+
+function shotSceneSubtitle(shot?: AivideoShot) {
+  const scene = findSceneById(shot?.sceneId)
+  if (!scene) {
+    return '未绑定场景；请手动选择一个已确认场景'
+  }
+  const desc = [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures]
+    .filter(Boolean)
+    .join(' / ')
+  const mediaText = scene.lockedMediaId ? `已选场景图 #${scene.lockedMediaId}` : '场景图未选'
+  return [mediaText, desc].filter(Boolean).join('；')
+}
+
+function isShotSceneUpdating(shot?: AivideoShot) {
+  return !!shot?.shotId && shotSceneUpdatingIds.value.has(String(shot.shotId))
 }
 
 function shotTransitionLabel(shot?: AivideoShot) {
@@ -2065,6 +2166,50 @@ function parseShotCharacterIds(value?: string) {
   return text.split(/[,，;；\s]+/).map((item) => item.trim()).filter(Boolean)
 }
 
+function shotRelationshipText(shot?: AivideoShot) {
+  return [
+    shot?.transitionBeforeType,
+    shot?.transitionBeforeDesc,
+    shot?.actionDesc,
+    shot?.dialogue,
+    shot?.voiceOver,
+    shot?.promptText
+  ].filter(Boolean).join(' ')
+}
+
+function isRelationshipActionText(text: string) {
+  return /靠近|凑近|走向|看向|望向|旁边|身边|递给|递向|递出|交给|传给|拿给|接过|接住|收下|对话|同框|两人|三人|多人|一起/.test(text)
+}
+
+function resolveEffectiveShotCharacterIds(shot?: AivideoShot) {
+  const ids = parseShotCharacterIds(shot?.characterIds)
+  const text = shotRelationshipText(shot)
+  if (!isRelationshipActionText(text)) {
+    return ids
+  }
+  const result = [...ids]
+  characters.value.forEach((character) => {
+    const characterId = String(character.characterId || '')
+    const characterName = String(character.characterName || '').trim()
+    if (!characterId || !characterName || !text.includes(characterName)) {
+      return
+    }
+    if (!result.includes(characterId)) {
+      result.push(characterId)
+    }
+  })
+  return result
+}
+
+function autoAddedShotCharacters(shot?: AivideoShot) {
+  const rawIds = new Set(parseShotCharacterIds(shot?.characterIds))
+  const effectiveIds = resolveEffectiveShotCharacterIds(shot)
+  return characters.value.filter((character) => {
+    const characterId = String(character.characterId)
+    return effectiveIds.includes(characterId) && !rawIds.has(characterId)
+  })
+}
+
 function buildShotVideoReferenceOptions(shot?: AivideoShot) {
   if (!shot) {
     return []
@@ -2091,7 +2236,7 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
       })
     }
   }
-  const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
+  const scene = findSceneById(shot.sceneId)
   if (scene?.lockedMediaId) {
     options.push({
       mediaId: String(scene.lockedMediaId),
@@ -2101,7 +2246,7 @@ function buildShotVideoReferenceOptions(shot?: AivideoShot) {
       mediaKind: 'image'
     })
   }
-  const characterIdSet = new Set(parseShotCharacterIds(shot.characterIds))
+  const characterIdSet = new Set(resolveEffectiveShotCharacterIds(shot))
   characters.value
     .filter((item) => item.lockedMediaId && characterIdSet.has(String(item.characterId)))
     .forEach((item) => {
@@ -2139,10 +2284,15 @@ function shouldUsePreviousShotReferenceForInsertHandoff(shot?: AivideoShot, prev
     shot.transitionBeforeType,
     shot.transitionBeforeDesc,
     shot.actionDesc,
+    shot.dialogue,
+    shot.voiceOver,
     shot.promptText
   ].filter(Boolean).join(' ')
+  if (/不强制继承上一尾帧|不继承上一尾帧|不使用上一尾帧|不强制继承上一个尾帧|不强制继承上一镜尾帧|不强制继承上一镜/.test(text)) {
+    return false
+  }
   const insertLike = transitionType === 'INSERT' || /插入镜头|同场景切人|同场景道具交接/.test(text)
-  const handoffLike = /承接上一镜|上一镜|尾帧|道具交接|接过|接住|收下|递给|递出|交给|传给/.test(text)
+  const handoffLike = /承接上一镜|继承上一尾帧|上一镜道具|道具交接|接过|接住|收下|递给|递出|交给|传给/.test(text)
   return insertLike && handoffLike
 }
 
@@ -2213,7 +2363,7 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       ? '当前分镜按连续镜头处理，视频生成会优先继承上一镜尾帧。'
       : `当前分镜是明确转场边界：${shotTransitionDesc(shot)}；后期拼接时应在 ${previousShot?.shotNo || '-'} -> ${shot.shotNo || '-'} 之间加转场。`
   })
-  const scene = scenes.value.find((item) => String(item.sceneId) === String(shot.sceneId))
+  const scene = findSceneById(shot.sceneId)
   if (!scene) {
     items.push({
       status: 'fail',
@@ -2234,7 +2384,15 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     })
   }
 
-  const characterIds = parseShotCharacterIds(shot.characterIds)
+  const characterIds = resolveEffectiveShotCharacterIds(shot)
+  const autoAddedCharacters = autoAddedShotCharacters(shot)
+  if (autoAddedCharacters.length) {
+    items.push({
+      status: 'pass',
+      title: `关系动作自动补齐角色：${autoAddedCharacters.map((item) => item.characterName || `角色${item.characterId}`).join('、')}`,
+      detail: '动作、转场、台词或旁白中提到了该角色，系统会把对应角色图一起传入视频请求，避免同框或靠近镜头丢角色。'
+    })
+  }
   if (!characterIds.length) {
     items.push({
       status: 'warn',
@@ -2961,6 +3119,44 @@ async function openShotVideoDrawer(shot: AivideoShot) {
       shotVideoLoading.value = false
       scheduleShotVideoRecovery()
     }
+  }
+}
+
+function setShotSceneUpdating(shotId: string | number, updating: boolean) {
+  const key = String(shotId)
+  const next = new Set(shotSceneUpdatingIds.value)
+  if (updating) {
+    next.add(key)
+  } else {
+    next.delete(key)
+  }
+  shotSceneUpdatingIds.value = next
+}
+
+async function handleUpdateShotScene(shot: AivideoShot, sceneId: string | number) {
+  if (!shot?.shotId || !sceneId || String(shot.sceneId || '') === String(sceneId)) {
+    return
+  }
+  const shotId = String(shot.shotId)
+  setShotSceneUpdating(shotId, true)
+  try {
+    await updateAivideoShotScene({
+      projectId: projectId.value,
+      shotId: shot.shotId,
+      sceneId
+    })
+    ElMessage.success('分镜场景已更新')
+    await loadDetail()
+    const refreshedShot = shots.value.find((item) => String(item.shotId) === shotId)
+    if (refreshedShot && isCurrentShotVideoTarget(shotId)) {
+      selectedShotForVideo.value = refreshedShot
+      await loadReferencePreviewUrls(shotVideoReferenceOptions.value)
+      await refreshShotVideoPromptPreview()
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '分镜场景更新失败')
+  } finally {
+    setShotSceneUpdating(shotId, false)
   }
 }
 
@@ -4228,6 +4424,85 @@ onBeforeUnmount(() => {
   line-height: 1.35;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.shot-scene-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+
+  small {
+    display: -webkit-box;
+    overflow: hidden;
+    color: #667085;
+    font-size: 12px;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+.shot-scene-selector-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+
+  small {
+    color: #667085;
+    line-height: 1.5;
+  }
+}
+
+:global(.shot-scene-select-popper) {
+  min-width: 440px;
+}
+
+.shot-scene-option {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 4px 0;
+
+  img,
+  .shot-scene-option-placeholder {
+    width: 56px;
+    height: 42px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #f3f4f6;
+  }
+
+  .shot-scene-option-placeholder {
+    display: grid;
+    place-items: center;
+    color: #94a3b8;
+    font-size: 12px;
+  }
+
+  strong,
+  small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #111827;
+    font-size: 13px;
+  }
+
+  small {
+    margin-top: 3px;
+    color: #667085;
+    font-size: 12px;
+  }
 }
 
 .flow-item {

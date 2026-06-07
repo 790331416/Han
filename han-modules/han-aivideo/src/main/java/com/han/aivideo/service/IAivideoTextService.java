@@ -4,6 +4,7 @@ import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
+import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
@@ -53,4 +54,6 @@ public interface IAivideoTextService {
     void confirmAsset(AivideoAssetConfirmDto dto);
 
     void cancelConfirmAsset(AivideoAssetConfirmDto dto);
+
+    void updateShotScene(AivideoShotSceneUpdateDto dto);
 }

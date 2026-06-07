@@ -10,6 +10,7 @@ import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
+import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
@@ -158,6 +159,11 @@ public class BAivideoStudioController {
 
     protected R<Void> cancelConfirmAsset(AivideoAssetConfirmDto dto) {
         textService.cancelConfirmAsset(dto);
+        return R.ok();
+    }
+
+    protected R<Void> updateShotScene(AivideoShotSceneUpdateDto dto) {
+        textService.updateShotScene(dto);
         return R.ok();
     }
 
