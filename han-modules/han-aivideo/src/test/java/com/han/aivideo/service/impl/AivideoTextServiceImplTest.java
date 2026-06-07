@@ -1046,6 +1046,60 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotVideoBlockingRequirementLocksScreenSidesAndVisibleCharacters() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        previousShot.setCharacterIds("5,6");
+        previousShot.setActionDesc("在场角色：2人，喵小萌在画面左侧，狗小汪在画面右侧；两人面对货架。");
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("5,6");
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景切人/插入镜头，不强制继承上一尾帧。");
+        shot.setActionDesc("在场角色：2人，喵小萌在画面左侧，狗小汪在画面右侧；狗小汪从右侧凑近喵小萌。");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildBlockingContinuityRequirement", AiVideoShotPo.class, AiVideoShotPo.class, String.class, String.class);
+        method.setAccessible(true);
+
+        String requirement = (String) method.invoke(service, shot, previousShot, "喵小萌、狗小汪", "喵小萌、狗小汪");
+
+        assertTrue(requirement.contains("当前镜头在场角色：2人"));
+        assertTrue(requirement.contains("喵小萌固定在画面左侧"));
+        assertTrue(requirement.contains("狗小汪固定在画面右侧"));
+        assertTrue(requirement.contains("禁止左右互换"));
+        assertTrue(requirement.contains("禁止上一镜仍在场角色无说明消失"));
+    }
+
+    @Test
+    void assetPromptRequiresBlockingAndInFrameCharacterContinuity() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "喵小萌和狗小汪一起在文具店挑选收纳盒，狗小汪靠近喵小萌。");
+
+        assertTrue(prompt.contains("人物在场连续性硬约束"));
+        assertTrue(prompt.contains("当前镜头在场角色"));
+        assertTrue(prompt.contains("人物数量"));
+        assertTrue(prompt.contains("画面站位：左侧="));
+        assertTrue(prompt.contains("右侧="));
+        assertTrue(prompt.contains("上一镜仍在场角色"));
+        assertTrue(prompt.contains("不得无说明消失"));
+    }
+
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();

@@ -1125,9 +1125,13 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("visualFeatures", safeValue(scene.getVisualFeatures()));
         String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
         String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
+        String previousCharacterNames = resolveCharacterNames(project.getProjectId(),
+                previousShot != null ? previousShot.getCharacterIds() : null);
         variables.put("characterNames", safeValue(characterNames));
         variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
+        variables.put("blockingContinuityRequirement",
+                buildBlockingContinuityRequirement(shot, previousShot, characterNames, previousCharacterNames));
         variables.put("audioVisualProtocol", buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
                 referenceAudioSeedAllowed, characterNames));
         variables.put("shotType", safeValue(shot.getShotType()));
@@ -1177,8 +1181,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
         String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
         String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
+        String previousCharacterNames = resolveCharacterNames(project.getProjectId(),
+                previousShot != null ? previousShot.getCharacterIds() : null);
         String characterContinuity = buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds);
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
+        String blockingContinuityRequirement =
+                buildBlockingContinuityRequirement(shot, previousShot, characterNames, previousCharacterNames);
         String audioVisualProtocol = buildAudioVisualProtocol(shot, strategy, referenceAudioUrl,
                 referenceAudioSeedAllowed, characterNames);
         String actionBeats = buildActionBeats(shot, durationSec);
@@ -1214,6 +1222,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 角色一致性：%s。
                 - 场景一致性：%s。
                 - 构图要求：%s
+                - 人物数量与站位连续性：%s
                 - 部位可见要求：%s
                 - 发光部位要求：%s
 
@@ -1252,7 +1261,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
                 safeValue(characterNames), characterContinuity, sceneContinuity,
-                compositionRequirement, bodyPartRequirement, glowRequirement,
+                compositionRequirement, blockingContinuityRequirement, bodyPartRequirement, glowRequirement,
                 actionBeats, timingPlan,
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
                 buildMotionBoundary(shot),
@@ -1719,6 +1728,51 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 + "，不要只拍脸部特写。";
     }
 
+    private String buildBlockingContinuityRequirement(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                       String characterNames, String previousCharacterNames) {
+        String text = collectShotText(shot);
+        String previousText = collectShotText(previousShot);
+        List<String> currentNames = parseCharacterNameList(characterNames);
+        List<String> previousNames = parseCharacterNameList(previousCharacterNames);
+        List<String> allNames = mergeNames(currentNames, previousNames);
+        String leftName = firstText(findSideCharacter(text, allNames, "左"), findSideCharacter(previousText, allNames, "左"));
+        String rightName = firstText(findSideCharacter(text, allNames, "右"), findSideCharacter(previousText, allNames, "右"));
+        StringBuilder builder = new StringBuilder();
+
+        if (!currentNames.isEmpty()) {
+            builder.append("当前镜头在场角色：").append(currentNames.size()).append("人（")
+                    .append(String.join("、", currentNames)).append("）。");
+        } else {
+            builder.append("当前镜头必须保持分镜指定主体清楚可见。");
+        }
+
+        if (StringUtils.hasText(leftName) || StringUtils.hasText(rightName)) {
+            builder.append("屏幕站位锁定：");
+            if (StringUtils.hasText(leftName)) {
+                builder.append(leftName).append("固定在画面左侧；");
+            }
+            if (StringUtils.hasText(rightName)) {
+                builder.append(rightName).append("固定在画面右侧；");
+            }
+            builder.append("禁止左右互换，禁止随镜头推近或反打自动调换 screen-left/screen-right。");
+        } else if (previousShot != null && sameSceneWithoutHardBreak(shot, previousShot)) {
+            builder.append("若上一镜已建立屏幕左/右关系，必须沿用上一镜的 screen-left/screen-right；")
+                    .append("未写明换轴、反打或重新调度时禁止随机交换站位。");
+        }
+
+        if (previousShot != null && sameSceneWithoutHardBreak(shot, previousShot) && !previousNames.isEmpty()) {
+            builder.append("上一镜仍在场角色：").append(String.join("、", previousNames))
+                    .append("；同场景/同剪辑组内，除非本镜 actionDesc 或 transitionBeforeDesc 明确写离场、退出画外、只露手/肩/背影或单人反应裁切，")
+                    .append("否则这些角色必须继续在画面内或以可见局部存在，禁止上一镜仍在场角色无说明消失。");
+        }
+
+        if (isRelationshipActionText(text)) {
+            builder.append("关系动作同框：靠近、看向、递给、接过、对话、并肩等动作必须让动作发起者和目标角色同时可见；")
+                    .append("镜头推近的是二者关系，不是单独拍某个角色脸部。");
+        }
+        return builder.toString();
+    }
+
     private String buildRelationshipCompositionRequirement(String text) {
         if (!isRelationshipActionText(text)) {
             return "";
@@ -1728,6 +1782,62 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return "双角色同框：动作发起者和" + target
                 + "必须同时出现在画面中，保持二者空间距离和朝向关系清楚；镜头推近的是两者关系，不是单独拍某一个角色脸部。"
                 + " 禁止只出现单个角色，禁止把另一名角色放到画外，禁止只用眼神或画外方向代替目标角色。";
+    }
+
+    private List<String> parseCharacterNameList(String names) {
+        if (!StringUtils.hasText(names)) {
+            return List.of();
+        }
+        return Arrays.stream(names.trim().replace("[", "").replace("]", "").replace("\"", "")
+                        .split("[,，、\\s]+"))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+    }
+
+    private List<String> mergeNames(List<String> first, List<String> second) {
+        Set<String> names = new LinkedHashSet<>();
+        if (first != null) {
+            names.addAll(first);
+        }
+        if (second != null) {
+            names.addAll(second);
+        }
+        return new ArrayList<>(names);
+    }
+
+    private String findSideCharacter(String text, List<String> characterNames, String side) {
+        if (!StringUtils.hasText(text) || characterNames == null || characterNames.isEmpty()) {
+            return "";
+        }
+        for (String name : characterNames) {
+            if (!StringUtils.hasText(name)) {
+                continue;
+            }
+            String trimmed = name.trim();
+            if (containsAny(text,
+                    side + "侧=" + trimmed,
+                    side + "=" + trimmed,
+                    "画面" + side + "侧=" + trimmed,
+                    trimmed + "在画面" + side + "侧",
+                    trimmed + "位于画面" + side + "侧",
+                    trimmed + "固定在画面" + side + "侧",
+                    trimmed + "在" + side + "侧",
+                    "画面" + side + "侧的" + trimmed,
+                    side + "侧的" + trimmed)) {
+                return trimmed;
+            }
+        }
+        return "";
+    }
+
+    private boolean sameSceneWithoutHardBreak(AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        if (shot == null || previousShot == null || !Objects.equals(shot.getSceneId(), previousShot.getSceneId())) {
+            return false;
+        }
+        String transition = firstText(shot.getTransitionBeforeType()).trim().toUpperCase(Locale.ROOT);
+        return !List.of("SCENE_CUT", "TIME_JUMP", "MONTAGE").contains(transition);
     }
 
     private String buildBodyPartRequirement(AiVideoShotPo shot) {
