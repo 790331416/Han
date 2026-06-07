@@ -605,8 +605,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 firstText(shot.getTransitionBeforeDesc()),
                 firstText(shot.getActionDesc()),
                 firstText(shot.getPromptText()));
-        if (containsAny(text, "不强制继承上一尾帧", "不继承上一尾帧", "不使用上一尾帧",
-                "不强制继承上一个尾帧", "不强制继承上一镜尾帧", "不强制继承上一镜")) {
+        if (containsAny(text, "不继承上一尾帧", "不使用上一尾帧", "禁止使用上一尾帧", "不要使用上一尾帧",
+                "不继承上一镜尾帧", "不使用上一镜尾帧")) {
             return false;
         }
         boolean insertLike = "INSERT".equalsIgnoreCase(transitionType)
@@ -614,7 +614,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         boolean handoffLike = containsAny(text,
                 "承接上一镜", "继承上一尾帧", "上一镜道具", "道具交接", "接过", "接住", "收下",
                 "递给", "递出", "交给", "传给");
-        return insertLike && handoffLike;
+        boolean relationshipLike = isRelationshipActionText(text);
+        return insertLike && (handoffLike || relationshipLike);
     }
 
     private boolean shouldSendReferenceImageAsFirstFrame(List<AiVideoMediaAssetPo> referenceMedias,

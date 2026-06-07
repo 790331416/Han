@@ -650,6 +650,27 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotVideoUsesPreviousVideoAsReferenceForInsertRelationshipAction() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景切人/插入镜头，不强制继承上一尾帧。");
+        shot.setActionDesc("听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌。");
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(12L);
+        AiVideoMediaAssetPo previousVideo = media(81L, "SHOT_VIDEO");
+        previousVideo.setFileUrl("/file/public/shot-9.mp4");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "shouldUsePreviousVideoAsReference", AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(service, shot, previousShot, previousVideo));
+    }
+
+    @Test
     void referenceAudioModeOnlyGeneratesAudioWhenAnchorAudioExists() throws Exception {
         AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
                 null, null, null, null, null, null, null, null, null, null);
@@ -694,6 +715,11 @@ class AivideoTextServiceImplTest {
         insertHandoffShot.setTransitionBeforeType("INSERT");
         insertHandoffShot.setTransitionBeforeDesc("同场景道具交接插入镜头，承接上一镜递出动作。");
         insertHandoffShot.setActionDesc("喵小萌从狗小汪手中接过收纳盒。");
+        AiVideoShotPo insertRelationshipShot = new AiVideoShotPo();
+        insertRelationshipShot.setSceneId(12L);
+        insertRelationshipShot.setTransitionBeforeType("INSERT");
+        insertRelationshipShot.setTransitionBeforeDesc("同场景切人/插入镜头，不强制继承上一尾帧。");
+        insertRelationshipShot.setActionDesc("听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌。");
         Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
                 "buildPreviousReferenceAudioUrl", AiVideoShotPo.class, AiVideoShotPo.class,
                 AiVideoMediaAssetPo.class, strategyClass());
@@ -703,6 +729,8 @@ class AivideoTextServiceImplTest {
                 method.invoke(service, continueShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
         assertEquals("https://media.example/shot-4-audio.mp3",
                 method.invoke(service, insertHandoffShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
+        assertEquals("https://media.example/shot-4-audio.mp3",
+                method.invoke(service, insertRelationshipShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
         assertEquals("", method.invoke(service, sceneCutShot, previousShot, previousAudio, strategy("REFERENCE_AUDIO")));
         assertEquals("", method.invoke(service, continueShot, previousShot, previousAudio, strategy("NATIVE_AUDIO")));
         assertEquals("", method.invoke(service, continueShot, previousShot, null, strategy("REFERENCE_AUDIO")));
@@ -796,7 +824,7 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
-    void shotVideoReferencesDoNotTreatNegativeInsertTailTextAsPreviousTail() throws Exception {
+    void shotVideoReferencesDistinguishNonForcedAndForbiddenPreviousTailText() throws Exception {
         AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
                 AiVideoCharacterMapper.class.getClassLoader(),
                 new Class<?>[]{AiVideoCharacterMapper.class},
@@ -844,8 +872,16 @@ class AivideoTextServiceImplTest {
         List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
                 service, 3L, shot, previousShot, media(64L, "SCENE_IMAGE"), media(109L, "SHOT_TAIL_FRAME"), List.of());
 
-        assertEquals(List.of(64L, 53L, 59L),
+        assertEquals(List.of(109L, 64L, 53L, 59L),
                 references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+
+        shot.setTransitionBeforeDesc("同场景切人/插入镜头，不使用上一尾帧。");
+        @SuppressWarnings("unchecked")
+        List<AiVideoMediaAssetPo> forbiddenReferences = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, previousShot, media(64L, "SCENE_IMAGE"), media(109L, "SHOT_TAIL_FRAME"), List.of());
+
+        assertEquals(List.of(64L, 53L, 59L),
+                forbiddenReferences.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
     }
 
     @Test

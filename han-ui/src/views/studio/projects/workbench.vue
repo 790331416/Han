@@ -2248,6 +2248,10 @@ function shouldUsePreviousAudioReference(shot?: AivideoShot, previousShot?: Aivi
     && shouldUsePreviousVisualReferenceForShot(shot, previousShot)
 }
 
+function shouldDisplayPreviousAudioReference(shot?: AivideoShot, previousShot?: AivideoShot) {
+  return shouldUsePreviousVisualReferenceForShot(shot, previousShot)
+}
+
 function buildShotVideoAutoReferenceOptions(shot?: AivideoShot) {
   if (!shot) {
     return []
@@ -2276,11 +2280,16 @@ function buildShotVideoAutoReferenceOptions(shot?: AivideoShot) {
         mediaKind: 'video'
       })
     }
-    if (shouldUsePreviousAudioReference(shot, previousShot) && previousAudioMediaId) {
+    if (shouldDisplayPreviousAudioReference(shot, previousShot) && previousAudioMediaId) {
+      const audioWillBeSent = shouldUsePreviousAudioReference(shot, previousShot)
       addShotReferenceOption(options, {
         mediaId: String(previousAudioMediaId),
-        label: `上一镜参考音频：第 ${previousShot.shotNo || ''} 镜 #${previousAudioMediaId}`,
-        subtitle: '作为 reference_audio 继承音色、语速、口吻和环境声风格；不复读上一镜台词',
+        label: audioWillBeSent
+          ? `上一镜参考音频：第 ${previousShot.shotNo || ''} 镜 #${previousAudioMediaId}`
+          : `上一镜音频：第 ${previousShot.shotNo || ''} 镜 #${previousAudioMediaId}`,
+        subtitle: audioWillBeSent
+          ? '作为 reference_audio 继承音色、语速、口吻和环境声风格；不复读上一镜台词'
+          : '当前声音模式不是参考音频，仅展示上一镜音频；如需继承声线，请切换为“参考音频有声”',
         sourceName: '上一镜参考音频',
         mediaKind: 'audio'
       })
@@ -2402,12 +2411,13 @@ function shouldUsePreviousShotReferenceForInsertHandoff(shot?: AivideoShot, prev
     shot.voiceOver,
     shot.promptText
   ].filter(Boolean).join(' ')
-  if (/不强制继承上一尾帧|不继承上一尾帧|不使用上一尾帧|不强制继承上一个尾帧|不强制继承上一镜尾帧|不强制继承上一镜/.test(text)) {
+  if (/不继承上一尾帧|不使用上一尾帧|禁止使用上一尾帧|不要使用上一尾帧|不继承上一镜尾帧|不使用上一镜尾帧/.test(text)) {
     return false
   }
   const insertLike = transitionType === 'INSERT' || /插入镜头|同场景切人|同场景道具交接/.test(text)
   const handoffLike = /承接上一镜|继承上一尾帧|上一镜道具|道具交接|接过|接住|收下|递给|递出|交给|传给/.test(text)
-  return insertLike && handoffLike
+  const relationshipLike = isRelationshipActionText(text)
+  return insertLike && (handoffLike || relationshipLike)
 }
 
 function resolveEffectiveCharacterDesignType() {
