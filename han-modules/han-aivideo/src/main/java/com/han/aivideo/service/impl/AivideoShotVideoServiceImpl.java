@@ -1123,12 +1123,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         variables.put("weather", safeValue(scene.getWeather()));
         variables.put("atmosphere", safeValue(scene.getAtmosphere()));
         variables.put("visualFeatures", safeValue(scene.getVisualFeatures()));
-        String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
-        String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
+        String onscreenCharacterIds = shot != null ? shot.getCharacterIds() : null;
+        String referenceCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
+        String characterNames = resolveCharacterNames(project.getProjectId(), onscreenCharacterIds);
+        String referenceCharacterNames = resolveCharacterNames(project.getProjectId(), referenceCharacterIds);
         String previousCharacterNames = resolveCharacterNames(project.getProjectId(),
                 previousShot != null ? previousShot.getCharacterIds() : null);
         variables.put("characterNames", safeValue(characterNames));
-        variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds));
+        variables.put("referenceCharacterNames", safeValue(referenceCharacterNames));
+        variables.put("relationshipReferenceRequirement",
+                buildRelationshipReferenceRequirement(referenceCharacterNames, characterNames));
+        variables.put("characterContinuity", buildCharacterContinuity(project.getProjectId(), referenceCharacterIds));
         variables.put("sceneContinuity", buildSceneContinuity(scene, previousShot));
         variables.put("blockingContinuityRequirement",
                 buildBlockingContinuityRequirement(shot, previousShot, characterNames, previousCharacterNames));
@@ -1179,11 +1184,15 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         AiVideoMediaAssetPo effectivePreviousTailFrameMedia =
                 containsReferenceMedia(referenceMedias, previousTailFrameMedia) ? previousTailFrameMedia : null;
         String referenceAnchorSummary = buildReferenceAnchorSummary(referenceMedias);
-        String effectiveCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
-        String characterNames = resolveCharacterNames(project.getProjectId(), effectiveCharacterIds);
+        String onscreenCharacterIds = shot != null ? shot.getCharacterIds() : null;
+        String referenceCharacterIds = resolveEffectiveCharacterIds(project.getProjectId(), shot);
+        String characterNames = resolveCharacterNames(project.getProjectId(), onscreenCharacterIds);
+        String referenceCharacterNames = resolveCharacterNames(project.getProjectId(), referenceCharacterIds);
+        String relationshipReferenceRequirement =
+                buildRelationshipReferenceRequirement(referenceCharacterNames, characterNames);
         String previousCharacterNames = resolveCharacterNames(project.getProjectId(),
                 previousShot != null ? previousShot.getCharacterIds() : null);
-        String characterContinuity = buildCharacterContinuity(project.getProjectId(), effectiveCharacterIds);
+        String characterContinuity = buildCharacterContinuity(project.getProjectId(), referenceCharacterIds);
         String sceneContinuity = buildSceneContinuity(scene, previousShot);
         String blockingContinuityRequirement =
                 buildBlockingContinuityRequirement(shot, previousShot, characterNames, previousCharacterNames);
@@ -1219,6 +1228,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 - 角色造型硬规则：%s
                 - 场景：%s，%s，%s，%s，视觉特征：%s。
                 - 出场主体：%s。
+                - %s
                 - 角色一致性：%s。
                 - 场景一致性：%s。
                 - 构图要求：%s
@@ -1260,7 +1270,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 strategy.characterDesignType(), characterDesignInstruction(strategy.characterDesignType(), strategy.visualStyle()),
                 safeValue(scene.getSceneName()), safeValue(scene.getTimeDesc()), safeValue(scene.getWeather()),
                 safeValue(scene.getAtmosphere()), safeValue(scene.getVisualFeatures()),
-                safeValue(characterNames), characterContinuity, sceneContinuity,
+                safeValue(characterNames), relationshipReferenceRequirement, characterContinuity, sceneContinuity,
                 compositionRequirement, blockingContinuityRequirement, bodyPartRequirement, glowRequirement,
                 actionBeats, timingPlan,
                 safeValue(shot.getShotType()), safeValue(shot.getCameraPosition()), safeValue(shot.getCameraMovement()),
@@ -1789,6 +1799,20 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 + " 禁止只出现单个角色，禁止把另一名角色放到画外，禁止只用眼神或画外方向代替目标角色。";
     }
 
+    private String buildRelationshipReferenceRequirement(String referenceCharacterNames, String onscreenCharacterNames) {
+        List<String> referenceNames = parseCharacterNameList(referenceCharacterNames);
+        List<String> onscreenNames = parseCharacterNameList(onscreenCharacterNames);
+        List<String> relationshipNames = referenceNames.stream()
+                .filter(name -> !onscreenNames.contains(name))
+                .distinct()
+                .toList();
+        if (relationshipNames.isEmpty()) {
+            return "关系参考角色：无。";
+        }
+        return "关系参考角色：" + String.join("、", relationshipNames)
+                + "。这些角色只作为身份、外观、声线或关系参考锚点；除非已写入“画内必须出现”，不得自动抢占主体或替代本镜画内角色。";
+    }
+
     private List<String> parseCharacterNameList(String names) {
         if (!StringUtils.hasText(names)) {
             return List.of();
@@ -2029,6 +2053,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
             String idText = String.valueOf(character.getCharacterId());
             String name = character.getCharacterName().trim();
+            if (isOffscreenCharacterMention(text, name)) {
+                continue;
+            }
             if (!ids.contains(idText) && !ids.contains(name)) {
                 ids.add(idText);
             }
@@ -2048,7 +2075,26 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private boolean isRelationshipActionText(String text) {
         return containsAny(text, "靠近", "凑近", "走向", "看向", "望向", "旁边", "身边",
-                "递给", "交给", "传给", "拿给", "递向", "接过", "接住", "收下", "对话");
+                "递给", "递向", "递出", "交给", "传给", "拿给", "接过", "接住", "收下",
+                "对话", "同框", "两人", "三人", "多人", "一起", "并肩", "互动");
+    }
+
+    private boolean isOffscreenCharacterMention(String text, String characterName) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(characterName) || !text.contains(characterName.trim())) {
+            return false;
+        }
+        String name = characterName.trim();
+        int index = text.indexOf(name);
+        while (index >= 0) {
+            String context = text.substring(Math.max(0, index - 16), Math.min(text.length(), index + name.length() + 16));
+            if (containsAny(context, "画外", "画外音", "旁白", "不出现", "不入画", "镜外", "离场", "离开",
+                    "退出画面", "退出画外", "只闻其声", "声音传来", "脑海", "心里", "内心独白",
+                    "单人反应", "只拍", "只露手", "只露肩", "只露背影", "特写裁切")) {
+                return true;
+            }
+            index = text.indexOf(name, index + name.length());
+        }
+        return false;
     }
 
     private List<String> detectRelationshipTargetNames(String text) {

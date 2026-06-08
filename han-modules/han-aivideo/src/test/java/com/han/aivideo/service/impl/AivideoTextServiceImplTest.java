@@ -343,6 +343,30 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void assetPromptDoesNotForceMultiRoleShotsIntoSingleHeroCloseup() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "狗小汪听到数字后靠近喵小萌，两人同框低声商量。");
+
+        assertFalse(prompt.contains("全局禁止出现其他人"));
+        assertFalse(prompt.contains("把视觉重心锁定在当前核心主角"));
+        assertTrue(prompt.contains("禁止引入未在角色表、characterNames 或背景人群说明中的无关人物"));
+        assertTrue(prompt.contains("多人镜头必须按 characterNames 全部入画"));
+    }
+
+    @Test
     void assetPromptRequiresTransitionPlanForEveryShot() throws Exception {
         AivideoTextServiceImpl service = new AivideoTextServiceImpl(
                 null, null, null, null, null, null, null, null, null, null, null, null);
@@ -925,6 +949,101 @@ class AivideoTextServiceImplTest {
 
         assertEquals(List.of(30L, 53L, 59L),
                 references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+    }
+
+    @Test
+    void shotVideoReferenceMediasIncludeCharacterMentionedByTogetherCue() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(5L).equals(args[0])) {
+                        return character(5L, "喵小萌", 59L);
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(6L).equals(args[0])) {
+                        return character(6L, "狗小汪", 53L);
+                    }
+                    if ("selectList".equals(method.getName())) {
+                        return List.of(character(5L, "喵小萌", 59L), character(6L, "狗小汪", 53L));
+                    }
+                    return null;
+                });
+        AiVideoMediaAssetMapper mediaMapper = (AiVideoMediaAssetMapper) Proxy.newProxyInstance(
+                AiVideoMediaAssetMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoMediaAssetMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(53L).equals(args[0])) {
+                        return media(53L, "CHARACTER_IMAGE");
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(59L).equals(args[0])) {
+                        return media(59L, "CHARACTER_IMAGE");
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, mediaMapper, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("6");
+        shot.setActionDesc("狗小汪和喵小萌一起站在长椅旁，同框检查账本。");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoReferenceMedias", Long.class, AiVideoShotPo.class, AiVideoShotPo.class,
+                AiVideoMediaAssetPo.class, AiVideoMediaAssetPo.class, List.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<AiVideoMediaAssetPo> references = (List<AiVideoMediaAssetPo>) method.invoke(
+                service, 3L, shot, null, media(30L, "SCENE_IMAGE"), null, List.of());
+
+        assertEquals(List.of(30L, 53L, 59L),
+                references.stream().map(AiVideoMediaAssetPo::getMediaId).toList());
+    }
+
+    @Test
+    void shotVideoPromptKeepsExplicitOnscreenCharactersSeparateFromReferenceCharacters() throws Exception {
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName()) && Long.valueOf(5L).equals(args[0])) {
+                        return character(5L, "喵小萌", 59L);
+                    }
+                    if ("selectById".equals(method.getName()) && Long.valueOf(6L).equals(args[0])) {
+                        return character(6L, "狗小汪", 53L);
+                    }
+                    if ("selectList".equals(method.getName())) {
+                        return List.of(character(5L, "喵小萌", 59L), character(6L, "狗小汪", 53L));
+                    }
+                    return null;
+                });
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, characterMapper, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(3L);
+        project.setProjectName("喵小萌阳光账本");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoScenePo scene = new AiVideoScenePo();
+        scene.setSceneName("树影斑驳校园长椅");
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(12L);
+        shot.setCharacterIds("6");
+        shot.setActionDesc("听到数字后，狗小汪耳朵突然竖起，身体靠近旁边的喵小萌。");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildShotVideoPrompt", AiVideoProjectPo.class, AiVideoScenePo.class,
+                AiVideoShotPo.class, AiVideoShotPo.class, AiVideoMediaAssetPo.class,
+                String.class, String.class, int.class, List.class, List.class,
+                String.class, String.class, boolean.class, strategyClass());
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, scene, shot, null, null,
+                "9:16", "720p", 5,
+                List.of(media(30L, "SCENE_IMAGE"), media(53L, "CHARACTER_IMAGE"), media(59L, "CHARACTER_IMAGE")),
+                List.of("https://example.com/scene.png", "https://example.com/dog.png", "https://example.com/cat.png"),
+                "", "", false, strategy("NATIVE_AUDIO"));
+
+        assertTrue(prompt.contains("画内必须出现：狗小汪"));
+        assertFalse(prompt.contains("画内必须出现：狗小汪、喵小萌"));
+        assertTrue(prompt.contains("关系参考角色：喵小萌"));
     }
 
     @Test

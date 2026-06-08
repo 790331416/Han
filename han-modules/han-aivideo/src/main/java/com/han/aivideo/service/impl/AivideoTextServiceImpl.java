@@ -1233,7 +1233,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 continue;
             }
             String idText = String.valueOf(id);
-            if (!ids.contains(idText) && !ids.contains(name.trim())) {
+            String trimmedName = name.trim();
+            if (isOffscreenCharacterMention(text, trimmedName)) {
+                continue;
+            }
+            if (!ids.contains(idText) && !ids.contains(trimmedName)) {
                 ids.add(idText);
             }
         }
@@ -1252,7 +1256,26 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private boolean isRelationshipActionText(String text) {
         return containsAny(text, "靠近", "凑近", "走向", "看向", "望向", "旁边", "身边",
-                "递给", "交给", "传给", "拿给", "接过", "接住", "从", "对话");
+                "递给", "递向", "递出", "交给", "传给", "拿给", "接过", "接住", "收下",
+                "从", "对话", "同框", "两人", "三人", "多人", "一起", "并肩", "互动");
+    }
+
+    private boolean isOffscreenCharacterMention(String text, String characterName) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(characterName) || !text.contains(characterName.trim())) {
+            return false;
+        }
+        String name = characterName.trim();
+        int index = text.indexOf(name);
+        while (index >= 0) {
+            String context = text.substring(Math.max(0, index - 16), Math.min(text.length(), index + name.length() + 16));
+            if (containsAny(context, "画外", "画外音", "旁白", "不出现", "不入画", "镜外", "离场", "离开",
+                    "退出画面", "退出画外", "只闻其声", "声音传来", "脑海", "心里", "内心独白",
+                    "单人反应", "只拍", "只露手", "只露肩", "只露背影", "特写裁切")) {
+                return true;
+            }
+            index = text.indexOf(name, index + name.length());
+        }
+        return false;
     }
 
     private AssetPayload parseAssetPayload(String content) {
@@ -1683,7 +1706,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "5. 场景 promptText 必须写成单镜头视频首帧/环境锚点：前景、中景、远景和地面可行动区域清楚，禁止拼图、分栏、设定板、漫画格、文字标签。\n\n"
                 + "【剧本分镜规则】\n"
                 + "1. 你是顶级影视剧导演与分镜规划专家，需要面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。\n"
-                + "2. 全局禁止出现其他人；画面必须通过单人特写、主观视角或环境遮挡，把视觉重心锁定在当前核心主角。\n"
+                + "2. 禁止引入未在角色表、characterNames 或背景人群说明中的无关人物；单人镜头锁定当前核心主角，多人镜头必须按 characterNames 全部入画，不得用单人特写、主观视角或环境遮挡替代同框关系。\n"
                 + "3. 严格区分 dialogue、voiceOver 和心理画面：dialogue 只写角色说出口并可口型同步的话；voiceOver 只写可发声但角色不张嘴的旁白/画外音；心理活动默认不写入 voiceOver。\n"
                 + "4. dialogue 必须只写当前 characterNames 中角色能直接说出口的话；多角色同镜时必须写成“角色名：台词”。低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，必须写入 dialogue，禁止塞进 voiceOver。\n"
                 + "5. voiceOver 必须显式标注说话人：统一旁白写“旁白：内容”，角色画外音写“角色名（画外音）：内容”，角色旁白写“角色名（旁白）：内容”；只有确实要被听见的内心独白才写“角色名（内心独白）：内容”。\n"

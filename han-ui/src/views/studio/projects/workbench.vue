@@ -2313,6 +2313,9 @@ function resolveEffectiveShotCharacterIds(shot?: AivideoShot) {
     if (!characterId || !characterName || !text.includes(characterName)) {
       return
     }
+    if (isOffscreenCharacterMention(text, characterName)) {
+      return
+    }
     if (!result.includes(characterId)) {
       result.push(characterId)
     }
@@ -2369,7 +2372,7 @@ function isOffscreenCharacterMention(text: string, characterName?: string) {
   if (!text || !name || !text.includes(name)) {
     return false
   }
-  const offscreenKeywords = ['画外', '画外音', '旁白', '不出现', '不入画', '镜外', '离场', '离开', '退出画面', '退出画外', '只闻其声', '声音传来', '脑海', '心里', '内心独白']
+  const offscreenKeywords = ['画外', '画外音', '旁白', '不出现', '不入画', '镜外', '离场', '离开', '退出画面', '退出画外', '只闻其声', '声音传来', '脑海', '心里', '内心独白', '单人反应', '只拍', '只露手', '只露肩', '只露背影', '特写裁切']
   let index = text.indexOf(name)
   while (index >= 0) {
     const context = text.slice(Math.max(0, index - 16), Math.min(text.length, index + name.length + 16))
@@ -2390,7 +2393,7 @@ function allowsPreviousCharacterOutOfFrame(shot: AivideoShot | undefined, charac
   if (isOffscreenCharacterMention(text, name)) {
     return true
   }
-  return /离场|离开|退出画面|退出画外|画外|不入画|不出现|单人反应|只拍|只露手|只露肩|只露背影|特写裁切/.test(text)
+  return false
 }
 
 function extractShotPositionRequirement(shot?: AivideoShot, onscreenCharacters: AivideoCharacter[] = []) {
@@ -2732,14 +2735,15 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     })
   }
 
-  const characterIds = resolveEffectiveShotCharacterIds(shot)
+  const onscreenCharacterIds = parseShotCharacterIds(shot.characterIds)
+  const referenceCharacterIds = resolveEffectiveShotCharacterIds(shot)
   const autoAddedCharacters = autoAddedShotCharacters(shot)
   const screenRule = buildShotScreenCharacterRule(shot)
   if (autoAddedCharacters.length) {
     items.push({
       status: 'pass',
-      title: `关系动作自动补齐角色：${autoAddedCharacters.map((item) => item.characterName || `角色${item.characterId}`).join('、')}`,
-      detail: '动作、转场、台词或旁白中提到了该角色，系统会把对应角色图一起传入视频请求，避免同框或靠近镜头丢角色。'
+      title: `关系参考角色：${autoAddedCharacters.map((item) => item.characterName || `角色${item.characterId}`).join('、')}`,
+      detail: '动作、转场、台词或旁白中提到了该角色，系统会把对应角色图作为参考锚点传入；这不等于画内人物已绑定，如需入画仍必须在资产分镜中写入画内角色。'
     })
   }
   if (screenRule.onscreenCharacters.length) {
@@ -2751,36 +2755,36 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
   }
   if (screenRule.missingCharacters.length) {
     items.push({
-      status: 'warn',
+      status: 'fail',
       title: `文案提到但未绑定画内角色：${screenRule.missingCharacters.map(characterDisplayName).join('、')}`,
-      detail: '这些角色出现在动作、台词、旁白或提示词里，但没有写入本镜画内角色；如果确实要入画，请回资产分镜补角色，或在本次生成手动追加角色参考并确认画内关系。'
+      detail: '这些角色出现在动作、台词、旁白或提示词里，但没有写入本镜画内角色。临时追加参考素材只能提供外观锚点，不能替代画内人物确认；如果确实要入画，请回资产分镜补角色。'
     })
   }
   if (screenRule.previousMissingCharacters.length) {
     items.push({
-      status: 'warn',
+      status: 'fail',
       title: `上一镜角色疑似无说明消失：${screenRule.previousMissingCharacters.map(characterDisplayName).join('、')}`,
-      detail: '当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有离场、画外、单人反应或裁切说明；建议补充衔接说明或修正本镜画内人物。'
+      detail: '当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有针对该角色写明离场、画外、单人反应或裁切说明；请补充衔接说明或修正本镜画内人物。'
     })
   }
-  if (!characterIds.length) {
+  if (!onscreenCharacterIds.length) {
     items.push({
       status: 'warn',
       title: '分镜未绑定角色',
       detail: '如果这个镜头确实是纯场景可以继续；如果有角色动作，请先在资产分镜中绑定角色。'
     })
   }
-  if (characterIds.length > 4) {
+  if (referenceCharacterIds.length > 4) {
     items.push({
       status: 'fail',
-      title: '出场角色超过 4 个',
+      title: '参考角色超过 4 个',
       detail: '火山提示词指南中参考人物过多会降低稳定性，建议拆镜或按角色分组后再生成。'
     })
   }
 
-  const characterIdSet = new Set(characterIds)
+  const characterIdSet = new Set(referenceCharacterIds)
   const shotCharacters = characters.value.filter((item) => characterIdSet.has(String(item.characterId)))
-  characterIds
+  referenceCharacterIds
     .filter((id) => !shotCharacters.some((item) => String(item.characterId) === id))
     .forEach((id) => {
       items.push({
