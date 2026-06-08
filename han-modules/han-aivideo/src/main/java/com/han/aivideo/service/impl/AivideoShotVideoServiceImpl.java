@@ -1742,6 +1742,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (!currentNames.isEmpty()) {
             builder.append("当前镜头在场角色：").append(currentNames.size()).append("人（")
                     .append(String.join("、", currentNames)).append("）。");
+            builder.append("画内必须出现：").append(String.join("、", currentNames)).append("。")
+                    .append("未列入画内角色的其他角色不得自动出现；除非本镜 actionDesc、transitionBeforeDesc、dialogue、voiceOver 或 promptText 明确写明画外、画外音、远景背景人群、离场或不出现，否则不要新增人物。");
+            if (currentNames.size() >= 2) {
+                builder.append("本镜是多人画面时，禁止只出现单个角色，禁止把任一画内角色裁出画外或用画外方向、眼神、对白代替。");
+            }
         } else {
             builder.append("当前镜头必须保持分镜指定主体清楚可见。");
         }

@@ -473,6 +473,30 @@
                     </div>
                   </template>
                 </el-table-column>
+                <el-table-column label="画内人物" min-width="220">
+                  <template #default="{ row }">
+                    <div class="shot-screen-cell">
+                      <template v-if="shotScreenCharacterRule(row).onscreenCharacters.length">
+                        <el-tag
+                          v-for="character in shotScreenCharacterRule(row).onscreenCharacters"
+                          :key="character.characterId"
+                          type="success"
+                          effect="plain"
+                        >
+                          {{ character.characterName || `角色 ${character.characterId}` }}
+                        </el-tag>
+                      </template>
+                      <el-tag v-else type="info" effect="plain">未规定</el-tag>
+                      <el-tag
+                        v-if="shotScreenCharacterRule(row).missingCharacters.length"
+                        type="danger"
+                        effect="dark"
+                      >
+                        疑似缺失 {{ shotScreenCharacterRule(row).missingCharacters.map((item) => item.characterName || `角色 ${item.characterId}`).join('、') }}
+                      </el-tag>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="actionDesc" label="动作" min-width="240" show-overflow-tooltip />
                 <el-table-column label="视频资产" width="210">
                   <template #default="{ row }">
@@ -1208,6 +1232,64 @@
           </div>
         </section>
 
+        <section class="shot-screen-rule-panel">
+          <div class="panel-title-row">
+            <strong>当前画面人物规定</strong>
+            <small>以分镜绑定角色为准；文案提到但未绑定的人会标为疑似缺失，避免视频里漏人或自动换人</small>
+          </div>
+          <div class="shot-screen-rule-grid">
+            <div class="shot-screen-rule-item">
+              <span>画内必须出现</span>
+              <div>
+                <el-tag
+                  v-for="character in selectedShotScreenCharacterRule.onscreenCharacters"
+                  :key="character.characterId"
+                  type="success"
+                  effect="plain"
+                >
+                  {{ character.characterName || `角色 ${character.characterId}` }}
+                </el-tag>
+                <el-tag v-if="!selectedShotScreenCharacterRule.onscreenCharacters.length" type="info" effect="plain">
+                  未绑定，纯场景才可继续
+                </el-tag>
+              </div>
+            </div>
+            <div class="shot-screen-rule-item">
+              <span>画外 / 不出现</span>
+              <div>
+                <el-tag
+                  v-for="character in selectedShotScreenCharacterRule.offscreenCharacters"
+                  :key="character.characterId"
+                  type="info"
+                  effect="plain"
+                >
+                  {{ character.characterName || `角色 ${character.characterId}` }}
+                </el-tag>
+                <el-tag v-if="!selectedShotScreenCharacterRule.offscreenCharacters.length" type="info" effect="plain">
+                  未声明
+                </el-tag>
+              </div>
+            </div>
+            <div class="shot-screen-rule-item">
+              <span>疑似缺失</span>
+              <div>
+                <el-tag
+                  v-for="character in selectedShotScreenCharacterRule.missingCharacters"
+                  :key="character.characterId"
+                  type="danger"
+                  effect="dark"
+                >
+                  {{ character.characterName || `角色 ${character.characterId}` }}
+                </el-tag>
+                <el-tag v-if="!selectedShotScreenCharacterRule.missingCharacters.length" type="success" effect="plain">
+                  无
+                </el-tag>
+              </div>
+            </div>
+          </div>
+          <p class="shot-screen-rule-note">{{ selectedShotScreenCharacterRule.positionRequirement }}</p>
+        </section>
+
         <el-form class="shot-video-strategy" label-position="top">
           <el-row :gutter="12">
             <el-col :span="8">
@@ -1431,6 +1513,15 @@ interface ShotVideoPreflightItem {
   detail: string
 }
 
+interface ShotScreenCharacterRule {
+  onscreenCharacters: AivideoCharacter[]
+  mentionedCharacters: AivideoCharacter[]
+  missingCharacters: AivideoCharacter[]
+  offscreenCharacters: AivideoCharacter[]
+  previousMissingCharacters: AivideoCharacter[]
+  positionRequirement: string
+}
+
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -1611,6 +1702,7 @@ const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.v
   .filter((item) => (item.mediaKind || 'image') === 'image')
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
+const selectedShotScreenCharacterRule = computed(() => buildShotScreenCharacterRule(selectedShotForVideo.value))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
 const shotVideoPreflightLevel = computed(() => {
   if (shotVideoPreflightItems.value.some((item) => item.status === 'fail')) {
@@ -2237,6 +2329,131 @@ function autoAddedShotCharacters(shot?: AivideoShot) {
   })
 }
 
+function characterDisplayName(character: AivideoCharacter) {
+  return character.characterName || `角色 ${character.characterId}`
+}
+
+function findCharactersByTokens(tokens: string[]) {
+  const tokenSet = new Set(tokens.map((item) => String(item || '').trim()).filter(Boolean))
+  if (!tokenSet.size) {
+    return []
+  }
+  return characters.value.filter((character) => {
+    const characterId = String(character.characterId || '')
+    const characterName = String(character.characterName || '').trim()
+    return tokenSet.has(characterId) || (!!characterName && tokenSet.has(characterName))
+  })
+}
+
+function shotOnscreenCharacters(shot?: AivideoShot) {
+  return findCharactersByTokens(parseShotCharacterIds(shot?.characterIds))
+}
+
+function shotMentionedCharacters(shot?: AivideoShot) {
+  const text = shotRelationshipText(shot)
+  if (!text) {
+    return []
+  }
+  return characters.value.filter((character) => {
+    const name = String(character.characterName || '').trim()
+    return !!name && text.includes(name)
+  })
+}
+
+function textContainsAny(value: string, keywords: string[]) {
+  return keywords.some((keyword) => keyword && value.includes(keyword))
+}
+
+function isOffscreenCharacterMention(text: string, characterName?: string) {
+  const name = String(characterName || '').trim()
+  if (!text || !name || !text.includes(name)) {
+    return false
+  }
+  const offscreenKeywords = ['画外', '画外音', '旁白', '不出现', '不入画', '镜外', '离场', '离开', '退出画面', '退出画外', '只闻其声', '声音传来', '脑海', '心里', '内心独白']
+  let index = text.indexOf(name)
+  while (index >= 0) {
+    const context = text.slice(Math.max(0, index - 16), Math.min(text.length, index + name.length + 16))
+    if (textContainsAny(context, offscreenKeywords)) {
+      return true
+    }
+    index = text.indexOf(name, index + name.length)
+  }
+  return false
+}
+
+function allowsPreviousCharacterOutOfFrame(shot: AivideoShot | undefined, character: AivideoCharacter) {
+  const text = shotRelationshipText(shot)
+  const name = String(character.characterName || '').trim()
+  if (!text) {
+    return false
+  }
+  if (isOffscreenCharacterMention(text, name)) {
+    return true
+  }
+  return /离场|离开|退出画面|退出画外|画外|不入画|不出现|单人反应|只拍|只露手|只露肩|只露背影|特写裁切/.test(text)
+}
+
+function extractShotPositionRequirement(shot?: AivideoShot, onscreenCharacters: AivideoCharacter[] = []) {
+  const text = shotRelationshipText(shot)
+  const matches = [
+    text.match(/画面站位[:：]\s*([^。；;\n]+)/),
+    text.match(/屏幕站位[:：]\s*([^。；;\n]+)/),
+    text.match(/当前镜头在场角色[:：]\s*([^。；;\n]+)/)
+  ].map((match) => match?.[1]?.trim()).filter(Boolean) as string[]
+  if (matches.length) {
+    return Array.from(new Set(matches)).join('；')
+  }
+  if (onscreenCharacters.length >= 2) {
+    return `多人镜头：画内必须同时保留 ${onscreenCharacters.map(characterDisplayName).join('、')}，保持人数、相对站位、朝向和距离关系清楚。`
+  }
+  if (onscreenCharacters.length === 1) {
+    return `单人镜头：画内主体锁定为 ${characterDisplayName(onscreenCharacters[0])}，其他角色不得自动出现。`
+  }
+  return '未绑定画内角色；如果不是纯场景镜头，请先回资产分镜补齐角色。'
+}
+
+function sameSceneWithoutHardBreak(shot?: AivideoShot, previous?: AivideoShot) {
+  if (!shot || !previous || String(shot.sceneId || '') !== String(previous.sceneId || '')) {
+    return false
+  }
+  return !['SCENE_CUT', 'TIME_JUMP', 'MONTAGE'].includes(normalizedShotTransitionType(shot))
+}
+
+function buildShotScreenCharacterRule(shot?: AivideoShot): ShotScreenCharacterRule {
+  const onscreenCharacters = shotOnscreenCharacters(shot)
+  const onscreenIdSet = new Set(onscreenCharacters.map((item) => String(item.characterId)))
+  const mentionedCharacters = shotMentionedCharacters(shot)
+  const text = shotRelationshipText(shot)
+  const offscreenCharacters = mentionedCharacters.filter((character) => {
+    return !onscreenIdSet.has(String(character.characterId))
+      && isOffscreenCharacterMention(text, character.characterName)
+  })
+  const missingCharacters = mentionedCharacters.filter((character) => {
+    return !onscreenIdSet.has(String(character.characterId))
+      && !offscreenCharacters.some((item) => String(item.characterId) === String(character.characterId))
+  })
+  const previous = findPreviousShot(shot)
+  const previousOnscreenCharacters = shotOnscreenCharacters(previous)
+  const previousMissingCharacters = sameSceneWithoutHardBreak(shot, previous)
+    ? previousOnscreenCharacters.filter((character) => {
+      return !onscreenIdSet.has(String(character.characterId))
+        && !allowsPreviousCharacterOutOfFrame(shot, character)
+    })
+    : []
+  return {
+    onscreenCharacters,
+    mentionedCharacters,
+    missingCharacters,
+    offscreenCharacters,
+    previousMissingCharacters,
+    positionRequirement: extractShotPositionRequirement(shot, onscreenCharacters)
+  }
+}
+
+function shotScreenCharacterRule(shot?: AivideoShot) {
+  return buildShotScreenCharacterRule(shot)
+}
+
 function addShotReferenceOption(options: ReferenceImageOption[], option?: ReferenceImageOption) {
   if (!option?.mediaId || options.some((item) => String(item.mediaId) === String(option.mediaId))) {
     return
@@ -2517,11 +2734,33 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
 
   const characterIds = resolveEffectiveShotCharacterIds(shot)
   const autoAddedCharacters = autoAddedShotCharacters(shot)
+  const screenRule = buildShotScreenCharacterRule(shot)
   if (autoAddedCharacters.length) {
     items.push({
       status: 'pass',
       title: `关系动作自动补齐角色：${autoAddedCharacters.map((item) => item.characterName || `角色${item.characterId}`).join('、')}`,
       detail: '动作、转场、台词或旁白中提到了该角色，系统会把对应角色图一起传入视频请求，避免同框或靠近镜头丢角色。'
+    })
+  }
+  if (screenRule.onscreenCharacters.length) {
+    items.push({
+      status: 'pass',
+      title: `画内人物已规定：${screenRule.onscreenCharacters.map(characterDisplayName).join('、')}`,
+      detail: screenRule.positionRequirement
+    })
+  }
+  if (screenRule.missingCharacters.length) {
+    items.push({
+      status: 'warn',
+      title: `文案提到但未绑定画内角色：${screenRule.missingCharacters.map(characterDisplayName).join('、')}`,
+      detail: '这些角色出现在动作、台词、旁白或提示词里，但没有写入本镜画内角色；如果确实要入画，请回资产分镜补角色，或在本次生成手动追加角色参考并确认画内关系。'
+    })
+  }
+  if (screenRule.previousMissingCharacters.length) {
+    items.push({
+      status: 'warn',
+      title: `上一镜角色疑似无说明消失：${screenRule.previousMissingCharacters.map(characterDisplayName).join('、')}`,
+      detail: '当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有离场、画外、单人反应或裁切说明；建议补充衔接说明或修正本镜画内人物。'
     })
   }
   if (!characterIds.length) {
@@ -4898,10 +5137,64 @@ onBeforeUnmount(() => {
   .reference-selected-grid {
     grid-template-columns: 1fr;
   }
+
+  .shot-screen-rule-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .shot-video-gate-alert {
   margin-bottom: 12px;
+}
+
+.shot-screen-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shot-screen-rule-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.shot-screen-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shot-screen-rule-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #ffffff;
+
+  > span {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+.shot-screen-rule-note {
+  margin: 0;
+  color: #334155;
+  line-height: 1.6;
 }
 
 .shot-video-preflight-panel {

@@ -468,6 +468,25 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void shotVideoBlockingRuleLocksOnscreenCharactersAndForbidsUnexpectedCharacters() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setActionDesc("当前镜头在场角色：2人，画面站位：左侧=喵小萌，右侧=狗小汪；狗小汪身体凑近旁边的喵小萌。");
+        Method method = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildBlockingContinuityRequirement", AiVideoShotPo.class, AiVideoShotPo.class,
+                String.class, String.class);
+        method.setAccessible(true);
+
+        String requirement = (String) method.invoke(service, shot, null, "喵小萌、狗小汪", "");
+
+        assertTrue(requirement.contains("画内必须出现：喵小萌、狗小汪"));
+        assertTrue(requirement.contains("未列入画内角色的其他角色不得自动出现"));
+        assertTrue(requirement.contains("屏幕站位锁定"));
+        assertTrue(requirement.contains("禁止只出现单个角色"));
+    }
+
+    @Test
     void scriptPromptForbidsLowVoiceAsVoiceOver() throws Exception {
         AivideoTextServiceImpl service = new AivideoTextServiceImpl(
                 null, null, null, null, null, null, null, null, null, null, null, null);
