@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -48,6 +50,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     private static final String BIZ_PROJECT = "PROJECT";
     private static final String STATUS_READY = "READY";
     private static final String STATUS_SELECTED = "SELECTED";
+    private static final DateTimeFormatter EDIT_OUTPUT_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoProjectSettingMapper settingMapper;
@@ -93,7 +97,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         String videoName = firstText(dto.getVideoName(), project.getProjectName() + " 成片");
         boolean includeAudio = dto.getIncludeAudio() == null || Boolean.TRUE.equals(dto.getIncludeAudio());
         int priority = dto.getPriority() == null ? 0 : dto.getPriority();
-        String editParam = buildDirectEditParam(project, preflight, videoName, includeAudio, provider.uploader());
+        String outputFileName = buildEditOutputFileName(project, nextEditOutputSuffix());
+        String editParam = buildDirectEditParam(project, preflight, videoName, includeAudio, provider.uploader(), outputFileName);
 
         AiVideoGenerationTaskPo task = createEditTask(project, editParam, videoName, priority, preflight);
         try {
@@ -166,7 +171,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         if (!Boolean.TRUE.equals(preflight.getReady())) {
             throw new BusinessException("剪辑预检未通过：" + String.join("；", preflight.getErrors()));
         }
-        return buildDirectEditParam(project, preflight, videoName, includeAudio, "aivideo-edit");
+        return buildDirectEditParam(project, preflight, videoName, includeAudio, "aivideo-edit",
+                buildEditOutputFileName(project, "test-output"));
     }
 
     private AivideoProjectEditPreflightVo buildPreflight(AiVideoProjectPo project) {
@@ -264,7 +270,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     }
 
     private String buildDirectEditParam(AiVideoProjectPo project, AivideoProjectEditPreflightVo preflight,
-                                        String videoName, boolean includeAudio, String uploader) {
+                                        String videoName, boolean includeAudio, String uploader, String outputFileName) {
         AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
         AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
         String ratio = firstText(
@@ -305,10 +311,22 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         editParam.put("Upload", Map.of(
                 "SpaceName", uploader,
                 "VideoName", sanitizeVideoName(videoName),
-                "FileName", "aivideo/project-" + project.getProjectId() + "/final.mp4"
+                "FileName", outputFileName
         ));
         editParam.put("Uploader", uploader);
         return XuJsonUtil.toJsonString(editParam);
+    }
+
+    private String buildEditOutputFileName(AiVideoProjectPo project, String suffix) {
+        String safeSuffix = firstText(suffix, "final")
+                .replaceAll("[^A-Za-z0-9_-]", "-")
+                .replaceAll("-{2,}", "-");
+        return "aivideo/project-" + project.getProjectId() + "/final/" + safeSuffix + ".mp4";
+    }
+
+    private String nextEditOutputSuffix() {
+        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        return "edit-" + LocalDateTime.now().format(EDIT_OUTPUT_TIME_FORMATTER) + "-" + uuid;
     }
 
     private AiVideoGenerationTaskPo createEditTask(AiVideoProjectPo project, String editParam, String videoName,

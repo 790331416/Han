@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AivideoPromptTemplateSqlTest {
@@ -33,10 +34,19 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "referenceAudioUrls");
         assertContains(upgrade, "最多 3 段");
         assertContains(upgrade, "插入镜头/交接镜头");
+        assertContains(upgrade, "MAX(template_id)");
+        assertContains(upgrade, "video_prompt_template_id");
+        assertDoesNotContain(upgrade, "MAX(id)");
+        assertDoesNotContain(upgrade, "asset_prompt_template_id");
+        assertDoesNotContain(upgrade, "shot_video_prompt_template_id");
     }
 
     private static void assertContains(String content, String needle) {
         assertTrue(content.contains(needle), () -> "SQL should contain hard rule: " + needle);
+    }
+
+    private static void assertDoesNotContain(String content, String needle) {
+        assertFalse(content.contains(needle), () -> "SQL should not contain obsolete column/expression: " + needle);
     }
 
     private static Path findRepoRoot(Path start) {

@@ -99,21 +99,25 @@ WHERE template_name = 'AI短剧资产提取';
 
 WITH tpl AS (
     SELECT
-        MAX(id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
-        MAX(id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id,
-        MAX(id) FILTER (WHERE template_name = 'AI短剧资产提取') AS asset_id,
-        MAX(id) FILTER (WHERE template_name = 'AI短剧角色图生成') AS character_image_id,
-        MAX(id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id,
-        MAX(id) FILTER (WHERE template_name = 'AI短剧分镜视频生成') AS shot_video_id
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧原文润色') AS polish_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧剧本生成') AS script_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧角色构建') AS character_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景设计') AS scene_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧分镜提取') AS shot_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧角色图生成') AS character_image_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id,
+        MAX(template_id) FILTER (WHERE template_name = 'AI短剧分镜视频生成') AS video_prompt_id
     FROM ai_prompt_template
 )
 UPDATE ai_video_project_setting s
 SET polish_prompt_template_id = COALESCE(s.polish_prompt_template_id, tpl.polish_id),
     script_prompt_template_id = COALESCE(s.script_prompt_template_id, tpl.script_id),
-    asset_prompt_template_id = COALESCE(s.asset_prompt_template_id, tpl.asset_id),
+    character_prompt_template_id = COALESCE(s.character_prompt_template_id, tpl.character_id),
+    scene_prompt_template_id = COALESCE(s.scene_prompt_template_id, tpl.scene_id),
+    shot_prompt_template_id = COALESCE(s.shot_prompt_template_id, tpl.shot_id),
+    video_prompt_template_id = COALESCE(s.video_prompt_template_id, tpl.video_prompt_id),
     character_image_prompt_template_id = COALESCE(s.character_image_prompt_template_id, tpl.character_image_id),
     scene_image_prompt_template_id = COALESCE(s.scene_image_prompt_template_id, tpl.scene_image_id),
-    shot_video_prompt_template_id = COALESCE(s.shot_video_prompt_template_id, tpl.shot_video_id),
     update_time = CURRENT_TIMESTAMP
 FROM tpl
 WHERE TRUE;

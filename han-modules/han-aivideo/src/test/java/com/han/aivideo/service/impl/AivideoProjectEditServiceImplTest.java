@@ -100,6 +100,8 @@ class AivideoProjectEditServiceImplTest {
         assertTrue(editParam.contains("\"TargetTime\":[0,5000]"));
         assertTrue(editParam.contains("\"TargetTime\":[5000,11000]"));
         assertTrue(editParam.contains("\"DisableAudio\":false"));
+        assertTrue(editParam.contains("\"FileName\":\"aivideo/project-1/final/test-output.mp4\""));
+        assertFalse(editParam.contains("\"FileName\":\"aivideo/project-1/final.mp4\""));
     }
 
     @Test

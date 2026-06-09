@@ -350,6 +350,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (requireVideoModel && shouldRequirePreviousShotVideo(shot, previousShot)) {
             validatePreviousShotReady(previousShot);
         }
+        validateShotRuntimeContinuity(project.getProjectId(), shot, previousShot);
         AiVideoMediaAssetPo previousTailFrameMedia = findTailFrameMedia(project.getProjectId(), previousShot);
         AiVideoMediaAssetPo previousVideoMedia = findPreviousVideoMedia(project.getProjectId(), previousShot);
         AiVideoMediaAssetPo previousAudioMedia = findPreviousAudioMedia(project.getProjectId(), previousShot);
@@ -1736,6 +1737,86 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         return "必须使用半身或全身构图，镜头内持续露出" + String.join("、", parts)
                 + "，不要只拍脸部特写。";
+    }
+
+    private void validateShotRuntimeContinuity(Long projectId, AiVideoShotPo shot, AiVideoShotPo previousShot) {
+        if (shot == null || previousShot == null) {
+            return;
+        }
+        String text = collectShotText(shot);
+        String previousText = collectShotText(previousShot);
+        validateRuntimePropHandoff(text);
+        if (!sameSceneWithoutHardBreak(shot, previousShot)) {
+            return;
+        }
+        validateRuntimeCharacterPresence(projectId, shot, previousShot, text);
+        validateRuntimeFacingContinuity(text, previousText);
+    }
+
+    private void validateRuntimePropHandoff(String text) {
+        if (!hasReceiveLikeAction(text)) {
+            return;
+        }
+        if (hasExplicitHandoffSource(text)) {
+            return;
+        }
+        throw new BusinessException("道具交接描述不完整：本镜存在接过/收下/交接动作，必须写清谁递给谁、具体道具、从画面哪边来、最后谁拿着；不要只写“接过”或“展示给画外”。");
+    }
+
+    private boolean hasReceiveLikeAction(String text) {
+        return containsAny(text, "接过", "接住", "收下", "拿到", "道具交接", "递过来的", "传过来的");
+    }
+
+    private boolean hasExplicitHandoffSource(String text) {
+        boolean source = containsAny(text,
+                "递给", "交给", "传给", "拿给", "递向", "从", "手里", "手中",
+                "画面左侧", "画面右侧", "左侧", "右侧", "左手", "右手");
+        boolean receiver = containsAny(text, "接过", "接住", "收下", "拿到", "递给", "交给", "传给", "拿给");
+        return source && receiver;
+    }
+
+    private void validateRuntimeCharacterPresence(Long projectId, AiVideoShotPo shot,
+                                                  AiVideoShotPo previousShot, String text) {
+        List<String> previousNames = parseCharacterNameList(
+                resolveCharacterNames(projectId, resolveEffectiveCharacterIds(projectId, previousShot)));
+        List<String> currentNames = parseCharacterNameList(
+                resolveCharacterNames(projectId, resolveEffectiveCharacterIds(projectId, shot)));
+        if (previousNames.isEmpty()) {
+            return;
+        }
+        List<String> missingNames = previousNames.stream()
+                .filter(name -> !currentNames.contains(name))
+                .filter(name -> !hasCharacterExitOrCropExplanation(text, name))
+                .toList();
+        if (missingNames.isEmpty()) {
+            return;
+        }
+        throw new BusinessException("上一镜角色疑似无说明消失：" + String.join("、", missingNames)
+                + "；当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有针对该角色写明离场、画外、单人反应或裁切说明；请补充衔接说明或修正本镜画内人物。");
+    }
+
+    private boolean hasCharacterExitOrCropExplanation(String text, String characterName) {
+        if (isOffscreenCharacterMention(text, characterName)) {
+            return true;
+        }
+        return containsAny(text,
+                "单人反应", "只拍", "只露手", "只露肩", "只露背影", "特写裁切", "裁切",
+                "离场", "离开", "退出画面", "退出画外", "不出现", "不入画", "画外");
+    }
+
+    private void validateRuntimeFacingContinuity(String text, String previousText) {
+        if (!containsAny(previousText, "背对镜头", "背对", "背影", "侧身", "侧面对")) {
+            return;
+        }
+        if (!containsAny(text, "正面对着镜头", "面对镜头", "正对镜头", "对着镜头", "正面说话")) {
+            return;
+        }
+        if (containsAny(text,
+                "转身", "转过身", "回头", "回过头", "反打", "换轴", "镜头绕到",
+                "切到正面", "重新建立", "重新调度", "切场", "明确切场", "硬切")) {
+            return;
+        }
+        throw new BusinessException("朝向衔接不完整：上一镜角色背对/侧身，本镜变成正面对镜头说话，必须写清转身、反打、换轴、镜头绕到正面或明确切场。");
     }
 
     private String buildBlockingContinuityRequirement(AiVideoShotPo shot, AiVideoShotPo previousShot,
