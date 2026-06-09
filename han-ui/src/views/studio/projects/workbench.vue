@@ -2764,7 +2764,7 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
     items.push({
       status: 'fail',
       title: `上一镜角色疑似无说明消失：${screenRule.previousMissingCharacters.map(characterDisplayName).join('、')}`,
-      detail: '当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有针对该角色写明离场、画外、单人反应或裁切说明；请补充衔接说明或修正本镜画内人物。'
+      detail: '当前镜头与上一镜仍属同场景/非硬切，但上一镜画内角色未在本镜继续出现，也没有针对该角色写明离场、画外、单人反应或裁切说明；“同伴/两人/对方/画外同伴”不算有效说明，必须点名角色，例如“狗小汪在画外右侧近旁不入画”。'
     })
   }
   if (!onscreenCharacterIds.length) {

@@ -1208,6 +1208,39 @@ class AivideoTextServiceImplTest {
         assertTrue(requirement.contains("狗小汪固定在画面右侧"));
         assertTrue(requirement.contains("禁止左右互换"));
         assertTrue(requirement.contains("禁止上一镜仍在场角色无说明消失"));
+        assertTrue(requirement.contains("禁止用“同伴/对方/两人/旁边的人/画外同伴/画外两人/她/他”替代角色姓名"));
+        assertTrue(requirement.contains("必须点名角色名及画内/画外状态"));
+    }
+
+    @Test
+    void sameSceneInsertShotNormalizesVagueOffscreenCompanionToCharacterName() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoShotPo previousShot = new AiVideoShotPo();
+        previousShot.setSceneId(14L);
+        previousShot.setCharacterIds("6");
+        previousShot.setActionDesc("狗小汪看着两人，耳朵慢慢耷拉下来，露出不好意思的笑。");
+
+        AiVideoShotPo shot = new AiVideoShotPo();
+        shot.setSceneId(14L);
+        shot.setCharacterIds("5");
+        shot.setTransitionBeforeType("INSERT");
+        shot.setTransitionBeforeDesc("同场景切人/插入镜头，不强制继承上一尾帧。");
+        shot.setActionDesc("与画外同伴对视，露出微笑，有了主意");
+        shot.setPromptText("喵小萌看向画外微笑。");
+
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "normalizePreviousCharacterContinuity", AiVideoShotPo.class, AiVideoShotPo.class, Map.class);
+        method.setAccessible(true);
+
+        method.invoke(service, shot, previousShot, Map.of("5", "喵小萌", "6", "狗小汪"));
+
+        assertTrue(shot.getActionDesc().contains("画外右侧的狗小汪"));
+        assertFalse(shot.getActionDesc().contains("画外同伴"));
+        assertTrue(shot.getTransitionBeforeDesc().contains("狗小汪"));
+        assertTrue(shot.getTransitionBeforeDesc().contains("不入画"));
+        assertTrue(shot.getPromptText().contains("画内只出现喵小萌"));
+        assertTrue(shot.getPromptText().contains("狗小汪在画外"));
     }
 
     @Test
@@ -1235,6 +1268,8 @@ class AivideoTextServiceImplTest {
         assertTrue(prompt.contains("右侧="));
         assertTrue(prompt.contains("上一镜仍在场角色"));
         assertTrue(prompt.contains("不得无说明消失"));
+        assertTrue(prompt.contains("禁止使用“同伴/对方/两人/三人/旁边的人/画外同伴/画外两人/她/他”代替角色名"));
+        assertTrue(prompt.contains("必须写清其他角色姓名与画外/局部/离场状态"));
     }
 
     @Test

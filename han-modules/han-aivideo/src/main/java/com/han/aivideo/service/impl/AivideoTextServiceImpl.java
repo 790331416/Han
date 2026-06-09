@@ -1049,6 +1049,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             sceneIdMap.put(scene.getSceneName(), scene.getSceneId());
         }
 
+        Map<String, String> characterNameById = buildCharacterNameById(characterIdMap);
         int duration = normalizeShotDuration(setting != null ? setting.getDefaultShotDuration() : null);
         index = 1;
         AiVideoShotPo previousShot = null;
@@ -1079,6 +1080,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setVoiceOver(item.voiceOver);
             shot.setEmotion(item.emotion);
             shot.setPromptText(item.promptText);
+            normalizePreviousCharacterContinuity(shot, previousShot, characterNameById);
             shot.setConfirmStatus(CONFIRM_PENDING);
             shot.setGenerationStatus(CONFIRM_PENDING);
             shot.setSortOrder(index++);
@@ -1161,6 +1163,131 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             return "蒙太奇转场进入当前镜头。";
         }
         return "插入镜头，不按上一尾帧做连续衔接。";
+    }
+
+    private void normalizePreviousCharacterContinuity(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                       Map<String, String> characterNameById) {
+        if (shot == null || previousShot == null
+                || !Objects.equals(shot.getSceneId(), previousShot.getSceneId())
+                || isTransitionBreak(shot.getTransitionBeforeType())) {
+            return;
+        }
+        List<String> previousCharacters = parseCharacterTokens(previousShot.getCharacterIds());
+        if (previousCharacters.isEmpty()) {
+            return;
+        }
+        List<String> currentCharacters = parseCharacterTokens(shot.getCharacterIds());
+        String shotText = collectShotPoText(shot);
+        List<String> missingNames = new ArrayList<>();
+        for (String previousCharacter : previousCharacters) {
+            String previousName = characterName(previousCharacter, characterNameById);
+            if (!StringUtils.hasText(previousName)
+                    || containsCharacter(currentCharacters, previousCharacter, previousName)
+                    || isOffscreenCharacterMention(shotText, previousName)) {
+                continue;
+            }
+            missingNames.add(previousName);
+        }
+        if (missingNames.isEmpty()) {
+            return;
+        }
+
+        String currentNames = currentCharacters.stream()
+                .map(character -> characterName(character, characterNameById))
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("、"));
+        if (!StringUtils.hasText(currentNames)) {
+            currentNames = "当前核心角色";
+        }
+        String missingText = String.join("、", missingNames);
+        shot.setActionDesc(normalizeVagueOffscreenReferences(shot.getActionDesc(), missingNames));
+        shot.setTransitionBeforeDesc(appendIfMissing(shot.getTransitionBeforeDesc(),
+                "同场景单人/插入镜头衔接：上一镜角色" + missingText
+                        + "仍在同一场景画外右侧/近旁，不入画；本镜只拍" + currentNames + "单人反应。"));
+        shot.setPromptText(appendIfMissing(shot.getPromptText(),
+                "本镜画内只出现" + currentNames + "；" + missingText
+                        + "在画外右侧/近旁不入画，禁止生成未绑定人物。"));
+    }
+
+    private Map<String, String> buildCharacterNameById(Map<String, Long> characterIdMap) {
+        if (characterIdMap == null || characterIdMap.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Long> entry : characterIdMap.entrySet()) {
+            if (StringUtils.hasText(entry.getKey()) && entry.getValue() != null) {
+                result.put(String.valueOf(entry.getValue()), entry.getKey().trim());
+            }
+        }
+        return result;
+    }
+
+    private String normalizeVagueOffscreenReferences(String actionDesc, List<String> missingNames) {
+        String target = String.join("、", missingNames);
+        String positionedTarget = "画外右侧的" + target;
+        String result = StringUtils.hasText(actionDesc) ? actionDesc.trim() : "";
+        if (StringUtils.hasText(result)) {
+            result = result.replace("画外的同伴", positionedTarget)
+                    .replace("画外同伴", positionedTarget)
+                    .replace("画外两人", positionedTarget)
+                    .replace("画外三人", positionedTarget)
+                    .replace("旁边的人", positionedTarget)
+                    .replace("看着两人", "看向" + positionedTarget)
+                    .replace("看向两人", "看向" + positionedTarget)
+                    .replace("望向两人", "望向" + positionedTarget)
+                    .replace("与两人对视", "与" + positionedTarget + "对视")
+                    .replace("与同伴对视", "与" + positionedTarget + "对视")
+                    .replace("和同伴对视", "与" + positionedTarget + "对视")
+                    .replace("看向同伴", "看向" + positionedTarget)
+                    .replace("望向同伴", "望向" + positionedTarget)
+                    .replace("回应同伴", "回应" + positionedTarget);
+        }
+        if (!StringUtils.hasText(result)) {
+            return target + "在画外右侧近旁不入画。";
+        }
+        boolean containsMissingName = missingNames.stream().anyMatch(result::contains);
+        if (containsMissingName) {
+            return result;
+        }
+        return appendIfMissing(result, target + "在画外右侧近旁不入画。");
+    }
+
+    private String appendIfMissing(String value, String note) {
+        if (!StringUtils.hasText(note)) {
+            return value;
+        }
+        if (!StringUtils.hasText(value)) {
+            return note;
+        }
+        String trimmed = value.trim();
+        return trimmed.contains(note) ? trimmed : trimmed + " " + note;
+    }
+
+    private String collectShotPoText(AiVideoShotPo shot) {
+        if (shot == null) {
+            return "";
+        }
+        return firstText(shot.getActionDesc(), "") + "\n"
+                + firstText(shot.getPromptText(), "") + "\n"
+                + firstText(shot.getDialogue(), "") + "\n"
+                + firstText(shot.getVoiceOver(), "") + "\n"
+                + firstText(shot.getTransitionBeforeDesc(), "");
+    }
+
+    private String characterName(String characterToken, Map<String, String> characterNameById) {
+        if (!StringUtils.hasText(characterToken)) {
+            return "";
+        }
+        String token = characterToken.trim();
+        return characterNameById != null ? firstText(characterNameById.get(token), token) : token;
+    }
+
+    private boolean containsCharacter(List<String> characterTokens, String characterId, String characterName) {
+        if (characterTokens == null || characterTokens.isEmpty()) {
+            return false;
+        }
+        return characterTokens.stream().anyMatch(token -> Objects.equals(token, characterId)
+                || (StringUtils.hasText(characterName) && Objects.equals(token, characterName)));
     }
 
     private String normalizeTransitionEffect(String value, String transitionBeforeType) {
@@ -1737,7 +1864,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "29. 多人关系镜头必须写屏幕方向、视线关系和运动方向：例如“喵小萌固定在画面左侧看向右侧狗小汪，狗小汪从画面右侧向左侧靠近喵小萌”；禁止只写“靠近她/走过去/看向旁边”。\n"
                 + "30. 上一镜已经建立的画面左侧/右侧关系，下一镜同场景必须继承；如确实换轴、绕场、反打或重新调度，transitionBeforeDesc 必须写清“换轴/反打/重新建立站位”，不能让角色左右随机跳变。\n"
                 + "31. 当当前镜头从多人同框切单人反应，仍必须交代其他上一镜角色是否在画外、在哪一侧、是否只露局部；例如“狗小汪仍在画面右侧近旁，仅露肩和手”。\n"
-                + "32. 错误示例：上一镜喵小萌左、狗小汪右，下一镜只写“狗小汪凑近喵小萌”导致喵小萌消失。正确示例：“当前镜头在场角色：2人，喵小萌左、狗小汪右，狗小汪从右侧向左侧凑近喵小萌”。\n\n"
+                + "32. 错误示例：上一镜喵小萌左、狗小汪右，下一镜只写“狗小汪凑近喵小萌”导致喵小萌消失。正确示例：“当前镜头在场角色：2人，喵小萌左、狗小汪右，狗小汪从右侧向左侧凑近喵小萌”。\n"
+                + "32A. 禁止使用“同伴/对方/两人/三人/旁边的人/画外同伴/画外两人/她/他”代替角色名；凡是对视、看向、回应、靠近、交接，都必须点名角色姓名及画内/画外状态。\n"
+                + "32B. 如果 characterNames 只有一个角色但动作涉及对视/看着/靠近/交接/回应/同伴/两人，必须写清其他角色姓名与画外/局部/离场状态；否则必须把该角色加入 characterNames。\n\n"
                 + "33. 每个分镜必须输出 transitionBeforeType、transitionBeforeDesc、transitionEffect、stitchGroupNo。transitionBeforeType 只能取 OPENING、CONTINUE、SCENE_CUT、TIME_JUMP、MONTAGE、INSERT。\n"
                 + "34. 只有 CONTINUE 才强制使用上一镜尾帧；SCENE_CUT/TIME_JUMP/MONTAGE/INSERT 是明确转场，不要求视频生成阶段继承上一尾帧。\n"
                 + "35. 当 sceneName 与上一镜不同，transitionBeforeType 必须写 SCENE_CUT，并在 transitionBeforeDesc 写清“上一场景 -> 当前场景”；不要把切场伪装成连续动作。\n"
