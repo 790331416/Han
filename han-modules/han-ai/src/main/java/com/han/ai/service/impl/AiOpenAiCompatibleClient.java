@@ -145,14 +145,14 @@ class AiOpenAiCompatibleClient {
     }
 
     VideoGenerationResult videoGeneration(AiModelPo model, String apiKey, String prompt, List<String> referenceImageUrls,
-                                          String referenceVideoUrl, String referenceAudioUrl,
+                                          String referenceVideoUrl, List<String> referenceAudioUrls,
                                           Integer durationSec, String ratio, String resolution,
                                           Boolean returnLastFrame, Boolean generateAudio,
                                           Boolean referenceImageAsFirstFrame) {
         List<String> references = normalizeImageReferences(referenceImageUrls);
         validateVideoArguments(model, apiKey, prompt, references);
         VideoGenerationRequest payload = buildVideoRequest(model, prompt, references, referenceVideoUrl,
-                referenceAudioUrl, durationSec, ratio, resolution,
+                referenceAudioUrls, durationSec, ratio, resolution,
                 returnLastFrame, generateAudio, referenceImageAsFirstFrame);
         URI requestUri = buildContentGenerationTasksUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
@@ -306,21 +306,22 @@ class AiOpenAiCompatibleClient {
     }
 
     private VideoGenerationRequest buildVideoRequest(AiModelPo model, String prompt, List<String> referenceImageUrls,
-                                                     String referenceVideoUrl, String referenceAudioUrl,
+                                                     String referenceVideoUrl, List<String> referenceAudioUrls,
                                                      Integer durationSec, String ratio, String resolution,
                                                      Boolean returnLastFrame, Boolean generateAudio,
                                                      Boolean referenceImageAsFirstFrame) {
         VideoGenerationRequest request = new VideoGenerationRequest();
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
+        List<String> normalizedReferenceAudioUrls = normalizeAudioReferences(referenceAudioUrls);
         boolean includeReferenceVideo = StringUtils.hasText(referenceVideoUrl) && supportsReferenceVideo(model);
-        boolean includeReferenceAudio = StringUtils.hasText(referenceAudioUrl) && supportsReferenceAudio(model);
+        boolean includeReferenceAudio = normalizedReferenceAudioUrls != null && supportsReferenceAudio(model);
         request.content.add(VideoContentPart.text(buildVideoPromptWithCompatibilityNote(
-                prompt, referenceVideoUrl, referenceAudioUrl, includeReferenceVideo, includeReferenceAudio
+                prompt, referenceVideoUrl, normalizedReferenceAudioUrls, includeReferenceVideo, includeReferenceAudio
         )));
         boolean firstFrameMode = useFirstFrameMode(referenceImageUrls,
                 includeReferenceVideo ? referenceVideoUrl : null,
-                includeReferenceAudio ? referenceAudioUrl : null,
+                includeReferenceAudio ? normalizedReferenceAudioUrls : null,
                 referenceImageAsFirstFrame);
         for (int i = 0; i < referenceImageUrls.size(); i++) {
             request.content.add(VideoContentPart.image(referenceImageUrls.get(i),
@@ -330,23 +331,45 @@ class AiOpenAiCompatibleClient {
             request.content.add(VideoContentPart.video(referenceVideoUrl, "reference_video"));
         }
         if (includeReferenceAudio) {
-            request.content.add(VideoContentPart.audio(referenceAudioUrl, "reference_audio"));
+            for (String referenceAudioUrl : normalizedReferenceAudioUrls) {
+                request.content.add(VideoContentPart.audio(referenceAudioUrl, "reference_audio"));
+            }
         }
         request.duration = normalizeVideoDuration(durationSec);
         request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
         request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
         request.returnLastFrame = returnLastFrame == null || Boolean.TRUE.equals(returnLastFrame);
-        request.generateAudio = shouldGenerateAudio(generateAudio, referenceAudioUrl, includeReferenceAudio);
+        request.generateAudio = shouldGenerateAudio(generateAudio, normalizedReferenceAudioUrls, includeReferenceAudio);
         return request;
     }
 
-    private boolean useFirstFrameMode(List<String> referenceImageUrls, String referenceVideoUrl, String referenceAudioUrl,
+    private List<String> normalizeAudioReferences(List<String> referenceAudioUrls) {
+        if (referenceAudioUrls == null || referenceAudioUrls.isEmpty()) {
+            return null;
+        }
+        List<String> references = new ArrayList<>();
+        for (String referenceAudioUrl : referenceAudioUrls) {
+            if (!StringUtils.hasText(referenceAudioUrl)) {
+                continue;
+            }
+            String trimmed = referenceAudioUrl.trim();
+            if (!references.contains(trimmed)) {
+                references.add(trimmed);
+            }
+            if (references.size() >= 3) {
+                break;
+            }
+        }
+        return references.isEmpty() ? null : references;
+    }
+
+    private boolean useFirstFrameMode(List<String> referenceImageUrls, String referenceVideoUrl, List<String> referenceAudioUrls,
                                       Boolean referenceImageAsFirstFrame) {
         return Boolean.TRUE.equals(referenceImageAsFirstFrame)
                 && referenceImageUrls != null
                 && referenceImageUrls.size() == 1
                 && !StringUtils.hasText(referenceVideoUrl)
-                && !StringUtils.hasText(referenceAudioUrl);
+                && (referenceAudioUrls == null || referenceAudioUrls.isEmpty());
     }
 
     private boolean supportsReferenceVideo(AiModelPo model) {
@@ -370,14 +393,14 @@ class AiOpenAiCompatibleClient {
     }
 
     private String buildVideoPromptWithCompatibilityNote(String prompt, String referenceVideoUrl,
-                                                         String referenceAudioUrl,
+                                                         List<String> referenceAudioUrls,
                                                          boolean includeReferenceVideo,
                                                          boolean includeReferenceAudio) {
         List<String> notes = new ArrayList<>();
         if (StringUtils.hasText(referenceVideoUrl) && !includeReferenceVideo) {
             notes.add("当前模型不支持 reference_video/r2v，已自动降级为首帧/参考图生视频；必须以已传入图片作为视觉锚点承接上一镜，不得发明新的起始画面。");
         }
-        if (StringUtils.hasText(referenceAudioUrl) && !includeReferenceAudio) {
+        if (referenceAudioUrls != null && !referenceAudioUrls.isEmpty() && !includeReferenceAudio) {
             notes.add("当前模型不支持 reference_audio，已不传入参考音频；如需强一致声线，请切换到 Seedance 2.0 参考音频模式。");
         }
         if (notes.isEmpty()) {
@@ -386,11 +409,11 @@ class AiOpenAiCompatibleClient {
         return prompt + "\n\n## 模型兼容降级\n- " + String.join("\n- ", notes);
     }
 
-    private boolean shouldGenerateAudio(Boolean generateAudio, String referenceAudioUrl, boolean includeReferenceAudio) {
+    private boolean shouldGenerateAudio(Boolean generateAudio, List<String> referenceAudioUrls, boolean includeReferenceAudio) {
         if (!Boolean.TRUE.equals(generateAudio)) {
             return false;
         }
-        if (StringUtils.hasText(referenceAudioUrl) && !includeReferenceAudio) {
+        if (referenceAudioUrls != null && !referenceAudioUrls.isEmpty() && !includeReferenceAudio) {
             return false;
         }
         return true;

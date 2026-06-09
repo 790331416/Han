@@ -54,7 +54,7 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
         String prompt = resolvePrompt(request);
         AiOpenAiCompatibleClient.VideoGenerationResult result = openAiCompatibleClient.videoGeneration(
                 model, apiKey, prompt, resolveReferenceImageUrls(request), request.getReferenceVideoUrl(),
-                request.getReferenceAudioUrl(), request.getDurationSec(),
+                resolveReferenceAudioUrls(request), request.getDurationSec(),
                 request.getRatio(), request.getResolution(), request.getReturnLastFrame(), request.getGenerateAudio(),
                 request.getReferenceImageAsFirstFrame());
 
@@ -84,6 +84,27 @@ public class AiVideoGenerationServiceImpl extends AiServiceSupport implements IA
     }
 
     private void addReferenceImageUrl(List<String> references, String url) {
+        if (!StringUtils.hasText(url)) {
+            return;
+        }
+        String trimmed = url.trim();
+        if (!references.contains(trimmed)) {
+            references.add(trimmed);
+        }
+    }
+
+    private List<String> resolveReferenceAudioUrls(AiVideoGenerateRequest request) {
+        List<String> references = new ArrayList<>();
+        if (request.getReferenceAudioUrls() != null) {
+            for (String url : request.getReferenceAudioUrls()) {
+                addReferenceAudioUrl(references, url);
+            }
+        }
+        addReferenceAudioUrl(references, request.getReferenceAudioUrl());
+        return references;
+    }
+
+    private void addReferenceAudioUrl(List<String> references, String url) {
         if (!StringUtils.hasText(url)) {
             return;
         }

@@ -46,6 +46,8 @@ public class AiVideoGenerateRequest implements Serializable {
 
     private String referenceAudioUrl;
 
+    private List<String> referenceAudioUrls;
+
     private Boolean returnLastFrame;
 
     private Boolean generateAudio;

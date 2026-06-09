@@ -77,6 +77,41 @@ class AiOpenAiCompatibleClientTest {
         assertEquals(true, readBooleanField(request, "generateAudio"));
     }
 
+    @Test
+    void videoRequestKeepsUpToThreeReferenceAudiosForSeedance20() throws Exception {
+        Object request = buildVideoRequest("doubao-seedance-2-0-pro",
+                List.of("https://example.com/tail.png"),
+                null,
+                List.of(
+                        "https://example.com/voice-a.wav",
+                        "https://example.com/voice-b.wav",
+                        "https://example.com/voice-a.wav",
+                        "https://example.com/voice-c.wav",
+                        "https://example.com/voice-d.wav"
+                ),
+                true,
+                true);
+
+        assertEquals(List.of("reference_audio", "reference_audio", "reference_audio"),
+                rolesOfType(request, "audio_url"));
+        assertEquals(List.of("reference_image"), imageRolesOf(request));
+        assertEquals(true, readBooleanField(request, "generateAudio"));
+    }
+
+    @Test
+    void videoRequestDropsMultipleReferenceAudiosForSeedance15() throws Exception {
+        Object request = buildVideoRequest("doubao-seedance-1-5-pro",
+                List.of("https://example.com/tail.png"),
+                null,
+                List.of("https://example.com/voice-a.wav", "https://example.com/voice-b.wav"),
+                true,
+                true);
+
+        assertEquals(List.of("first_frame"), imageRolesOf(request));
+        assertFalse(contentTypesOf(request).contains("audio_url"));
+        assertEquals(false, readBooleanField(request, "generateAudio"));
+    }
+
     private Object buildVideoRequest(List<String> referenceImageUrls, String referenceVideoUrl,
                                      String referenceAudioUrl, Boolean referenceImageAsFirstFrame) throws Exception {
         return buildVideoRequest("doubao-seedance-test", referenceImageUrls, referenceVideoUrl,
@@ -88,11 +123,24 @@ class AiOpenAiCompatibleClientTest {
                                      Boolean referenceImageAsFirstFrame) throws Exception {
         AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
         Method method = AiOpenAiCompatibleClient.class.getDeclaredMethod("buildVideoRequest",
-                AiModelPo.class, String.class, List.class, String.class, String.class,
+                AiModelPo.class, String.class, List.class, String.class, List.class,
                 Integer.class, String.class, String.class, Boolean.class, Boolean.class, Boolean.class);
         method.setAccessible(true);
         return method.invoke(client, model(modelCode), "test prompt", referenceImageUrls, referenceVideoUrl,
-                referenceAudioUrl, 5, "9:16", "720p", true, generateAudio, referenceImageAsFirstFrame);
+                referenceAudioUrl == null ? null : List.of(referenceAudioUrl),
+                5, "9:16", "720p", true, generateAudio, referenceImageAsFirstFrame);
+    }
+
+    private Object buildVideoRequest(String modelCode, List<String> referenceImageUrls, String referenceVideoUrl,
+                                     List<String> referenceAudioUrls, Boolean generateAudio,
+                                     Boolean referenceImageAsFirstFrame) throws Exception {
+        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
+        Method method = AiOpenAiCompatibleClient.class.getDeclaredMethod("buildVideoRequest",
+                AiModelPo.class, String.class, List.class, String.class, List.class,
+                Integer.class, String.class, String.class, Boolean.class, Boolean.class, Boolean.class);
+        method.setAccessible(true);
+        return method.invoke(client, model(modelCode), "test prompt", referenceImageUrls, referenceVideoUrl,
+                referenceAudioUrls, 5, "9:16", "720p", true, generateAudio, referenceImageAsFirstFrame);
     }
 
     private AiModelPo model(String modelCode) {
