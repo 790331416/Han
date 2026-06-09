@@ -5,6 +5,7 @@ import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
+import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.vo.AivideoProjectEditClipVo;
 import com.han.aivideo.domain.vo.AivideoProjectEditPreflightVo;
@@ -12,6 +13,7 @@ import com.han.aivideo.enums.AivideoTaskStatus;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
+import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.aivideo.service.AivideoDirectEditProvider;
 import com.han.aivideo.service.IAivideoProjectEditService;
@@ -48,6 +50,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     private static final String STATUS_SELECTED = "SELECTED";
 
     private final AiVideoProjectMapper projectMapper;
+    private final AiVideoProjectSettingMapper settingMapper;
     private final AiVideoShotMapper shotMapper;
     private final AiVideoMediaAssetMapper mediaAssetMapper;
     private final AiVideoGenerationTaskMapper taskMapper;
@@ -55,12 +58,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     private final String publicOrigin;
 
     public AivideoProjectEditServiceImpl(AiVideoProjectMapper projectMapper,
+                                         AiVideoProjectSettingMapper settingMapper,
                                          AiVideoShotMapper shotMapper,
                                          AiVideoMediaAssetMapper mediaAssetMapper,
                                          AiVideoGenerationTaskMapper taskMapper,
                                          AivideoDirectEditProvider directEditProvider,
                                          @Value("${han.aivideo.media.public-file-origin:${aivideo.public-origin:${HAN_AIVIDEO_MEDIA_PUBLIC_FILE_ORIGIN:${AIVIDEO_PUBLIC_ORIGIN:}}}}") String publicOrigin) {
         this.projectMapper = projectMapper;
+        this.settingMapper = settingMapper;
         this.shotMapper = shotMapper;
         this.mediaAssetMapper = mediaAssetMapper;
         this.taskMapper = taskMapper;
@@ -260,7 +265,18 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
 
     private String buildDirectEditParam(AiVideoProjectPo project, AivideoProjectEditPreflightVo preflight,
                                         String videoName, boolean includeAudio, String uploader) {
-        int[] canvas = resolveCanvas(project.getDefaultRatio());
+        AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
+        AiVideoProjectSettingPo globalSetting = selectGlobalSetting(project.getTenantId());
+        String ratio = firstText(
+                projectSetting != null ? projectSetting.getDefaultRatio() : null,
+                globalSetting != null ? globalSetting.getDefaultRatio() : null,
+                project.getDefaultRatio(),
+                "9:16");
+        String resolution = firstText(
+                projectSetting != null ? projectSetting.getDefaultResolution() : null,
+                globalSetting != null ? globalSetting.getDefaultResolution() : null,
+                "720p");
+        int[] canvas = resolveCanvas(ratio, resolution);
         List<Map<String, Object>> videoTrack = new ArrayList<>();
         for (AivideoProjectEditClipVo clip : preflight.getClips()) {
             Map<String, Object> element = new LinkedHashMap<>();
@@ -336,8 +352,13 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
         String outputVid = firstText(result.outputVid());
         String playUrl = "";
+        String playUrlError = "";
         if (StringUtils.hasText(outputVid) && directEditProvider != null) {
-            playUrl = firstText(directEditProvider.playUrl(outputVid));
+            try {
+                playUrl = firstText(directEditProvider.playUrl(outputVid));
+            } catch (RuntimeException exception) {
+                playUrlError = firstText(exception.getMessage());
+            }
         }
         media.setProjectId(project.getProjectId());
         media.setTenantId(project.getTenantId());
@@ -347,13 +368,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         media.setFileUrl(firstText(playUrl, StringUtils.hasText(outputVid) ? "vod://" + outputVid : ""));
         media.setTaskId(task.getTaskId());
         media.setPromptText(task.getPromptText());
-        media.setParamsJson(XuJsonUtil.toJsonString(Map.of(
-                "providerTaskId", firstText(result.reqId(), task.getProviderTaskId()),
-                "providerStatus", firstText(result.status()),
-                "providerMessage", firstText(result.message()),
-                "outputVid", outputVid,
-                "playUrl", playUrl
-        )));
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("providerTaskId", firstText(result.reqId(), task.getProviderTaskId()));
+        params.put("providerStatus", firstText(result.status()));
+        params.put("providerMessage", firstText(result.message()));
+        params.put("outputVid", outputVid);
+        params.put("playUrl", playUrl);
+        params.put("playUrlError", playUrlError);
+        media.setParamsJson(XuJsonUtil.toJsonString(params));
         media.setCandidateNo(1);
         media.setSelected(YES);
         media.setAssetStatus(STATUS_SELECTED);
@@ -420,15 +442,69 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
-    private int[] resolveCanvas(String ratio) {
+    private AiVideoProjectSettingPo selectProjectSetting(Long projectId) {
+        if (settingMapper == null || projectId == null) {
+            return null;
+        }
+        return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                .eq(AiVideoProjectSettingPo::getProjectId, projectId)
+                .last("limit 1"));
+    }
+
+    private AiVideoProjectSettingPo selectGlobalSetting(Long tenantId) {
+        if (settingMapper == null) {
+            return null;
+        }
+        if (tenantId != null && tenantId > 0) {
+            AiVideoProjectSettingPo tenantSetting = settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                    .isNull(AiVideoProjectSettingPo::getProjectId)
+                    .eq(AiVideoProjectSettingPo::getTenantId, tenantId)
+                    .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                    .orderByDesc(AiVideoProjectSettingPo::getSettingId)
+                    .last("limit 1"));
+            if (tenantSetting != null) {
+                return tenantSetting;
+            }
+        }
+        return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
+                .isNull(AiVideoProjectSettingPo::getProjectId)
+                .and(q -> q.eq(AiVideoProjectSettingPo::getTenantId, 0L)
+                        .or().isNull(AiVideoProjectSettingPo::getTenantId))
+                .orderByDesc(AiVideoProjectSettingPo::getUpdateTime)
+                .orderByDesc(AiVideoProjectSettingPo::getSettingId)
+                .last("limit 1"));
+    }
+
+    private int[] resolveCanvas(String ratio, String resolution) {
         String value = firstText(ratio, "9:16").trim();
+        int shortEdge = resolveShortEdge(resolution);
+        int longEdge = normalizeEven(shortEdge * 16.0 / 9.0);
         if ("16:9".equals(value)) {
-            return new int[]{1920, 1080};
+            return new int[]{longEdge, shortEdge};
         }
         if ("1:1".equals(value)) {
-            return new int[]{1080, 1080};
+            return new int[]{shortEdge, shortEdge};
         }
-        return new int[]{1080, 1920};
+        return new int[]{shortEdge, longEdge};
+    }
+
+    private int resolveShortEdge(String resolution) {
+        String value = firstText(resolution, "720p").toLowerCase(Locale.ROOT).trim();
+        if (value.contains("1080")) {
+            return 1080;
+        }
+        if (value.contains("480")) {
+            return 480;
+        }
+        if (value.contains("360")) {
+            return 360;
+        }
+        return 720;
+    }
+
+    private int normalizeEven(double value) {
+        int rounded = (int) Math.round(value);
+        return rounded % 2 == 0 ? rounded : rounded + 1;
     }
 
     private String sanitizeVideoName(String value) {

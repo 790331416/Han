@@ -1601,7 +1601,9 @@ CREATE TABLE ai_prompt_template (
     description   VARCHAR(500),
     built_in      INT             NOT NULL DEFAULT 0,
     status        CHAR(1)         NOT NULL DEFAULT '0',
+    create_by     VARCHAR(64)     DEFAULT '',
     create_time   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by     VARCHAR(64)     DEFAULT '',
     update_time   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 COMMENT ON TABLE ai_prompt_template IS 'Prompt模板表';
@@ -2554,6 +2556,64 @@ END $$;
 -- ============================================================
 -- source: postgres\gen\10-seed.sql
 -- ============================================================
+-- ============================================================
+-- source: postgres\aivideo\20260609-prompt-template-alignment.sql
+-- ============================================================
+-- AI短剧 Prompt 模板最终对齐，保持 clean full-init 与升级脚本一致。
+WITH hard_rules AS (
+    SELECT $rules$
+
+【20260609模板对齐硬规则】
+1. 道具交接硬锁：出现“递给/接过/展示给/交给/传给/拿给/递来/滚入/飘来/飞来/滑来”时，必须写清谁递给谁、什么道具、从画面哪边来、最后谁拿着；禁止“试卷飘过来”“接过某物”“展示给画外”这类无来源动作。
+2. 道具连续硬锁：关键道具必须写清道具颜色、材质、形状、尺寸、归属角色和镜头结束位置；下一镜继承同一颜色和归属。
+3. 方位/站位硬锁：上一镜背对、侧身、左/右站位、画内人数和视线方向必须继承；若下一镜要正面对话，必须写明转身、反打、换轴、重新建立站位或切场，否则视为不合格。
+4. 在场角色硬锁：同一场景/同一 stitchGroupNo 下，上一镜在画内的角色默认仍在当前镜，除非明确离场、画外、裁切、单人反应或插入镜头；不得无说明消失。
+5. 镜头衔接硬锁：CONTINUE 强制继承上一尾帧；SCENE_CUT/TIME_JUMP/MONTAGE 可新建场景；INSERT 是插入镜头/交接镜头，不强制继承上一尾帧，但必须交代和上一镜的动作关系。
+6. 素材策略硬锁：连续镜头如果使用上一尾帧，就不要混入角色图/场景图/参考音频；插入镜头/交接镜头可使用上一段视频、角色图、场景图、道具图和角色参考音频。
+7. 多角色声音硬锁：长期角色声线应使用 referenceAudioUrls，最多 3 段，单段 2-15 秒，总时长不超过 15 秒；超过 3 个发声角色时必须拆镜或改后期 TTS。
+8. 三轨声音硬锁：说出口的写 dialogue；旁白/画外音写 voiceOver；“脑海里闪过、想到、意识到、心里一动”等心理活动默认不朗读，只写 actionDesc/promptText/emotion。
+$rules$ AS block
+)
+UPDATE ai_prompt_template t
+SET content = CASE
+        WHEN t.content IS NULL OR btrim(t.content) = '' THEN hard_rules.block
+        ELSE rtrim(t.content) || hard_rules.block
+    END,
+    built_in = 1,
+    status = '0',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+FROM hard_rules
+WHERE t.template_name IN (
+    'AI短剧剧本生成',
+    'AI短剧资产提取',
+    'AI短剧角色构建',
+    'AI短剧场景设计',
+    'AI短剧分镜提取',
+    'AI短剧角色图生成',
+    'AI短剧场景图生成',
+    'AI短剧分镜视频生成'
+)
+AND COALESCE(t.content, '') NOT LIKE '%【20260609模板对齐硬规则】%';
+
+UPDATE ai_prompt_template
+SET variables = '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧分镜视频生成';
+
+UPDATE ai_prompt_template
+SET variables = '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText"]',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧分镜提取';
+
+UPDATE ai_prompt_template
+SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText"]',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧资产提取';
+
 -- 当前模块暂无独立初始化种子。
 -- 如后续新增预置数据，请在本文件补充。
 
