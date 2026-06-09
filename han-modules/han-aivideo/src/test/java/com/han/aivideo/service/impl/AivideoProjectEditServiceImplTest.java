@@ -129,6 +129,34 @@ class AivideoProjectEditServiceImplTest {
     }
 
     @Test
+    void editParamKeepsAbsoluteSelectedVideoWithoutPublicOrigin() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("剪辑测试");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        when(shotMapper.selectList(any())).thenReturn(List.of(approvedShot(11L, 1, 5, 101L)));
+        when(mediaAssetMapper.selectList(any())).thenReturn(List.of(
+                selectedVideo(101L, 11L, "https://media.scavengers.cn/file/public/static-rustfs/shot-1.mp4")
+        ));
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, shotMapper, mediaAssetMapper, taskMapper, null, null);
+
+        String editParam = service.buildDirectEditParamForTest(1L, "剪辑测试成片", true);
+
+        assertTrue(editParam.contains("\"Source\":\"https://media.scavengers.cn/file/public/static-rustfs/shot-1.mp4\""));
+    }
+
+    @Test
     void successfulPollStoresPlayableEditVideoUrlWhenVodReturnsOne() {
         AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
         AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
