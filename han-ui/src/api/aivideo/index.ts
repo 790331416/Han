@@ -211,6 +211,8 @@ export interface AivideoProjectEditClip {
   actionDesc?: string
   videoMediaId?: string | number
   videoUrl?: string
+  ttsAudioMediaId?: string | number
+  ttsAudioUrl?: string
   timelineStartMs?: number
   timelineEndMs?: number
 }
@@ -547,6 +549,18 @@ export function listAivideoMedia(query: {
   bizId?: string | number
 }) {
   return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query)
+}
+
+export function generateAivideoShotTtsAudio(data: {
+  projectId: string | number
+  shotId: string | number
+  text?: string
+  voiceType?: string
+  speedRatio?: number
+  volumeRatio?: number
+  pitchRatio?: number
+}) {
+  return post<AivideoMediaAsset>('/aivideo/studio/media/shot/tts/generate', data)
 }
 
 export function getAivideoProjectEditPreflight(projectId: string | number) {

@@ -2277,6 +2277,37 @@ $aivideo_shot_video$,
 'AI短剧分镜视频生成默认模板，补充音画三轨、角色一致性和场景连续性强约束', 1, '0'
 WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧分镜视频生成');
 
+INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
+SELECT NULL, 'AI短剧后期语音合成', 'aivideo_tts',
+$aivideo_tts$
+# AI短剧后期语音合成默认模板
+
+你是短剧后期配音导演。请基于单条分镜，只整理需要真正朗读的对白和旁白，不处理画面动作、心理活动和脑海闪回。
+
+## 核心规则
+1. 只合成说出口的 dialogue，以及明确需要播出的 voiceOver。
+2. “心声、内心、脑海里闪过、想到、意识到、心里一动、画面说明、动作描述”默认不朗读。
+3. 每句台词必须保留说话角色、情绪、语速、停顿建议和音色类型。
+4. 单个分镜音频必须贴合分镜时长，不得超出 {{durationSec}} 秒。
+5. 同一角色后续必须使用相同 voiceType 或角色声线参考，避免声线漂移。
+
+## 分镜信息
+- 项目：{{projectName}}
+- 镜头号：{{shotNo}}
+- 角色：{{characterName}}
+- 对白：{{dialogue}}
+- 旁白/画外音：{{voiceOver}}
+- 情绪：{{emotion}}
+- 推荐音色：{{voiceType}}
+- 镜头时长：{{durationSec}} 秒
+
+## 输出要求
+请输出可直接送入 TTS 的文本，不要加入动作说明、括号舞台说明、镜头说明或心理活动。
+$aivideo_tts$,
+'["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]',
+'AI短剧后期语音合成默认模板，区分说出口台词与心理活动', 1, '0'
+WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧后期语音合成');
+
 -- Keep clean full initialization aligned with 20260601 action-budget upgrade.
 UPDATE ai_prompt_template
 SET content = $aivideo_script$
@@ -2592,7 +2623,8 @@ WHERE t.template_name IN (
     'AI短剧分镜提取',
     'AI短剧角色图生成',
     'AI短剧场景图生成',
-    'AI短剧分镜视频生成'
+    'AI短剧分镜视频生成',
+    'AI短剧后期语音合成'
 )
 AND COALESCE(t.content, '') NOT LIKE '%【20260609模板对齐硬规则】%';
 

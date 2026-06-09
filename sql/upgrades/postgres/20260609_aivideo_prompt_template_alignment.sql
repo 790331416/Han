@@ -35,7 +35,8 @@ FROM (
     ('AI短剧分镜提取', 'aivideo_storyboard', '你是分镜导演。请把剧本拆为可执行镜头，输出镜头秒数、运镜、衔接/转场、动作、对白、旁白、心理活动、画内角色、场景、道具和尾帧状态。', '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText"]', 'AI短剧分镜提取默认模板'),
     ('AI短剧角色图生成', 'aivideo_image', '你是视频生成参考角色图设计师。请生成单角色主体完整、身份稳定、便于视频模型继承的角色参考图提示词。', '["projectName","style","ratio","characterName","characterProfile","referenceImages"]', 'AI短剧角色图生成默认模板'),
     ('AI短剧场景图生成', 'aivideo_image', '你是视频生成参考场景图设计师。请生成单镜头场景锚点图提示词，禁止人物、动物、身体部位和文字水印。', '["projectName","style","ratio","sceneName","sceneProfile","referenceImages"]', 'AI短剧场景图生成默认模板'),
-    ('AI短剧分镜视频生成', 'aivideo_video', '你是视频分镜导演。请输出给视频模型直接执行的提示词，锁定角色、场景、道具、动作节拍、衔接策略和声音策略。', '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]', 'AI短剧分镜视频生成默认模板')
+    ('AI短剧分镜视频生成', 'aivideo_video', '你是视频分镜导演。请输出给视频模型直接执行的提示词，锁定角色、场景、道具、动作节拍、衔接策略和声音策略。', '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]', 'AI短剧分镜视频生成默认模板'),
+    ('AI短剧后期语音合成', 'aivideo_tts', '你是短剧后期配音导演。请只提取需要真正朗读的对白和旁白，排除心理活动、画面说明、动作描述和脑海闪回；每句保留说话角色、情绪、语速和停顿建议。', '["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]', 'AI短剧后期语音合成默认模板')
 ) AS item(template_name, category, content, variables, description)
 WHERE NOT EXISTS (
     SELECT 1
@@ -75,7 +76,8 @@ WHERE t.template_name IN (
     'AI短剧分镜提取',
     'AI短剧角色图生成',
     'AI短剧场景图生成',
-    'AI短剧分镜视频生成'
+    'AI短剧分镜视频生成',
+    'AI短剧后期语音合成'
 )
 AND COALESCE(t.content, '') NOT LIKE '%【20260609模板对齐硬规则】%';
 
@@ -121,5 +123,59 @@ SET polish_prompt_template_id = COALESCE(s.polish_prompt_template_id, tpl.polish
     update_time = CURRENT_TIMESTAMP
 FROM tpl
 WHERE TRUE;
+
+WITH prompt_root AS (
+    SELECT id
+    FROM sys_menu
+    WHERE perms = 'ai:prompt:list'
+       OR (path = 'prompt' AND component = 'ai/prompt/index')
+    ORDER BY id
+    LIMIT 1
+),
+prompt_actions(menu_name, perms, sort_no) AS (
+    VALUES
+        ('Prompt模板查询', 'ai:prompt:query', 1),
+        ('Prompt模板新增', 'ai:prompt:add', 2),
+        ('Prompt模板编辑', 'ai:prompt:edit', 3),
+        ('Prompt模板删除', 'ai:prompt:remove', 4)
+)
+INSERT INTO sys_menu (
+    tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+    query, menu_type, visible, status, perms, icon, is_frame, is_cache
+)
+SELECT
+    NULL,
+    action.menu_name,
+    prompt_root.id,
+    '0,500,' || prompt_root.id,
+    action.sort_no,
+    '',
+    '',
+    NULL,
+    'F',
+    0,
+    0,
+    action.perms,
+    '',
+    1,
+    0
+FROM prompt_root
+CROSS JOIN prompt_actions action
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM sys_menu existing
+    WHERE existing.perms = action.perms
+);
+
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT role.id, menu.id
+FROM sys_role role
+CROSS JOIN sys_menu menu
+WHERE (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
+  AND (
+      menu.perms IN ('ai:prompt:list', 'ai:prompt:query', 'ai:prompt:add', 'ai:prompt:edit', 'ai:prompt:remove')
+      OR (menu.path = 'prompt' AND menu.component = 'ai/prompt/index')
+  )
+ON CONFLICT DO NOTHING;
 
 COMMIT;

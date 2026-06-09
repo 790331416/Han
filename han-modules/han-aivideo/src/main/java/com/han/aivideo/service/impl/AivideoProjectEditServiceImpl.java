@@ -44,6 +44,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
 
     private static final String CONFIRM_APPROVED = "APPROVED";
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
+    private static final String ASSET_SHOT_TTS_AUDIO = "SHOT_TTS_AUDIO";
     private static final String ASSET_PROJECT_EDIT_VIDEO = "PROJECT_EDIT_VIDEO";
     private static final String TASK_PROJECT_EDIT_VIDEO = "PROJECT_EDIT_VIDEO";
     private static final String BIZ_SHOT = "SHOT";
@@ -178,10 +179,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     private AivideoProjectEditPreflightVo buildPreflight(AiVideoProjectPo project) {
         List<AiVideoShotPo> shots = selectApprovedShots(project.getProjectId());
         List<AiVideoMediaAssetPo> selectedVideos = selectSelectedShotVideos(project.getProjectId());
+        List<AiVideoMediaAssetPo> selectedTtsAudios = selectSelectedShotTtsAudios(project.getProjectId());
         Map<Long, AiVideoMediaAssetPo> selectedByMediaId = selectedVideos.stream()
                 .filter(media -> media.getMediaId() != null)
                 .collect(Collectors.toMap(AiVideoMediaAssetPo::getMediaId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
         Map<Long, AiVideoMediaAssetPo> selectedByShotId = selectedVideos.stream()
+                .filter(media -> media.getBizId() != null)
+                .collect(Collectors.toMap(AiVideoMediaAssetPo::getBizId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
+        Map<Long, AiVideoMediaAssetPo> selectedTtsByShotId = selectedTtsAudios.stream()
                 .filter(media -> media.getBizId() != null)
                 .collect(Collectors.toMap(AiVideoMediaAssetPo::getBizId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
 
@@ -224,6 +229,17 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 continue;
             }
             clip.setVideoUrl(videoUrl);
+            AiVideoMediaAssetPo ttsAudio = selectedTtsByShotId.get(shot.getShotId());
+            if (ttsAudio != null && StringUtils.hasText(ttsAudio.getFileUrl())) {
+                String ttsAudioUrl = toPublicUrl(ttsAudio.getFileUrl());
+                if (!isSupportedDirectEditSourceUrl(ttsAudioUrl)) {
+                    preflight.getErrors().add("Shot " + firstInteger(shot.getShotNo(), 0)
+                            + " selected TTS audio is not a public URL");
+                    continue;
+                }
+                clip.setTtsAudioMediaId(ttsAudio.getMediaId());
+                clip.setTtsAudioUrl(ttsAudioUrl);
+            }
             clip.setTimelineStartMs(cursorMs);
             cursorMs += durationSec * 1000;
             clip.setTimelineEndMs(cursorMs);
@@ -260,13 +276,29 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     }
 
     private List<AiVideoMediaAssetPo> selectSelectedShotVideos(Long projectId) {
+        return selectSelectedShotMediaAssets(projectId, ASSET_SHOT_VIDEO);
+    }
+
+    private List<AiVideoMediaAssetPo> selectSelectedShotTtsAudios(Long projectId) {
+        return selectSelectedShotMediaAssets(projectId, ASSET_SHOT_TTS_AUDIO);
+    }
+
+    private List<AiVideoMediaAssetPo> selectSelectedShotMediaAssets(Long projectId, String assetType) {
         List<AiVideoMediaAssetPo> medias = mediaAssetMapper.selectList(new LambdaQueryWrapper<AiVideoMediaAssetPo>()
                 .eq(AiVideoMediaAssetPo::getProjectId, projectId)
-                .eq(AiVideoMediaAssetPo::getAssetType, ASSET_SHOT_VIDEO)
+                .eq(AiVideoMediaAssetPo::getAssetType, assetType)
                 .eq(AiVideoMediaAssetPo::getBizType, BIZ_SHOT)
                 .eq(AiVideoMediaAssetPo::getSelected, YES)
                 .eq(AiVideoMediaAssetPo::getDelFlag, DEL_FLAG_NORMAL));
-        return medias == null ? new ArrayList<>() : medias;
+        if (medias == null) {
+            return new ArrayList<>();
+        }
+        return medias.stream()
+                .filter(media -> assetType.equals(media.getAssetType()))
+                .filter(media -> BIZ_SHOT.equals(media.getBizType()))
+                .filter(media -> YES.equals(media.getSelected()))
+                .filter(media -> Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     private String buildDirectEditParam(AiVideoProjectPo project, AivideoProjectEditPreflightVo preflight,
@@ -284,6 +316,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 "720p");
         int[] canvas = resolveCanvas(ratio, resolution);
         List<Map<String, Object>> videoTrack = new ArrayList<>();
+        List<Map<String, Object>> ttsAudioTrack = new ArrayList<>();
         for (AivideoProjectEditClipVo clip : preflight.getClips()) {
             Map<String, Object> element = new LinkedHashMap<>();
             element.put("ID", "shot_" + clip.getShotNo());
@@ -291,6 +324,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
             element.put("Type", "video");
             element.put("TargetTime", List.of(clip.getTimelineStartMs(), clip.getTimelineEndMs()));
             videoTrack.add(element);
+            if (includeAudio && StringUtils.hasText(clip.getTtsAudioUrl())) {
+                Map<String, Object> audio = new LinkedHashMap<>();
+                audio.put("ID", "shot_" + clip.getShotNo() + "_tts");
+                audio.put("Source", clip.getTtsAudioUrl());
+                audio.put("Type", "audio");
+                audio.put("TargetTime", List.of(clip.getTimelineStartMs(), clip.getTimelineEndMs()));
+                ttsAudioTrack.add(audio);
+            }
         }
         Map<String, Object> editParam = new LinkedHashMap<>();
         editParam.put("Canvas", Map.of("Width", canvas[0], "Height", canvas[1]));
@@ -307,7 +348,12 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                         "Preset", "slow"
                 )
         ));
-        editParam.put("Track", List.of(videoTrack));
+        List<List<Map<String, Object>>> tracks = new ArrayList<>();
+        tracks.add(videoTrack);
+        if (!ttsAudioTrack.isEmpty()) {
+            tracks.add(ttsAudioTrack);
+        }
+        editParam.put("Track", tracks);
         editParam.put("Upload", Map.of(
                 "SpaceName", uploader,
                 "VideoName", sanitizeVideoName(videoName),

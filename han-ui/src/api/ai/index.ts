@@ -478,7 +478,14 @@ export const providerOptions = [
 export const promptCategoryOptions = [
   { label: '系统提示词', value: 'system' },
   { label: '用户模板', value: 'user' },
-  { label: '助手模板', value: 'assistant' }
+  { label: '助手模板', value: 'assistant' },
+  { label: 'AIVideo 文本润色', value: 'aivideo_text' },
+  { label: 'AIVideo 剧本生成', value: 'aivideo_script' },
+  { label: 'AIVideo 资产提取', value: 'aivideo_asset' },
+  { label: 'AIVideo 分镜提取', value: 'aivideo_storyboard' },
+  { label: 'AIVideo 图片生成', value: 'aivideo_image' },
+  { label: 'AIVideo 视频生成', value: 'aivideo_video' },
+  { label: 'AIVideo 语音合成', value: 'aivideo_tts' }
 ]
 
 export const kbTypeOptions = [

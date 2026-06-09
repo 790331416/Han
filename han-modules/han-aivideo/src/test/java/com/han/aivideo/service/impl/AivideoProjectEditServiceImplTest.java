@@ -105,6 +105,51 @@ class AivideoProjectEditServiceImplTest {
     }
 
     @Test
+    void editParamMixesSelectedTtsAudioAssetsOnAlignedAudioTrack() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("edit-tts-test");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        when(shotMapper.selectList(any())).thenReturn(List.of(
+                approvedShot(11L, 1, 5, 101L),
+                approvedShot(12L, 2, 6, 102L)
+        ));
+        when(mediaAssetMapper.selectList(any()))
+                .thenReturn(List.of(
+                        selectedVideo(101L, 11L, "/file/public/aivideo/shot-1.mp4"),
+                        selectedVideo(102L, 12L, "/file/public/aivideo/shot-2.mp4")
+                ))
+                .thenReturn(List.of(
+                        selectedShotTtsAudio(201L, 11L, "/file/public/aivideo/tts-shot-1.mp3"),
+                        selectedShotTtsAudio(202L, 12L, "https://media.scavengers.cn/aivideo/tts-shot-2.mp3")
+                ));
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, null, shotMapper, mediaAssetMapper, taskMapper, null, "https://han.scavengers.cn");
+
+        String editParam = service.buildDirectEditParamForTest(1L, "edit-tts-test-final", true);
+
+        assertTrue(editParam.contains("\"ID\":\"shot_1_tts\""));
+        assertTrue(editParam.contains("\"ID\":\"shot_2_tts\""));
+        assertTrue(editParam.contains("\"Type\":\"audio\""));
+        assertTrue(editParam.contains("\"Source\":\"https://han.scavengers.cn/file/public/aivideo/tts-shot-1.mp3\""));
+        assertTrue(editParam.contains("\"Source\":\"https://media.scavengers.cn/aivideo/tts-shot-2.mp3\""));
+        assertTrue(editParam.contains("\"TargetTime\":[0,5000]"));
+        assertTrue(editParam.contains("\"TargetTime\":[5000,11000]"));
+        assertTrue(editParam.contains("\"Track\":[[{\"ID\":\"shot_1\""));
+        assertTrue(editParam.contains("}],[{\"ID\":\"shot_1_tts\""));
+    }
+
+    @Test
     void editParamUsesProjectSettingResolutionForLandscapeCanvas() {
         AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
         AiVideoProjectSettingMapper settingMapper = mock(AiVideoProjectSettingMapper.class);
@@ -311,6 +356,21 @@ class AivideoProjectEditServiceImplTest {
         media.setTenantId(9L);
         media.setMediaId(mediaId);
         media.setAssetType("SHOT_VIDEO");
+        media.setBizType("SHOT");
+        media.setBizId(shotId);
+        media.setFileUrl(fileUrl);
+        media.setSelected("1");
+        media.setAssetStatus("SELECTED");
+        media.setDelFlag(0);
+        return media;
+    }
+
+    private static AiVideoMediaAssetPo selectedShotTtsAudio(Long mediaId, Long shotId, String fileUrl) {
+        AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
+        media.setProjectId(1L);
+        media.setTenantId(9L);
+        media.setMediaId(mediaId);
+        media.setAssetType("SHOT_TTS_AUDIO");
         media.setBizType("SHOT");
         media.setBizId(shotId);
         media.setFileUrl(fileUrl);

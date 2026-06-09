@@ -12,6 +12,7 @@ import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
+import com.han.aivideo.domain.dto.AivideoShotTtsGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
@@ -27,6 +28,7 @@ import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoShotVideoService;
+import com.han.aivideo.service.IAivideoShotTtsService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -54,8 +56,9 @@ public class AivideoStudioController extends BAivideoStudioController {
     public AivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
                                    IAivideoSceneImageService sceneImageService,
                                    IAivideoShotVideoService shotVideoService,
+                                   IAivideoShotTtsService shotTtsService,
                                    IAivideoProjectEditService projectEditService) {
-        super(projectService, textService, sceneImageService, shotVideoService, projectEditService);
+        super(projectService, textService, sceneImageService, shotVideoService, shotTtsService, projectEditService);
     }
 
     @GetMapping("/project/list")
@@ -260,6 +263,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     public R<List<AiVideoGenerationTaskPo>> listShotVideoTaskHistory(@RequestParam Long projectId,
                                                                      @RequestParam Long shotId) {
         return listShotVideoTasks(projectId, shotId);
+    }
+
+    @PostMapping("/media/shot/tts/generate")
+    @PreAuthorize("@ss.isLogin()")
+    public R<com.han.aivideo.domain.po.AiVideoMediaAssetPo> generateShotTtsAudio(
+            @Valid @RequestBody AivideoShotTtsGenerateDto dto) {
+        return generateShotTts(dto);
     }
 
     @GetMapping("/edit/preflight")

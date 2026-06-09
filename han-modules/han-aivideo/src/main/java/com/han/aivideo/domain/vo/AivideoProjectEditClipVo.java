@@ -30,6 +30,10 @@ public class AivideoProjectEditClipVo {
 
     private String videoUrl;
 
+    private Long ttsAudioMediaId;
+
+    private String ttsAudioUrl;
+
     private Integer timelineStartMs;
 
     private Integer timelineEndMs;

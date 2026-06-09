@@ -11,10 +11,12 @@ import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
+import com.han.aivideo.domain.dto.AivideoShotTtsGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
+import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.query.AivideoProjectQuery;
 import com.han.aivideo.domain.vo.AivideoAssetSummaryVo;
@@ -27,6 +29,7 @@ import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
 import com.han.aivideo.service.IAivideoShotVideoService;
+import com.han.aivideo.service.IAivideoShotTtsService;
 import com.han.aivideo.service.IAivideoTextService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -45,16 +48,19 @@ public class BAivideoStudioController {
     private final IAivideoTextService textService;
     private final IAivideoSceneImageService sceneImageService;
     private final IAivideoShotVideoService shotVideoService;
+    private final IAivideoShotTtsService shotTtsService;
     private final IAivideoProjectEditService projectEditService;
 
     protected BAivideoStudioController(IAivideoProjectService projectService, IAivideoTextService textService,
                                        IAivideoSceneImageService sceneImageService,
                                        IAivideoShotVideoService shotVideoService,
+                                       IAivideoShotTtsService shotTtsService,
                                        IAivideoProjectEditService projectEditService) {
         this.projectService = projectService;
         this.textService = textService;
         this.sceneImageService = sceneImageService;
         this.shotVideoService = shotVideoService;
+        this.shotTtsService = shotTtsService;
         this.projectEditService = projectEditService;
     }
 
@@ -189,6 +195,10 @@ public class BAivideoStudioController {
 
     protected SseEmitter generateShotVideos(AivideoShotVideoGenerateDto dto) {
         return shotVideoService.generateShotVideosStream(dto);
+    }
+
+    protected R<AiVideoMediaAssetPo> generateShotTts(AivideoShotTtsGenerateDto dto) {
+        return R.ok(shotTtsService.generateShotTts(dto));
     }
 
     protected R<List<AiVideoGenerationTaskPo>> listShotVideoTasks(Long projectId, Long shotId) {

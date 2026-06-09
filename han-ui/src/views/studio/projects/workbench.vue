@@ -512,6 +512,9 @@
                       <el-tag v-if="shotAudioMediaId(row)" type="warning" effect="plain">
                         音频 #{{ shotAudioMediaId(row) }}
                       </el-tag>
+                      <el-tag v-if="shotTtsAudioMediaId(row)" type="warning" effect="dark">
+                        TTS #{{ shotTtsAudioMediaId(row) }}
+                      </el-tag>
                     </div>
                   </template>
                 </el-table-column>
@@ -540,6 +543,34 @@
                     </el-button>
                     <el-button size="small" type="primary" plain :icon="VideoCamera" @click="openShotVideoDrawer(row)">
                       视频
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="语音" name="tts">
+              <el-table :data="shots" border empty-text="暂无可配音分镜">
+                <el-table-column prop="shotNo" label="镜头" width="90" />
+                <el-table-column prop="durationSec" label="秒数" width="90" />
+                <el-table-column label="可合成文本" min-width="320">
+                  <template #default="{ row }">
+                    <div class="tts-asset-text">
+                      {{ defaultShotTtsText(row) || '暂无说出口的对白/旁白' }}
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="语音资产" width="150">
+                  <template #default="{ row }">
+                    <el-tag v-if="shotTtsAudioMediaId(row)" type="warning" effect="dark">
+                      TTS #{{ shotTtsAudioMediaId(row) }}
+                    </el-tag>
+                    <el-tag v-else type="info" effect="plain">未生成</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="180">
+                  <template #default="{ row }">
+                    <el-button size="small" type="primary" plain @click="openShotVideoDrawer(row)">
+                      生成/选择语音
                     </el-button>
                   </template>
                 </el-table-column>
@@ -1345,6 +1376,67 @@
           </ul>
         </section>
 
+        <section class="shot-tts-panel">
+          <div class="panel-title-row">
+            <div>
+              <strong>后期语音合成</strong>
+              <small>只合成“说出口”的台词；心理活动、脑海闪过、画面说明不要放进这里。</small>
+            </div>
+            <el-tag v-if="selectedShotTtsAudio" type="success" effect="plain">
+              已选 TTS #{{ selectedShotTtsAudio.mediaId }}
+            </el-tag>
+            <el-tag v-else type="info" effect="plain">未选 TTS</el-tag>
+          </div>
+          <el-input
+            v-model="shotTtsText"
+            type="textarea"
+            :rows="2"
+            maxlength="300"
+            show-word-limit
+            placeholder="填写本分镜要真正说出口的旁白/对白；如本镜无台词可留空"
+          />
+          <div class="shot-tts-actions">
+            <el-button
+              type="primary"
+              plain
+              :loading="shotTtsGenerating"
+              :disabled="shotTtsGenerating || !shotTtsText.trim()"
+              @click="handleGenerateShotTtsAudio"
+            >
+              生成本镜 TTS
+            </el-button>
+            <el-button :icon="Refresh" :loading="shotTtsGenerating" :disabled="shotTtsGenerating" @click="loadShotTtsAudios">
+              刷新音频
+            </el-button>
+          </div>
+          <div v-if="shotTtsAudios.length" class="shot-tts-list">
+            <article
+              v-for="item in shotTtsAudios"
+              :key="item.mediaId"
+              class="shot-tts-card"
+              :class="{ selected: item.selected === '1' }"
+            >
+              <audio v-if="referencePreviewUrls[String(item.mediaId)]" :src="referencePreviewUrls[String(item.mediaId)]" controls preload="metadata" />
+              <span v-else class="shot-tts-placeholder">音频加载中</span>
+              <div class="shot-tts-meta">
+                <el-tag :type="item.selected === '1' ? 'success' : 'info'" effect="plain">
+                  {{ item.selected === '1' ? '已选' : '候选' }}
+                </el-tag>
+                <span>TTS #{{ item.mediaId }}</span>
+              </div>
+              <el-button
+                size="small"
+                type="success"
+                :disabled="item.selected === '1'"
+                :loading="shotTtsSelectingIds.has(String(item.mediaId))"
+                @click="handleSelectShotTtsAudio(item)"
+              >
+                选择这条
+              </el-button>
+            </article>
+          </div>
+        </section>
+
         <div class="scene-image-actions">
           <el-button
             type="primary"
@@ -1449,6 +1541,7 @@ import {
   confirmAivideoPolish,
   confirmAivideoScript,
   generationStrategyOptions,
+  generateAivideoShotTtsAudio,
   generateAivideoProjectEdit,
   getAivideoProjectEditPreflight,
   getAivideoStudioTask,
@@ -1574,6 +1667,10 @@ const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
 const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
+const shotTtsAudios = ref<AivideoMediaAsset[]>([])
+const shotTtsText = ref('')
+const shotTtsGenerating = ref(false)
+const shotTtsSelectingIds = ref<Set<string>>(new Set())
 const shotManualReferenceMediaIdsByShotId = ref<Record<string, string[]>>({})
 const projectEditPreflight = ref<AivideoProjectEditPreflight>()
 const projectEditTasks = ref<AivideoTask[]>([])
@@ -1606,7 +1703,7 @@ const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
 const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
 const PROJECT_EDIT_POLL_INTERVAL = 5_000
-type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO'
+type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO' | 'SHOT_TTS_AUDIO'
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -1703,6 +1800,7 @@ const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.v
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
 const selectedShotScreenCharacterRule = computed(() => buildShotScreenCharacterRule(selectedShotForVideo.value))
+const selectedShotTtsAudio = computed(() => shotTtsAudios.value.find(isSelectedMediaAsset))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
 const shotVideoPreflightLevel = computed(() => {
   if (shotVideoPreflightItems.value.some((item) => item.status === 'fail')) {
@@ -1969,6 +2067,10 @@ function shotTailFrameMediaId(shot: AivideoShot) {
 
 function shotAudioMediaId(shot: AivideoShot) {
   return findShotMediaAsset(shot, 'SHOT_AUDIO')?.mediaId
+}
+
+function shotTtsAudioMediaId(shot: AivideoShot) {
+  return findShotMediaAsset(shot, 'SHOT_TTS_AUDIO')?.mediaId
 }
 
 function parseParamsJson(paramsJson?: string) {
@@ -2350,6 +2452,28 @@ function findCharactersByTokens(tokens: string[]) {
 
 function shotOnscreenCharacters(shot?: AivideoShot) {
   return findCharactersByTokens(parseShotCharacterIds(shot?.characterIds))
+}
+
+function normalizeShotSpeechText(value?: string) {
+  return String(value || '')
+    .replace(/^\s*(对白|旁白|画外音|内心|心声|心理活动|想法)\s*[:：]/, '')
+    .trim()
+}
+
+function isInternalSpeechText(value?: string) {
+  return /心声|内心|心理|脑海|心里|默想|暗想|想起|闪过/.test(String(value || ''))
+}
+
+function defaultShotTtsText(shot?: AivideoShot) {
+  const dialogue = normalizeShotSpeechText(shot?.dialogue)
+  if (dialogue && !isInternalSpeechText(shot?.dialogue)) {
+    return dialogue
+  }
+  const voiceOver = normalizeShotSpeechText(shot?.voiceOver)
+  if (voiceOver && !isInternalSpeechText(shot?.voiceOver)) {
+    return voiceOver
+  }
+  return ''
 }
 
 function shotMentionedCharacters(shot?: AivideoShot) {
@@ -3553,6 +3677,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   activePromptScope.value = 'shotVideo'
   shotVideoDrawerVisible.value = true
   resetShotVideoDrawerState()
+  shotTtsText.value = defaultShotTtsText(shot)
   const shotId = String(shot.shotId)
   shotVideoLoading.value = true
   try {
@@ -3563,6 +3688,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
       ]),
       refreshShotVideoPromptPreview(),
       loadShotVideoTasks(),
+      loadShotTtsAudios(),
       loadShotVideoCandidates()
     ])
   } finally {
@@ -3587,6 +3713,9 @@ function resetShotVideoDrawerState() {
   shotVideoPromptPreviewText.value = ''
   shotVideoTasks.value = []
   shotVideoCandidates.value = []
+  shotTtsAudios.value = []
+  shotTtsText.value = ''
+  shotTtsSelectingIds.value = new Set()
   revokeShotVideoPreviewUrls()
 }
 
@@ -3674,6 +3803,29 @@ async function loadShotVideoCandidates() {
   const candidates = (res.data || []).filter((item) => isShotVideoAssetForShot(item, shotId))
   shotVideoCandidates.value = candidates
   await refreshShotVideoPreviewUrls(candidates)
+}
+
+async function loadShotTtsAudios() {
+  const shot = selectedShotForVideo.value
+  if (!shot) {
+    shotTtsAudios.value = []
+    return
+  }
+  const shotId = String(shot.shotId)
+  const res = await listAivideoMedia({
+    projectId: projectId.value,
+    assetType: 'SHOT_TTS_AUDIO',
+    bizType: 'SHOT',
+    bizId: shot.shotId
+  })
+  if (!isCurrentShotVideoTarget(shotId)) {
+    return
+  }
+  const candidates = (res.data || [])
+    .filter((item) => isShotVideoAssetForShot(item, shotId))
+    .sort(compareMediaAssetDesc)
+  shotTtsAudios.value = candidates
+  await Promise.all(candidates.map((item) => loadReferencePreviewUrl(item.mediaId)))
 }
 
 async function loadShotVideoTasks() {
@@ -4615,6 +4767,63 @@ async function handleGenerateShotVideos() {
   }
 }
 
+async function handleGenerateShotTtsAudio() {
+  const shot = selectedShotForVideo.value
+  const text = shotTtsText.value.trim()
+  if (!shot || !text || shotTtsGenerating.value) {
+    return
+  }
+  const shotId = String(shot.shotId)
+  shotTtsGenerating.value = true
+  try {
+    const res = await generateAivideoShotTtsAudio({
+      projectId: projectId.value,
+      shotId: shot.shotId,
+      text
+    })
+    const asset = res.data
+    if (asset?.mediaId && isCurrentShotVideoTarget(shotId)) {
+      shotTtsAudios.value = [
+        asset,
+        ...shotTtsAudios.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+      ].sort(compareMediaAssetDesc)
+      await loadReferencePreviewUrl(asset.mediaId)
+    }
+    ElMessage.success('本镜 TTS 音频已生成并选中')
+    await loadShotTtsAudios()
+    await loadDetail()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '本镜 TTS 音频生成失败')
+  } finally {
+    shotTtsGenerating.value = false
+  }
+}
+
+async function handleSelectShotTtsAudio(item: AivideoMediaAsset) {
+  const key = String(item.mediaId)
+  if (shotTtsSelectingIds.value.has(key)) {
+    return
+  }
+  const next = new Set(shotTtsSelectingIds.value)
+  next.add(key)
+  shotTtsSelectingIds.value = next
+  try {
+    await selectAivideoMedia({
+      projectId: projectId.value,
+      mediaId: item.mediaId,
+      bizType: 'SHOT',
+      bizId: item.bizId
+    })
+    ElMessage.success('本镜 TTS 音频已选定')
+    await loadShotTtsAudios()
+    await loadDetail()
+  } finally {
+    const done = new Set(shotTtsSelectingIds.value)
+    done.delete(key)
+    shotTtsSelectingIds.value = done
+  }
+}
+
 async function handleSelectCharacterImage(item: AivideoMediaAsset) {
   const key = String(item.mediaId)
   if (characterImageSelectingIds.value.has(key)) {
@@ -5235,6 +5444,58 @@ onBeforeUnmount(() => {
     color: #64748b;
     line-height: 1.5;
   }
+}
+
+.shot-tts-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+}
+
+.shot-tts-actions,
+.shot-tts-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.shot-tts-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.shot-tts-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dcfce7;
+  border-radius: 8px;
+  background: #ffffff;
+
+  &.selected {
+    border-color: #22c55e;
+    background: #f0fdf4;
+  }
+
+  audio {
+    width: 100%;
+  }
+}
+
+.shot-tts-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  color: #94a3b8;
+  font-size: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
 }
 
 :global(.shot-video-preflight-dialog) {
