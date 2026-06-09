@@ -59,7 +59,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                                          AiVideoMediaAssetMapper mediaAssetMapper,
                                          AiVideoGenerationTaskMapper taskMapper,
                                          AivideoDirectEditProvider directEditProvider,
-                                         @Value("${aivideo.public-origin:${AIVIDEO_PUBLIC_ORIGIN:}}") String publicOrigin) {
+                                         @Value("${han.aivideo.media.public-file-origin:${aivideo.public-origin:${HAN_AIVIDEO_MEDIA_PUBLIC_FILE_ORIGIN:${AIVIDEO_PUBLIC_ORIGIN:}}}}") String publicOrigin) {
         this.projectMapper = projectMapper;
         this.shotMapper = shotMapper;
         this.mediaAssetMapper = mediaAssetMapper;
@@ -206,7 +206,13 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
             clip.setTransitionEffect(firstText(shot.getTransitionEffect(), "hard_cut"));
             clip.setActionDesc(firstText(shot.getActionDesc(), shot.getPromptText()));
             clip.setVideoMediaId(media.getMediaId());
-            clip.setVideoUrl(toPublicUrl(media.getFileUrl()));
+            String videoUrl = toPublicUrl(media.getFileUrl());
+            if (!isSupportedDirectEditSourceUrl(videoUrl)) {
+                preflight.getErrors().add("第" + firstInteger(shot.getShotNo(), 0)
+                        + "镜已选视频不是公网可访问地址，请配置 han.aivideo.media.public-file-origin 或重新选择公网视频");
+                continue;
+            }
+            clip.setVideoUrl(videoUrl);
             clip.setTimelineStartMs(cursorMs);
             cursorMs += durationSec * 1000;
             clip.setTimelineEndMs(cursorMs);
@@ -404,6 +410,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
             origin = origin.substring(0, origin.length() - 1);
         }
         return value.startsWith("/") ? origin + value : origin + "/" + value;
+    }
+
+    private boolean isSupportedDirectEditSourceUrl(String value) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        String lower = value.trim().toLowerCase(Locale.ROOT);
+        return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
     private int[] resolveCanvas(String ratio) {

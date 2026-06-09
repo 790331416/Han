@@ -10,6 +10,7 @@ import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.aivideo.service.AivideoDirectEditProvider;
+import com.han.common.core.exception.BusinessException;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -48,7 +50,7 @@ class AivideoProjectEditServiceImplTest {
         when(mediaAssetMapper.selectList(any())).thenReturn(List.of(video1));
 
         AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
-                projectMapper, shotMapper, mediaAssetMapper, taskMapper, null, null);
+                projectMapper, shotMapper, mediaAssetMapper, taskMapper, null, "https://han.scavengers.cn");
 
         AivideoProjectEditPreflightVo preflight = service.previewProjectEdit(1L);
 
@@ -94,6 +96,36 @@ class AivideoProjectEditServiceImplTest {
         assertTrue(editParam.contains("\"TargetTime\":[0,5000]"));
         assertTrue(editParam.contains("\"TargetTime\":[5000,11000]"));
         assertTrue(editParam.contains("\"DisableAudio\":false"));
+    }
+
+    @Test
+    void editParamRejectsRelativeSelectedVideoWhenPublicOriginMissing() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("剪辑测试");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        when(shotMapper.selectList(any())).thenReturn(List.of(approvedShot(11L, 1, 5, 101L)));
+        when(mediaAssetMapper.selectList(any())).thenReturn(List.of(
+                selectedVideo(101L, 11L, "/file/public/static-rustfs/shot-1.mp4")
+        ));
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, shotMapper, mediaAssetMapper, taskMapper, null, null);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.buildDirectEditParamForTest(1L, "剪辑测试成片", true));
+
+        assertTrue(exception.getMessage().contains("公网可访问地址"));
+        assertTrue(exception.getMessage().contains("第1镜"));
     }
 
     @Test
