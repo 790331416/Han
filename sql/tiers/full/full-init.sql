@@ -2591,6 +2591,37 @@ END $$;
 -- source: postgres\aivideo\20260609-prompt-template-alignment.sql
 -- ============================================================
 -- AI短剧 Prompt 模板最终对齐，保持 clean full-init 与升级脚本一致。
+UPDATE ai_prompt_template
+SET category = CASE template_name
+        WHEN 'AI短剧原文润色' THEN 'aivideo_text'
+        WHEN 'AI短剧剧本生成' THEN 'aivideo_script'
+        WHEN 'AI短剧资产提取' THEN 'aivideo_asset'
+        WHEN 'AI短剧角色构建' THEN 'aivideo_asset'
+        WHEN 'AI短剧场景设计' THEN 'aivideo_asset'
+        WHEN 'AI短剧分镜提取' THEN 'aivideo_storyboard'
+        WHEN 'AI短剧角色图生成' THEN 'aivideo_image'
+        WHEN 'AI短剧场景图生成' THEN 'aivideo_image'
+        WHEN 'AI短剧分镜视频生成' THEN 'aivideo_video'
+        WHEN 'AI短剧后期语音合成' THEN 'aivideo_tts'
+        ELSE category
+    END,
+    built_in = 1,
+    status = '0',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name IN (
+    'AI短剧原文润色',
+    'AI短剧剧本生成',
+    'AI短剧资产提取',
+    'AI短剧角色构建',
+    'AI短剧场景设计',
+    'AI短剧分镜提取',
+    'AI短剧角色图生成',
+    'AI短剧场景图生成',
+    'AI短剧分镜视频生成',
+    'AI短剧后期语音合成'
+);
+
 WITH hard_rules AS (
     SELECT $rules$
 
@@ -2645,6 +2676,138 @@ SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDur
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧资产提取';
+
+UPDATE ai_prompt_template
+SET variables = '["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]',
+    update_by = 'system',
+    update_time = CURRENT_TIMESTAMP
+WHERE template_name = 'AI短剧后期语音合成';
+
+DO $$
+DECLARE
+    v_ai_root_id BIGINT;
+    v_prompt_menu_id BIGINT;
+    v_next_id BIGINT;
+    v_action RECORD;
+BEGIN
+    SELECT id
+    INTO v_ai_root_id
+    FROM sys_menu
+    WHERE (path = 'ai' AND menu_type = 'M') OR menu_name = 'AI智能'
+    ORDER BY CASE WHEN id = 500 THEN 0 ELSE 1 END, id
+    LIMIT 1;
+
+    IF v_ai_root_id IS NULL THEN
+        IF EXISTS (SELECT 1 FROM sys_menu WHERE id = 500) THEN
+            SELECT COALESCE(MAX(id), 0) + 1 INTO v_ai_root_id FROM sys_menu;
+        ELSE
+            v_ai_root_id := 500;
+        END IF;
+
+        INSERT INTO sys_menu (
+            id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+            query, menu_type, visible, status, perms, icon, is_frame, is_cache
+        )
+        VALUES (
+            v_ai_root_id, NULL, 'AI智能', 0, '0', 5, 'ai', NULL,
+            NULL, 'M', 0, 0, NULL, 'magic-stick', 1, 0
+        );
+    END IF;
+
+    SELECT id
+    INTO v_prompt_menu_id
+    FROM sys_menu
+    WHERE perms = 'ai:prompt:list'
+       OR (path = 'prompt' AND component = 'ai/prompt/index')
+    ORDER BY CASE WHEN id = 515 THEN 0 ELSE 1 END, id
+    LIMIT 1;
+
+    IF v_prompt_menu_id IS NULL THEN
+        IF EXISTS (SELECT 1 FROM sys_menu WHERE id = 515) THEN
+            SELECT COALESCE(MAX(id), 0) + 1 INTO v_prompt_menu_id FROM sys_menu;
+        ELSE
+            v_prompt_menu_id := 515;
+        END IF;
+
+        INSERT INTO sys_menu (
+            id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+            query, menu_type, visible, status, perms, icon, is_frame, is_cache
+        )
+        VALUES (
+            v_prompt_menu_id, NULL, 'Prompt模板', v_ai_root_id, '0,' || v_ai_root_id,
+            6, 'prompt', 'ai/prompt/index', NULL, 'C', 0, 0,
+            'ai:prompt:list', 'document', 1, 0
+        );
+    ELSE
+        UPDATE sys_menu
+        SET menu_name = 'Prompt模板',
+            parent_id = v_ai_root_id,
+            ancestors = '0,' || v_ai_root_id,
+            sort = 6,
+            path = 'prompt',
+            component = 'ai/prompt/index',
+            menu_type = 'C',
+            visible = 0,
+            status = 0,
+            perms = 'ai:prompt:list',
+            icon = 'document',
+            is_frame = 1,
+            is_cache = 0
+        WHERE id = v_prompt_menu_id;
+    END IF;
+
+    FOR v_action IN
+        SELECT * FROM (
+            VALUES
+                ('Prompt模板查询', 'ai:prompt:query', 1),
+                ('Prompt模板新增', 'ai:prompt:add', 2),
+                ('Prompt模板编辑', 'ai:prompt:edit', 3),
+                ('Prompt模板删除', 'ai:prompt:remove', 4)
+        ) AS action(menu_name, perms, sort_no)
+    LOOP
+        IF EXISTS (SELECT 1 FROM sys_menu WHERE perms = v_action.perms) THEN
+            UPDATE sys_menu
+            SET menu_name = v_action.menu_name,
+                parent_id = v_prompt_menu_id,
+                ancestors = '0,' || v_ai_root_id || ',' || v_prompt_menu_id,
+                sort = v_action.sort_no,
+                path = '',
+                component = NULL,
+                query = NULL,
+                menu_type = 'F',
+                visible = 0,
+                status = 0,
+                icon = '#',
+                is_frame = 1,
+                is_cache = 0
+            WHERE perms = v_action.perms;
+        ELSE
+            SELECT COALESCE(MAX(id), 0) + 1 INTO v_next_id FROM sys_menu;
+
+            INSERT INTO sys_menu (
+                id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
+                query, menu_type, visible, status, perms, icon, is_frame, is_cache
+            )
+            VALUES (
+                v_next_id, NULL, v_action.menu_name, v_prompt_menu_id,
+                '0,' || v_ai_root_id || ',' || v_prompt_menu_id,
+                v_action.sort_no, '', NULL, NULL, 'F', 0, 0,
+                v_action.perms, '#', 1, 0
+            );
+        END IF;
+    END LOOP;
+
+    INSERT INTO sys_role_menu (role_id, menu_id)
+    SELECT role.id, menu.id
+    FROM sys_role role
+    CROSS JOIN sys_menu menu
+    WHERE (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
+      AND (
+          menu.id IN (v_ai_root_id, v_prompt_menu_id)
+          OR menu.perms IN ('ai:prompt:list', 'ai:prompt:query', 'ai:prompt:add', 'ai:prompt:edit', 'ai:prompt:remove')
+      )
+    ON CONFLICT DO NOTHING;
+END $$;
 
 -- 当前模块暂无独立初始化种子。
 -- 如后续新增预置数据，请在本文件补充。

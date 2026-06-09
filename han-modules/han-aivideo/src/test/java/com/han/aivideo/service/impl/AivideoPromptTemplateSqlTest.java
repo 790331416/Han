@@ -28,6 +28,10 @@ class AivideoPromptTemplateSqlTest {
         assertContains(fullInit, "插入镜头/交接镜头");
         assertContains(fullInit, "AI短剧后期语音合成");
         assertContains(fullInit, "aivideo_tts");
+        assertContains(fullInit, "aivideo_script");
+        assertContains(fullInit, "aivideo_storyboard");
+        assertContains(fullInit, "AI智能");
+        assertContains(fullInit, "ai/prompt/index");
 
         assertContains(upgrade, "谁递给谁");
         assertContains(upgrade, "最后谁拿着");
@@ -38,9 +42,12 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "插入镜头/交接镜头");
         assertContains(upgrade, "AI短剧后期语音合成");
         assertContains(upgrade, "aivideo_tts");
+        assertContains(upgrade, "aivideo_script");
+        assertContains(upgrade, "aivideo_storyboard");
+        assertContains(upgrade, "AI智能");
+        assertContains(upgrade, "ai/prompt/index");
         assertContains(upgrade, "MAX(template_id)");
         assertContains(upgrade, "video_prompt_template_id");
-        assertDoesNotContain(upgrade, "MAX(id)");
         assertDoesNotContain(upgrade, "asset_prompt_template_id");
         assertDoesNotContain(upgrade, "shot_video_prompt_template_id");
     }
@@ -59,6 +66,8 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "ai:prompt:remove");
         assertContains(upgrade, "sys_role_menu");
         assertContains(upgrade, "Prompt模板");
+        assertContains(upgrade, "v_ai_root_id");
+        assertContains(upgrade, "v_prompt_menu_id");
     }
 
     private static void assertContains(String content, String needle) {
