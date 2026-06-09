@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -312,24 +313,30 @@ class AiOpenAiCompatibleClient {
         VideoGenerationRequest request = new VideoGenerationRequest();
         request.model = model.getModelCode();
         request.content = new ArrayList<>();
-        request.content.add(VideoContentPart.text(prompt));
-        boolean firstFrameMode = useFirstFrameMode(referenceImageUrls, referenceVideoUrl, referenceAudioUrl,
+        boolean includeReferenceVideo = StringUtils.hasText(referenceVideoUrl) && supportsReferenceVideo(model);
+        boolean includeReferenceAudio = StringUtils.hasText(referenceAudioUrl) && supportsReferenceAudio(model);
+        request.content.add(VideoContentPart.text(buildVideoPromptWithCompatibilityNote(
+                prompt, referenceVideoUrl, referenceAudioUrl, includeReferenceVideo, includeReferenceAudio
+        )));
+        boolean firstFrameMode = useFirstFrameMode(referenceImageUrls,
+                includeReferenceVideo ? referenceVideoUrl : null,
+                includeReferenceAudio ? referenceAudioUrl : null,
                 referenceImageAsFirstFrame);
         for (int i = 0; i < referenceImageUrls.size(); i++) {
             request.content.add(VideoContentPart.image(referenceImageUrls.get(i),
                     firstFrameMode ? "first_frame" : "reference_image"));
         }
-        if (StringUtils.hasText(referenceVideoUrl)) {
+        if (includeReferenceVideo) {
             request.content.add(VideoContentPart.video(referenceVideoUrl, "reference_video"));
         }
-        if (StringUtils.hasText(referenceAudioUrl)) {
+        if (includeReferenceAudio) {
             request.content.add(VideoContentPart.audio(referenceAudioUrl, "reference_audio"));
         }
         request.duration = normalizeVideoDuration(durationSec);
         request.ratio = StringUtils.hasText(ratio) ? ratio.trim() : "9:16";
         request.resolution = StringUtils.hasText(resolution) ? resolution.trim() : "720p";
         request.returnLastFrame = returnLastFrame == null || Boolean.TRUE.equals(returnLastFrame);
-        request.generateAudio = Boolean.TRUE.equals(generateAudio);
+        request.generateAudio = shouldGenerateAudio(generateAudio, referenceAudioUrl, includeReferenceAudio);
         return request;
     }
 
@@ -340,6 +347,53 @@ class AiOpenAiCompatibleClient {
                 && referenceImageUrls.size() == 1
                 && !StringUtils.hasText(referenceVideoUrl)
                 && !StringUtils.hasText(referenceAudioUrl);
+    }
+
+    private boolean supportsReferenceVideo(AiModelPo model) {
+        return !isSeedance15Model(model);
+    }
+
+    private boolean supportsReferenceAudio(AiModelPo model) {
+        return !isSeedance15Model(model);
+    }
+
+    private boolean isSeedance15Model(AiModelPo model) {
+        String modelCode = normalizeModelCode(model);
+        return modelCode.contains("SEEDANCE_1_5") || modelCode.contains("SEEDANCE_15");
+    }
+
+    private String normalizeModelCode(AiModelPo model) {
+        if (model == null || model.getModelCode() == null) {
+            return "";
+        }
+        return model.getModelCode().replace('-', '_').toUpperCase(Locale.ROOT);
+    }
+
+    private String buildVideoPromptWithCompatibilityNote(String prompt, String referenceVideoUrl,
+                                                         String referenceAudioUrl,
+                                                         boolean includeReferenceVideo,
+                                                         boolean includeReferenceAudio) {
+        List<String> notes = new ArrayList<>();
+        if (StringUtils.hasText(referenceVideoUrl) && !includeReferenceVideo) {
+            notes.add("当前模型不支持 reference_video/r2v，已自动降级为首帧/参考图生视频；必须以已传入图片作为视觉锚点承接上一镜，不得发明新的起始画面。");
+        }
+        if (StringUtils.hasText(referenceAudioUrl) && !includeReferenceAudio) {
+            notes.add("当前模型不支持 reference_audio，已不传入参考音频；如需强一致声线，请切换到 Seedance 2.0 参考音频模式。");
+        }
+        if (notes.isEmpty()) {
+            return prompt;
+        }
+        return prompt + "\n\n## 模型兼容降级\n- " + String.join("\n- ", notes);
+    }
+
+    private boolean shouldGenerateAudio(Boolean generateAudio, String referenceAudioUrl, boolean includeReferenceAudio) {
+        if (!Boolean.TRUE.equals(generateAudio)) {
+            return false;
+        }
+        if (StringUtils.hasText(referenceAudioUrl) && !includeReferenceAudio) {
+            return false;
+        }
+        return true;
     }
 
     private int normalizeVideoDuration(Integer durationSec) {
