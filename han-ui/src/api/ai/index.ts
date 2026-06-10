@@ -453,6 +453,7 @@ export const modelTypeOptions = [
   { label: '大语言模型', value: 'LLM' },
   { label: '图片生成模型', value: 'IMAGE' },
   { label: '视频生成模型', value: 'VIDEO' },
+  { label: '视频剪辑合成', value: 'VIDEO_EDIT' },
   { label: '向量模型', value: 'EMBEDDING' },
   { label: '重排模型', value: 'RERANK' },
   { label: '语音合成', value: 'TTS' },
@@ -461,7 +462,7 @@ export const modelTypeOptions = [
 
 export const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
-  { label: '火山方舟', value: 'volcengine' },
+  { label: '火山引擎/方舟', value: 'volcengine' },
   { label: 'DeepSeek', value: 'deepseek' },
   { label: '通义千问', value: 'qwen' },
   { label: '智谱AI', value: 'zhipu' },

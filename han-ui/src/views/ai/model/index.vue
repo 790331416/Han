@@ -194,6 +194,7 @@
                 v-model="form.modelType"
                 data-testid="ai-model-type-select"
                 placeholder="请选择模型类型"
+                @change="handleModelTypeChange"
               >
                 <el-option
                   v-for="item in modelTypeOptions"
@@ -212,7 +213,7 @@
                 :placeholder="currentModelCodePlaceholder"
               />
               <div v-if="form.provider === 'volcengine'" class="field-tip">
-                火山方舟请填写控制台中的推理接入点 ID，通常以 ep- 开头。
+                {{ volcengineModelCodeTip }}
               </div>
               <div v-if="currentSuggestions.length" class="suggestion-row">
                 <span class="suggestion-label">推荐模型</span>
@@ -242,12 +243,13 @@
           <el-input
             v-model="form.apiKey"
             data-testid="ai-model-api-key-input"
-            type="password"
-            show-password
-            placeholder="请输入 API Key，留空表示保留原值"
+            :type="apiKeyInputType"
+            :rows="apiKeyInputRows"
+            :show-password="apiKeyInputType === 'password'"
+            :placeholder="apiKeyPlaceholder"
           />
           <div class="field-tip">
-            当前供应商建议优先使用环境变量 `{{ currentCredentialEnv }}`，数据库值仅作为回退；编辑已有模型时留空会保留原值。
+            {{ apiKeyFieldTip }}
           </div>
         </el-form-item>
 
@@ -333,6 +335,8 @@ interface ProviderPreset {
   defaultModelCode: string
   suggestions: string[]
   credentialEnv: string
+  apiKeyPlaceholder?: string
+  apiKeyTip?: string
 }
 
 const providerPresets: Record<string, ProviderPreset> = {
@@ -392,6 +396,29 @@ const providerPresets: Record<string, ProviderPreset> = {
   }
 }
 
+const modelTypePresets: Record<string, ProviderPreset> = {
+  TTS: {
+    baseUrl: 'https://openspeech.bytedance.com/api/v1/tts',
+    defaultModelCode: 'volc-tts',
+    suggestions: ['volc-tts'],
+    credentialEnv: 'AIVIDEO_TTS_VOLC_APP_ID / AIVIDEO_TTS_VOLC_ACCESS_TOKEN',
+    apiKeyPlaceholder:
+      '{"appId":"火山语音AppID","accessToken":"火山语音AccessToken","cluster":"volcano_tts","defaultVoiceType":"BV001_24k_streaming"}',
+    apiKeyTip:
+      '语音合成建议填写 JSON：appId、accessToken、cluster、defaultVoiceType；也兼容原 AIVIDEO_TTS_VOLC_* 环境变量。'
+  },
+  VIDEO_EDIT: {
+    baseUrl: 'https://vod.volcengineapi.com',
+    defaultModelCode: 'vod-direct-edit',
+    suggestions: ['vod-direct-edit'],
+    credentialEnv: 'VOLCENGINE_VOD_ACCESS_KEY_ID / VOLCENGINE_VOD_SECRET_ACCESS_KEY / AIVIDEO_VOD_SPACE',
+    apiKeyPlaceholder:
+      '{"accessKey":"火山AK","secretKey":"火山SK","space":"space-s54no5","application":"VideoTrackHighlight","region":"cn-north-1"}',
+    apiKeyTip:
+      '视频剪辑合成建议填写 JSON：accessKey、secretKey、space、application、region；也兼容原 VOLCENGINE_VOD_* / AIVIDEO_VOD_* 环境变量。'
+  }
+}
+
 const credentialSourceLabelMap: Record<string, string> = {
   env: '环境变量',
   database: '数据库',
@@ -436,13 +463,38 @@ const rules: FormRules = {
 }
 
 const currentPreset = computed(() => providerPresets[form.provider || ''] || null)
-const currentSuggestions = computed(() => currentPreset.value?.suggestions || [])
-const currentCredentialEnv = computed(() => currentPreset.value?.credentialEnv || 'HAN_AI_PROVIDER_<PROVIDER>_API_KEY')
+const currentIntegrationPreset = computed(() => {
+  return form.provider === 'volcengine' ? modelTypePresets[form.modelType || ''] || null : null
+})
+const currentEffectivePreset = computed(() => currentIntegrationPreset.value || currentPreset.value)
+const currentSuggestions = computed(() => currentEffectivePreset.value?.suggestions || [])
+const currentCredentialEnv = computed(() => currentEffectivePreset.value?.credentialEnv || 'HAN_AI_PROVIDER_<PROVIDER>_API_KEY')
 const currentModelCodePlaceholder = computed(() => {
+  if (currentIntegrationPreset.value?.defaultModelCode) {
+    return `如: ${currentIntegrationPreset.value.defaultModelCode}`
+  }
   return form.provider === 'volcengine' ? '请输入火山方舟推理接入点 ID，如 ep-...' : '如: qwen-plus'
 })
 const currentBaseUrlPlaceholder = computed(() => {
-  return currentPreset.value?.baseUrl ? `如: ${currentPreset.value.baseUrl}` : '如: https://api.example.com/v1'
+  return currentEffectivePreset.value?.baseUrl ? `如: ${currentEffectivePreset.value.baseUrl}` : '如: https://api.example.com/v1'
+})
+const apiKeyInputType = computed(() => currentIntegrationPreset.value ? 'textarea' : 'password')
+const apiKeyInputRows = computed(() => currentIntegrationPreset.value ? 5 : 1)
+const apiKeyPlaceholder = computed(() => {
+  return currentIntegrationPreset.value?.apiKeyPlaceholder || '请输入 API Key，留空表示保留原值'
+})
+const apiKeyFieldTip = computed(() => {
+  return currentIntegrationPreset.value?.apiKeyTip
+    || `当前供应商建议优先使用环境变量 ${currentCredentialEnv.value}，数据库值仅作为回退；编辑已有模型时留空会保留原值。`
+})
+const volcengineModelCodeTip = computed(() => {
+  if (form.modelType === 'TTS') {
+    return '火山语音合成建议填写 volc-tts，具体语音参数放在 API Key JSON 中。'
+  }
+  if (form.modelType === 'VIDEO_EDIT') {
+    return '火山 VOD 剪辑合成建议填写 vod-direct-edit，space/application/region 放在 API Key JSON 中。'
+  }
+  return '火山方舟请填写控制台中的推理接入点 ID，通常以 ep- 开头。'
 })
 const credentialAlertTitle = computed(() => {
   return form.modelId ? '编辑模型时将保留原始密钥' : '新增模型建议优先走环境变量'
@@ -487,7 +539,7 @@ function applySuggestedModelCode(modelCode: string) {
 }
 
 function handleProviderChange(provider: string) {
-  const preset = providerPresets[provider]
+  const preset = provider === 'volcengine' ? currentEffectivePreset.value : providerPresets[provider]
   if (!preset) {
     return
   }
@@ -497,6 +549,16 @@ function handleProviderChange(provider: string) {
   if (!form.modelCode) {
     form.modelCode = preset.defaultModelCode
   }
+}
+
+function handleModelTypeChange() {
+  const preset = modelTypePresets[form.modelType || '']
+  if (!preset) {
+    return
+  }
+  form.provider = 'volcengine'
+  form.baseUrl = preset.baseUrl
+  form.modelCode = preset.defaultModelCode
 }
 
 async function getList() {

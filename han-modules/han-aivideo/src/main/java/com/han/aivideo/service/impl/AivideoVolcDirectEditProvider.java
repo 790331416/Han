@@ -18,7 +18,6 @@ import com.volcengine.service.vod.model.response.VodGetDirectEditProgressRespons
 import com.volcengine.service.vod.model.response.VodGetDirectEditResultResponse;
 import com.volcengine.service.vod.model.response.VodGetPlayInfoResponse;
 import com.volcengine.service.vod.model.response.VodSubmitDirectEditTaskAsyncResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -30,50 +29,33 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider {
 
-    private static final String DEFAULT_REGION = "cn-north-1";
-    private static final String DEFAULT_APPLICATION = "VideoTrackHighlight";
+    private final AivideoModelConfigResolver modelConfigResolver;
 
-    private final String accessKey;
-    private final String secretKey;
-    private final String space;
-    private final String application;
-    private final String region;
-    private final IVodService vodService;
-
-    public AivideoVolcDirectEditProvider(
-            @Value("${volcengine.vod.access-key:${VOLCENGINE_VOD_ACCESS_KEY_ID:}}") String accessKey,
-            @Value("${volcengine.vod.secret-key:${VOLCENGINE_VOD_SECRET_ACCESS_KEY:}}") String secretKey,
-            @Value("${volcengine.vod.space:${AIVIDEO_VOD_SPACE:}}") String space,
-            @Value("${volcengine.vod.application:${AIVIDEO_VOD_APPLICATION:VideoTrackHighlight}}") String application,
-            @Value("${volcengine.vod.region:${AIVIDEO_VOD_REGION:cn-north-1}}") String region) {
-        this.accessKey = firstText(accessKey);
-        this.secretKey = firstText(secretKey);
-        this.space = firstText(space);
-        this.application = firstText(application, DEFAULT_APPLICATION);
-        this.region = firstText(region, DEFAULT_REGION);
-        this.vodService = createVodService(this.region);
+    public AivideoVolcDirectEditProvider(AivideoModelConfigResolver modelConfigResolver) {
+        this.modelConfigResolver = modelConfigResolver;
     }
 
     @Override
     public String uploader() {
-        return space;
+        return modelConfigResolver.resolveVodEditConfig().space();
     }
 
     @Override
     public String application() {
-        return application;
+        return modelConfigResolver.resolveVodEditConfig().application();
     }
 
     @Override
     public SubmitResult submit(String editParamJson, int priority, String callbackArgs) {
-        validateConfigured();
+        AivideoModelConfigResolver.VodEditConfig config = requireConfig();
         if (!StringUtils.hasText(editParamJson)) {
             throw new BusinessException("剪辑参数不能为空");
         }
         try {
+            IVodService vodService = createVodService(config);
             VodSubmitDirectEditTaskAsyncRequest request = VodSubmitDirectEditTaskAsyncRequest.newBuilder()
-                    .setUploader(space)
-                    .setApplication(application)
+                    .setUploader(config.space())
+                    .setApplication(config.application())
                     .setEditParam(ByteString.copyFrom(editParamJson, StandardCharsets.UTF_8))
                     .setPriority(priority)
                     .setCallbackArgs(firstText(callbackArgs))
@@ -93,11 +75,12 @@ public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider 
 
     @Override
     public int progress(String providerTaskId) {
-        validateConfigured();
+        AivideoModelConfigResolver.VodEditConfig config = requireConfig();
         if (!StringUtils.hasText(providerTaskId)) {
             return 0;
         }
         try {
+            IVodService vodService = createVodService(config);
             VodGetDirectEditProgressRequest request = VodGetDirectEditProgressRequest.newBuilder()
                     .setReqId(providerTaskId)
                     .build();
@@ -116,11 +99,12 @@ public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider 
 
     @Override
     public EditResult result(String providerTaskId) {
-        validateConfigured();
+        AivideoModelConfigResolver.VodEditConfig config = requireConfig();
         if (!StringUtils.hasText(providerTaskId)) {
             return null;
         }
         try {
+            IVodService vodService = createVodService(config);
             VodGetDirectEditResultRequest request = VodGetDirectEditResultRequest.newBuilder()
                     .addReqIds(providerTaskId)
                     .build();
@@ -145,11 +129,12 @@ public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider 
 
     @Override
     public String playUrl(String outputVid) {
-        validateConfigured();
+        AivideoModelConfigResolver.VodEditConfig config = requireConfig();
         if (!StringUtils.hasText(outputVid)) {
             return "";
         }
         try {
+            IVodService vodService = createVodService(config);
             VodGetPlayInfoRequest request = VodGetPlayInfoRequest.newBuilder()
                     .setVid(outputVid)
                     .setSsl("1")
@@ -179,16 +164,17 @@ public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider 
         }
     }
 
-    private IVodService createVodService(String serviceRegion) {
+    private IVodService createVodService(AivideoModelConfigResolver.VodEditConfig config) {
         try {
+            String serviceRegion = firstText(config.region());
             IVodService service = VodServiceImpl.getInstance(serviceRegion);
             if (service instanceof BaseServiceImpl baseService) {
                 baseService.setRegion(serviceRegion);
-                if (StringUtils.hasText(accessKey)) {
-                    baseService.setAccessKey(accessKey);
+                if (StringUtils.hasText(config.accessKey())) {
+                    baseService.setAccessKey(config.accessKey());
                 }
-                if (StringUtils.hasText(secretKey)) {
-                    baseService.setSecretKey(secretKey);
+                if (StringUtils.hasText(config.secretKey())) {
+                    baseService.setSecretKey(config.secretKey());
                 }
             }
             return service;
@@ -197,10 +183,12 @@ public class AivideoVolcDirectEditProvider implements AivideoDirectEditProvider 
         }
     }
 
-    private void validateConfigured() {
-        if (!StringUtils.hasText(accessKey) || !StringUtils.hasText(secretKey) || !StringUtils.hasText(space)) {
-            throw new BusinessException("火山剪辑 API 未配置完整，请配置 VOLCENGINE_VOD_ACCESS_KEY_ID、VOLCENGINE_VOD_SECRET_ACCESS_KEY、AIVIDEO_VOD_SPACE");
+    private AivideoModelConfigResolver.VodEditConfig requireConfig() {
+        AivideoModelConfigResolver.VodEditConfig config = modelConfigResolver.resolveVodEditConfig();
+        if (config == null || !config.configured()) {
+            throw new BusinessException("火山剪辑 API 未配置完整，请在 AI模型管理中新增并启用 VIDEO_EDIT 配置，或配置 VOLCENGINE_VOD_ACCESS_KEY_ID、VOLCENGINE_VOD_SECRET_ACCESS_KEY、AIVIDEO_VOD_SPACE");
         }
+        return config;
     }
 
     private void checkResponseError(ResponseMetadata responseMetadata) {

@@ -1676,7 +1676,9 @@ INSERT INTO ai_model (model_name, model_type, provider, model_code, base_url, ap
 ('通义千问 Plus', 'LLM', 'qwen', 'qwen-plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1', '', 4096, 0.70, '1', '阿里通义千问Plus，需配置API Key'),
 ('智谱 GLM-4', 'LLM', 'zhipu', 'glm-4', 'https://open.bigmodel.cn/api/paas/v4', '', 4096, 0.70, '1', '智谱AI GLM-4，需配置API Key'),
 ('OpenAI GPT-4o', 'LLM', 'openai', 'gpt-4o', 'https://api.openai.com/v1', '', 4096, 0.70, '1', 'OpenAI GPT-4o，需配置API Key'),
-('Ollama 本地模型', 'LLM', 'ollama', 'llama3', 'http://localhost:11434/v1', '', 4096, 0.70, '1', 'Ollama本地部署模型');
+('Ollama 本地模型', 'LLM', 'ollama', 'llama3', 'http://localhost:11434/v1', '', 4096, 0.70, '1', 'Ollama本地部署模型'),
+('火山语音合成', 'TTS', 'volcengine', 'volc-tts', 'https://openspeech.bytedance.com/api/v1/tts', '', 256, 0.70, '1', 'API Key填JSON: appId/accessToken/cluster/defaultVoiceType'),
+('火山 VOD 视频剪辑合成', 'VIDEO_EDIT', 'volcengine', 'vod-direct-edit', 'https://vod.volcengineapi.com', '', 256, 0.70, '1', 'API Key填JSON: accessKey/secretKey/space/application/region');
 
 -- 17. Prompt模板预置
 INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status) VALUES

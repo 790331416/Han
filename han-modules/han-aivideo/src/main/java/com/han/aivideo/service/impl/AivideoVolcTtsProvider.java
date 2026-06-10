@@ -3,7 +3,6 @@ package com.han.aivideo.service.impl;
 import com.han.aivideo.service.AivideoTtsProvider;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -24,30 +23,13 @@ import java.util.UUID;
 @Service
 public class AivideoVolcTtsProvider implements AivideoTtsProvider {
 
-    private static final String DEFAULT_ENDPOINT = "https://openspeech.bytedance.com/api/v1/tts";
-    private static final String DEFAULT_CLUSTER = "volcano_tts";
-    private static final String DEFAULT_VOICE_TYPE = "BV001_24k_streaming";
-
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .build();
-    private final String endpoint;
-    private final String appId;
-    private final String accessToken;
-    private final String cluster;
-    private final String defaultVoiceType;
+    private final AivideoModelConfigResolver modelConfigResolver;
 
-    public AivideoVolcTtsProvider(
-            @Value("${han.aivideo.tts.volc.endpoint:${AIVIDEO_TTS_VOLC_ENDPOINT:https://openspeech.bytedance.com/api/v1/tts}}") String endpoint,
-            @Value("${han.aivideo.tts.volc.app-id:${AIVIDEO_TTS_VOLC_APP_ID:}}") String appId,
-            @Value("${han.aivideo.tts.volc.access-token:${AIVIDEO_TTS_VOLC_ACCESS_TOKEN:}}") String accessToken,
-            @Value("${han.aivideo.tts.volc.cluster:${AIVIDEO_TTS_VOLC_CLUSTER:volcano_tts}}") String cluster,
-            @Value("${han.aivideo.tts.volc.default-voice-type:${AIVIDEO_TTS_VOLC_DEFAULT_VOICE_TYPE:BV001_24k_streaming}}") String defaultVoiceType) {
-        this.endpoint = firstText(endpoint, DEFAULT_ENDPOINT);
-        this.appId = firstText(appId);
-        this.accessToken = firstText(accessToken);
-        this.cluster = firstText(cluster, DEFAULT_CLUSTER);
-        this.defaultVoiceType = firstText(defaultVoiceType, DEFAULT_VOICE_TYPE);
+    public AivideoVolcTtsProvider(AivideoModelConfigResolver modelConfigResolver) {
+        this.modelConfigResolver = modelConfigResolver;
     }
 
     @Override
@@ -55,15 +37,16 @@ public class AivideoVolcTtsProvider implements AivideoTtsProvider {
         if (request == null || !StringUtils.hasText(request.text())) {
             throw new BusinessException("TTS文本不能为空");
         }
-        if (!StringUtils.hasText(appId) || !StringUtils.hasText(accessToken)) {
-            throw new BusinessException("火山语音合成未配置，请设置 AIVIDEO_TTS_VOLC_APP_ID 和 AIVIDEO_TTS_VOLC_ACCESS_TOKEN");
+        AivideoModelConfigResolver.TtsConfig config = modelConfigResolver.resolveTtsConfig();
+        if (config == null || !config.configured()) {
+            throw new BusinessException("火山语音合成未配置，请在 AI模型管理中新增并启用 TTS 配置，或设置 AIVIDEO_TTS_VOLC_APP_ID 和 AIVIDEO_TTS_VOLC_ACCESS_TOKEN");
         }
         String requestId = firstText(request.requestId(), UUID.randomUUID().toString());
-        Map<String, Object> body = buildRequestBody(request, requestId);
-        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
+        Map<String, Object> body = buildRequestBody(request, requestId, config);
+        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(config.endpoint()))
                 .timeout(Duration.ofSeconds(60))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer;" + accessToken)
+                .header("Authorization", "Bearer;" + config.accessToken())
                 .POST(HttpRequest.BodyPublishers.ofString(XuJsonUtil.toJsonString(body)))
                 .build();
         HttpResponse<String> response;
@@ -90,17 +73,19 @@ public class AivideoVolcTtsProvider implements AivideoTtsProvider {
         return new TtsAudio(requestId, "audio/mpeg", "mp3", durationMs, bytes);
     }
 
-    private Map<String, Object> buildRequestBody(TtsRequest request, String requestId) {
+    private Map<String, Object> buildRequestBody(TtsRequest request,
+                                                 String requestId,
+                                                 AivideoModelConfigResolver.TtsConfig config) {
         Map<String, Object> app = new LinkedHashMap<>();
-        app.put("appid", appId);
-        app.put("token", accessToken);
-        app.put("cluster", cluster);
+        app.put("appid", config.appId());
+        app.put("token", config.accessToken());
+        app.put("cluster", config.cluster());
 
         Map<String, Object> user = new LinkedHashMap<>();
         user.put("uid", "aivideo");
 
         Map<String, Object> audio = new LinkedHashMap<>();
-        audio.put("voice_type", firstText(request.voiceType(), defaultVoiceType));
+        audio.put("voice_type", firstText(request.voiceType(), config.defaultVoiceType()));
         audio.put("encoding", "mp3");
         audio.put("rate", 24000);
         audio.put("speed_ratio", ratio(request.speedRatio()));

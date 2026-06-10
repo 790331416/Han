@@ -70,6 +70,26 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "v_prompt_menu_id");
     }
 
+    @Test
+    void aivideoModelConfigSeedsIncludeTtsAndVideoEdit() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
+        String upgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260610_aivideo_model_config_alignment.sql"),
+                StandardCharsets.UTF_8);
+
+        assertContains(fullInit, "火山语音合成");
+        assertContains(fullInit, "volc-tts");
+        assertContains(fullInit, "火山 VOD 视频剪辑合成");
+        assertContains(fullInit, "VIDEO_EDIT");
+        assertContains(fullInit, "vod-direct-edit");
+        assertContains(upgrade, "火山语音合成");
+        assertContains(upgrade, "volc-tts");
+        assertContains(upgrade, "火山 VOD 视频剪辑合成");
+        assertContains(upgrade, "VIDEO_EDIT");
+        assertContains(upgrade, "vod-direct-edit");
+    }
+
     private static void assertContains(String content, String needle) {
         assertTrue(content.contains(needle), () -> "SQL should contain hard rule: " + needle);
     }
