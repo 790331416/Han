@@ -513,7 +513,7 @@
                         音频 #{{ shotAudioMediaId(row) }}
                       </el-tag>
                       <el-tag v-if="shotTtsAudioMediaId(row)" type="warning" effect="dark">
-                        TTS #{{ shotTtsAudioMediaId(row) }}
+                        配音 #{{ shotTtsAudioMediaId(row) }}
                       </el-tag>
                     </div>
                   </template>
@@ -548,40 +548,12 @@
                 </el-table-column>
               </el-table>
             </el-tab-pane>
-            <el-tab-pane label="语音" name="tts">
-              <el-table :data="shots" border empty-text="暂无可配音分镜">
-                <el-table-column prop="shotNo" label="镜头" width="90" />
-                <el-table-column prop="durationSec" label="秒数" width="90" />
-                <el-table-column label="可合成文本" min-width="320">
-                  <template #default="{ row }">
-                    <div class="tts-asset-text">
-                      {{ defaultShotTtsText(row) || '暂无说出口的对白/旁白' }}
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="语音资产" width="150">
-                  <template #default="{ row }">
-                    <el-tag v-if="shotTtsAudioMediaId(row)" type="warning" effect="dark">
-                      TTS #{{ shotTtsAudioMediaId(row) }}
-                    </el-tag>
-                    <el-tag v-else type="info" effect="plain">未生成</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="180">
-                  <template #default="{ row }">
-                    <el-button size="small" type="primary" plain @click="openShotVideoDrawer(row)">
-                      生成/选择语音
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-tab-pane>
             <el-tab-pane label="剪辑" name="edit">
               <div class="project-edit-panel" v-loading="projectEditLoading">
                 <div class="project-edit-toolbar">
                   <div>
-                    <h4>剪辑成片预检</h4>
-                    <p>按已确认分镜顺序，把每个镜头“已选视频”拼接成一条成片。</p>
+                    <h4>整片剪辑合成预检</h4>
+                    <p>按已确认分镜顺序，把所有“已选分镜视频”合成为一个完整成片；如果已准备后期配音素材，会按整片时间线统一混入。</p>
                   </div>
                   <div class="project-edit-actions">
                     <el-button :icon="Refresh" @click="refreshProjectEditPanel">刷新预检</el-button>
@@ -592,7 +564,7 @@
                       :disabled="!projectEditReady || hasRunningProjectEditTask"
                       @click="handleGenerateProjectEdit"
                     >
-                      生成剪辑成片
+                      生成整片成片
                     </el-button>
                   </div>
                 </div>
@@ -600,7 +572,7 @@
                 <el-alert
                   v-if="projectEditErrors.length"
                   class="project-edit-alert"
-                  title="剪辑预检未通过"
+                  title="整片剪辑预检未通过"
                   type="warning"
                   show-icon
                   :closable="false"
@@ -612,9 +584,9 @@
                 <el-alert
                   v-else-if="projectEditReady"
                   class="project-edit-alert"
-                  title="剪辑预检通过"
+                  title="整片剪辑预检通过"
                   type="success"
-                  description="所有已确认分镜都有已选视频，可以提交剪辑任务。"
+                  description="所有已确认分镜都有已选视频，可以提交整片剪辑合成任务。"
                   show-icon
                   :closable="false"
                 />
@@ -715,6 +687,51 @@
                   <el-empty v-else description="暂无成片资产" />
                 </div>
               </div>
+            </el-tab-pane>
+            <el-tab-pane label="后期语音" name="tts">
+              <el-alert
+                class="project-edit-alert"
+                title="后期语音在整片剪辑之后处理"
+                type="info"
+                description="这里用于为分镜准备配音素材，不会重新生成分镜视频；最终声音会在整片剪辑/混音阶段按时间线统一合入。"
+                show-icon
+                :closable="false"
+              />
+              <el-alert
+                v-if="!projectEditVideos.length"
+                class="project-edit-alert"
+                title="建议先完成整片剪辑成片"
+                type="warning"
+                description="没有成片资产时，当前语音只作为配音素材准备；请先在“剪辑”里生成整片成片，再补配音/混音。"
+                show-icon
+                :closable="false"
+              />
+              <el-table :data="shots" border empty-text="暂无可配音分镜">
+                <el-table-column prop="shotNo" label="镜头" width="90" />
+                <el-table-column prop="durationSec" label="秒数" width="90" />
+                <el-table-column label="配音文本" min-width="320">
+                  <template #default="{ row }">
+                    <div class="tts-asset-text">
+                      {{ defaultShotTtsText(row) || '暂无说出口的对白/旁白' }}
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="配音素材" width="150">
+                  <template #default="{ row }">
+                    <el-tag v-if="shotTtsAudioMediaId(row)" type="warning" effect="dark">
+                      配音 #{{ shotTtsAudioMediaId(row) }}
+                    </el-tag>
+                    <el-tag v-else type="info" effect="plain">未配音</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="190">
+                  <template #default="{ row }">
+                    <el-button size="small" type="primary" plain @click="openShotVideoDrawer(row)">
+                      生成/选择配音素材
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -1379,13 +1396,13 @@
         <section class="shot-tts-panel">
           <div class="panel-title-row">
             <div>
-              <strong>后期语音合成</strong>
-              <small>只合成“说出口”的台词；心理活动、脑海闪过、画面说明不要放进这里。</small>
+              <strong>配音素材生成（后期使用）</strong>
+              <small>只生成“说出口”的台词素材；心理活动、脑海闪过、画面说明不要放进这里，最终声音在整片剪辑/混音阶段合入。</small>
             </div>
             <el-tag v-if="selectedShotTtsAudio" type="success" effect="plain">
-              已选 TTS #{{ selectedShotTtsAudio.mediaId }}
+              已选配音 #{{ selectedShotTtsAudio.mediaId }}
             </el-tag>
-            <el-tag v-else type="info" effect="plain">未选 TTS</el-tag>
+            <el-tag v-else type="info" effect="plain">未选配音</el-tag>
           </div>
           <el-input
             v-model="shotTtsText"
@@ -1403,7 +1420,7 @@
               :disabled="shotTtsGenerating || !shotTtsText.trim()"
               @click="handleGenerateShotTtsAudio"
             >
-              生成本镜 TTS
+              生成配音素材
             </el-button>
             <el-button :icon="Refresh" :loading="shotTtsGenerating" :disabled="shotTtsGenerating" @click="loadShotTtsAudios">
               刷新音频
@@ -1422,7 +1439,7 @@
                 <el-tag :type="item.selected === '1' ? 'success' : 'info'" effect="plain">
                   {{ item.selected === '1' ? '已选' : '候选' }}
                 </el-tag>
-                <span>TTS #{{ item.mediaId }}</span>
+                <span>配音 #{{ item.mediaId }}</span>
               </div>
               <el-button
                 size="small"
@@ -3124,7 +3141,7 @@ async function loadProjectEditPreflight() {
       totalDurationSec: 0,
       clips: [],
       warnings: [],
-      errors: ['剪辑预检接口请求失败，请稍后刷新']
+      errors: ['整片剪辑预检接口请求失败，请稍后刷新']
     }
   }
 }
@@ -3232,14 +3249,14 @@ async function handleGenerateProjectEdit() {
   }
   await loadProjectEditPreflight()
   if (!projectEditReady.value) {
-    ElMessage.warning(projectEditErrors.value[0] || '剪辑预检未通过，请先补齐已选分镜视频')
+    ElMessage.warning(projectEditErrors.value[0] || '整片剪辑预检未通过，请先补齐已选分镜视频')
     return
   }
   try {
     await ElMessageBox.confirm(
-      `将按 ${projectEditPreflight.value?.clipCount || 0} 个已选分镜视频生成成片，总时长约 ${projectEditPreflight.value?.totalDurationSec || 0} 秒。是否继续？`,
-      '生成剪辑成片',
-      { type: 'warning', confirmButtonText: '生成成片', cancelButtonText: '取消' }
+      `将按 ${projectEditPreflight.value?.clipCount || 0} 个已选分镜视频合成为一个整片成片，总时长约 ${projectEditPreflight.value?.totalDurationSec || 0} 秒。是否继续？`,
+      '生成整片成片',
+      { type: 'warning', confirmButtonText: '生成整片成片', cancelButtonText: '取消' }
     )
   } catch (_error) {
     return
@@ -3255,10 +3272,10 @@ async function handleGenerateProjectEdit() {
       upsertProjectEditTask(res.data)
       scheduleProjectEditPolling(1000)
     }
-    ElMessage.success('剪辑任务已提交')
+    ElMessage.success('整片剪辑合成任务已提交')
     await refreshProjectEditPanel()
   } catch (error: any) {
-    ElMessage.error(error?.message || '剪辑成片生成失败')
+    ElMessage.error(error?.message || '整片成片生成失败')
   } finally {
     projectEditGenerating.value = false
     scheduleProjectEditPolling()
@@ -4789,11 +4806,11 @@ async function handleGenerateShotTtsAudio() {
       ].sort(compareMediaAssetDesc)
       await loadReferencePreviewUrl(asset.mediaId)
     }
-    ElMessage.success('本镜 TTS 音频已生成并选中')
+    ElMessage.success('本镜配音素材已生成并选中')
     await loadShotTtsAudios()
     await loadDetail()
   } catch (error: any) {
-    ElMessage.error(error?.message || '本镜 TTS 音频生成失败')
+    ElMessage.error(error?.message || '本镜配音素材生成失败')
   } finally {
     shotTtsGenerating.value = false
   }
@@ -4814,7 +4831,7 @@ async function handleSelectShotTtsAudio(item: AivideoMediaAsset) {
       bizType: 'SHOT',
       bizId: item.bizId
     })
-    ElMessage.success('本镜 TTS 音频已选定')
+    ElMessage.success('本镜配音素材已选定')
     await loadShotTtsAudios()
     await loadDetail()
   } finally {
