@@ -8,6 +8,7 @@ import com.han.ai.mapper.AiPromptTemplateMapper;
 import com.han.ai.service.IAiPromptTemplateService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.mybatis.helper.TenantHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +31,8 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         AiPromptTemplateQuery safeQuery = query != null ? query : new AiPromptTemplateQuery();
         int pageNum = normalizePageNum(safeQuery.getPageNum());
         int pageSize = normalizePageSize(safeQuery.getPageSize());
-        Page<AiPromptTemplatePo> page = aiPromptTemplateMapper.selectPage(new Page<>(pageNum, pageSize), buildQueryWrapper(safeQuery));
+        Page<AiPromptTemplatePo> page = TenantHelper.ignore(() ->
+                aiPromptTemplateMapper.selectPage(new Page<>(pageNum, pageSize), buildQueryWrapper(safeQuery)));
         return PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize);
     }
 
@@ -46,7 +48,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
                 .orderByAsc(AiPromptTemplatePo::getCategory)
                 .orderByAsc(AiPromptTemplatePo::getTemplateName);
         applyTenantScope(wrapper);
-        return aiPromptTemplateMapper.selectList(wrapper);
+        return TenantHelper.ignore(() -> aiPromptTemplateMapper.selectList(wrapper));
     }
 
     @Override
@@ -75,7 +77,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         ensureTemplateNameUnique(existing.getTemplateName(), existing.getTemplateId());
         normalize(existing);
         fillUpdateAudit(existing);
-        aiPromptTemplateMapper.updateById(existing);
+        TenantHelper.ignore(() -> aiPromptTemplateMapper.updateById(existing));
     }
 
     @Override
@@ -85,7 +87,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         if (template.getBuiltIn() != null && template.getBuiltIn() == 1) {
             throw new BusinessException("内置模板不允许删除");
         }
-        aiPromptTemplateMapper.deleteById(templateId);
+        TenantHelper.ignore(() -> aiPromptTemplateMapper.deleteById(templateId));
     }
 
     @Override
@@ -129,7 +131,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         if (templateId == null) {
             throw new BusinessException("模板ID不能为空");
         }
-        AiPromptTemplatePo template = aiPromptTemplateMapper.selectById(templateId);
+        AiPromptTemplatePo template = TenantHelper.ignore(() -> aiPromptTemplateMapper.selectById(templateId));
         if (template == null) {
             throw new BusinessException("模板不存在");
         }
@@ -172,7 +174,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         if (excludeId != null) {
             wrapper.ne(AiPromptTemplatePo::getTemplateId, excludeId);
         }
-        if (aiPromptTemplateMapper.selectCount(wrapper) > 0) {
+        if (TenantHelper.ignore(() -> aiPromptTemplateMapper.selectCount(wrapper)) > 0) {
             throw new BusinessException("模板名称已存在");
         }
     }
