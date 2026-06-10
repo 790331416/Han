@@ -24,11 +24,14 @@ on:
       - "han-api/han-api-file/**"
       - "han-api/han-api-tenant/**"
       - "han-common/**"
+      - "han-modules/han-ai/**"
+      - "han-modules/han-aivideo/**"
       - "han-modules/han-file/**"
       - "han-modules/han-tenant/**"
       - "han-starter/**"
       - "pom.xml"
       - "settings.workspace.xml"
+      - ".github/workflows/aivideo-image.yml"
       - ".github/workflows/full-app-image.yml"
 
 permissions:

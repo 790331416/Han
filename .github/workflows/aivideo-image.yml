@@ -33,6 +33,7 @@ on:
       - "han-modules/pom.xml"
       - "han-modules/han-ai/**"
       - "han-modules/han-aivideo/**"
+      - "han-ui/**"
       - "pom.xml"
       - "settings.workspace.xml"
       - ".github/workflows/aivideo-image.yml"
