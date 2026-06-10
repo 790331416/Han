@@ -158,6 +158,8 @@ export interface AivideoShot {
   dialogue?: string
   voiceOver?: string
   emotion?: string
+  bgmCue?: string
+  sfxCues?: string
   promptText?: string
   confirmStatus?: string
   generationStatus?: string
@@ -209,10 +211,14 @@ export interface AivideoProjectEditClip {
   transitionBeforeDesc?: string
   transitionEffect?: string
   actionDesc?: string
+  bgmCue?: string
+  sfxCues?: string
   videoMediaId?: string | number
   videoUrl?: string
   ttsAudioMediaId?: string | number
   ttsAudioUrl?: string
+  sfxAudioMediaId?: string | number
+  sfxAudioUrl?: string
   timelineStartMs?: number
   timelineEndMs?: number
 }
@@ -222,6 +228,9 @@ export interface AivideoProjectEditPreflight {
   clipCount?: number
   missingShotCount?: number
   totalDurationSec?: number
+  bgmAudioMediaId?: string | number
+  bgmAudioUrl?: string
+  audioTrackCount?: number
   clips?: AivideoProjectEditClip[]
   warnings?: string[]
   errors?: string[]

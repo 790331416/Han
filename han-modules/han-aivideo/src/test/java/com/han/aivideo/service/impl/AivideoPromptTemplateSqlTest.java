@@ -15,7 +15,7 @@ class AivideoPromptTemplateSqlTest {
     void fullInitAndLatestUpgradeCarryAivideoPromptHardRules() throws Exception {
         Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
         String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
-        String upgrade = Files.readString(
+        String continuityUpgrade = Files.readString(
                 repoRoot.resolve("sql/upgrades/postgres/20260609_aivideo_prompt_template_alignment.sql"),
                 StandardCharsets.UTF_8);
 
@@ -33,23 +33,47 @@ class AivideoPromptTemplateSqlTest {
         assertContains(fullInit, "AI智能");
         assertContains(fullInit, "ai/prompt/index");
 
-        assertContains(upgrade, "谁递给谁");
-        assertContains(upgrade, "最后谁拿着");
-        assertContains(upgrade, "上一镜背对");
-        assertContains(upgrade, "道具颜色");
-        assertContains(upgrade, "referenceAudioUrls");
-        assertContains(upgrade, "最多 3 段");
-        assertContains(upgrade, "插入镜头/交接镜头");
-        assertContains(upgrade, "AI短剧后期语音合成");
-        assertContains(upgrade, "aivideo_tts");
-        assertContains(upgrade, "aivideo_script");
-        assertContains(upgrade, "aivideo_storyboard");
-        assertContains(upgrade, "AI智能");
-        assertContains(upgrade, "ai/prompt/index");
-        assertContains(upgrade, "MAX(template_id)");
-        assertContains(upgrade, "video_prompt_template_id");
-        assertDoesNotContain(upgrade, "asset_prompt_template_id");
-        assertDoesNotContain(upgrade, "shot_video_prompt_template_id");
+        assertContains(continuityUpgrade, "谁递给谁");
+        assertContains(continuityUpgrade, "最后谁拿着");
+        assertContains(continuityUpgrade, "上一镜背对");
+        assertContains(continuityUpgrade, "道具颜色");
+        assertContains(continuityUpgrade, "referenceAudioUrls");
+        assertContains(continuityUpgrade, "最多 3 段");
+        assertContains(continuityUpgrade, "插入镜头/交接镜头");
+        assertContains(continuityUpgrade, "AI短剧后期语音合成");
+    }
+
+    @Test
+    void fullInitAndLatestUpgradeCarryAivideoSoundDesignRules() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
+        String soundUpgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql"),
+                StandardCharsets.UTF_8);
+
+        assertContains(fullInit, "soundDesign");
+        assertContains(fullInit, "voiceProfiles");
+        assertContains(fullInit, "narrationProfile");
+        assertContains(fullInit, "bgmPlan");
+        assertContains(fullInit, "sfxPlan");
+        assertContains(fullInit, "bgmCue");
+        assertContains(fullInit, "sfxCues");
+        assertContains(fullInit, "音乐音效");
+        assertContains(fullInit, "剧本阶段");
+        assertContains(fullInit, "后期语音合成");
+
+        assertContains(soundUpgrade, "soundDesign");
+        assertContains(soundUpgrade, "voiceProfiles");
+        assertContains(soundUpgrade, "narrationProfile");
+        assertContains(soundUpgrade, "bgmPlan");
+        assertContains(soundUpgrade, "sfxPlan");
+        assertContains(soundUpgrade, "bgmCue");
+        assertContains(soundUpgrade, "sfxCues");
+        assertContains(soundUpgrade, "音乐音效");
+        assertContains(soundUpgrade, "剧本阶段");
+        assertContains(soundUpgrade, "后期语音合成");
+        assertDoesNotContain(soundUpgrade, "asset_prompt_template_id");
+        assertDoesNotContain(soundUpgrade, "shot_video_prompt_template_id");
     }
 
     @Test
@@ -88,6 +112,20 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "火山 VOD 视频剪辑合成");
         assertContains(upgrade, "VIDEO_EDIT");
         assertContains(upgrade, "vod-direct-edit");
+    }
+
+    @Test
+    void shotSoundCueColumnsExistInFullInitAndUpgrade() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
+        String upgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260610_aivideo_shot_sound_cues.sql"),
+                StandardCharsets.UTF_8);
+
+        assertContains(fullInit, "bgm_cue TEXT");
+        assertContains(fullInit, "sfx_cues TEXT");
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS bgm_cue TEXT");
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS sfx_cues TEXT");
     }
 
     private static void assertContains(String content, String needle) {

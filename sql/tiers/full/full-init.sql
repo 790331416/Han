@@ -1187,6 +1187,8 @@ CREATE TABLE IF NOT EXISTS ai_video_shot (
     dialogue TEXT,
     voice_over TEXT,
     emotion VARCHAR(200),
+    bgm_cue TEXT,
+    sfx_cues TEXT,
     prompt_text TEXT,
     reference_media_ids TEXT,
     keyframe_media_id BIGINT,
@@ -2636,6 +2638,9 @@ WITH hard_rules AS (
 6. 素材策略硬锁：连续镜头如果使用上一尾帧，就不要混入角色图/场景图/参考音频；插入镜头/交接镜头可使用上一段视频、角色图、场景图、道具图和角色参考音频。
 7. 多角色声音硬锁：长期角色声线应使用 referenceAudioUrls，最多 3 段，单段 2-15 秒，总时长不超过 15 秒；超过 3 个发声角色时必须拆镜或改后期 TTS。
 8. 三轨声音硬锁：说出口的写 dialogue；旁白/画外音写 voiceOver；“脑海里闪过、想到、意识到、心里一动”等心理活动默认不朗读，只写 actionDesc/promptText/emotion。
+9. 声音设计资产硬锁：剧本生成必须增加“声音设计”小节，资产提取必须输出顶层 soundDesign，包含 voiceProfiles、narrationProfile、bgmPlan、sfxPlan。
+10. 音乐音效硬锁：每个分镜必须输出 bgmCue 和 sfxCues；bgmCue 写当前镜头继承/切换/静音的背景音乐意图，sfxCues 写与动作绑定的音效名称、触发点和音量倾向。
+11. 后期轨道硬锁：剧本阶段只定义声音意图，后期语音只合成 dialogue 和明确需要播出的 voiceOver；BGM 与音效进入音乐音效/混音成片轨道，不得让分镜视频模型自行改写声音。
 $rules$ AS block
 )
 UPDATE ai_prompt_template t
@@ -2662,19 +2667,19 @@ WHERE t.template_name IN (
 AND COALESCE(t.content, '') NOT LIKE '%【20260609模板对齐硬规则】%';
 
 UPDATE ai_prompt_template
-SET variables = '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]',
+SET variables = '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","bgmCue","sfxCues","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧分镜视频生成';
 
 UPDATE ai_prompt_template
-SET variables = '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText"]',
+SET variables = '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText","soundDesign","bgmPlan","sfxPlan"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧分镜提取';
 
 UPDATE ai_prompt_template
-SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText"]',
+SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText","soundDesign","bgmPlan","sfxPlan"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧资产提取';

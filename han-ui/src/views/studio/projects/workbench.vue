@@ -603,10 +603,16 @@
                   </ul>
                 </el-alert>
 
-                <el-descriptions class="project-edit-summary" :column="3" border>
+                <el-descriptions class="project-edit-summary" :column="4" border>
                   <el-descriptions-item label="可剪辑片段">{{ projectEditPreflight?.clipCount || 0 }}</el-descriptions-item>
                   <el-descriptions-item label="缺少视频镜头">{{ projectEditPreflight?.missingShotCount || 0 }}</el-descriptions-item>
                   <el-descriptions-item label="预计总时长">{{ projectEditPreflight?.totalDurationSec || 0 }} 秒</el-descriptions-item>
+                  <el-descriptions-item label="音频轨">
+                    {{ projectEditPreflight?.audioTrackCount || 0 }}
+                    <el-tag v-if="projectEditPreflight?.bgmAudioMediaId" size="small" type="success" effect="plain">
+                      BGM #{{ projectEditPreflight.bgmAudioMediaId }}
+                    </el-tag>
+                  </el-descriptions-item>
                 </el-descriptions>
 
                 <el-table class="project-edit-table" :data="projectEditClips" border empty-text="暂无可剪辑片段">
@@ -631,9 +637,20 @@
                   <el-table-column label="动作" min-width="260" show-overflow-tooltip>
                     <template #default="{ row }">{{ row.actionDesc || '-' }}</template>
                   </el-table-column>
+                  <el-table-column label="声音计划" min-width="260" show-overflow-tooltip>
+                    <template #default="{ row }">
+                      <div class="shot-sound-cue-cell">
+                        <p><strong>BGM：</strong>{{ row.bgmCue || '未规划' }}</p>
+                        <p><strong>音效：</strong>{{ row.sfxCues || '未规划' }}</p>
+                      </div>
+                    </template>
+                  </el-table-column>
                   <el-table-column label="视频资产" width="130">
                     <template #default="{ row }">
                       <el-tag type="success">#{{ row.videoMediaId }}</el-tag>
+                      <el-tag v-if="row.sfxAudioMediaId" class="asset-mini-tag" type="warning" effect="plain">
+                        SFX #{{ row.sfxAudioMediaId }}
+                      </el-tag>
                     </template>
                   </el-table-column>
                   <el-table-column label="时间线" width="180">
@@ -3139,6 +3156,7 @@ async function loadProjectEditPreflight() {
       clipCount: 0,
       missingShotCount: 0,
       totalDurationSec: 0,
+      audioTrackCount: 0,
       clips: [],
       warnings: [],
       errors: ['整片剪辑预检接口请求失败，请稍后刷新']
@@ -5053,6 +5071,22 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 4px;
   align-items: start;
+}
+
+.shot-sound-cue-cell {
+  display: grid;
+  gap: 4px;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.45;
+
+  p {
+    margin: 0;
+  }
+}
+
+.asset-mini-tag {
+  margin-left: 4px;
 }
 
 .shot-transition-desc {

@@ -45,6 +45,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
     private static final String CONFIRM_APPROVED = "APPROVED";
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
     private static final String ASSET_SHOT_TTS_AUDIO = "SHOT_TTS_AUDIO";
+    private static final String ASSET_PROJECT_BGM_AUDIO = "PROJECT_BGM_AUDIO";
+    private static final String ASSET_SHOT_SFX_AUDIO = "SHOT_SFX_AUDIO";
     private static final String ASSET_PROJECT_EDIT_VIDEO = "PROJECT_EDIT_VIDEO";
     private static final String TASK_PROJECT_EDIT_VIDEO = "PROJECT_EDIT_VIDEO";
     private static final String BIZ_SHOT = "SHOT";
@@ -180,6 +182,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         List<AiVideoShotPo> shots = selectApprovedShots(project.getProjectId());
         List<AiVideoMediaAssetPo> selectedVideos = selectSelectedShotVideos(project.getProjectId());
         List<AiVideoMediaAssetPo> selectedTtsAudios = selectSelectedShotTtsAudios(project.getProjectId());
+        List<AiVideoMediaAssetPo> selectedBgmAudios = selectSelectedProjectBgmAudios(project.getProjectId());
+        List<AiVideoMediaAssetPo> selectedSfxAudios = selectSelectedShotSfxAudios(project.getProjectId());
         Map<Long, AiVideoMediaAssetPo> selectedByMediaId = selectedVideos.stream()
                 .filter(media -> media.getMediaId() != null)
                 .collect(Collectors.toMap(AiVideoMediaAssetPo::getMediaId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
@@ -189,8 +193,23 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         Map<Long, AiVideoMediaAssetPo> selectedTtsByShotId = selectedTtsAudios.stream()
                 .filter(media -> media.getBizId() != null)
                 .collect(Collectors.toMap(AiVideoMediaAssetPo::getBizId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
+        Map<Long, AiVideoMediaAssetPo> selectedSfxByShotId = selectedSfxAudios.stream()
+                .filter(media -> media.getBizId() != null)
+                .collect(Collectors.toMap(AiVideoMediaAssetPo::getBizId, Function.identity(), (a, b) -> a, LinkedHashMap::new));
 
         AivideoProjectEditPreflightVo preflight = new AivideoProjectEditPreflightVo();
+        if (!selectedBgmAudios.isEmpty()) {
+            AiVideoMediaAssetPo bgmAudio = selectedBgmAudios.get(0);
+            if (StringUtils.hasText(bgmAudio.getFileUrl())) {
+                String bgmAudioUrl = toPublicUrl(bgmAudio.getFileUrl());
+                if (!isSupportedDirectEditSourceUrl(bgmAudioUrl)) {
+                    preflight.getErrors().add("Project BGM audio is not a public URL");
+                } else {
+                    preflight.setBgmAudioMediaId(bgmAudio.getMediaId());
+                    preflight.setBgmAudioUrl(bgmAudioUrl);
+                }
+            }
+        }
         if (shots.isEmpty()) {
             preflight.getErrors().add("暂无已确认分镜，不能生成剪辑成片");
             preflight.setMissingShotCount(0);
@@ -221,6 +240,8 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
             clip.setTransitionBeforeDesc(firstText(shot.getTransitionBeforeDesc()));
             clip.setTransitionEffect(firstText(shot.getTransitionEffect(), "hard_cut"));
             clip.setActionDesc(firstText(shot.getActionDesc(), shot.getPromptText()));
+            clip.setBgmCue(firstText(shot.getBgmCue()));
+            clip.setSfxCues(firstText(shot.getSfxCues()));
             clip.setVideoMediaId(media.getMediaId());
             String videoUrl = toPublicUrl(media.getFileUrl());
             if (!isSupportedDirectEditSourceUrl(videoUrl)) {
@@ -240,6 +261,17 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 clip.setTtsAudioMediaId(ttsAudio.getMediaId());
                 clip.setTtsAudioUrl(ttsAudioUrl);
             }
+            AiVideoMediaAssetPo sfxAudio = selectedSfxByShotId.get(shot.getShotId());
+            if (sfxAudio != null && StringUtils.hasText(sfxAudio.getFileUrl())) {
+                String sfxAudioUrl = toPublicUrl(sfxAudio.getFileUrl());
+                if (!isSupportedDirectEditSourceUrl(sfxAudioUrl)) {
+                    preflight.getErrors().add("Shot " + firstInteger(shot.getShotNo(), 0)
+                            + " selected SFX audio is not a public URL");
+                    continue;
+                }
+                clip.setSfxAudioMediaId(sfxAudio.getMediaId());
+                clip.setSfxAudioUrl(sfxAudioUrl);
+            }
             clip.setTimelineStartMs(cursorMs);
             cursorMs += durationSec * 1000;
             clip.setTimelineEndMs(cursorMs);
@@ -252,6 +284,17 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         preflight.setClipCount(preflight.getClips().size());
         preflight.setMissingShotCount(missing);
         preflight.setTotalDurationSec(cursorMs / 1000);
+        int audioTrackCount = 0;
+        if (StringUtils.hasText(preflight.getBgmAudioUrl())) {
+            audioTrackCount++;
+        }
+        if (preflight.getClips().stream().anyMatch(clip -> StringUtils.hasText(clip.getTtsAudioUrl()))) {
+            audioTrackCount++;
+        }
+        if (preflight.getClips().stream().anyMatch(clip -> StringUtils.hasText(clip.getSfxAudioUrl()))) {
+            audioTrackCount++;
+        }
+        preflight.setAudioTrackCount(audioTrackCount);
         preflight.setReady(preflight.getErrors().isEmpty() && !preflight.getClips().isEmpty());
         return preflight;
     }
@@ -283,6 +326,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         return selectSelectedShotMediaAssets(projectId, ASSET_SHOT_TTS_AUDIO);
     }
 
+    private List<AiVideoMediaAssetPo> selectSelectedShotSfxAudios(Long projectId) {
+        return selectSelectedShotMediaAssets(projectId, ASSET_SHOT_SFX_AUDIO);
+    }
+
+    private List<AiVideoMediaAssetPo> selectSelectedProjectBgmAudios(Long projectId) {
+        return selectSelectedProjectMediaAssets(projectId, ASSET_PROJECT_BGM_AUDIO);
+    }
+
     private List<AiVideoMediaAssetPo> selectSelectedShotMediaAssets(Long projectId, String assetType) {
         List<AiVideoMediaAssetPo> medias = mediaAssetMapper.selectList(new LambdaQueryWrapper<AiVideoMediaAssetPo>()
                 .eq(AiVideoMediaAssetPo::getProjectId, projectId)
@@ -296,6 +347,26 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         return medias.stream()
                 .filter(media -> assetType.equals(media.getAssetType()))
                 .filter(media -> BIZ_SHOT.equals(media.getBizType()))
+                .filter(media -> YES.equals(media.getSelected()))
+                .filter(media -> Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag()))
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    private List<AiVideoMediaAssetPo> selectSelectedProjectMediaAssets(Long projectId, String assetType) {
+        List<AiVideoMediaAssetPo> medias = mediaAssetMapper.selectList(new LambdaQueryWrapper<AiVideoMediaAssetPo>()
+                .eq(AiVideoMediaAssetPo::getProjectId, projectId)
+                .eq(AiVideoMediaAssetPo::getAssetType, assetType)
+                .eq(AiVideoMediaAssetPo::getBizType, BIZ_PROJECT)
+                .eq(AiVideoMediaAssetPo::getBizId, projectId)
+                .eq(AiVideoMediaAssetPo::getSelected, YES)
+                .eq(AiVideoMediaAssetPo::getDelFlag, DEL_FLAG_NORMAL));
+        if (medias == null) {
+            return new ArrayList<>();
+        }
+        return medias.stream()
+                .filter(media -> assetType.equals(media.getAssetType()))
+                .filter(media -> BIZ_PROJECT.equals(media.getBizType()))
+                .filter(media -> Objects.equals(projectId, media.getBizId()))
                 .filter(media -> YES.equals(media.getSelected()))
                 .filter(media -> Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag()))
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -316,7 +387,17 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 "720p");
         int[] canvas = resolveCanvas(ratio, resolution);
         List<Map<String, Object>> videoTrack = new ArrayList<>();
+        List<Map<String, Object>> bgmAudioTrack = new ArrayList<>();
         List<Map<String, Object>> ttsAudioTrack = new ArrayList<>();
+        List<Map<String, Object>> sfxAudioTrack = new ArrayList<>();
+        if (includeAudio && StringUtils.hasText(preflight.getBgmAudioUrl())) {
+            Map<String, Object> bgm = new LinkedHashMap<>();
+            bgm.put("ID", "project_bgm_" + preflight.getBgmAudioMediaId());
+            bgm.put("Source", preflight.getBgmAudioUrl());
+            bgm.put("Type", "audio");
+            bgm.put("TargetTime", List.of(0, preflight.getTotalDurationSec() * 1000));
+            bgmAudioTrack.add(bgm);
+        }
         for (AivideoProjectEditClipVo clip : preflight.getClips()) {
             Map<String, Object> element = new LinkedHashMap<>();
             element.put("ID", "shot_" + clip.getShotNo());
@@ -331,6 +412,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 audio.put("Type", "audio");
                 audio.put("TargetTime", List.of(clip.getTimelineStartMs(), clip.getTimelineEndMs()));
                 ttsAudioTrack.add(audio);
+            }
+            if (includeAudio && StringUtils.hasText(clip.getSfxAudioUrl())) {
+                Map<String, Object> audio = new LinkedHashMap<>();
+                audio.put("ID", "shot_" + clip.getShotNo() + "_sfx_" + clip.getSfxAudioMediaId());
+                audio.put("Source", clip.getSfxAudioUrl());
+                audio.put("Type", "audio");
+                audio.put("TargetTime", List.of(clip.getTimelineStartMs(), clip.getTimelineEndMs()));
+                sfxAudioTrack.add(audio);
             }
         }
         Map<String, Object> editParam = new LinkedHashMap<>();
@@ -350,8 +439,14 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
         ));
         List<List<Map<String, Object>>> tracks = new ArrayList<>();
         tracks.add(videoTrack);
+        if (!bgmAudioTrack.isEmpty()) {
+            tracks.add(bgmAudioTrack);
+        }
         if (!ttsAudioTrack.isEmpty()) {
             tracks.add(ttsAudioTrack);
+        }
+        if (!sfxAudioTrack.isEmpty()) {
+            tracks.add(sfxAudioTrack);
         }
         editParam.put("Track", tracks);
         editParam.put("Upload", Map.of(

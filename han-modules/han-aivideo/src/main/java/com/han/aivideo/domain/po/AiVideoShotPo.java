@@ -53,6 +53,10 @@ public class AiVideoShotPo {
 
     private String emotion;
 
+    private String bgmCue;
+
+    private String sfxCues;
+
     private String promptText;
 
     private String referenceMediaIds;

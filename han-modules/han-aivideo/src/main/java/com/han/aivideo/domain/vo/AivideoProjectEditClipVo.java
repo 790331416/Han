@@ -26,6 +26,10 @@ public class AivideoProjectEditClipVo {
 
     private String actionDesc;
 
+    private String bgmCue;
+
+    private String sfxCues;
+
     private Long videoMediaId;
 
     private String videoUrl;
@@ -33,6 +37,10 @@ public class AivideoProjectEditClipVo {
     private Long ttsAudioMediaId;
 
     private String ttsAudioUrl;
+
+    private Long sfxAudioMediaId;
+
+    private String sfxAudioUrl;
 
     private Integer timelineStartMs;
 

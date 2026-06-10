@@ -1079,6 +1079,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setDialogue(item.dialogue);
             shot.setVoiceOver(item.voiceOver);
             shot.setEmotion(item.emotion);
+            shot.setBgmCue(item.bgmCue);
+            shot.setSfxCues(joinFlexible(item.sfxCues));
             shot.setPromptText(item.promptText);
             normalizePreviousCharacterContinuity(shot, previousShot, characterNameById);
             shot.setConfirmStatus(CONFIRM_PENDING);
@@ -1803,7 +1805,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "每个镜头的主动作、是否包含强动作、建议时长 5/6/8 秒；超过 3 个动作 beat 必须建议拆镜，不要硬塞进一个镜头；"
                 + "对白、旁白/画外音、心声/心理活动必须三轨分清：对白是角色说出口并可口型同步的台词；旁白/画外音是可发声但角色不张嘴的内容；"
                 + "心声/心理活动默认不朗读，优先写成眼神、动作、环境空镜或画面隐喻；低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，"
-                + "禁止写成旁白、画外音或心声。对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。\n\n项目：" + project.getProjectName()
+                + "禁止写成旁白、画外音或心声。对白和旁白必须保持说话人连续，跨镜头接同一句话时不能无提示更换声线。"
+                + "必须增加【声音设计】小节：为每个主要角色写清角色声线、语速、情绪范围和是否需要固定 voiceType/参考音频；"
+                + "为旁白单独写旁白声线；为每个场景或剧情段写背景音乐风格、情绪、起止范围、淡入淡出和人声压低规则；"
+                + "为关键动作写音效/环境声建议，如翻纸声、脚步声、门铃、雨声、雷声、塑料碰撞声。"
+                + "剧本阶段只定义声音意图，不生成音频；后期语音和混音成片阶段会依据这些声音设计生成配音、BGM 和音效。\n\n项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform()) + "\n画幅：" + safeValue(project.getDefaultRatio())
                 + "\n\n润色文本：\n" + polishedText;
     }
@@ -1840,6 +1846,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "6. 严禁把海报文字、账本文字、屏幕字卡、价格标签、公告栏文字写入 voiceOver；这类可见文字必须写在 actionDesc 或 promptText 中，除非确实需要旁白朗读。\n"
                 + "7. 跨镜头延续同一句话、同一论点或同一段劝说时，必须保持同一说话人；如果画面切到其他角色，必须用“原说话人（画外音）”承接，禁止声线无提示跳到当前画面角色。\n"
                 + "7A. 脑海里闪过、想到、意识到、想象、回忆、触感、心里一动等心理内容默认写入 actionDesc/promptText/emotion，用画面表现，不要写成普通 voiceOver。错误示例：voiceOver 写“喵小萌（心声）：脑海里闪过奶茶冰凉甜润的触感”。正确示例：actionDesc 写“喵小萌眼神短暂游离，像想到奶茶的清凉触感，随后握紧班费账本”。\n"
+                + "7B. 声音设计资产必须前置输出：角色声线资产写入 soundDesign.voiceProfiles；旁白声线写入 soundDesign.narrationProfile；背景音乐写入 soundDesign.bgmPlan；关键音效/环境声写入 soundDesign.sfxPlan。\n"
+                + "7C. 每个分镜必须根据剧本声音设计补充 bgmCue 和 sfxCues：bgmCue 写当前镜头继承/切换/静音的 BGM 意图；sfxCues 写与动作绑定的音效，不能把音效写成旁白。\n"
+                + "7D. 角色声线资产必须描述音色、语速、情绪范围、推荐 voiceType 和参考音频需求；BGM 必须描述风格、情绪、作用范围、起止镜头和人声压低规则；SFX 必须描述触发动作、时间点和音量。\n"
                 + "8. 每个分镜必须明确地点；延续场景时在 sceneName 或 actionDesc 中体现“延续上个分镜场景，机位微调”。\n"
                 + "9. 动作要衔接，不能瞬移；镜头需包含微动作、眼神、呼吸、肢体、环境变化等可拍内容。\n"
                 + "10. shotType、cameraPosition、cameraMovement 要优先使用专业运镜词，如极焦特写、近景推轨、环绕摇镜、慢动作/延时、手持震动。\n"
@@ -1881,11 +1890,15 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "\"scenes\":[{\"sceneName\":\"\",\"sceneType\":\"\",\"episodeNo\":1,\"timeDesc\":\"\",\"weather\":\"\",\"atmosphere\":\"\","
                 + "\"visualFeatures\":\"\",\"colorTone\":\"\",\"props\":\"\",\"negativeElements\":\"\",\"promptText\":\"\",\"completeness\":\"\","
                 + "\"missingFields\":[\"\"]}],"
+                + "\"soundDesign\":{\"voiceProfiles\":[{\"characterName\":\"\",\"voiceStyle\":\"\",\"speed\":\"\",\"emotionRange\":\"\",\"recommendedVoiceType\":\"\",\"referenceAudioNeed\":\"\",\"rules\":\"\"}],"
+                + "\"narrationProfile\":{\"voiceStyle\":\"\",\"speed\":\"\",\"emotionRange\":\"\",\"recommendedVoiceType\":\"\",\"rules\":\"\"},"
+                + "\"bgmPlan\":[{\"scope\":\"\",\"mood\":\"\",\"style\":\"\",\"startShot\":1,\"endShot\":1,\"mixRule\":\"\"}],"
+                + "\"sfxPlan\":[{\"shotNo\":1,\"effect\":\"\",\"triggerAction\":\"\",\"timing\":\"\",\"volume\":\"\"}]},"
                 + "\"shots\":[{\"episodeNo\":1,\"shotNo\":1,\"durationSec\":5,\"sceneName\":\"\",\"characterNames\":[\"\"],"
                 + "\"shotType\":\"\",\"cameraPosition\":\"\",\"cameraMovement\":\"\",\"transitionBeforeType\":\"OPENING\","
                 + "\"transitionBeforeDesc\":\"\",\"transitionEffect\":\"hard_cut\",\"stitchGroupNo\":1,"
                 + "\"actionDesc\":\"\",\"dialogue\":\"\",\"voiceOver\":\"\","
-                + "\"emotion\":\"\",\"promptText\":\"\"}]}\n\n"
+                + "\"emotion\":\"\",\"bgmCue\":\"\",\"sfxCues\":[\"\"],\"promptText\":\"\"}]}\n\n"
                 + "项目：" + project.getProjectName()
                 + "\n目标平台：" + safeValue(project.getTargetPlatform())
                 + "\n画幅：" + safeValue(project.getDefaultRatio())
@@ -1953,6 +1966,23 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             return null;
         }
         return values.stream().filter(StringUtils::hasText).map(String::trim).collect(Collectors.joining(","));
+    }
+
+    private String joinFlexible(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof List<?> list) {
+            String joined = list.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::valueOf)
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .collect(Collectors.joining(","));
+            return StringUtils.hasText(joined) ? joined : null;
+        }
+        String text = String.valueOf(value).trim();
+        return StringUtils.hasText(text) ? text : null;
     }
 
     private <T> List<T> safeList(List<T> values) {
@@ -2209,6 +2239,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         public String dialogue;
         public String voiceOver;
         public String emotion;
+        public String bgmCue;
+        public Object sfxCues;
         public String promptText;
     }
 

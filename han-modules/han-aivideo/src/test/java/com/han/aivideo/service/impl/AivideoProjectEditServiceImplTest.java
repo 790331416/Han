@@ -150,6 +150,84 @@ class AivideoProjectEditServiceImplTest {
     }
 
     @Test
+    void editParamMixesSelectedProjectBgmAndShotSfxAudioAssets() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("edit-audio-mix-test");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        when(shotMapper.selectList(any())).thenReturn(List.of(
+                approvedShot(11L, 1, 5, 101L),
+                approvedShot(12L, 2, 6, 102L)
+        ));
+        when(mediaAssetMapper.selectList(any()))
+                .thenReturn(List.of(
+                        selectedVideo(101L, 11L, "/file/public/aivideo/shot-1.mp4"),
+                        selectedVideo(102L, 12L, "/file/public/aivideo/shot-2.mp4")
+                ))
+                .thenReturn(List.of())
+                .thenReturn(List.of(selectedProjectBgmAudio(301L, "/file/public/aivideo/bgm-main.mp3")))
+                .thenReturn(List.of(selectedShotSfxAudio(401L, 12L, "/file/public/aivideo/sfx-shot-2.mp3")));
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, null, shotMapper, mediaAssetMapper, taskMapper, null, "https://han.scavengers.cn");
+
+        String editParam = service.buildDirectEditParamForTest(1L, "edit-audio-mix-final", true);
+
+        assertTrue(editParam.contains("\"ID\":\"project_bgm_301\""));
+        assertTrue(editParam.contains("\"Source\":\"https://han.scavengers.cn/file/public/aivideo/bgm-main.mp3\""));
+        assertTrue(editParam.contains("\"TargetTime\":[0,11000]"));
+        assertTrue(editParam.contains("\"ID\":\"shot_2_sfx_401\""));
+        assertTrue(editParam.contains("\"Source\":\"https://han.scavengers.cn/file/public/aivideo/sfx-shot-2.mp3\""));
+        assertTrue(editParam.contains("\"TargetTime\":[5000,11000]"));
+    }
+
+    @Test
+    void preflightExposesShotSoundCuesForPostProductionAudioStage() throws Exception {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("audio-preflight-test");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        AiVideoShotPo shot = approvedShot(11L, 1, 5, 101L);
+        AiVideoShotPo.class.getMethod("setBgmCue", String.class)
+                .invoke(shot, "延续轻快校园BGM，有对白时压低");
+        AiVideoShotPo.class.getMethod("setSfxCues", String.class)
+                .invoke(shot, "翻纸声@1.2s,铅笔划过纸面@2.0s");
+        when(shotMapper.selectList(any())).thenReturn(List.of(shot));
+        when(mediaAssetMapper.selectList(any()))
+                .thenReturn(List.of(selectedVideo(101L, 11L, "/file/public/aivideo/shot-1.mp4")))
+                .thenReturn(List.of());
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, null, shotMapper, mediaAssetMapper, taskMapper, null, "https://han.scavengers.cn");
+
+        AivideoProjectEditPreflightVo preflight = service.previewProjectEdit(1L);
+        Object clip = preflight.getClips().get(0);
+
+        assertEquals("延续轻快校园BGM，有对白时压低",
+                clip.getClass().getMethod("getBgmCue").invoke(clip));
+        assertEquals("翻纸声@1.2s,铅笔划过纸面@2.0s",
+                clip.getClass().getMethod("getSfxCues").invoke(clip));
+    }
+
+    @Test
     void editParamUsesProjectSettingResolutionForLandscapeCanvas() {
         AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
         AiVideoProjectSettingMapper settingMapper = mock(AiVideoProjectSettingMapper.class);
@@ -371,6 +449,36 @@ class AivideoProjectEditServiceImplTest {
         media.setTenantId(9L);
         media.setMediaId(mediaId);
         media.setAssetType("SHOT_TTS_AUDIO");
+        media.setBizType("SHOT");
+        media.setBizId(shotId);
+        media.setFileUrl(fileUrl);
+        media.setSelected("1");
+        media.setAssetStatus("SELECTED");
+        media.setDelFlag(0);
+        return media;
+    }
+
+    private static AiVideoMediaAssetPo selectedProjectBgmAudio(Long mediaId, String fileUrl) {
+        AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
+        media.setProjectId(1L);
+        media.setTenantId(9L);
+        media.setMediaId(mediaId);
+        media.setAssetType("PROJECT_BGM_AUDIO");
+        media.setBizType("PROJECT");
+        media.setBizId(1L);
+        media.setFileUrl(fileUrl);
+        media.setSelected("1");
+        media.setAssetStatus("SELECTED");
+        media.setDelFlag(0);
+        return media;
+    }
+
+    private static AiVideoMediaAssetPo selectedShotSfxAudio(Long mediaId, Long shotId, String fileUrl) {
+        AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
+        media.setProjectId(1L);
+        media.setTenantId(9L);
+        media.setMediaId(mediaId);
+        media.setAssetType("SHOT_SFX_AUDIO");
         media.setBizType("SHOT");
         media.setBizId(shotId);
         media.setFileUrl(fileUrl);

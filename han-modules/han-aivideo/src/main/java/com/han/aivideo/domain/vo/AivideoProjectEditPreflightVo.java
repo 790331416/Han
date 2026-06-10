@@ -19,6 +19,12 @@ public class AivideoProjectEditPreflightVo {
 
     private Integer totalDurationSec = 0;
 
+    private Long bgmAudioMediaId;
+
+    private String bgmAudioUrl;
+
+    private Integer audioTrackCount = 0;
+
     private List<AivideoProjectEditClipVo> clips = new ArrayList<>();
 
     private List<String> warnings = new ArrayList<>();

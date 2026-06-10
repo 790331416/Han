@@ -27,7 +27,9 @@
   - `20260602_aivideo_video_ready_reference_prompts.sql`：AI 短剧角色图/场景图 Prompt 切换为 Seedance 视频参考素材友好规则，强制单主体角色锚点、单镜头场景锚点，并补充分镜视频对角色锚定图的使用边界
   - `20260603_aivideo_shot_spatial_continuity.sql`：AI 短剧分镜提取 Prompt 增加剧情空间连续性硬约束，禁止广告牌/高处危机后无过渡跳到狗窝、室内等未铺垫地点
   - `20260605_aivideo_shot_transition_plan.sql`：AI 短剧分镜增加转场关系、后期拼接组和默认转场效果字段，区分连续镜头与切场镜头
-  - `20260607_aivideo_audio_track_prompt.sql`：AI 短剧剧本/分镜/视频 Prompt 改为对白、旁白/画外音、心声/心理活动三轨规则，避免把心理画面朗读成配音
+- `20260607_aivideo_audio_track_prompt.sql`：AI 短剧剧本/分镜/视频 Prompt 改为对白、旁白/画外音、心声/心理活动三轨规则，避免把心理画面朗读成配音
+- `20260610_aivideo_sound_design_prompt.sql`：AI 短剧剧本/资产/分镜 Prompt 增加角色声线、BGM 和音效规划，前置输出 `soundDesign`、`bgmCue` 和 `sfxCues`
+- `20260610_aivideo_shot_sound_cues.sql`：AI 短剧分镜表增加 `bgm_cue`、`sfx_cues`，让资产提取出的 BGM/音效计划可被后期语音和剪辑混音阶段读取
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -115,3 +117,5 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260603_aivideo_shot_spatial_continuity.sql`：更新分镜提取默认模板，增加剧情空间连续性硬约束，要求相邻分镜承接主体位置、危险目标和结尾状态，并禁止无铺垫跳转到狗窝、室内、窝口等新地点。
 - `sql/upgrades/postgres/20260605_aivideo_shot_transition_plan.sql`：新增 `transition_before_type`、`transition_before_desc`、`transition_effect`、`stitch_group_no`，让分镜表显式显示开场/连续/切场，并为后期视频剪辑 API 拼接和转场提供结构化计划。
 - `sql/upgrades/postgres/20260607_aivideo_audio_track_prompt.sql`：更新 AI 短剧剧本生成、分镜提取和分镜视频生成内置 Prompt，把声音规则拆成“对白可口型、旁白/画外音可发声但不口型、心声/心理活动默认不朗读”，并要求低声报数/耳语/读出等写入 `dialogue`。
+- `sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql`：更新 AI 短剧剧本生成、资产提取、分镜提取和分镜视频生成内置 Prompt，要求前置输出角色声线、旁白声线、BGM、音效/环境声规划，并为后期语音、音乐音效和混音成片提供结构化依据。
+- `sql/upgrades/postgres/20260610_aivideo_shot_sound_cues.sql`：为 `ai_video_shot` 增加 `bgm_cue` 和 `sfx_cues` 两列，用于保存每个分镜的背景音乐与音效触发计划，供剪辑预检、后期语音和后续混音流程使用。

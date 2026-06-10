@@ -316,6 +316,110 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void scriptPromptRequiresSoundDesignPlanningBeforeAssetExtraction() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildScriptPrompt", AiVideoProjectPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, "喵小萌准备班费账本。");
+
+        assertTrue(prompt.contains("声音设计"));
+        assertTrue(prompt.contains("角色声线"));
+        assertTrue(prompt.contains("背景音乐"));
+        assertTrue(prompt.contains("音效"));
+        assertTrue(prompt.contains("剧本阶段只定义声音意图"));
+        assertTrue(prompt.contains("后期语音和混音成片阶段"));
+    }
+
+    @Test
+    void assetPromptRequiresStructuredSoundDesignAssets() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("喵小萌阳光账本");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        project.setDefaultStyle("Q版 3D 卡通");
+        AiVideoProjectSettingPo setting = new AiVideoProjectSettingPo();
+        setting.setDefaultShotDuration(5);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildAssetPrompt", AiVideoProjectPo.class, AiVideoProjectSettingPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, setting,
+                "喵小萌在教室整理班费账本，狗小汪在文具店递出蓝色收纳盒。");
+
+        assertTrue(prompt.contains("soundDesign"));
+        assertTrue(prompt.contains("voiceProfiles"));
+        assertTrue(prompt.contains("narrationProfile"));
+        assertTrue(prompt.contains("bgmPlan"));
+        assertTrue(prompt.contains("sfxPlan"));
+        assertTrue(prompt.contains("bgmCue"));
+        assertTrue(prompt.contains("sfxCues"));
+        assertTrue(prompt.contains("角色声线资产"));
+        assertTrue(prompt.contains("BGM"));
+        assertTrue(prompt.contains("音效"));
+    }
+
+    @Test
+    void assetExtractionPersistsShotSoundCuesForPostProductionMixing() throws Exception {
+        AtomicReference<AiVideoShotPo> insertedShot = new AtomicReference<>();
+        AiVideoShotMapper shotMapper = (AiVideoShotMapper) Proxy.newProxyInstance(
+                AiVideoShotMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoShotMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        insertedShot.set((AiVideoShotPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, shotMapper, null, null, null, null);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [],
+                  "scenes": [],
+                  "shots": [
+                    {
+                      "episodeNo": 1,
+                      "shotNo": 1,
+                      "durationSec": 5,
+                      "actionDesc": "喵小萌低头翻看班费清单。",
+                      "dialogue": "喵小萌：先把预算算清楚。",
+                      "bgmCue": "延续轻快校园BGM，有对白时压低",
+                      "sfxCues": ["翻纸声@1.2s", "铅笔划过纸面@2.0s"],
+                      "promptText": "Q版3D教室镜头"
+                    }
+                  ]
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        insertMethod.invoke(service, project, payload, null);
+
+        Method bgmGetter = AiVideoShotPo.class.getMethod("getBgmCue");
+        Method sfxGetter = AiVideoShotPo.class.getMethod("getSfxCues");
+        assertEquals("延续轻快校园BGM，有对白时压低", bgmGetter.invoke(insertedShot.get()));
+        assertEquals("翻纸声@1.2s,铅笔划过纸面@2.0s", sfxGetter.invoke(insertedShot.get()));
+    }
+
+    @Test
     void assetPromptRequiresExplicitPropHandoffContinuity() throws Exception {
         AivideoTextServiceImpl service = new AivideoTextServiceImpl(
                 null, null, null, null, null, null, null, null, null, null, null, null);
