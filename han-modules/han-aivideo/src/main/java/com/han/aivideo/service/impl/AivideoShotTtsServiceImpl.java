@@ -1,12 +1,15 @@
 package com.han.aivideo.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.han.api.file.FileServiceClient;
 import com.han.api.file.domain.FileDTO;
 import com.han.aivideo.domain.dto.AivideoShotTtsGenerateDto;
+import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
+import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
@@ -17,11 +20,15 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -42,17 +49,21 @@ public class AivideoShotTtsServiceImpl extends AivideoServiceSupport implements 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoShotMapper shotMapper;
     private final AiVideoMediaAssetMapper mediaAssetMapper;
+    private final AiVideoCharacterMapper characterMapper;
     private final FileServiceClient fileServiceClient;
     private final AivideoTtsProvider ttsProvider;
 
+    @Autowired
     public AivideoShotTtsServiceImpl(AiVideoProjectMapper projectMapper,
                                      AiVideoShotMapper shotMapper,
                                      AiVideoMediaAssetMapper mediaAssetMapper,
+                                     AiVideoCharacterMapper characterMapper,
                                      FileServiceClient fileServiceClient,
                                      AivideoTtsProvider ttsProvider) {
         this.projectMapper = projectMapper;
         this.shotMapper = shotMapper;
         this.mediaAssetMapper = mediaAssetMapper;
+        this.characterMapper = characterMapper;
         this.fileServiceClient = fileServiceClient;
         this.ttsProvider = ttsProvider;
     }
@@ -65,19 +76,40 @@ public class AivideoShotTtsServiceImpl extends AivideoServiceSupport implements 
         AiVideoProjectPo project = requireProject(dto.getProjectId());
         AiVideoShotPo shot = requireShot(project, dto.getShotId());
         String speechText = resolveSpeechText(dto, shot);
-        String voiceType = firstText(dto.getVoiceType(), DEFAULT_VOICE_TYPE);
+        String speaker = firstText(dto.getSpeaker(), inferSpeakerName(speechText), shot.getTtsSpeaker());
+        AiVideoCharacterPo speakerCharacter = resolveSpeakerCharacter(project, shot, speaker);
+        if (!StringUtils.hasText(speaker) && speakerCharacter != null) {
+            speaker = firstText(speakerCharacter.getCharacterName());
+        }
+        String voiceType = firstText(dto.getVoiceType(), shot.getTtsVoiceType(),
+                speakerCharacter != null ? speakerCharacter.getVoiceType() : null,
+                DEFAULT_VOICE_TYPE);
+        BigDecimal speedRatio = firstDecimal(dto.getSpeedRatio(),
+                speakerCharacter != null ? speakerCharacter.getVoiceSpeedRatio() : null);
+        BigDecimal volumeRatio = firstDecimal(dto.getVolumeRatio(),
+                speakerCharacter != null ? speakerCharacter.getVoiceVolumeRatio() : null);
+        BigDecimal pitchRatio = firstDecimal(dto.getPitchRatio(),
+                speakerCharacter != null ? speakerCharacter.getVoicePitchRatio() : null);
         String requestId = "aivideo-tts-" + shot.getShotId() + "-" + UUID.randomUUID();
 
         AivideoTtsProvider.TtsAudio audio = ttsProvider.synthesize(new AivideoTtsProvider.TtsRequest(
                 speechText,
                 voiceType,
-                dto.getSpeedRatio(),
-                dto.getVolumeRatio(),
-                dto.getPitchRatio(),
+                speedRatio,
+                volumeRatio,
+                pitchRatio,
                 requestId));
         if (audio == null || audio.bytes() == null || audio.bytes().length == 0) {
             throw new BusinessException("语音合成未返回有效音频");
         }
+
+        int shotDurationMs = Math.max(1000, firstInteger(shot.getDurationSec(), 5) * 1000);
+        int ttsStartMs = clamp(firstInteger(dto.getTtsStartMs(), firstInteger(shot.getTtsStartMs(), 0)),
+                0, shotDurationMs - 1);
+        int generatedDurationMs = firstInteger(audio.durationMs(), shotDurationMs - ttsStartMs);
+        int defaultEndMs = Math.min(shotDurationMs, ttsStartMs + Math.max(1, generatedDurationMs));
+        int ttsEndMs = clamp(firstInteger(dto.getTtsEndMs(), firstInteger(shot.getTtsEndMs(), defaultEndMs)),
+                ttsStartMs + 1, shotDurationMs);
 
         String extension = firstText(audio.extension(), "mp3");
         String filename = "aivideo-shot-tts-" + shot.getShotId() + "-" + System.currentTimeMillis() + "." + extension;
@@ -92,11 +124,17 @@ public class AivideoShotTtsServiceImpl extends AivideoServiceSupport implements 
         }
 
         clearSelectedShotTts(project, shot);
+        updateShotTtsProfile(shot, speaker, voiceType, ttsStartMs, ttsEndMs);
 
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("provider", "VOLC_TTS");
         params.put("providerRequestId", firstText(audio.providerRequestId(), requestId));
+        params.put("speaker", firstText(speaker));
         params.put("voiceType", voiceType);
+        params.put("voiceName", speakerCharacter != null ? firstText(speakerCharacter.getVoiceName()) : "");
+        params.put("voiceMode", speakerCharacter != null ? firstText(speakerCharacter.getVoiceMode()) : "");
+        params.put("ttsStartMs", ttsStartMs);
+        params.put("ttsEndMs", ttsEndMs);
         params.put("durationMs", audio.durationMs());
         params.put("mimeType", firstText(audio.mimeType(), "audio/mpeg"));
         params.put("source", "POST_TTS");
@@ -188,6 +226,103 @@ public class AivideoShotTtsServiceImpl extends AivideoServiceSupport implements 
                 .set("asset_status", STATUS_READY)
                 .set("update_by", resolveOperator())
                 .set("update_time", now()));
+    }
+
+    private AiVideoCharacterPo resolveSpeakerCharacter(AiVideoProjectPo project, AiVideoShotPo shot, String speaker) {
+        if (characterMapper == null) {
+            return null;
+        }
+        List<AiVideoCharacterPo> characters = characterMapper.selectList(new LambdaQueryWrapper<AiVideoCharacterPo>()
+                .eq(AiVideoCharacterPo::getProjectId, project.getProjectId())
+                .eq(AiVideoCharacterPo::getDelFlag, DEL_FLAG_NORMAL));
+        if (characters == null || characters.isEmpty()) {
+            return null;
+        }
+        String normalizedSpeaker = trimToNull(speaker);
+        if (StringUtils.hasText(normalizedSpeaker)) {
+            for (AiVideoCharacterPo character : characters) {
+                if (normalizedSpeaker.equals(firstText(character.getCharacterName()))) {
+                    return character;
+                }
+            }
+        }
+        List<Long> characterIds = parseCharacterIds(shot.getCharacterIds());
+        if (!characterIds.isEmpty()) {
+            for (AiVideoCharacterPo character : characters) {
+                if (characterIds.contains(character.getCharacterId())) {
+                    return character;
+                }
+            }
+        }
+        return characters.size() == 1 ? characters.get(0) : null;
+    }
+
+    private List<Long> parseCharacterIds(String value) {
+        List<Long> ids = new ArrayList<>();
+        if (!StringUtils.hasText(value)) {
+            return ids;
+        }
+        for (String item : value.split("[,，;；\\s]+")) {
+            if (!StringUtils.hasText(item)) {
+                continue;
+            }
+            try {
+                ids.add(Long.parseLong(item.trim()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return ids;
+    }
+
+    private String inferSpeakerName(String speechText) {
+        String text = trimToNull(speechText);
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        String firstLine = text.split("\\R", 2)[0].trim();
+        int zh = firstLine.indexOf('：');
+        int en = firstLine.indexOf(':');
+        int index;
+        if (zh >= 0 && en >= 0) {
+            index = Math.min(zh, en);
+        } else {
+            index = Math.max(zh, en);
+        }
+        if (index <= 0 || index > 32) {
+            return "";
+        }
+        return firstLine.substring(0, index).trim();
+    }
+
+    private void updateShotTtsProfile(AiVideoShotPo shot, String speaker, String voiceType,
+                                      int ttsStartMs, int ttsEndMs) {
+        shot.setTtsSpeaker(firstText(speaker));
+        shot.setTtsVoiceType(firstText(voiceType));
+        shot.setTtsStartMs(ttsStartMs);
+        shot.setTtsEndMs(ttsEndMs);
+        shot.setUpdateBy(resolveOperator());
+        shot.setUpdateTime(now());
+        shotMapper.updateById(shot);
+    }
+
+    private BigDecimal firstDecimal(BigDecimal... values) {
+        if (values == null) {
+            return null;
+        }
+        for (BigDecimal value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private int firstInteger(Integer value, int fallback) {
+        return value == null ? fallback : value;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private void fillCreateAudit(AiVideoMediaAssetPo media) {

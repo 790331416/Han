@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
@@ -1695,6 +1696,31 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         refreshShotTransition(project.getProjectId(), shot);
         fillUpdateAudit(shot);
         shotMapper.updateById(shot);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateCharacterVoice(AivideoCharacterVoiceUpdateDto dto) {
+        if (dto == null || dto.getProjectId() == null || dto.getCharacterId() == null) {
+            throw new BusinessException("项目ID和角色ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoCharacterPo character = characterMapper.selectById(dto.getCharacterId());
+        if (character == null || !Objects.equals(project.getProjectId(), character.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(character.getDelFlag())) {
+            throw new BusinessException("角色资产不存在或不属于当前项目");
+        }
+        character.setVoiceMode(trimToNull(dto.getVoiceMode()));
+        character.setVoiceType(trimToNull(dto.getVoiceType()));
+        character.setVoiceName(trimToNull(dto.getVoiceName()));
+        character.setVoiceDesc(trimToNull(dto.getVoiceDesc()));
+        character.setVoiceReferenceMediaId(dto.getVoiceReferenceMediaId());
+        character.setVoiceSampleText(trimToNull(dto.getVoiceSampleText()));
+        character.setVoiceSpeedRatio(dto.getVoiceSpeedRatio());
+        character.setVoiceVolumeRatio(dto.getVoiceVolumeRatio());
+        character.setVoicePitchRatio(dto.getVoicePitchRatio());
+        fillUpdateAudit(character);
+        characterMapper.updateById(character);
     }
 
     private void refreshShotTransition(Long projectId, AiVideoShotPo shot) {

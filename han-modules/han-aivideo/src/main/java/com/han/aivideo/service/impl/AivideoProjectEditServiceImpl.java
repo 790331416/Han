@@ -260,6 +260,7 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 }
                 clip.setTtsAudioMediaId(ttsAudio.getMediaId());
                 clip.setTtsAudioUrl(ttsAudioUrl);
+                applyTtsTiming(clip, shot, ttsAudio, durationSec * 1000);
             }
             AiVideoMediaAssetPo sfxAudio = selectedSfxByShotId.get(shot.getShotId());
             if (sfxAudio != null && StringUtils.hasText(sfxAudio.getFileUrl())) {
@@ -275,6 +276,12 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
             clip.setTimelineStartMs(cursorMs);
             cursorMs += durationSec * 1000;
             clip.setTimelineEndMs(cursorMs);
+            if (StringUtils.hasText(clip.getTtsAudioUrl())) {
+                int relativeStartMs = firstInteger(clip.getTtsStartMs(), 0);
+                int relativeEndMs = firstInteger(clip.getTtsEndMs(), durationSec * 1000);
+                clip.setTtsTimelineStartMs(clip.getTimelineStartMs() + relativeStartMs);
+                clip.setTtsTimelineEndMs(clip.getTimelineStartMs() + relativeEndMs);
+            }
             if (previousGroup != null && !Objects.equals(previousGroup, shot.getStitchGroupNo())) {
                 preflight.getWarnings().add("第" + clip.getShotNo() + "镜前发生剪辑组切换，可在后期组间加转场：" + clip.getTransitionBeforeType());
             }
@@ -372,6 +379,44 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    private void applyTtsTiming(AivideoProjectEditClipVo clip, AiVideoShotPo shot,
+                                AiVideoMediaAssetPo ttsAudio, int durationMs) {
+        Map<String, Object> params = parseParamsJson(ttsAudio.getParamsJson());
+        int maxDurationMs = Math.max(1000, durationMs);
+        Integer paramStartMs = integerParam(params.get("ttsStartMs"));
+        Integer paramEndMs = integerParam(params.get("ttsEndMs"));
+        int startMs = clamp(firstInteger(paramStartMs, firstInteger(shot.getTtsStartMs(), 0)),
+                0, maxDurationMs - 1);
+        int endMs = clamp(firstInteger(paramEndMs, firstInteger(shot.getTtsEndMs(), maxDurationMs)),
+                startMs + 1, maxDurationMs);
+        clip.setTtsStartMs(startMs);
+        clip.setTtsEndMs(endMs);
+        clip.setTtsSpeaker(firstText(stringParam(params.get("speaker")), shot.getTtsSpeaker()));
+        clip.setTtsVoiceType(firstText(stringParam(params.get("voiceType")), shot.getTtsVoiceType()));
+    }
+
+    private Integer integerParam(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private String stringParam(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private String buildDirectEditParam(AiVideoProjectPo project, AivideoProjectEditPreflightVo preflight,
                                         String videoName, boolean includeAudio, String uploader, String outputFileName) {
         AiVideoProjectSettingPo projectSetting = selectProjectSetting(project.getProjectId());
@@ -410,7 +455,9 @@ public class AivideoProjectEditServiceImpl extends AivideoServiceSupport impleme
                 audio.put("ID", "shot_" + clip.getShotNo() + "_tts");
                 audio.put("Source", clip.getTtsAudioUrl());
                 audio.put("Type", "audio");
-                audio.put("TargetTime", List.of(clip.getTimelineStartMs(), clip.getTimelineEndMs()));
+                audio.put("TargetTime", List.of(
+                        firstInteger(clip.getTtsTimelineStartMs(), clip.getTimelineStartMs()),
+                        firstInteger(clip.getTtsTimelineEndMs(), clip.getTimelineEndMs())));
                 ttsAudioTrack.add(audio);
             }
             if (includeAudio && StringUtils.hasText(clip.getSfxAudioUrl())) {

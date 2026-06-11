@@ -374,6 +374,14 @@
                     </div>
                   </template>
                 </el-table-column>
+                <el-table-column label="声线资产" min-width="190">
+                  <template #default="{ row }">
+                    <div class="voice-summary">
+                      <strong>{{ characterVoiceSummary(row) }}</strong>
+                      <small>{{ characterVoiceDetail(row) }}</small>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="角色图" width="120">
                   <template #default="{ row }">
                     <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
@@ -381,7 +389,7 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="240">
+                <el-table-column label="操作" width="300">
                   <template #default="{ row }">
                     <el-button
                       v-if="row.confirmStatus !== 'APPROVED'"
@@ -405,6 +413,9 @@
                     </el-button>
                     <el-button size="small" type="primary" plain @click="openCharacterImageDrawer(row)">
                       角色图
+                    </el-button>
+                    <el-button size="small" type="success" plain @click="openCharacterVoiceDialog(row)">
+                      声线
                     </el-button>
                   </template>
                 </el-table-column>
@@ -726,6 +737,14 @@
               <el-table :data="shots" border empty-text="暂无可配音分镜">
                 <el-table-column prop="shotNo" label="镜头" width="90" />
                 <el-table-column prop="durationSec" label="秒数" width="90" />
+                <el-table-column label="说话时间" width="170">
+                  <template #default="{ row }">
+                    <div class="tts-time-cell">
+                      <strong>{{ formatShotTtsRange(row) }}</strong>
+                      <small>{{ defaultShotTtsSpeaker(row) || '未识别说话人' }}</small>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="配音文本" min-width="320">
                   <template #default="{ row }">
                     <div class="tts-asset-text">
@@ -1156,6 +1175,91 @@
       </div>
     </el-drawer>
 
+    <el-dialog v-model="characterVoiceDialogVisible" width="680px" :title="characterVoiceDialogTitle">
+      <div v-if="selectedCharacterForVoice" class="character-voice-dialog">
+        <el-alert
+          type="info"
+          show-icon
+          :closable="false"
+          title="声线会保存到角色资产里，后期语音生成会优先继承该角色的音色、语速、音量和音高。"
+        />
+        <el-form class="character-voice-form" label-width="110px">
+          <el-row :gutter="12">
+            <el-col :span="12">
+              <el-form-item label="声音模式">
+                <el-select v-model="characterVoiceForm.voiceMode" placeholder="选择声音模式">
+                  <el-option
+                    v-for="item in characterVoiceModeOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="音色ID">
+                <el-input v-model="characterVoiceForm.voiceType" placeholder="例如 BV001_24k_streaming 或自定义音色ID" clearable />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="声线名称">
+            <el-input v-model="characterVoiceForm.voiceName" placeholder="例如 喵小萌Q版少女声" clearable />
+          </el-form-item>
+          <el-form-item label="声线描述">
+            <el-input
+              v-model="characterVoiceForm.voiceDesc"
+              type="textarea"
+              :rows="3"
+              maxlength="512"
+              show-word-limit
+              placeholder="描述年龄、性别、语速、语气、情绪边界，例如：清亮软萌、语速略快、吐字清楚。"
+            />
+          </el-form-item>
+          <el-form-item label="参考音频ID">
+            <el-input
+              v-model="characterVoiceForm.voiceReferenceMediaId"
+              placeholder="可填已生成/上传的音频素材 mediaId，后续扩展参考音频复用"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item label="试听文本">
+            <el-input
+              v-model="characterVoiceForm.voiceSampleText"
+              type="textarea"
+              :rows="2"
+              maxlength="512"
+              show-word-limit
+              placeholder="例如：今天也要把班费账本整理清楚。"
+            />
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="8">
+              <el-form-item label="语速">
+                <el-input-number v-model="characterVoiceForm.voiceSpeedRatio" :min="0.5" :max="2" :step="0.05" :precision="2" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="音量">
+                <el-input-number v-model="characterVoiceForm.voiceVolumeRatio" :min="0.1" :max="3" :step="0.05" :precision="2" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="音高">
+                <el-input-number v-model="characterVoiceForm.voicePitchRatio" :min="0.5" :max="2" :step="0.05" :precision="2" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="characterVoiceDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="characterVoiceSaving" @click="handleSaveCharacterVoice">
+          保存声线资产
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer v-model="shotVideoDrawerVisible" size="760px" :title="shotVideoDrawerTitle">
       <div v-if="selectedShotForVideo" class="scene-image-drawer">
         <section class="shot-reference-panel">
@@ -1429,6 +1533,44 @@
             show-word-limit
             placeholder="填写本分镜要真正说出口的旁白/对白；如本镜无台词可留空"
           />
+          <el-row :gutter="12" class="shot-tts-config">
+            <el-col :span="6">
+              <el-form-item label="说话人">
+                <el-input v-model="shotTtsSpeaker" placeholder="如：喵小萌 / 旁白" clearable />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="音色ID">
+                <el-input v-model="shotTtsVoiceType" placeholder="为空则后端按角色资产兜底" clearable />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="开始秒">
+                <el-input-number
+                  v-model="shotTtsStartSec"
+                  :min="0"
+                  :max="Math.max(0, Number(selectedShotForVideo?.durationSec || 5) - 0.1)"
+                  :step="0.1"
+                  :precision="1"
+                  controls-position="right"
+                  style="width: 100%"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="结束秒">
+                <el-input-number
+                  v-model="shotTtsEndSec"
+                  :min="Math.min(Number(selectedShotForVideo?.durationSec || 5), shotTtsStartSec + 0.1)"
+                  :max="Number(selectedShotForVideo?.durationSec || 5)"
+                  :step="0.1"
+                  :precision="1"
+                  controls-position="right"
+                  style="width: 100%"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
           <div class="shot-tts-actions">
             <el-button
               type="primary"
@@ -1598,6 +1740,7 @@ import {
   saveAivideoDocument,
   selectAivideoMedia,
   subtitleModeOptions,
+  updateAivideoCharacterVoice,
   updateAivideoProject,
   uploadAivideoReferenceImage,
   visualStyleOptions,
@@ -1640,6 +1783,18 @@ interface ShotVideoPreflightItem {
   detail: string
 }
 
+interface CharacterVoiceForm {
+  voiceMode: string
+  voiceType: string
+  voiceName: string
+  voiceDesc: string
+  voiceReferenceMediaId: string
+  voiceSampleText: string
+  voiceSpeedRatio: number
+  voiceVolumeRatio: number
+  voicePitchRatio: number
+}
+
 interface ShotScreenCharacterRule {
   onscreenCharacters: AivideoCharacter[]
   mentionedCharacters: AivideoCharacter[]
@@ -1670,6 +1825,20 @@ const assetStreamMeta = ref<AiStreamMetaPayload>({})
 const assetPromptPreviewText = ref('')
 const characterImageDrawerVisible = ref(false)
 const selectedCharacterForImage = ref<AivideoCharacter>()
+const characterVoiceDialogVisible = ref(false)
+const selectedCharacterForVoice = ref<AivideoCharacter>()
+const characterVoiceSaving = ref(false)
+const characterVoiceForm = reactive<CharacterVoiceForm>({
+  voiceMode: 'POST_TTS',
+  voiceType: '',
+  voiceName: '',
+  voiceDesc: '',
+  voiceReferenceMediaId: '',
+  voiceSampleText: '',
+  voiceSpeedRatio: 1,
+  voiceVolumeRatio: 1,
+  voicePitchRatio: 1
+})
 const characterImagePromptPreviewText = ref('')
 const characterReferenceMediaIds = ref<string[]>([])
 const characterReferenceImageUrlInput = ref('')
@@ -1703,6 +1872,10 @@ const shotVideoPreviewUrls = ref<Record<string, string>>({})
 const shotVideoSelectingIds = ref<Set<string>>(new Set())
 const shotTtsAudios = ref<AivideoMediaAsset[]>([])
 const shotTtsText = ref('')
+const shotTtsSpeaker = ref('')
+const shotTtsVoiceType = ref('')
+const shotTtsStartSec = ref(0)
+const shotTtsEndSec = ref(0)
 const shotTtsGenerating = ref(false)
 const shotTtsSelectingIds = ref<Set<string>>(new Set())
 const shotManualReferenceMediaIdsByShotId = ref<Record<string, string[]>>({})
@@ -1738,6 +1911,11 @@ const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
 const PROJECT_EDIT_POLL_INTERVAL = 5_000
 type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO' | 'SHOT_TTS_AUDIO'
+const characterVoiceModeOptions = [
+  { label: '后期 TTS（推荐）', value: 'POST_TTS' },
+  { label: '参考音频有声', value: 'REFERENCE_AUDIO' },
+  { label: '原生有声提示', value: 'NATIVE_AUDIO' }
+]
 
 const sourceDraft = reactive({
   sourceType: 'TEXT',
@@ -1888,6 +2066,9 @@ const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneN
 const characterImageDrawerTitle = computed(() => selectedCharacterForImage.value?.characterName
   ? `角色图候选：${selectedCharacterForImage.value.characterName}`
   : '角色图候选')
+const characterVoiceDialogTitle = computed(() => selectedCharacterForVoice.value?.characterName
+  ? `角色声线资产：${selectedCharacterForVoice.value.characterName}`
+  : '角色声线资产')
 const shotVideoDrawerTitle = computed(() => selectedShotForVideo.value
   ? `分镜视频候选：第 ${selectedShotForVideo.value.episodeNo || 1} 集 / 镜头 ${selectedShotForVideo.value.shotNo || '-'}`
   : '分镜视频候选')
@@ -2472,6 +2653,75 @@ function characterDisplayName(character: AivideoCharacter) {
   return character.characterName || `角色 ${character.characterId}`
 }
 
+function characterVoiceSummary(character: AivideoCharacter) {
+  return character.voiceName || character.voiceType || '未配置声线'
+}
+
+function characterVoiceDetail(character: AivideoCharacter) {
+  const details = [
+    character.voiceMode ? characterVoiceModeOptions.find((item) => item.value === character.voiceMode)?.label || character.voiceMode : '',
+    character.voiceReferenceMediaId ? `参考音频 #${character.voiceReferenceMediaId}` : '',
+    character.voiceDesc
+  ].filter(Boolean)
+  return details.join(' / ') || '后期配音会使用默认音色，建议为主要角色配置声线资产'
+}
+
+function numberOrDefault(value: unknown, fallback = 1) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : fallback
+}
+
+function optionalMediaId(value: string) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const numeric = Number(trimmed)
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+function openCharacterVoiceDialog(character: AivideoCharacter) {
+  selectedCharacterForVoice.value = character
+  characterVoiceForm.voiceMode = character.voiceMode || 'POST_TTS'
+  characterVoiceForm.voiceType = character.voiceType || ''
+  characterVoiceForm.voiceName = character.voiceName || ''
+  characterVoiceForm.voiceDesc = character.voiceDesc || ''
+  characterVoiceForm.voiceReferenceMediaId = character.voiceReferenceMediaId ? String(character.voiceReferenceMediaId) : ''
+  characterVoiceForm.voiceSampleText = character.voiceSampleText || ''
+  characterVoiceForm.voiceSpeedRatio = numberOrDefault(character.voiceSpeedRatio, 1)
+  characterVoiceForm.voiceVolumeRatio = numberOrDefault(character.voiceVolumeRatio, 1)
+  characterVoiceForm.voicePitchRatio = numberOrDefault(character.voicePitchRatio, 1)
+  characterVoiceDialogVisible.value = true
+}
+
+async function handleSaveCharacterVoice() {
+  const character = selectedCharacterForVoice.value
+  if (!character || characterVoiceSaving.value) {
+    return
+  }
+  characterVoiceSaving.value = true
+  try {
+    await updateAivideoCharacterVoice({
+      projectId: projectId.value,
+      characterId: character.characterId,
+      voiceMode: characterVoiceForm.voiceMode,
+      voiceType: characterVoiceForm.voiceType.trim() || undefined,
+      voiceName: characterVoiceForm.voiceName.trim() || undefined,
+      voiceDesc: characterVoiceForm.voiceDesc.trim() || undefined,
+      voiceReferenceMediaId: optionalMediaId(characterVoiceForm.voiceReferenceMediaId),
+      voiceSampleText: characterVoiceForm.voiceSampleText.trim() || undefined,
+      voiceSpeedRatio: characterVoiceForm.voiceSpeedRatio,
+      voiceVolumeRatio: characterVoiceForm.voiceVolumeRatio,
+      voicePitchRatio: characterVoiceForm.voicePitchRatio
+    })
+    ElMessage.success('角色声线资产已保存')
+    characterVoiceDialogVisible.value = false
+    await loadDetail()
+  } finally {
+    characterVoiceSaving.value = false
+  }
+}
+
 function findCharactersByTokens(tokens: string[]) {
   const tokenSet = new Set(tokens.map((item) => String(item || '').trim()).filter(Boolean))
   if (!tokenSet.size) {
@@ -2508,6 +2758,73 @@ function defaultShotTtsText(shot?: AivideoShot) {
     return voiceOver
   }
   return ''
+}
+
+function shotDurationMs(shot?: AivideoShot) {
+  const sec = Number(shot?.durationSec || params.defaultShotDuration || 5)
+  return Math.max(1000, Math.round(sec * 1000))
+}
+
+function normalizeTtsMs(value: unknown, fallback: number, min: number, max: number) {
+  const numeric = Number(value)
+  const resolved = Number.isFinite(numeric) ? numeric : fallback
+  return Math.max(min, Math.min(max, Math.round(resolved)))
+}
+
+function inferTtsSpeakerFromText(text?: string) {
+  const firstLine = String(text || '').split(/\r?\n/, 1)[0]?.trim() || ''
+  const zh = firstLine.indexOf('：')
+  const en = firstLine.indexOf(':')
+  const index = zh >= 0 && en >= 0 ? Math.min(zh, en) : Math.max(zh, en)
+  if (index <= 0 || index > 32) {
+    return ''
+  }
+  return firstLine.slice(0, index).trim()
+}
+
+function findCharacterByName(name?: string) {
+  const normalized = String(name || '').trim()
+  if (!normalized) {
+    return undefined
+  }
+  return characters.value.find((character) => String(character.characterName || '').trim() === normalized)
+}
+
+function defaultShotTtsSpeaker(shot?: AivideoShot) {
+  return String(shot?.ttsSpeaker || inferTtsSpeakerFromText(defaultShotTtsText(shot))).trim()
+}
+
+function defaultShotTtsVoiceType(shot?: AivideoShot) {
+  const speaker = defaultShotTtsSpeaker(shot)
+  const character = findCharacterByName(speaker)
+  return String(shot?.ttsVoiceType || character?.voiceType || '').trim()
+}
+
+function defaultShotTtsStartMs(shot?: AivideoShot) {
+  const durationMs = shotDurationMs(shot)
+  return normalizeTtsMs(shot?.ttsStartMs, 0, 0, Math.max(0, durationMs - 1))
+}
+
+function defaultShotTtsEndMs(shot?: AivideoShot) {
+  const durationMs = shotDurationMs(shot)
+  const startMs = defaultShotTtsStartMs(shot)
+  return normalizeTtsMs(shot?.ttsEndMs, durationMs, Math.min(durationMs, startMs + 1), durationMs)
+}
+
+function formatShotTtsRange(shot?: AivideoShot) {
+  const start = (defaultShotTtsStartMs(shot) / 1000).toFixed(1)
+  const end = (defaultShotTtsEndMs(shot) / 1000).toFixed(1)
+  return `${start}s - ${end}s`
+}
+
+function initializeShotTtsDraft(shot?: AivideoShot) {
+  const durationMs = shotDurationMs(shot)
+  const startMs = defaultShotTtsStartMs(shot)
+  const endMs = defaultShotTtsEndMs(shot)
+  shotTtsSpeaker.value = defaultShotTtsSpeaker(shot)
+  shotTtsVoiceType.value = defaultShotTtsVoiceType(shot)
+  shotTtsStartSec.value = Number((startMs / 1000).toFixed(1))
+  shotTtsEndSec.value = Number((Math.min(durationMs, Math.max(startMs + 1, endMs)) / 1000).toFixed(1))
 }
 
 function shotMentionedCharacters(shot?: AivideoShot) {
@@ -3713,6 +4030,7 @@ async function openShotVideoDrawer(shot: AivideoShot) {
   shotVideoDrawerVisible.value = true
   resetShotVideoDrawerState()
   shotTtsText.value = defaultShotTtsText(shot)
+  initializeShotTtsDraft(shot)
   const shotId = String(shot.shotId)
   shotVideoLoading.value = true
   try {
@@ -3750,6 +4068,10 @@ function resetShotVideoDrawerState() {
   shotVideoCandidates.value = []
   shotTtsAudios.value = []
   shotTtsText.value = ''
+  shotTtsSpeaker.value = ''
+  shotTtsVoiceType.value = ''
+  shotTtsStartSec.value = 0
+  shotTtsEndSec.value = 0
   shotTtsSelectingIds.value = new Set()
   revokeShotVideoPreviewUrls()
 }
@@ -4809,12 +5131,19 @@ async function handleGenerateShotTtsAudio() {
     return
   }
   const shotId = String(shot.shotId)
+  const durationMs = shotDurationMs(shot)
+  const ttsStartMs = normalizeTtsMs(shotTtsStartSec.value * 1000, 0, 0, Math.max(0, durationMs - 1))
+  const ttsEndMs = normalizeTtsMs(shotTtsEndSec.value * 1000, durationMs, Math.min(durationMs, ttsStartMs + 1), durationMs)
   shotTtsGenerating.value = true
   try {
     const res = await generateAivideoShotTtsAudio({
       projectId: projectId.value,
       shotId: shot.shotId,
-      text
+      text,
+      speaker: shotTtsSpeaker.value.trim() || undefined,
+      voiceType: shotTtsVoiceType.value.trim() || undefined,
+      ttsStartMs,
+      ttsEndMs
     })
     const asset = res.data
     if (asset?.mediaId && isCurrentShotVideoTarget(shotId)) {
@@ -5392,6 +5721,27 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 
+.voice-summary {
+  display: grid;
+  gap: 3px;
+  line-height: 1.4;
+
+  strong {
+    color: #1f2937;
+    font-size: 13px;
+  }
+
+  small {
+    color: #667085;
+  }
+}
+
+.character-voice-dialog,
+.character-voice-form {
+  display: grid;
+  gap: 14px;
+}
+
 @media (max-width: 720px) {
   .reference-image-control {
     align-items: stretch;
@@ -5505,6 +5855,21 @@ onBeforeUnmount(() => {
   border: 1px solid #bbf7d0;
   border-radius: 8px;
   background: #f0fdf4;
+}
+
+.shot-tts-config {
+  margin-top: 2px;
+}
+
+.tts-time-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.tts-time-cell small {
+  color: #6b7280;
 }
 
 .shot-tts-actions,

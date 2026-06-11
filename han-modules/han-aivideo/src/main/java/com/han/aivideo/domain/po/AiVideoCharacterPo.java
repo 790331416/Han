@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -52,6 +53,24 @@ public class AiVideoCharacterPo {
     private String missingFields;
 
     private Long lockedMediaId;
+
+    private String voiceMode;
+
+    private String voiceType;
+
+    private String voiceName;
+
+    private String voiceDesc;
+
+    private Long voiceReferenceMediaId;
+
+    private String voiceSampleText;
+
+    private BigDecimal voiceSpeedRatio;
+
+    private BigDecimal voiceVolumeRatio;
+
+    private BigDecimal voicePitchRatio;
 
     private String confirmStatus;
 

@@ -4,6 +4,7 @@ import com.han.aivideo.controller.base.BAivideoStudioController;
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
+import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
@@ -220,6 +221,12 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<Void> updateProjectShotScene(@Valid @RequestBody AivideoShotSceneUpdateDto dto) {
         return updateShotScene(dto);
+    }
+
+    @PostMapping("/assets/character/voice")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> updateProjectCharacterVoice(@Valid @RequestBody AivideoCharacterVoiceUpdateDto dto) {
+        return updateCharacterVoice(dto);
     }
 
     @PostMapping("/media/scene/prompt-preview")

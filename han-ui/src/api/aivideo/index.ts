@@ -123,6 +123,15 @@ export interface AivideoCharacter {
   appearance?: string
   promptText?: string
   lockedMediaId?: string | number
+  voiceMode?: string
+  voiceType?: string
+  voiceName?: string
+  voiceDesc?: string
+  voiceReferenceMediaId?: string | number
+  voiceSampleText?: string
+  voiceSpeedRatio?: number
+  voiceVolumeRatio?: number
+  voicePitchRatio?: number
   confirmStatus?: string
 }
 
@@ -160,6 +169,10 @@ export interface AivideoShot {
   emotion?: string
   bgmCue?: string
   sfxCues?: string
+  ttsStartMs?: number
+  ttsEndMs?: number
+  ttsSpeaker?: string
+  ttsVoiceType?: string
   promptText?: string
   confirmStatus?: string
   generationStatus?: string
@@ -217,6 +230,12 @@ export interface AivideoProjectEditClip {
   videoUrl?: string
   ttsAudioMediaId?: string | number
   ttsAudioUrl?: string
+  ttsSpeaker?: string
+  ttsVoiceType?: string
+  ttsStartMs?: number
+  ttsEndMs?: number
+  ttsTimelineStartMs?: number
+  ttsTimelineEndMs?: number
   sfxAudioMediaId?: string | number
   sfxAudioUrl?: string
   timelineStartMs?: number
@@ -486,6 +505,22 @@ export function updateAivideoShotScene(data: {
   return post<void>('/aivideo/studio/assets/shot/scene', data)
 }
 
+export function updateAivideoCharacterVoice(data: {
+  projectId: string | number
+  characterId: string | number
+  voiceMode?: string
+  voiceType?: string
+  voiceName?: string
+  voiceDesc?: string
+  voiceReferenceMediaId?: string | number
+  voiceSampleText?: string
+  voiceSpeedRatio?: number
+  voiceVolumeRatio?: number
+  voicePitchRatio?: number
+}) {
+  return post<void>('/aivideo/studio/assets/character/voice', data)
+}
+
 export function previewAivideoSceneImagePrompt(data: {
   projectId: string | number
   sceneId: string | number
@@ -565,6 +600,9 @@ export function generateAivideoShotTtsAudio(data: {
   shotId: string | number
   text?: string
   voiceType?: string
+  speaker?: string
+  ttsStartMs?: number
+  ttsEndMs?: number
   speedRatio?: number
   volumeRatio?: number
   pitchRatio?: number

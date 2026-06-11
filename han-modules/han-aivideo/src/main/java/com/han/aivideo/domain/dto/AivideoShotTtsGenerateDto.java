@@ -21,6 +21,12 @@ public class AivideoShotTtsGenerateDto {
 
     private String voiceType;
 
+    private String speaker;
+
+    private Integer ttsStartMs;
+
+    private Integer ttsEndMs;
+
     private BigDecimal speedRatio;
 
     private BigDecimal volumeRatio;

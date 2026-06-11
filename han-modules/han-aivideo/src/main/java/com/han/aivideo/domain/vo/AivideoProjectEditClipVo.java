@@ -38,6 +38,18 @@ public class AivideoProjectEditClipVo {
 
     private String ttsAudioUrl;
 
+    private String ttsSpeaker;
+
+    private String ttsVoiceType;
+
+    private Integer ttsStartMs;
+
+    private Integer ttsEndMs;
+
+    private Integer ttsTimelineStartMs;
+
+    private Integer ttsTimelineEndMs;
+
     private Long sfxAudioMediaId;
 
     private String sfxAudioUrl;

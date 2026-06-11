@@ -150,6 +150,62 @@ class AivideoProjectEditServiceImplTest {
     }
 
     @Test
+    void editParamPlacesSelectedTtsAudioOnConfiguredInShotSpeechTime() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
+        AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
+
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setProjectName("edit-tts-timeline-test");
+        project.setTenantId(9L);
+        project.setDefaultRatio("9:16");
+        project.setDelFlag(0);
+        when(projectMapper.selectById(1L)).thenReturn(project);
+
+        AiVideoShotPo shot1 = approvedShot(11L, 1, 5, 101L);
+        shot1.setTtsStartMs(1200);
+        shot1.setTtsEndMs(4200);
+        AiVideoShotPo shot2 = approvedShot(12L, 2, 6, 102L);
+        shot2.setTtsStartMs(800);
+        shot2.setTtsEndMs(2500);
+        when(shotMapper.selectList(any())).thenReturn(List.of(shot1, shot2));
+        List<AiVideoMediaAssetPo> videos = List.of(
+                selectedVideo(101L, 11L, "/file/public/aivideo/shot-1.mp4"),
+                selectedVideo(102L, 12L, "/file/public/aivideo/shot-2.mp4")
+        );
+        List<AiVideoMediaAssetPo> ttsAudios = List.of(
+                selectedShotTtsAudio(201L, 11L, "/file/public/aivideo/tts-shot-1.mp3"),
+                selectedShotTtsAudio(202L, 12L, "/file/public/aivideo/tts-shot-2.mp3")
+        );
+        when(mediaAssetMapper.selectList(any()))
+                .thenReturn(videos)
+                .thenReturn(ttsAudios)
+                .thenReturn(List.of())
+                .thenReturn(List.of())
+                .thenReturn(videos)
+                .thenReturn(ttsAudios)
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        AivideoProjectEditServiceImpl service = new AivideoProjectEditServiceImpl(
+                projectMapper, null, shotMapper, mediaAssetMapper, taskMapper, null, "https://han.scavengers.cn");
+
+        AivideoProjectEditPreflightVo preflight = service.previewProjectEdit(1L);
+        String editParam = service.buildDirectEditParamForTest(1L, "edit-tts-timeline-final", true);
+
+        assertEquals(1200, preflight.getClips().get(0).getTtsTimelineStartMs());
+        assertEquals(4200, preflight.getClips().get(0).getTtsTimelineEndMs());
+        assertEquals(5800, preflight.getClips().get(1).getTtsTimelineStartMs());
+        assertEquals(7500, preflight.getClips().get(1).getTtsTimelineEndMs());
+        assertTrue(editParam.contains("\"ID\":\"shot_1_tts\""));
+        assertTrue(editParam.contains("\"TargetTime\":[1200,4200]"));
+        assertTrue(editParam.contains("\"ID\":\"shot_2_tts\""));
+        assertTrue(editParam.contains("\"TargetTime\":[5800,7500]"));
+    }
+
+    @Test
     void editParamMixesSelectedProjectBgmAndShotSfxAudioAssets() {
         AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
         AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);

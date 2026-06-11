@@ -2,6 +2,7 @@ package com.han.aivideo.service;
 
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
@@ -56,4 +57,6 @@ public interface IAivideoTextService {
     void cancelConfirmAsset(AivideoAssetConfirmDto dto);
 
     void updateShotScene(AivideoShotSceneUpdateDto dto);
+
+    void updateCharacterVoice(AivideoCharacterVoiceUpdateDto dto);
 }

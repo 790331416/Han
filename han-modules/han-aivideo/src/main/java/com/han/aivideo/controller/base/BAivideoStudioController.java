@@ -2,6 +2,7 @@ package com.han.aivideo.controller.base;
 
 import com.han.aivideo.domain.dto.AivideoAssetConfirmDto;
 import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
+import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
@@ -170,6 +171,11 @@ public class BAivideoStudioController {
 
     protected R<Void> updateShotScene(AivideoShotSceneUpdateDto dto) {
         textService.updateShotScene(dto);
+        return R.ok();
+    }
+
+    protected R<Void> updateCharacterVoice(AivideoCharacterVoiceUpdateDto dto) {
+        textService.updateCharacterVoice(dto);
         return R.ok();
     }
 

@@ -1,6 +1,7 @@
 package com.han.aivideo.service.impl;
 
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
@@ -18,6 +19,7 @@ import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -417,6 +419,69 @@ class AivideoTextServiceImplTest {
         Method sfxGetter = AiVideoShotPo.class.getMethod("getSfxCues");
         assertEquals("延续轻快校园BGM，有对白时压低", bgmGetter.invoke(insertedShot.get()));
         assertEquals("翻纸声@1.2s,铅笔划过纸面@2.0s", sfxGetter.invoke(insertedShot.get()));
+    }
+
+    @Test
+    void updateCharacterVoiceProfilePersistsReusableVoiceAssetFields() {
+        AtomicReference<AiVideoCharacterPo> updatedCharacter = new AtomicReference<>();
+        AiVideoProjectMapper projectMapper = (AiVideoProjectMapper) Proxy.newProxyInstance(
+                AiVideoProjectMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoProjectMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        AiVideoProjectPo project = new AiVideoProjectPo();
+                        project.setProjectId(1L);
+                        project.setTenantId(9L);
+                        project.setDelFlag(0);
+                        return project;
+                    }
+                    return null;
+                });
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("selectById".equals(method.getName())) {
+                        AiVideoCharacterPo character = new AiVideoCharacterPo();
+                        character.setCharacterId(21L);
+                        character.setProjectId(1L);
+                        character.setTenantId(9L);
+                        character.setCharacterName("喵小萌");
+                        character.setDelFlag(0);
+                        return character;
+                    }
+                    if ("updateById".equals(method.getName())) {
+                        updatedCharacter.set((AiVideoCharacterPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                projectMapper, null, null, null, null, characterMapper, null, null, null, null, null, null);
+        AivideoCharacterVoiceUpdateDto dto = new AivideoCharacterVoiceUpdateDto();
+        dto.setProjectId(1L);
+        dto.setCharacterId(21L);
+        dto.setVoiceMode("POST_TTS");
+        dto.setVoiceType("voice_miaomeng_q");
+        dto.setVoiceName("喵小萌Q版少女声");
+        dto.setVoiceDesc("清亮、软萌、语速略快，适合Q版猫耳少女。");
+        dto.setVoiceReferenceMediaId(880L);
+        dto.setVoiceSampleText("今天也要把班费账本整理清楚。");
+        dto.setVoiceSpeedRatio(new BigDecimal("0.96"));
+        dto.setVoiceVolumeRatio(new BigDecimal("1.05"));
+        dto.setVoicePitchRatio(new BigDecimal("1.08"));
+
+        service.updateCharacterVoice(dto);
+
+        assertEquals("POST_TTS", updatedCharacter.get().getVoiceMode());
+        assertEquals("voice_miaomeng_q", updatedCharacter.get().getVoiceType());
+        assertEquals("喵小萌Q版少女声", updatedCharacter.get().getVoiceName());
+        assertEquals("清亮、软萌、语速略快，适合Q版猫耳少女。", updatedCharacter.get().getVoiceDesc());
+        assertEquals(880L, updatedCharacter.get().getVoiceReferenceMediaId());
+        assertEquals("今天也要把班费账本整理清楚。", updatedCharacter.get().getVoiceSampleText());
+        assertEquals(new BigDecimal("0.96"), updatedCharacter.get().getVoiceSpeedRatio());
+        assertEquals(new BigDecimal("1.05"), updatedCharacter.get().getVoiceVolumeRatio());
+        assertEquals(new BigDecimal("1.08"), updatedCharacter.get().getVoicePitchRatio());
     }
 
     @Test

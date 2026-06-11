@@ -57,6 +57,14 @@ public class AiVideoShotPo {
 
     private String sfxCues;
 
+    private Integer ttsStartMs;
+
+    private Integer ttsEndMs;
+
+    private String ttsSpeaker;
+
+    private String ttsVoiceType;
+
     private String promptText;
 
     private String referenceMediaIds;
