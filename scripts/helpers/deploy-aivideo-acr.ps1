@@ -44,8 +44,17 @@ if ($DeployDir -notmatch '^/[A-Za-z0-9._/-]+$') {
     throw "Invalid deploy dir: $DeployDir"
 }
 
+$expandedServices = @()
+foreach ($serviceValue in $Services) {
+    foreach ($service in ($serviceValue -split ',')) {
+        if ($service.Trim()) {
+            $expandedServices += $service.Trim()
+        }
+    }
+}
+
 $normalizedServices = @()
-foreach ($service in $Services) {
+foreach ($service in $expandedServices) {
     $name = $service.Trim().ToLowerInvariant()
     if (-not $serviceMap.ContainsKey($name)) {
         throw "Unsupported service '$service'. Supported: $($serviceMap.Keys -join ', ')"
