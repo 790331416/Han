@@ -30,22 +30,26 @@ WHERE t.template_name IN (
     'AI短剧分镜视频生成',
     'AI短剧后期语音合成'
 )
+AND (COALESCE(t.built_in, 0) = 1 OR COALESCE(t.tenant_id, 0) = 0)
 AND COALESCE(t.content, '') NOT LIKE '%【20260610声音设计资产规则】%';
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText","soundDesign","bgmPlan","sfxPlan"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧资产提取';
+WHERE template_name = 'AI短剧资产提取'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText","soundDesign","bgmPlan","sfxPlan"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧分镜提取';
+WHERE template_name = 'AI短剧分镜提取'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","bgmCue","sfxCues","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧分镜视频生成';
+WHERE template_name = 'AI短剧分镜视频生成'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);

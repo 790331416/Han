@@ -42,6 +42,7 @@ WHERE NOT EXISTS (
     SELECT 1
     FROM ai_prompt_template t
     WHERE t.template_name = item.template_name
+      AND (COALESCE(t.built_in, 0) = 1 OR COALESCE(t.tenant_id, 0) = 0)
 );
 
 UPDATE ai_prompt_template
@@ -73,7 +74,8 @@ WHERE template_name IN (
     'AI短剧场景图生成',
     'AI短剧分镜视频生成',
     'AI短剧后期语音合成'
-);
+)
+AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 WITH hard_rules AS (
     SELECT $rules$
@@ -110,31 +112,36 @@ WHERE t.template_name IN (
     'AI短剧分镜视频生成',
     'AI短剧后期语音合成'
 )
+AND (COALESCE(t.built_in, 0) = 1 OR COALESCE(t.tenant_id, 0) = 0)
 AND COALESCE(t.content, '') NOT LIKE '%【20260609模板对齐硬规则】%';
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","style","ratio","resolution","durationSec","shotNo","cameraMove","actionDesc","dialogue","voiceOver","innerThought","emotion","characterAnchors","sceneAnchor","propAnchors","continuityRequirement","referenceAudioUrls","referenceVideoUrl"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧分镜视频生成';
+WHERE template_name = 'AI短剧分镜视频生成'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","targetPlatform","ratio","defaultShotDuration","scriptText"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧分镜提取';
+WHERE template_name = 'AI短剧分镜提取'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDuration","scriptText"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧资产提取';
+WHERE template_name = 'AI短剧资产提取'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 UPDATE ai_prompt_template
 SET variables = '["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
-WHERE template_name = 'AI短剧后期语音合成';
+WHERE template_name = 'AI短剧后期语音合成'
+  AND (COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0);
 
 WITH tpl AS (
     SELECT
@@ -147,6 +154,7 @@ WITH tpl AS (
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧场景图生成') AS scene_image_id,
         MAX(template_id) FILTER (WHERE template_name = 'AI短剧分镜视频生成') AS video_prompt_id
     FROM ai_prompt_template
+    WHERE COALESCE(built_in, 0) = 1 OR COALESCE(tenant_id, 0) = 0
 )
 UPDATE ai_video_project_setting s
 SET polish_prompt_template_id = COALESCE(s.polish_prompt_template_id, tpl.polish_id),

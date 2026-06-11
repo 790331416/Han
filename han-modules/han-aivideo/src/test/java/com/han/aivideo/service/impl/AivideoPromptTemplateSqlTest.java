@@ -187,12 +187,37 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "最后谁拿着");
     }
 
+    @Test
+    void promptTemplateAlignmentUpgradesOnlyTouchManagedBuiltInTemplates() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String continuityUpgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260609_aivideo_prompt_template_alignment.sql"),
+                StandardCharsets.UTF_8);
+        String soundUpgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql"),
+                StandardCharsets.UTF_8);
+        String propUpgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260611_aivideo_prop_assets.sql"),
+                StandardCharsets.UTF_8);
+
+        assertManagedTemplateGuard(continuityUpgrade);
+        assertManagedTemplateGuard(soundUpgrade);
+        assertManagedTemplateGuard(propUpgrade);
+    }
+
     private static void assertContains(String content, String needle) {
         assertTrue(content.contains(needle), () -> "SQL should contain hard rule: " + needle);
     }
 
     private static void assertDoesNotContain(String content, String needle) {
         assertFalse(content.contains(needle), () -> "SQL should not contain mojibake or obsolete expression: " + needle);
+    }
+
+    private static void assertManagedTemplateGuard(String content) {
+        assertContains(content, "COALESCE");
+        assertContains(content, "built_in");
+        assertContains(content, "tenant_id");
+        assertContains(content, "= 1 OR COALESCE");
     }
 
     private static Path findRepoRoot(Path start) {

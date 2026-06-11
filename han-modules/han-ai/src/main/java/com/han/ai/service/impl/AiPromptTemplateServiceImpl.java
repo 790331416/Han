@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Prompt template service implementation.
@@ -28,6 +29,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
 
     @Override
     public PageResult<AiPromptTemplatePo> selectPage(AiPromptTemplateQuery query) {
+        ensureBuiltInTemplates();
         AiPromptTemplateQuery safeQuery = query != null ? query : new AiPromptTemplateQuery();
         int pageNum = normalizePageNum(safeQuery.getPageNum());
         int pageSize = normalizePageSize(safeQuery.getPageSize());
@@ -43,6 +45,7 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
 
     @Override
     public List<AiPromptTemplatePo> selectAll() {
+        ensureBuiltInTemplates();
         LambdaQueryWrapper<AiPromptTemplatePo> wrapper = new LambdaQueryWrapper<AiPromptTemplatePo>()
                 .eq(AiPromptTemplatePo::getStatus, STATUS_ENABLED)
                 .orderByAsc(AiPromptTemplatePo::getCategory)
@@ -118,6 +121,81 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
                 .orderByDesc(AiPromptTemplatePo::getCreateTime);
         applyTenantScope(wrapper);
         return wrapper;
+    }
+
+    private void ensureBuiltInTemplates() {
+        TenantHelper.ignore(() -> {
+            for (AiPromptTemplateBuiltinRegistry.Seed seed : AiPromptTemplateBuiltinRegistry.all()) {
+                upsertBuiltInTemplate(seed);
+            }
+            return null;
+        });
+    }
+
+    private void upsertBuiltInTemplate(AiPromptTemplateBuiltinRegistry.Seed seed) {
+        LambdaQueryWrapper<AiPromptTemplatePo> wrapper = new LambdaQueryWrapper<AiPromptTemplatePo>()
+                .eq(AiPromptTemplatePo::getTemplateName, seed.templateName());
+        List<AiPromptTemplatePo> existingTemplates = aiPromptTemplateMapper.selectList(wrapper);
+        if (existingTemplates == null || existingTemplates.isEmpty()) {
+            aiPromptTemplateMapper.insert(toBuiltInTemplate(seed));
+            return;
+        }
+        List<AiPromptTemplatePo> managedTemplates = existingTemplates.stream()
+                .filter(this::isManagedBuiltInTemplate)
+                .toList();
+        if (managedTemplates.isEmpty()) {
+            aiPromptTemplateMapper.insert(toBuiltInTemplate(seed));
+            return;
+        }
+        for (AiPromptTemplatePo existing : managedTemplates) {
+            if (shouldRefreshBuiltInTemplate(existing, seed)) {
+                existing.setTenantId(0L);
+                existing.setCategory(seed.category());
+                existing.setContent(seed.content());
+                existing.setVariables(seed.variables());
+                existing.setDescription(seed.description());
+                existing.setBuiltIn(1);
+                existing.setStatus(STATUS_ENABLED);
+                fillUpdateAudit(existing);
+                aiPromptTemplateMapper.updateById(existing);
+            }
+        }
+    }
+
+    private AiPromptTemplatePo toBuiltInTemplate(AiPromptTemplateBuiltinRegistry.Seed seed) {
+        AiPromptTemplatePo template = new AiPromptTemplatePo();
+        template.setTenantId(0L);
+        template.setTemplateName(seed.templateName());
+        template.setCategory(seed.category());
+        template.setContent(seed.content());
+        template.setVariables(seed.variables());
+        template.setDescription(seed.description());
+        template.setBuiltIn(1);
+        template.setStatus(STATUS_ENABLED);
+        template.setCreateBy("system");
+        template.setCreateTime(now());
+        template.setUpdateBy("system");
+        template.setUpdateTime(now());
+        return template;
+    }
+
+    private boolean isManagedBuiltInTemplate(AiPromptTemplatePo template) {
+        if (template == null) {
+            return false;
+        }
+        return Objects.equals(template.getBuiltIn(), 1)
+                || template.getTenantId() == null
+                || Objects.equals(template.getTenantId(), 0L);
+    }
+
+    private boolean shouldRefreshBuiltInTemplate(AiPromptTemplatePo existing, AiPromptTemplateBuiltinRegistry.Seed seed) {
+        return existing.getBuiltIn() == null || existing.getBuiltIn() != 1
+                || !Objects.equals(existing.getTenantId(), 0L)
+                || !STATUS_ENABLED.equals(existing.getStatus())
+                || !Objects.equals(existing.getCategory(), seed.category())
+                || !Objects.equals(existing.getContent(), seed.content())
+                || !Objects.equals(existing.getVariables(), seed.variables())
+                || !Objects.equals(existing.getDescription(), seed.description());
     }
 
     private void applyTenantScope(LambdaQueryWrapper<AiPromptTemplatePo> wrapper) {

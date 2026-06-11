@@ -3,6 +3,7 @@ package com.han.aivideo.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
+import com.han.aivideo.domain.dto.AivideoMediaRegisterDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
@@ -10,6 +11,7 @@ import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
@@ -20,6 +22,7 @@ import com.han.aivideo.enums.AivideoTaskStatus;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.mapper.AiVideoReviewRecordMapper;
@@ -76,12 +79,20 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     private static final String ASSET_SCENE_IMAGE = "SCENE_IMAGE";
     private static final String ASSET_CHARACTER_IMAGE = "CHARACTER_IMAGE";
+    private static final String ASSET_PROP_IMAGE = "PROP_IMAGE";
     private static final String ASSET_SHOT_VIDEO = "SHOT_VIDEO";
     private static final String ASSET_SHOT_TAIL_FRAME = "SHOT_TAIL_FRAME";
     private static final String ASSET_SHOT_AUDIO = "SHOT_AUDIO";
+    private static final String ASSET_SHOT_TTS_AUDIO = "SHOT_TTS_AUDIO";
+    private static final String ASSET_CHARACTER_VOICE_AUDIO = "CHARACTER_VOICE_AUDIO";
+    private static final String ASSET_PROJECT_BGM_AUDIO = "PROJECT_BGM_AUDIO";
+    private static final String ASSET_SHOT_SFX_AUDIO = "SHOT_SFX_AUDIO";
+    private static final String ASSET_PROJECT_EDIT_VIDEO = "PROJECT_EDIT_VIDEO";
     private static final String BIZ_SCENE = "SCENE";
     private static final String BIZ_CHARACTER = "CHARACTER";
+    private static final String BIZ_PROP = "PROP";
     private static final String BIZ_SHOT = "SHOT";
+    private static final String BIZ_PROJECT = "PROJECT";
     private static final String TASK_SCENE_IMAGE = "SCENE_IMAGE";
     private static final String TASK_CHARACTER_IMAGE = "CHARACTER_IMAGE";
     private static final String TARGET_MEDIA = "MEDIA_ASSET";
@@ -123,6 +134,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     private final AiVideoProjectSettingMapper settingMapper;
     private final AiVideoSceneMapper sceneMapper;
     private final AiVideoCharacterMapper characterMapper;
+    private final AiVideoPropMapper propMapper;
     private final AiVideoShotMapper shotMapper;
     private final AiVideoGenerationTaskMapper taskMapper;
     private final AiVideoMediaAssetMapper mediaAssetMapper;
@@ -218,6 +230,54 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AivideoMediaAssetVo registerMedia(AivideoMediaRegisterDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        String assetType = normalizeAssetType(dto.getAssetType());
+        MediaBizScope scope = normalizeAndValidateMediaScope(project, assetType, dto.getBizType(), dto.getBizId());
+        String fileUrl = firstText(dto.getFileUrl());
+        if (!StringUtils.hasText(fileUrl)) {
+            throw new BusinessException("媒体URL不能为空");
+        }
+
+        AiVideoMediaAssetPo media = new AiVideoMediaAssetPo();
+        media.setProjectId(project.getProjectId());
+        media.setTenantId(project.getTenantId());
+        media.setAssetType(assetType);
+        media.setBizType(scope.bizType());
+        media.setBizId(scope.bizId());
+        media.setFileId(dto.getFileId());
+        media.setFileUrl(normalizeRegisteredFileUrl(fileUrl));
+        media.setThumbnailFileId(dto.getThumbnailFileId());
+        media.setPromptText(firstText(dto.getPromptText(), "manual media asset"));
+        media.setParamsJson(firstText(dto.getParamsJson(), "{}"));
+        media.setCandidateNo(nextCandidateNo(project.getProjectId(), assetType, scope.bizType(), scope.bizId()));
+        media.setSelected(NO);
+        media.setAssetStatus(STATUS_READY);
+        media.setDelFlag(DEL_FLAG_NORMAL);
+        fillCreateAudit(media);
+        mediaAssetMapper.insert(media);
+
+        if (!Boolean.FALSE.equals(dto.getSelected())) {
+            AivideoMediaSelectDto selectDto = new AivideoMediaSelectDto();
+            selectDto.setProjectId(project.getProjectId());
+            selectDto.setMediaId(media.getMediaId());
+            selectDto.setBizType(scope.bizType());
+            selectDto.setBizId(scope.bizId());
+            selectDto.setComment(dto.getComment());
+            selectMedia(selectDto);
+            AiVideoMediaAssetPo selected = mediaAssetMapper.selectById(media.getMediaId());
+            if (selected != null) {
+                media = selected;
+            }
+        }
+        return toVo(media);
+    }
+
+    @Override
     public AivideoMediaPreviewResource previewMedia(Long mediaId) {
         AiVideoMediaAssetPo media = requireMedia(mediaId);
         assertMediaTenantAllowed(media);
@@ -250,8 +310,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         }
         boolean sceneImage = ASSET_SCENE_IMAGE.equals(media.getAssetType()) && BIZ_SCENE.equals(media.getBizType());
         boolean characterImage = ASSET_CHARACTER_IMAGE.equals(media.getAssetType()) && BIZ_CHARACTER.equals(media.getBizType());
+        boolean propImage = ASSET_PROP_IMAGE.equals(media.getAssetType()) && BIZ_PROP.equals(media.getBizType());
         boolean shotVideo = ASSET_SHOT_VIDEO.equals(media.getAssetType()) && BIZ_SHOT.equals(media.getBizType());
-        if (!sceneImage && !characterImage && !shotVideo) {
+        if (!isSelectableMediaAsset(media)) {
             throw new BusinessException("当前媒体资产不是支持的候选媒体");
         }
 
@@ -283,7 +344,13 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             character.setLockedMediaId(media.getMediaId());
             fillUpdateAudit(character);
             characterMapper.updateById(character);
-        } else {
+        } else if (propImage) {
+            AiVideoPropPo prop = requireProp(project.getProjectId(), media.getBizId());
+            before = prop.getLockedMediaId();
+            prop.setLockedMediaId(media.getMediaId());
+            fillUpdateAudit(prop);
+            propMapper.updateById(prop);
+        } else if (shotVideo) {
             AiVideoShotPo shot = requireShot(project.getProjectId(), media.getBizId());
             before = shot.getVideoMediaId();
             AiVideoMediaAssetPo tailFrame = saveShotTailFrameIfPossible(project, shot, media);
@@ -296,10 +363,110 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
             fillUpdateAudit(shot);
             shotMapper.updateById(shot);
             markVideoTaskSuccessIfCandidateReady(project, media);
+        } else {
+            before = null;
         }
 
         insertReview(project, TARGET_MEDIA, media.getMediaId(), ACTION_SELECT,
                 before == null ? "" : String.valueOf(before), String.valueOf(media.getMediaId()), dto.getComment(), null);
+    }
+
+    private String normalizeAssetType(String assetType) {
+        String normalized = StringUtils.hasText(assetType) ? assetType.trim().toUpperCase() : "";
+        if (!isKnownMediaAssetType(normalized)) {
+            throw new BusinessException("Unsupported AIVideo media assetType: " + assetType);
+        }
+        return normalized;
+    }
+
+    private MediaBizScope normalizeAndValidateMediaScope(AiVideoProjectPo project, String assetType,
+                                                         String requestedBizType, Long requestedBizId) {
+        return switch (assetType) {
+            case ASSET_SCENE_IMAGE -> {
+                Long bizId = requireBizId(assetType, requestedBizId);
+                requireScene(project.getProjectId(), bizId);
+                yield new MediaBizScope(BIZ_SCENE, bizId);
+            }
+            case ASSET_CHARACTER_IMAGE, ASSET_CHARACTER_VOICE_AUDIO -> {
+                Long bizId = requireBizId(assetType, requestedBizId);
+                requireCharacter(project.getProjectId(), bizId);
+                yield new MediaBizScope(BIZ_CHARACTER, bizId);
+            }
+            case ASSET_PROP_IMAGE -> {
+                Long bizId = requireBizId(assetType, requestedBizId);
+                requireProp(project.getProjectId(), bizId);
+                yield new MediaBizScope(BIZ_PROP, bizId);
+            }
+            case ASSET_SHOT_VIDEO, ASSET_SHOT_TAIL_FRAME, ASSET_SHOT_AUDIO, ASSET_SHOT_TTS_AUDIO, ASSET_SHOT_SFX_AUDIO -> {
+                Long bizId = requireBizId(assetType, requestedBizId);
+                requireShot(project.getProjectId(), bizId);
+                yield new MediaBizScope(BIZ_SHOT, bizId);
+            }
+            case ASSET_PROJECT_BGM_AUDIO, ASSET_PROJECT_EDIT_VIDEO -> {
+                Long bizId = requestedBizId == null ? project.getProjectId() : requestedBizId;
+                if (!Objects.equals(project.getProjectId(), bizId)) {
+                    throw new BusinessException(assetType + " must bind to current projectId");
+                }
+                yield new MediaBizScope(BIZ_PROJECT, bizId);
+            }
+            default -> throw new BusinessException("Unsupported AIVideo media assetType: " + assetType);
+        };
+    }
+
+    private Long requireBizId(String assetType, Long bizId) {
+        if (bizId == null) {
+            throw new BusinessException(assetType + " bizId cannot be null");
+        }
+        return bizId;
+    }
+
+    private String normalizeRegisteredFileUrl(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl)) {
+            return "";
+        }
+        String trimmed = fileUrl.trim();
+        if (trimmed.startsWith("http")) {
+            return trimmed;
+        }
+        return toFilePublicPath(trimmed);
+    }
+
+    private int nextCandidateNo(Long projectId, String assetType, String bizType, Long bizId) {
+        return mediaAssetMapper.selectList(new LambdaQueryWrapper<AiVideoMediaAssetPo>()
+                        .eq(AiVideoMediaAssetPo::getProjectId, projectId)
+                        .eq(AiVideoMediaAssetPo::getAssetType, assetType)
+                        .eq(AiVideoMediaAssetPo::getBizType, bizType)
+                        .eq(AiVideoMediaAssetPo::getBizId, bizId)
+                        .eq(AiVideoMediaAssetPo::getDelFlag, DEL_FLAG_NORMAL))
+                .stream()
+                .map(AiVideoMediaAssetPo::getCandidateNo)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0) + 1;
+    }
+
+    private boolean isSelectableMediaAsset(AiVideoMediaAssetPo media) {
+        if (media == null || !isKnownMediaAssetType(media.getAssetType())) {
+            return false;
+        }
+        return switch (media.getAssetType()) {
+            case ASSET_SCENE_IMAGE -> BIZ_SCENE.equals(media.getBizType());
+            case ASSET_CHARACTER_IMAGE, ASSET_CHARACTER_VOICE_AUDIO -> BIZ_CHARACTER.equals(media.getBizType());
+            case ASSET_PROP_IMAGE -> BIZ_PROP.equals(media.getBizType());
+            case ASSET_SHOT_VIDEO, ASSET_SHOT_AUDIO, ASSET_SHOT_TTS_AUDIO, ASSET_SHOT_SFX_AUDIO -> BIZ_SHOT.equals(media.getBizType());
+            case ASSET_PROJECT_BGM_AUDIO, ASSET_PROJECT_EDIT_VIDEO -> BIZ_PROJECT.equals(media.getBizType());
+            default -> false;
+        };
+    }
+
+    private boolean isKnownMediaAssetType(String assetType) {
+        return switch (firstText(assetType)) {
+            case ASSET_SCENE_IMAGE, ASSET_CHARACTER_IMAGE, ASSET_PROP_IMAGE,
+                    ASSET_SHOT_VIDEO, ASSET_SHOT_TAIL_FRAME, ASSET_SHOT_AUDIO, ASSET_SHOT_TTS_AUDIO,
+                    ASSET_CHARACTER_VOICE_AUDIO, ASSET_PROJECT_BGM_AUDIO, ASSET_SHOT_SFX_AUDIO,
+                    ASSET_PROJECT_EDIT_VIDEO -> true;
+            default -> false;
+        };
     }
 
     private void runImageStream(RequestContext context, AiVideoGenerationTaskPo task, SseEmitter emitter) {
@@ -870,11 +1037,7 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         if (media == null || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())) {
             throw new BusinessException("媒体资源不存在");
         }
-        if (!ASSET_SCENE_IMAGE.equals(media.getAssetType())
-                && !ASSET_CHARACTER_IMAGE.equals(media.getAssetType())
-                && !ASSET_SHOT_VIDEO.equals(media.getAssetType())
-                && !ASSET_SHOT_TAIL_FRAME.equals(media.getAssetType())
-                && !ASSET_SHOT_AUDIO.equals(media.getAssetType())) {
+        if (!isKnownMediaAssetType(media.getAssetType())) {
             throw new BusinessException("当前媒体不是短剧资源");
         }
         if (!StringUtils.hasText(media.getFileUrl())) {
@@ -891,8 +1054,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
     }
 
     private AivideoMediaPreviewResource openMediaPreview(AiVideoMediaAssetPo media) {
-        String publicPath = toFilePublicPath(media.getFileUrl());
-        String previewUrl = buildInternalFileUrl(publicPath);
+        String fileUrl = firstText(media.getFileUrl());
+        String publicPath = fileUrl.startsWith("http") ? URI.create(fileUrl).getPath() : toFilePublicPath(fileUrl);
+        String previewUrl = fileUrl.startsWith("http") ? fileUrl : buildInternalFileUrl(publicPath);
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(previewUrl).openConnection();
@@ -1255,6 +1419,15 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         return character;
     }
 
+    private AiVideoPropPo requireProp(Long projectId, Long propId) {
+        AiVideoPropPo prop = propMapper.selectById(propId);
+        if (prop == null || !Objects.equals(projectId, prop.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(prop.getDelFlag())) {
+            throw new BusinessException("道具资产不存在");
+        }
+        return prop;
+    }
+
     private AiVideoShotPo requireShot(Long projectId, Long shotId) {
         AiVideoShotPo shot = shotMapper.selectById(shotId);
         if (shot == null || !Objects.equals(projectId, shot.getProjectId())
@@ -1385,6 +1558,11 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
         character.setUpdateTime(now());
     }
 
+    private void fillUpdateAudit(AiVideoPropPo prop) {
+        prop.setUpdateBy(resolveOperator());
+        prop.setUpdateTime(now());
+    }
+
     private void fillUpdateAudit(AiVideoShotPo shot) {
         shot.setUpdateBy(resolveOperator());
         shot.setUpdateTime(now());
@@ -1436,6 +1614,9 @@ public class AivideoSceneImageServiceImpl extends AivideoServiceSupport implemen
 
     private String safeValue(String value) {
         return StringUtils.hasText(value) ? value.trim() : "未填写";
+    }
+
+    private record MediaBizScope(String bizType, Long bizId) {
     }
 
     private record RequestContext(

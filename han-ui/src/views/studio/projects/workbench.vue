@@ -493,7 +493,7 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="confirmStatus" label="状态" width="110" />
-                <el-table-column label="操作" width="190">
+                <el-table-column label="操作" width="320">
                   <template #default="{ row }">
                     <el-button
                       v-if="row.confirmStatus !== 'APPROVED'"
@@ -514,6 +514,18 @@
                       @click="handleCancelConfirmAsset('PROP', row.propId)"
                     >
                       取消确认
+                    </el-button>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      plain
+                      :loading="mediaRegisterUploading && isMediaRegistering('PROP_IMAGE', row.propId)"
+                      @click="triggerPropImageUpload(row)"
+                    >
+                      上传道具图
+                    </el-button>
+                    <el-button size="small" type="primary" link @click="promptPropImageUrl(row)">
+                      图URL
                     </el-button>
                   </template>
                 </el-table-column>
@@ -617,6 +629,15 @@
                     <p>按已确认分镜顺序，把所有“已选分镜视频”合成为一个完整成片；如果已准备后期配音素材，会按整片时间线统一混入。</p>
                   </div>
                   <div class="project-edit-actions">
+                    <el-button
+                      type="success"
+                      plain
+                      :loading="mediaRegisterUploading && isMediaRegistering('PROJECT_BGM_AUDIO', projectId)"
+                      @click="triggerProjectBgmUpload"
+                    >
+                      上传BGM
+                    </el-button>
+                    <el-button type="success" plain @click="promptProjectBgmUrl">BGM URL</el-button>
                     <el-button :icon="Refresh" @click="refreshProjectEditPanel">刷新预检</el-button>
                     <el-button
                       type="primary"
@@ -706,12 +727,26 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="视频资产" width="130">
+                  <el-table-column label="视频/声音资产" width="210">
                     <template #default="{ row }">
                       <el-tag type="success">#{{ row.videoMediaId }}</el-tag>
                       <el-tag v-if="row.sfxAudioMediaId" class="asset-mini-tag" type="warning" effect="plain">
                         SFX #{{ row.sfxAudioMediaId }}
                       </el-tag>
+                      <div class="media-mini-actions">
+                        <el-button
+                          size="small"
+                          type="warning"
+                          link
+                          :loading="mediaRegisterUploading && isMediaRegistering('SHOT_SFX_AUDIO', row.shotId)"
+                          @click="triggerShotSfxUpload(row)"
+                        >
+                          上传音效
+                        </el-button>
+                        <el-button size="small" type="warning" link @click="promptShotSfxUrl(row)">
+                          SFX URL
+                        </el-button>
+                      </div>
                     </template>
                   </el-table-column>
                   <el-table-column label="时间线" width="180">
@@ -978,6 +1013,14 @@
         </el-form>
       </aside>
     </div>
+
+    <input
+      ref="mediaRegisterFileInputRef"
+      class="hidden-file-input"
+      type="file"
+      :accept="mediaRegisterAccept"
+      @change="handleRegisterMediaUpload"
+    />
 
     <el-drawer v-model="sceneImageDrawerVisible" size="760px" :title="sceneImageDrawerTitle">
       <div v-if="selectedSceneForImage" class="scene-image-drawer">
@@ -1267,11 +1310,22 @@
             />
           </el-form-item>
           <el-form-item label="参考音频ID">
-            <el-input
-              v-model="characterVoiceForm.voiceReferenceMediaId"
-              placeholder="可填已生成/上传的音频素材 mediaId，后续扩展参考音频复用"
-              clearable
-            />
+            <div class="media-register-field">
+              <el-input
+                v-model="characterVoiceForm.voiceReferenceMediaId"
+                placeholder="可填已生成/上传的音频素材 mediaId，后续扩展参考音频复用"
+                clearable
+              />
+              <el-button
+                type="success"
+                plain
+                :loading="mediaRegisterUploading && isMediaRegistering('CHARACTER_VOICE_AUDIO', selectedCharacterForVoice?.characterId)"
+                @click="triggerCharacterVoiceReferenceUpload"
+              >
+                上传参考音
+              </el-button>
+              <el-button type="success" link @click="promptCharacterVoiceReferenceUrl">音频URL</el-button>
+            </div>
           </el-form-item>
           <el-form-item label="试听文本">
             <el-input
@@ -1667,6 +1721,15 @@
             <el-button :icon="Refresh" :loading="shotTtsGenerating" :disabled="shotTtsGenerating" @click="loadShotTtsAudios">
               刷新音频
             </el-button>
+            <el-button
+              type="success"
+              plain
+              :loading="mediaRegisterUploading && isMediaRegistering('SHOT_TTS_AUDIO', selectedShotForVideo?.shotId)"
+              @click="triggerShotTtsUpload"
+            >
+              上传配音
+            </el-button>
+            <el-button type="success" plain @click="promptShotTtsUrl">配音URL</el-button>
           </div>
           <div v-if="shotTtsAudios.length" class="shot-tts-list">
             <article
@@ -1819,12 +1882,14 @@ import {
   previewAivideoShotVideoPrompt,
   previewAivideoScriptPrompt,
   ratioOptions,
+  registerAivideoMedia,
   referenceStrategyOptions,
   saveAivideoDocument,
   selectAivideoMedia,
   subtitleModeOptions,
   updateAivideoCharacterVoice,
   updateAivideoProject,
+  uploadAivideoMediaFile,
   uploadAivideoReferenceImage,
   visualStyleOptions,
   type AivideoCharacter,
@@ -1845,6 +1910,8 @@ import { useUserStore } from '@/stores/user'
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
 type PromptScope = 'global' | 'polish' | 'script' | 'asset' | 'characterImage' | 'sceneImage' | 'shotVideo'
 type StrategyKey = 'defaultStyle' | 'generationStrategy' | 'audioMode' | 'subtitleMode' | 'referenceStrategy' | 'actionIntensity' | 'continuityLevel' | 'multiRoleStrategy' | 'characterDesignType'
+type MediaRegisterAssetType = 'PROP_IMAGE' | 'CHARACTER_VOICE_AUDIO' | 'PROJECT_BGM_AUDIO' | 'SHOT_SFX_AUDIO' | 'SHOT_TTS_AUDIO'
+type MediaRegisterBizType = 'PROP' | 'CHARACTER' | 'PROJECT' | 'SHOT'
 
 interface StageStrategyItem {
   key: StrategyKey
@@ -1877,6 +1944,19 @@ interface CharacterVoiceForm {
   voiceSpeedRatio: number
   voiceVolumeRatio: number
   voicePitchRatio: number
+}
+
+interface MediaRegisterContext {
+  assetType: MediaRegisterAssetType
+  bizType: MediaRegisterBizType
+  bizId: string | number
+  title: string
+  accept: string
+  promptText?: string
+  paramsJson?: string
+  comment?: string
+  successMessage?: string
+  afterRegistered?: (asset: AivideoMediaAsset) => Promise<void> | void
 }
 
 interface ShotScreenCharacterRule {
@@ -1968,6 +2048,9 @@ const projectEditTasks = ref<AivideoTask[]>([])
 const projectEditVideos = ref<AivideoMediaAsset[]>([])
 const projectEditLoading = ref(false)
 const projectEditGenerating = ref(false)
+const mediaRegisterFileInputRef = ref<HTMLInputElement>()
+const mediaRegisterContext = ref<MediaRegisterContext>()
+const mediaRegisterUploading = ref(false)
 const confirmingAllAssets = ref(false)
 const confirmingAssetKeys = ref<Set<string>>(new Set())
 const activeTab = ref<WorkbenchTab>('document')
@@ -1994,7 +2077,8 @@ const inFlightTaskStatuses = new Set(['PENDING', 'RUNNING'])
 const ASSET_TASK_POLL_INTERVAL = 3_000
 const SHOT_VIDEO_RECOVERY_INTERVAL = 15_000
 const PROJECT_EDIT_POLL_INTERVAL = 5_000
-type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO' | 'SHOT_TTS_AUDIO'
+type ShotMediaAssetType = 'SHOT_VIDEO' | 'SHOT_TAIL_FRAME' | 'SHOT_AUDIO' | 'SHOT_TTS_AUDIO' | 'SHOT_SFX_AUDIO'
+const AUDIO_FILE_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.aac,.ogg'
 const characterVoiceModeOptions = [
   { label: '后期 TTS（推荐）', value: 'POST_TTS' },
   { label: '参考音频有声', value: 'REFERENCE_AUDIO' },
@@ -2100,6 +2184,7 @@ const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.v
   .filter((item) => (item.mediaKind || 'image') === 'image')
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
+const mediaRegisterAccept = computed(() => mediaRegisterContext.value?.accept || '')
 const selectedShotScreenCharacterRule = computed(() => buildShotScreenCharacterRule(selectedShotForVideo.value))
 const selectedShotTtsAudio = computed(() => shotTtsAudios.value.find(isSelectedMediaAsset))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
@@ -2631,6 +2716,254 @@ async function removeSceneReferenceUrl(index: number) {
 async function removeCharacterReferenceUrl(index: number) {
   characterReferenceImageUrls.value = characterReferenceImageUrls.value.filter((_url, currentIndex) => currentIndex !== index)
   await refreshCharacterImagePromptPreview()
+}
+
+function isMediaRegistering(assetType: MediaRegisterAssetType, bizId?: string | number) {
+  const context = mediaRegisterContext.value
+  return !!context
+    && context.assetType === assetType
+    && String(context.bizId) === String(bizId || '')
+}
+
+function triggerMediaRegisterUpload(context: MediaRegisterContext) {
+  mediaRegisterContext.value = context
+  mediaRegisterFileInputRef.value?.click()
+}
+
+async function promptRegisterMediaUrl(context: MediaRegisterContext) {
+  let value = ''
+  try {
+    const result = await ElMessageBox.prompt(
+      `粘贴 ${context.title} 的可访问 URL。支持 http(s) 地址或系统 /file/public/ 地址。`,
+      `添加${context.title}`,
+      {
+        confirmButtonText: '添加并选中',
+        cancelButtonText: '取消',
+        inputPattern: /^(https?:\/\/|\/file\/public\/).+/i,
+        inputErrorMessage: '请输入 http(s) 或 /file/public/ 开头的地址'
+      }
+    )
+    value = String(result.value || '').trim()
+  } catch (_error) {
+    // 用户取消时不提示错误。
+    return
+  }
+  try {
+    await registerMediaFromSource(context, value)
+  } catch (error: any) {
+    ElMessage.error(error?.message || `${context.title}登记失败`)
+  }
+}
+
+async function handleRegisterMediaUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  const context = mediaRegisterContext.value
+  if (!file || !context) {
+    input.value = ''
+    return
+  }
+  mediaRegisterUploading.value = true
+  try {
+    const res = await uploadAivideoMediaFile(file)
+    const uploaded = res.data
+    const url = uploaded?.url
+    if (!url) {
+      ElMessage.error('上传成功但没有返回可用媒体地址')
+      return
+    }
+    await registerMediaFromSource(context, url, uploaded?.id)
+  } catch (error: any) {
+    ElMessage.error(error?.message || `${context.title}上传失败`)
+  } finally {
+    mediaRegisterUploading.value = false
+    mediaRegisterContext.value = undefined
+    input.value = ''
+  }
+}
+
+async function registerMediaFromSource(context: MediaRegisterContext, fileUrl: string, fileId?: string | number) {
+  const url = String(fileUrl || '').trim()
+  if (!url) {
+    return
+  }
+  const res = await registerAivideoMedia({
+    projectId: projectId.value,
+    assetType: context.assetType,
+    bizType: context.bizType,
+    bizId: context.bizId,
+    fileId,
+    fileUrl: url,
+    promptText: context.promptText,
+    paramsJson: context.paramsJson,
+    selected: true,
+    comment: context.comment
+  })
+  const asset = res.data
+  if (asset) {
+    await context.afterRegistered?.(asset)
+    if (asset.mediaId) {
+      await loadReferencePreviewUrl(asset.mediaId)
+    }
+  }
+  ElMessage.success(context.successMessage || `${context.title}已登记并选中`)
+}
+
+function buildPropImageMediaContext(prop: AivideoProp): MediaRegisterContext {
+  return {
+    assetType: 'PROP_IMAGE',
+    bizType: 'PROP',
+    bizId: prop.propId,
+    title: `道具图：${prop.propName || prop.propId}`,
+    accept: 'image/*',
+    promptText: prop.promptText || propAppearanceSummary(prop),
+    comment: '手动补充道具参考图',
+    successMessage: '道具图已登记并选中',
+    afterRegistered: async () => {
+      await loadDetail()
+      await refreshShotMediaAssets()
+    }
+  }
+}
+
+function triggerPropImageUpload(prop: AivideoProp) {
+  triggerMediaRegisterUpload(buildPropImageMediaContext(prop))
+}
+
+function promptPropImageUrl(prop: AivideoProp) {
+  void promptRegisterMediaUrl(buildPropImageMediaContext(prop))
+}
+
+function buildCharacterVoiceMediaContext(character?: AivideoCharacter): MediaRegisterContext | undefined {
+  if (!character) {
+    ElMessage.warning('请先选择角色')
+    return undefined
+  }
+  return {
+    assetType: 'CHARACTER_VOICE_AUDIO',
+    bizType: 'CHARACTER',
+    bizId: character.characterId,
+    title: `角色声线参考音：${character.characterName || character.characterId}`,
+    accept: AUDIO_FILE_ACCEPT,
+    promptText: characterVoiceForm.voiceDesc || character.voiceDesc || character.characterName,
+    comment: '手动补充角色声线参考音频',
+    successMessage: '参考音频已写入声线表单，请保存声线资产',
+    afterRegistered: async (asset) => {
+      characterVoiceForm.voiceReferenceMediaId = String(asset.mediaId || '')
+    }
+  }
+}
+
+function triggerCharacterVoiceReferenceUpload() {
+  const context = buildCharacterVoiceMediaContext(selectedCharacterForVoice.value)
+  if (context) {
+    triggerMediaRegisterUpload(context)
+  }
+}
+
+function promptCharacterVoiceReferenceUrl() {
+  const context = buildCharacterVoiceMediaContext(selectedCharacterForVoice.value)
+  if (context) {
+    void promptRegisterMediaUrl(context)
+  }
+}
+
+function buildProjectBgmMediaContext(): MediaRegisterContext {
+  return {
+    assetType: 'PROJECT_BGM_AUDIO',
+    bizType: 'PROJECT',
+    bizId: projectId.value,
+    title: '项目背景音乐',
+    accept: AUDIO_FILE_ACCEPT,
+    promptText: detail.project?.projectName || '整片背景音乐',
+    comment: '手动补充整片背景音乐',
+    successMessage: '项目 BGM 已登记并选中',
+    afterRegistered: async () => {
+      await refreshProjectEditPanel()
+    }
+  }
+}
+
+function triggerProjectBgmUpload() {
+  triggerMediaRegisterUpload(buildProjectBgmMediaContext())
+}
+
+function promptProjectBgmUrl() {
+  void promptRegisterMediaUrl(buildProjectBgmMediaContext())
+}
+
+function buildShotSfxMediaContext(shot: Pick<AivideoShot, 'shotId' | 'shotNo' | 'sfxCues'>): MediaRegisterContext {
+  return {
+    assetType: 'SHOT_SFX_AUDIO',
+    bizType: 'SHOT',
+    bizId: shot.shotId,
+    title: `镜头 ${shot.shotNo || '-'} 音效`,
+    accept: AUDIO_FILE_ACCEPT,
+    promptText: shot.sfxCues || `镜头 ${shot.shotNo || ''} 音效`,
+    comment: '手动补充镜头音效',
+    successMessage: '镜头音效已登记并选中',
+    afterRegistered: async () => {
+      await refreshShotMediaAssets()
+      await refreshProjectEditPanel()
+      await loadDetail()
+    }
+  }
+}
+
+function triggerShotSfxUpload(shot: Pick<AivideoShot, 'shotId' | 'shotNo' | 'sfxCues'>) {
+  triggerMediaRegisterUpload(buildShotSfxMediaContext(shot))
+}
+
+function promptShotSfxUrl(shot: Pick<AivideoShot, 'shotId' | 'shotNo' | 'sfxCues'>) {
+  void promptRegisterMediaUrl(buildShotSfxMediaContext(shot))
+}
+
+function buildShotTtsMediaContext(shot?: AivideoShot): MediaRegisterContext | undefined {
+  if (!shot) {
+    ElMessage.warning('请先选择分镜')
+    return undefined
+  }
+  const ttsStartMs = normalizeTtsMs(shotTtsStartSec.value * 1000, shot.ttsStartMs || 0, 0, shotDurationMs(shot))
+  const ttsEndMs = normalizeTtsMs(shotTtsEndSec.value * 1000, shot.ttsEndMs || shotDurationMs(shot), ttsStartMs, shotDurationMs(shot))
+  return {
+    assetType: 'SHOT_TTS_AUDIO',
+    bizType: 'SHOT',
+    bizId: shot.shotId,
+    title: `镜头 ${shot.shotNo || '-'} 配音`,
+    accept: AUDIO_FILE_ACCEPT,
+    promptText: shotTtsText.value.trim() || defaultShotTtsText(shot),
+    paramsJson: JSON.stringify({
+      speaker: shotTtsSpeaker.value.trim() || defaultShotTtsSpeaker(shot),
+      voiceType: shotTtsVoiceType.value.trim() || defaultShotTtsVoiceType(shot),
+      ttsStartMs,
+      ttsEndMs
+    }),
+    comment: '手动补充镜头后期配音',
+    successMessage: '本镜配音素材已登记并选中',
+    afterRegistered: async (asset) => {
+      shotTtsAudios.value = [
+        asset,
+        ...shotTtsAudios.value.filter((item) => String(item.mediaId) !== String(asset.mediaId))
+      ].sort(compareMediaAssetDesc)
+      await loadShotTtsAudios()
+      await refreshShotMediaAssets()
+      await loadDetail()
+    }
+  }
+}
+
+function triggerShotTtsUpload() {
+  const context = buildShotTtsMediaContext(selectedShotForVideo.value)
+  if (context) {
+    triggerMediaRegisterUpload(context)
+  }
+}
+
+function promptShotTtsUrl() {
+  const context = buildShotTtsMediaContext(selectedShotForVideo.value)
+  if (context) {
+    void promptRegisterMediaUrl(context)
+  }
 }
 
 function shouldUseSceneContinuityReference(scene: AivideoScene) {
@@ -5765,6 +6098,27 @@ onBeforeUnmount(() => {
   .el-input {
     flex: 1;
   }
+}
+
+.media-register-field,
+.media-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.media-register-field {
+  width: 100%;
+
+  .el-input {
+    flex: 1;
+    min-width: 220px;
+  }
+}
+
+.media-mini-actions {
+  margin-top: 4px;
 }
 
 .reference-image-tip {

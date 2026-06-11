@@ -7,6 +7,7 @@ import com.han.aivideo.domain.dto.AivideoCharacterImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoContentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoDocumentSaveDto;
+import com.han.aivideo.domain.dto.AivideoMediaRegisterDto;
 import com.han.aivideo.domain.dto.AivideoMediaSelectDto;
 import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
@@ -229,6 +230,10 @@ public class BAivideoStudioController {
 
     protected R<java.util.List<AivideoMediaAssetVo>> listMedia(Long projectId, String assetType, String bizType, Long bizId) {
         return R.ok(sceneImageService.listMedia(projectId, assetType, bizType, bizId));
+    }
+
+    protected R<AivideoMediaAssetVo> registerMedia(AivideoMediaRegisterDto dto) {
+        return R.ok(sceneImageService.registerMedia(dto));
     }
 
     protected R<Void> selectMedia(AivideoMediaSelectDto dto) {

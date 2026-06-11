@@ -54,4 +54,5 @@ SET content = CASE
     update_time = CURRENT_TIMESTAMP
 FROM prop_rules
 WHERE t.template_name = 'AI短剧资产提取'
+  AND (COALESCE(t.built_in, 0) = 1 OR COALESCE(t.tenant_id, 0) = 0)
   AND COALESCE(t.content, '') NOT LIKE '%【20260611道具资产规则】%';

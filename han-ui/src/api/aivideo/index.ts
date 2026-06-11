@@ -373,6 +373,20 @@ export interface AivideoUploadedFile {
   url?: string
 }
 
+export interface AivideoMediaRegisterRequest {
+  projectId: string | number
+  assetType: string
+  bizType?: string
+  bizId?: string | number
+  fileId?: string | number
+  fileUrl?: string
+  thumbnailFileId?: string | number
+  promptText?: string
+  paramsJson?: string
+  selected?: boolean
+  comment?: string
+}
+
 export const AIVIDEO_POLISH_STREAM_PATH = '/aivideo/studio/text/polish/generate/stream'
 export const AIVIDEO_SCRIPT_STREAM_PATH = '/aivideo/studio/text/script/generate/stream'
 export const AIVIDEO_ASSET_STREAM_PATH = '/aivideo/studio/assets/extract/stream'
@@ -665,6 +679,14 @@ export function uploadAivideoReferenceImage(file: File) {
     headers: { 'Content-Type': 'multipart/form-data' },
     silentError: true
   })
+}
+
+export function uploadAivideoMediaFile(file: File) {
+  return uploadAivideoReferenceImage(file)
+}
+
+export function registerAivideoMedia(data: AivideoMediaRegisterRequest) {
+  return post<AivideoMediaAsset>('/aivideo/studio/media/register', data)
 }
 
 export function selectAivideoMedia(data: {
