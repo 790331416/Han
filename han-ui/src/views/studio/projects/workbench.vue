@@ -251,7 +251,7 @@
 
         <div v-if="activeTab === 'assets'" class="result-section">
           <div class="section-head">
-            <h3>角色 / 场景 / 分镜</h3>
+            <h3>角色 / 场景 / 道具 / 分镜</h3>
             <div class="section-actions">
               <el-button
                 type="primary"
@@ -298,7 +298,7 @@
               <el-tag v-if="selectedScript" type="success" effect="plain">剧本已确认</el-tag>
               <el-tag v-if="hasAssets" type="success" effect="plain">资产已提取</el-tag>
               <el-tag v-if="hasAssets" type="info" effect="plain">
-                角色 {{ assetCounts.characters }} / 场景 {{ assetCounts.scenes }} / 分镜 {{ assetCounts.shots }}
+                角色 {{ assetCounts.characters }} / 场景 {{ assetCounts.scenes }} / 道具 {{ assetCounts.props }} / 分镜 {{ assetCounts.shots }}
               </el-tag>
             </div>
             <el-button
@@ -464,6 +464,56 @@
                     </el-button>
                     <el-button size="small" type="primary" plain @click="openSceneImageDrawer(row)">
                       场景图
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="道具" name="props">
+              <el-table :data="props" border>
+                <el-table-column prop="propName" label="道具名称" min-width="140" />
+                <el-table-column prop="propType" label="类型" min-width="120" />
+                <el-table-column prop="visualDesc" label="视觉描述" min-width="240" show-overflow-tooltip />
+                <el-table-column label="颜色/材质/形状" min-width="220">
+                  <template #default="{ row }">
+                    <div class="reference-summary">
+                      {{ propAppearanceSummary(row) }}
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="连续性" min-width="260" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    {{ propContinuitySummary(row) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="道具图" width="120">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.lockedMediaId" type="success">已选 #{{ row.lockedMediaId }}</el-tag>
+                    <el-tag v-else type="info">未选</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="confirmStatus" label="状态" width="110" />
+                <el-table-column label="操作" width="190">
+                  <template #default="{ row }">
+                    <el-button
+                      v-if="row.confirmStatus !== 'APPROVED'"
+                      size="small"
+                      :disabled="confirmingAllAssets"
+                      :loading="isAssetConfirming('PROP', row.propId)"
+                      @click="handleConfirmAsset('PROP', row.propId)"
+                    >
+                      确认
+                    </el-button>
+                    <el-button
+                      v-else
+                      size="small"
+                      type="warning"
+                      plain
+                      :disabled="confirmingAllAssets"
+                      :loading="isAssetConfirming('PROP', row.propId)"
+                      @click="handleCancelConfirmAsset('PROP', row.propId)"
+                    >
+                      取消确认
                     </el-button>
                   </template>
                 </el-table-column>
@@ -1265,7 +1315,7 @@
         <section class="shot-reference-panel">
           <div class="panel-title-row">
             <strong>当前分镜参考素材</strong>
-            <small>来自上一镜尾帧/参考视频/参考音频、已确认场景图和角色图；点 + 可为当前分镜临时追加人物或场景参考</small>
+            <small>来自上一镜尾帧/参考视频/参考音频、已确认场景图、角色图和道具图；点 + 可为当前分镜临时追加人物、场景或道具参考</small>
           </div>
           <div class="shot-reference-grid">
             <article
@@ -1326,7 +1376,7 @@
                 <button class="shot-reference-add-card" type="button">
                   <span>+</span>
                   <strong>添加参考素材</strong>
-                  <small>补人物 / 场景</small>
+                  <small>补人物 / 场景 / 道具</small>
                 </button>
               </template>
               <div class="shot-reference-add-panel">
@@ -1358,6 +1408,39 @@
                       <div>
                         <strong>{{ scene.sceneName || `场景 ${scene.sceneId}` }}</strong>
                         <small>{{ [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景' }}</small>
+                      </div>
+                    </div>
+                  </el-option>
+                </el-select>
+
+                <label>追加道具图</label>
+                <el-select
+                  :model-value="manualShotPropReferenceIds(selectedShotForVideo)"
+                  multiple
+                  filterable
+                  clearable
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择已确认道具图"
+                  @change="(value) => handleManualShotPropReferenceChange(selectedShotForVideo, value)"
+                >
+                  <el-option
+                    v-for="prop in props"
+                    :key="prop.propId"
+                    :label="prop.propName || `道具 ${prop.propId}`"
+                    :value="String(prop.lockedMediaId || '')"
+                    :disabled="!prop.lockedMediaId || isAutoShotReferenceMedia(selectedShotForVideo, prop.lockedMediaId)"
+                  >
+                    <div class="shot-reference-add-option">
+                      <img
+                        v-if="prop.lockedMediaId && referencePreviewUrls[String(prop.lockedMediaId)]"
+                        :src="referencePreviewUrls[String(prop.lockedMediaId)]"
+                        alt="道具缩略图"
+                      />
+                      <span v-else class="shot-reference-add-placeholder">无图</span>
+                      <div>
+                        <strong>{{ prop.propName || `道具 ${prop.propId}` }}</strong>
+                        <small>{{ propAppearanceSummary(prop) }}</small>
                       </div>
                     </div>
                   </el-option>
@@ -1746,6 +1829,7 @@ import {
   visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
+  type AivideoProp,
   type AivideoProjectEditPreflight,
   type AivideoProjectDetail,
   type AivideoScene,
@@ -1992,6 +2076,7 @@ const latestAssetExtract = computed(() => assetExtractVersions.value[0])
 const assetPreviewText = computed(() => assetStreamText.value || latestAssetExtract.value?.contentText || '')
 const characters = computed(() => detail.characters || [])
 const scenes = computed(() => detail.scenes || [])
+const props = computed(() => detail.props || [])
 const shots = computed(() => detail.shots || [])
 const confirmedSceneOptions = computed(() => scenes.value.filter((item) => String(item.confirmStatus || '').toUpperCase() === 'APPROVED'))
 const characterReferenceOptions = computed(() => characters.value
@@ -2000,12 +2085,16 @@ const characterReferenceOptions = computed(() => characters.value
 const sceneReferenceOptions = computed(() => scenes.value
   .filter((item) => !!item.lockedMediaId)
   .map(sceneToReferenceOption))
+const propReferenceOptions = computed(() => props.value
+  .filter((item) => !!item.lockedMediaId)
+  .map(propToReferenceOption))
 const characterSelectedReferenceOptions = computed(() => selectedReferenceOptions(characterReferenceMediaIds.value, characterReferenceOptions.value))
 const sceneSelectedReferenceOptions = computed(() => selectedReferenceOptions(sceneReferenceMediaIds.value, sceneReferenceOptions.value))
 const shotVideoReferenceOptions = computed(() => buildShotVideoReferenceOptions(selectedShotForVideo.value))
 const shotVideoAddableReferenceOptions = computed(() => [
   ...sceneReferenceOptions.value,
-  ...characterReferenceOptions.value
+  ...characterReferenceOptions.value,
+  ...propReferenceOptions.value
 ])
 const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.value
   .filter((item) => (item.mediaKind || 'image') === 'image')
@@ -2035,9 +2124,10 @@ const shotVideoPreflightSummary = computed(() => {
 const assetCounts = computed(() => ({
   characters: characters.value.length,
   scenes: scenes.value.length,
+  props: props.value.length,
   shots: shots.value.length
 }))
-const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || shots.value.length > 0)
+const hasAssets = computed(() => characters.value.length > 0 || scenes.value.length > 0 || props.value.length > 0 || shots.value.length > 0)
 const assetExtractNotStructured = computed(() => !!assetPreviewText.value.trim() && !hasAssets.value && !assetStreaming.value)
 const assetConfirmDisabledReason = computed(() => {
   if (confirmingAssetKeys.value.size > 0) {
@@ -2057,6 +2147,7 @@ const assetConfirmDisabledReason = computed(() => {
 const hasApprovedAssets = computed(() => [
   ...characters.value,
   ...scenes.value,
+  ...props.value,
   ...shots.value
 ].some((item) => item.confirmStatus === 'APPROVED'))
 const activeStageStrategyItems = computed(() => stageStrategyItems(activePromptScope.value))
@@ -2076,7 +2167,7 @@ const flowSteps = computed(() => [
   { label: '原文', name: 'document' as WorkbenchTab, icon: DocumentChecked, count: documents.value.length },
   { label: '润色', name: 'polish' as WorkbenchTab, icon: MagicStick, count: polishVersions.value.length },
   { label: '剧本', name: 'script' as WorkbenchTab, icon: Tickets, count: scriptVersions.value.length },
-  { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + shots.value.length + projectEditVideos.value.length },
+  { label: '资产', name: 'assets' as WorkbenchTab, icon: UserFilled, count: characters.value.length + scenes.value.length + props.value.length + shots.value.length + projectEditVideos.value.length },
   { label: '任务', name: 'task' as WorkbenchTab, icon: Film, count: detail.latestTask ? 1 : 0 }
 ])
 const hasRunningShotVideoTask = computed(() => shotVideoTasks.value.some(isShotVideoTaskInFlight))
@@ -2405,6 +2496,29 @@ function sceneToReferenceOption(scene: AivideoScene): ReferenceImageOption {
     subtitle: [scene.timeDesc, scene.weather, scene.atmosphere, scene.visualFeatures].filter(Boolean).join(' / ') || '已确认场景图',
     sourceName: scene.sceneName || '未命名场景'
   }
+}
+
+function propToReferenceOption(prop: AivideoProp): ReferenceImageOption {
+  const mediaId = String(prop.lockedMediaId || '')
+  return {
+    mediaId,
+    label: `道具：${prop.propName || '未命名道具'} #${mediaId}`,
+    subtitle: propAppearanceSummary(prop),
+    sourceName: prop.propName || '未命名道具'
+  }
+}
+
+function propAppearanceSummary(prop: AivideoProp) {
+  return [prop.color, prop.material, prop.shape, prop.visualDesc].filter(Boolean).join(' / ') || '已确认道具图'
+}
+
+function propContinuitySummary(prop: AivideoProp) {
+  const handoff = [
+    prop.ownerCharacterName ? `归属：${prop.ownerCharacterName}` : '',
+    prop.firstShotNo ? `首次镜头：${prop.firstShotNo}` : '',
+    prop.lastHolder ? `最后持有：${prop.lastHolder}` : ''
+  ].filter(Boolean).join('；')
+  return [handoff, prop.continuityRules].filter(Boolean).join('；') || '暂无连续性说明'
 }
 
 function selectedReferenceOptions(selectedIds: string[], options: ReferenceImageOption[]) {
@@ -3029,8 +3143,14 @@ function shotManualReferenceMediaIds(shot?: AivideoShot) {
   return shotManualReferenceMediaIdsByShotId.value[String(shot.shotId)] || []
 }
 
-function referenceOptionIdsByType(type: 'scene' | 'character') {
-  const options = type === 'scene' ? sceneReferenceOptions.value : characterReferenceOptions.value
+type ShotReferenceAssetType = 'scene' | 'character' | 'prop'
+
+function referenceOptionIdsByType(type: ShotReferenceAssetType) {
+  const options = type === 'scene'
+    ? sceneReferenceOptions.value
+    : type === 'character'
+      ? characterReferenceOptions.value
+      : propReferenceOptions.value
   return new Set(options.map((item) => String(item.mediaId)))
 }
 
@@ -3042,6 +3162,11 @@ function manualShotSceneReferenceIds(shot?: AivideoShot) {
 function manualShotCharacterReferenceIds(shot?: AivideoShot) {
   const characterIds = referenceOptionIdsByType('character')
   return shotManualReferenceMediaIds(shot).filter((id) => characterIds.has(String(id)))
+}
+
+function manualShotPropReferenceIds(shot?: AivideoShot) {
+  const propIds = referenceOptionIdsByType('prop')
+  return shotManualReferenceMediaIds(shot).filter((id) => propIds.has(String(id)))
 }
 
 function manualShotReferenceOptionByMediaId(mediaId: string) {
@@ -3058,6 +3183,14 @@ function manualShotReferenceOptionByMediaId(mediaId: string) {
     return {
       ...characterOption,
       label: `追加角色：${characterOption.sourceName} #${characterOption.mediaId}`,
+      removable: true
+    } as ReferenceImageOption
+  }
+  const propOption = propReferenceOptions.value.find((item) => String(item.mediaId) === String(mediaId))
+  if (propOption) {
+    return {
+      ...propOption,
+      label: `追加道具：${propOption.sourceName} #${propOption.mediaId}`,
       removable: true
     } as ReferenceImageOption
   }
@@ -3821,7 +3954,7 @@ function normalizeReferenceMediaSelection(ids: Array<string | number>) {
   return unique
 }
 
-async function updateManualShotReferenceIds(shot: AivideoShot | undefined, type: 'scene' | 'character', ids: Array<string | number>) {
+async function updateManualShotReferenceIds(shot: AivideoShot | undefined, type: ShotReferenceAssetType, ids: Array<string | number>) {
   if (!shot?.shotId) {
     return
   }
@@ -3847,6 +3980,10 @@ async function handleManualShotSceneReferenceChange(shot: AivideoShot | undefine
 
 async function handleManualShotCharacterReferenceChange(shot: AivideoShot | undefined, ids: Array<string | number>) {
   await updateManualShotReferenceIds(shot, 'character', ids)
+}
+
+async function handleManualShotPropReferenceChange(shot: AivideoShot | undefined, ids: Array<string | number>) {
+  await updateManualShotReferenceIds(shot, 'prop', ids)
 }
 
 async function removeManualShotReference(shot: AivideoShot | undefined, mediaId: string | number) {

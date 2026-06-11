@@ -7,6 +7,7 @@ import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
@@ -19,6 +20,7 @@ import com.han.aivideo.enums.AivideoProjectStatus;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoContentVersionMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
@@ -29,6 +31,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -48,6 +51,12 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     private final AiVideoCharacterMapper characterMapper;
     private final AiVideoSceneMapper sceneMapper;
     private final AiVideoShotMapper shotMapper;
+    private AiVideoPropMapper propMapper;
+
+    @Autowired(required = false)
+    void setPropMapper(AiVideoPropMapper propMapper) {
+        this.propMapper = propMapper;
+    }
 
     @Override
     public PageResult<AiVideoProjectPo> selectPage(AivideoProjectQuery query) {
@@ -72,6 +81,7 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         vo.setCharacters(selectCharacters(projectId));
         List<AiVideoScenePo> scenes = selectScenes(projectId);
         vo.setScenes(scenes);
+        vo.setProps(selectProps(projectId));
         vo.setShots(enrichShotTransitions(selectShots(projectId), scenes));
         vo.setLatestTask(selectLatestTask(projectId));
         return vo;
@@ -250,6 +260,16 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
                 .eq(AiVideoScenePo::getProjectId, projectId)
                 .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL)
                 .orderByAsc(AiVideoScenePo::getSortOrder));
+    }
+
+    private List<AiVideoPropPo> selectProps(Long projectId) {
+        if (propMapper == null) {
+            return List.of();
+        }
+        return propMapper.selectList(new LambdaQueryWrapper<AiVideoPropPo>()
+                .eq(AiVideoPropPo::getProjectId, projectId)
+                .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL)
+                .orderByAsc(AiVideoPropPo::getSortOrder));
     }
 
     private List<AiVideoShotPo> selectShots(Long projectId) {

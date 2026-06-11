@@ -1210,6 +1210,36 @@ COMMENT ON TABLE ai_video_scene IS 'AI short-drama scene asset';
 CREATE INDEX IF NOT EXISTS idx_ai_video_scene_project ON ai_video_scene (project_id);
 CREATE INDEX IF NOT EXISTS idx_ai_video_scene_locked_media ON ai_video_scene (locked_media_id);
 
+CREATE TABLE IF NOT EXISTS ai_video_prop (
+    prop_id BIGSERIAL PRIMARY KEY,
+    project_id BIGINT NOT NULL,
+    tenant_id BIGINT DEFAULT 0,
+    prop_name VARCHAR(200) NOT NULL,
+    prop_type VARCHAR(100),
+    visual_desc TEXT,
+    color VARCHAR(100),
+    material VARCHAR(100),
+    shape VARCHAR(100),
+    owner_character_name VARCHAR(128),
+    first_shot_no INT,
+    last_holder VARCHAR(128),
+    continuity_rules TEXT,
+    prompt_text TEXT,
+    locked_media_id BIGINT,
+    confirm_status VARCHAR(32) DEFAULT 'PENDING',
+    sort_order INT DEFAULT 0,
+    create_by VARCHAR(64),
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_by VARCHAR(64),
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    del_flag INT DEFAULT 0
+);
+
+COMMENT ON TABLE ai_video_prop IS 'AI short-drama prop asset';
+
+CREATE INDEX IF NOT EXISTS idx_ai_video_prop_project ON ai_video_prop (project_id);
+CREATE INDEX IF NOT EXISTS idx_ai_video_prop_locked_media ON ai_video_prop (locked_media_id);
+
 CREATE TABLE IF NOT EXISTS ai_video_shot (
     shot_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
@@ -1774,7 +1804,7 @@ WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短�
 
 INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
 SELECT NULL, 'AI短剧资产提取', 'aivideo_text',
-$$请从短剧剧本中提取角色、场景、分镜，必须只输出 JSON 对象，不要输出解释。
+$$请从短剧剧本中提取角色、场景、关键道具、分镜，必须只输出 JSON 对象，不要输出解释。
 JSON 结构：
 {
   "characters": [
@@ -1811,6 +1841,21 @@ JSON 结构：
       "promptText": "",
       "completeness": "",
       "missingFields": [""]
+    }
+  ],
+  "props": [
+    {
+      "propName": "",
+      "propType": "",
+      "visualDesc": "",
+      "color": "",
+      "material": "",
+      "shape": "",
+      "ownerCharacterName": "",
+      "firstShotNo": 1,
+      "lastHolder": "",
+      "continuityRules": "",
+      "promptText": ""
     }
   ],
   "shots": [
@@ -1965,6 +2010,7 @@ JSON key 必须保持英文，所有字段值必须使用中文。
 ## 剧本分镜规则
 1. 面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。
 2. 全局禁止出现其他人；画面必须通过单人特写、主观视角或环境遮挡，把视觉重心锁定在当前核心主角。
+2A. 必须提取关键道具资产：凡是跨镜头出现、被递给/接过/展示/装入/结算/读写/推动剧情的物体，都输出到顶层 props，并写清颜色、材质、形状、归属角色、首次出现镜头、镜头结束最后谁拿着和连续性规则。
 3. 严格区分 dialogue、voiceOver 和心理画面：dialogue 只写角色说出口并可口型同步的话；voiceOver 只写可发声但角色不张嘴的旁白/画外音；心理活动默认不写入 voiceOver，优先写入 actionDesc/promptText/emotion 用画面表现。
 3A. 低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，必须写入 dialogue；脑海里闪过、想到、意识到、想象、回忆、触感、心里一动等心理内容默认不朗读，禁止写成普通 voiceOver。
 4. 每个分镜必须明确地点；延续场景时体现“延续上个分镜场景，机位微调”。
@@ -1976,6 +2022,7 @@ JSON key 必须保持英文，所有字段值必须使用中文。
 {
   "characters": [{"characterName":"","gender":"","ageDesc":"","identityDesc":"","personalityTags":[""],"storyRole":"","relationshipDesc":"","appearance":"","hairStyle":"","costume":"","colorStyle":"","negativeTraits":"","promptText":"","completeness":"","missingFields":[""]}],
   "scenes": [{"sceneName":"","sceneType":"","episodeNo":1,"timeDesc":"","weather":"","atmosphere":"","visualFeatures":"","colorTone":"","props":"","negativeElements":"","promptText":"","completeness":"","missingFields":[""]}],
+  "props": [{"propName":"","propType":"","visualDesc":"","color":"","material":"","shape":"","ownerCharacterName":"","firstShotNo":1,"lastHolder":"","continuityRules":"","promptText":""}],
   "shots": [{"episodeNo":1,"shotNo":1,"durationSec":{{defaultShotDuration}},"sceneName":"","characterNames":[""],"shotType":"","cameraPosition":"","cameraMovement":"","actionDesc":"","dialogue":"","voiceOver":"","emotion":"","promptText":""}]
 }
 

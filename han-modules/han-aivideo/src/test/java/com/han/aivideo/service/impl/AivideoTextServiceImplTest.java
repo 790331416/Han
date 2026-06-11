@@ -7,11 +7,13 @@ import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.api.ai.domain.AiVideoGenerateRequest;
@@ -419,6 +421,129 @@ class AivideoTextServiceImplTest {
         Method sfxGetter = AiVideoShotPo.class.getMethod("getSfxCues");
         assertEquals("延续轻快校园BGM，有对白时压低", bgmGetter.invoke(insertedShot.get()));
         assertEquals("翻纸声@1.2s,铅笔划过纸面@2.0s", sfxGetter.invoke(insertedShot.get()));
+    }
+
+    @Test
+    void assetExtractionPersistsStructuredPropAnchors() throws Exception {
+        AtomicReference<AiVideoPropPo> insertedProp = new AtomicReference<>();
+        AiVideoPropMapper propMapper = (AiVideoPropMapper) Proxy.newProxyInstance(
+                AiVideoPropMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoPropMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        insertedProp.set((AiVideoPropPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        service.setPropMapper(propMapper);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [],
+                  "scenes": [],
+                  "props": [
+                    {
+                      "propName": "蓝色透明收纳盒",
+                      "propType": "关键手持道具",
+                      "visualDesc": "半透明蓝色塑料收纳盒，内部有彩色便签格",
+                      "color": "半透明浅蓝",
+                      "material": "塑料",
+                      "shape": "长方形盒体",
+                      "ownerCharacterName": "狗小汪",
+                      "firstShotNo": 4,
+                      "lastHolder": "镜头5结束时由喵小萌双手拿着",
+                      "continuityRules": "后续所有镜头保持蓝色透明盒体，不得变成纸盒或其他颜色",
+                      "promptText": "单个蓝色透明收纳盒道具设定图，白底，正面与轻微侧面可见"
+                    }
+                  ],
+                  "shots": []
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        insertMethod.invoke(service, project, payload, null);
+
+        assertEquals("蓝色透明收纳盒", insertedProp.get().getPropName());
+        assertEquals("半透明浅蓝", insertedProp.get().getColor());
+        assertEquals("狗小汪", insertedProp.get().getOwnerCharacterName());
+        assertEquals(Integer.valueOf(4), insertedProp.get().getFirstShotNo());
+        assertEquals("镜头5结束时由喵小萌双手拿着", insertedProp.get().getLastHolder());
+        assertEquals("PENDING", insertedProp.get().getConfirmStatus());
+        assertEquals(1L, insertedProp.get().getProjectId());
+        assertEquals(9L, insertedProp.get().getTenantId());
+    }
+
+    @Test
+    void assetExtractionAppliesSoundDesignVoiceProfilesToCharacters() throws Exception {
+        AtomicReference<AiVideoCharacterPo> insertedCharacter = new AtomicReference<>();
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        insertedCharacter.set((AiVideoCharacterPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, characterMapper, null, null, null, null, null, null);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [
+                    {
+                      "characterName": "喵小萌",
+                      "gender": "女",
+                      "ageDesc": "青少年",
+                      "identityDesc": "Q版猫耳班费管理员"
+                    }
+                  ],
+                  "soundDesign": {
+                    "voiceProfiles": [
+                      {
+                        "characterName": "喵小萌",
+                        "voiceStyle": "清亮软萌的Q版少女声，咬字清楚",
+                        "speed": "语速略快但不抢台词",
+                        "emotionRange": "认真、紧张、松一口气",
+                        "recommendedVoiceType": "BV001_24k_streaming",
+                        "referenceAudioNeed": "后续可上传2-15秒角色样音作为声线参考",
+                        "rules": "所有喵小萌对白统一使用该声线，禁止切成成年女声或旁白声线",
+                        "sampleText": "今天也要把班费账本整理清楚。"
+                      }
+                    ]
+                  },
+                  "scenes": [],
+                  "shots": []
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        insertMethod.invoke(service, project, payload, null);
+
+        assertEquals("POST_TTS", insertedCharacter.get().getVoiceMode());
+        assertEquals("BV001_24k_streaming", insertedCharacter.get().getVoiceType());
+        assertEquals("喵小萌声线", insertedCharacter.get().getVoiceName());
+        assertTrue(insertedCharacter.get().getVoiceDesc().contains("清亮软萌的Q版少女声"));
+        assertTrue(insertedCharacter.get().getVoiceDesc().contains("禁止切成成年女声"));
+        assertEquals("今天也要把班费账本整理清楚。", insertedCharacter.get().getVoiceSampleText());
     }
 
     @Test

@@ -149,6 +149,23 @@ export interface AivideoScene {
   confirmStatus?: string
 }
 
+export interface AivideoProp {
+  propId: string | number
+  propName?: string
+  propType?: string
+  visualDesc?: string
+  color?: string
+  material?: string
+  shape?: string
+  ownerCharacterName?: string
+  firstShotNo?: number
+  lastHolder?: string
+  continuityRules?: string
+  promptText?: string
+  lockedMediaId?: string | number
+  confirmStatus?: string
+}
+
 export interface AivideoShot {
   shotId: string | number
   episodeNo?: number
@@ -185,6 +202,7 @@ export interface AivideoShot {
 export interface AivideoAssetSummary {
   characters?: AivideoCharacter[]
   scenes?: AivideoScene[]
+  props?: AivideoProp[]
   shots?: AivideoShot[]
 }
 
@@ -316,6 +334,7 @@ export interface AivideoProjectDetail {
   contentVersions?: AivideoContentVersion[]
   characters?: AivideoCharacter[]
   scenes?: AivideoScene[]
+  props?: AivideoProp[]
   shots?: AivideoShot[]
   latestTask?: AivideoTask
 }

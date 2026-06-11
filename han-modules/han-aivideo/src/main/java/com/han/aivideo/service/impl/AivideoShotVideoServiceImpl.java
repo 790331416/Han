@@ -653,7 +653,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 || !Integer.valueOf(DEL_FLAG_NORMAL).equals(media.getDelFlag())
                 || !isVideoReferenceAsset(media)
                 || !StringUtils.hasText(media.getFileUrl())) {
-            throw new BusinessException("参考图不存在、未归档或类型不支持，请重新选择场景图/角色图");
+            throw new BusinessException("参考图不存在、未归档或类型不支持，请重新选择场景图/角色图/道具图");
         }
         return media;
     }
@@ -663,7 +663,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if ("SHOT_TAIL_FRAME".equals(assetType)) {
             return true;
         }
-        boolean supportedType = "SCENE_IMAGE".equals(assetType) || "CHARACTER_IMAGE".equals(assetType);
+        boolean supportedType = "SCENE_IMAGE".equals(assetType)
+                || "CHARACTER_IMAGE".equals(assetType)
+                || "PROP_IMAGE".equals(assetType);
         if (!supportedType) {
             return false;
         }
@@ -1395,6 +1397,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if ("SCENE_IMAGE".equals(assetType)) {
             return "reference_image/scene_anchor";
         }
+        if ("PROP_IMAGE".equals(assetType)) {
+            return "reference_image/prop_anchor";
+        }
         if ("SHOT_TAIL_FRAME".equals(assetType)) {
             return "tail_frame_anchor";
         }
@@ -1408,6 +1413,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         if ("SCENE_IMAGE".equals(assetType)) {
             return "场景锚定图，锁定空间结构、时间、天气、光线、道具和背景关系。";
+        }
+        if ("PROP_IMAGE".equals(assetType)) {
+            return "道具锚定图，只锁定关键道具的颜色、材质、形状、尺寸、归属和交接连续性，不扩展成新角色或新背景。";
         }
         if ("SHOT_TAIL_FRAME".equals(assetType)) {
             return "上一分镜尾帧，优先锁定本镜头第一帧姿态、朝向、位置和光影。";

@@ -15,6 +15,7 @@ import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
@@ -28,6 +29,7 @@ import com.han.aivideo.mapper.AiVideoContentVersionMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoReviewRecordMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
@@ -40,6 +42,7 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -82,6 +85,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static final String TARGET_CONTENT = "CONTENT_VERSION";
     private static final String TARGET_CHARACTER = "CHARACTER";
     private static final String TARGET_SCENE = "SCENE";
+    private static final String TARGET_PROP = "PROP";
     private static final String TARGET_SHOT = "SHOT";
     private static final String TARGET_ALL = "ALL";
     private static final String ACTION_CONFIRM = "CONFIRM";
@@ -99,6 +103,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private final AiServiceClient aiServiceClient;
     private final AivideoAiStreamClient aiStreamClient;
     private final TransactionTemplate transactionTemplate;
+    private AiVideoPropMapper propMapper;
+
+    @Autowired(required = false)
+    void setPropMapper(AiVideoPropMapper propMapper) {
+        this.propMapper = propMapper;
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -397,6 +407,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         AivideoAssetSummaryVo vo = new AivideoAssetSummaryVo();
         vo.setCharacters(selectCharacters(projectId));
         vo.setScenes(selectScenes(projectId));
+        vo.setProps(selectProps(projectId));
         vo.setShots(selectShots(projectId));
         return vo;
     }
@@ -995,6 +1006,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         validateShotSpatialContinuity(toShotContinuitySnapshots(payload == null ? null : payload.shots));
 
         Map<String, Long> characterIdMap = new LinkedHashMap<>();
+        Map<String, VoiceProfilePayload> voiceProfileMap = buildVoiceProfileMap(payload == null ? null : payload.soundDesign);
         int index = 1;
         for (CharacterPayload item : safeList(payload.characters)) {
             AiVideoCharacterPo character = new AiVideoCharacterPo();
@@ -1015,6 +1027,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             character.setPromptText(item.promptText);
             character.setCompleteness(item.completeness);
             character.setMissingFields(join(item.missingFields));
+            applyVoiceProfile(character, voiceProfileMap.get(normalizeAssetName(character.getCharacterName())));
             character.setConfirmStatus(CONFIRM_PENDING);
             character.setSortOrder(index++);
             character.setDelFlag(DEL_FLAG_NORMAL);
@@ -1048,6 +1061,29 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             fillCreateAudit(scene);
             sceneMapper.insert(scene);
             sceneIdMap.put(scene.getSceneName(), scene.getSceneId());
+        }
+
+        index = 1;
+        for (PropPayload item : safeList(payload.props)) {
+            AiVideoPropPo prop = new AiVideoPropPo();
+            prop.setProjectId(project.getProjectId());
+            prop.setTenantId(project.getTenantId());
+            prop.setPropName(defaultString(item.propName, "道具" + index));
+            prop.setPropType(item.propType);
+            prop.setVisualDesc(item.visualDesc);
+            prop.setColor(item.color);
+            prop.setMaterial(item.material);
+            prop.setShape(item.shape);
+            prop.setOwnerCharacterName(item.ownerCharacterName);
+            prop.setFirstShotNo(item.firstShotNo);
+            prop.setLastHolder(item.lastHolder);
+            prop.setContinuityRules(item.continuityRules);
+            prop.setPromptText(item.promptText);
+            prop.setConfirmStatus(CONFIRM_PENDING);
+            prop.setSortOrder(index++);
+            prop.setDelFlag(DEL_FLAG_NORMAL);
+            fillCreateAudit(prop);
+            requirePropMapper().insert(prop);
         }
 
         Map<String, String> characterNameById = buildCharacterNameById(characterIdMap);
@@ -1092,6 +1128,53 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shotMapper.insert(shot);
             previousShot = shot;
         }
+    }
+
+    private Map<String, VoiceProfilePayload> buildVoiceProfileMap(SoundDesignPayload soundDesign) {
+        Map<String, VoiceProfilePayload> result = new LinkedHashMap<>();
+        if (soundDesign == null || soundDesign.voiceProfiles == null || soundDesign.voiceProfiles.isEmpty()) {
+            return result;
+        }
+        for (VoiceProfilePayload profile : soundDesign.voiceProfiles) {
+            String key = normalizeAssetName(profile == null ? null : profile.characterName);
+            if (StringUtils.hasText(key)) {
+                result.putIfAbsent(key, profile);
+            }
+        }
+        return result;
+    }
+
+    private void applyVoiceProfile(AiVideoCharacterPo character, VoiceProfilePayload profile) {
+        if (character == null || profile == null) {
+            return;
+        }
+        character.setVoiceMode("POST_TTS");
+        character.setVoiceType(trimToNull(profile.recommendedVoiceType));
+        character.setVoiceName(defaultString(profile.voiceName, defaultString(character.getCharacterName(), "角色") + "声线"));
+        character.setVoiceDesc(limit(joinNonBlank("；",
+                profile.voiceStyle,
+                profile.speed,
+                profile.emotionRange,
+                profile.referenceAudioNeed,
+                profile.rules), 512));
+        character.setVoiceSampleText(limit(firstText(profile.sampleText, profile.referenceAudioNeed), 512));
+    }
+
+    private String joinNonBlank(String delimiter, String... values) {
+        if (values == null || values.length == 0) {
+            return null;
+        }
+        return List.of(values).stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.joining(delimiter));
+    }
+
+    private String normalizeAssetName(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        return value.trim().replaceAll("[\\s　]+", "");
     }
 
     static String normalizeTransitionBeforeType(String value, AiVideoShotPo shot, AiVideoShotPo previousShot) {
@@ -1414,6 +1497,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AssetPayload payload = XuJsonUtil.parseObject(json, AssetPayload.class);
             if (payload == null || (safeList(payload.characters).isEmpty()
                     && safeList(payload.scenes).isEmpty()
+                    && safeList(payload.props).isEmpty()
                     && safeList(payload.shots).isEmpty())) {
                 throw new BusinessException("资产提取结果为空");
             }
@@ -1479,7 +1563,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private static int firstAssetKeyIndex(String text) {
         int result = -1;
-        for (String key : List.of("\"characters\"", "\"scenes\"", "\"shots\"")) {
+        for (String key : List.of("\"characters\"", "\"scenes\"", "\"props\"", "\"soundDesign\"", "\"shots\"")) {
             int index = text.indexOf(key);
             if (index >= 0 && (result < 0 || index < result)) {
                 result = index;
@@ -1542,6 +1626,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         Map<String, Object> counts = new LinkedHashMap<>();
         counts.put("characters", characterMapper.selectCount(baseCharacterWrapper(projectId)));
         counts.put("scenes", sceneMapper.selectCount(baseSceneWrapper(projectId)));
+        counts.put("props", propMapper == null ? 0 : propMapper.selectCount(basePropWrapper(projectId)));
         counts.put("shots", shotMapper.selectCount(baseShotWrapper(projectId)));
         return counts;
     }
@@ -1557,6 +1642,13 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 .eq(AiVideoScenePo::getProjectId, projectId)
                 .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL)
                 .ne(AiVideoScenePo::getConfirmStatus, CONFIRM_APPROVED));
+        if (propMapper != null) {
+            propMapper.update(null, new LambdaUpdateWrapper<AiVideoPropPo>()
+                    .set(AiVideoPropPo::getDelFlag, 1)
+                    .eq(AiVideoPropPo::getProjectId, projectId)
+                    .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL)
+                    .ne(AiVideoPropPo::getConfirmStatus, CONFIRM_APPROVED));
+        }
         shotMapper.update(null, new LambdaUpdateWrapper<AiVideoShotPo>()
                 .set(AiVideoShotPo::getDelFlag, 1)
                 .eq(AiVideoShotPo::getProjectId, projectId)
@@ -1573,6 +1665,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 .set(AiVideoScenePo::getConfirmStatus, CONFIRM_APPROVED)
                 .eq(AiVideoScenePo::getProjectId, projectId)
                 .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL));
+        if (propMapper != null) {
+            propMapper.update(null, new LambdaUpdateWrapper<AiVideoPropPo>()
+                    .set(AiVideoPropPo::getConfirmStatus, CONFIRM_APPROVED)
+                    .eq(AiVideoPropPo::getProjectId, projectId)
+                    .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL));
+        }
         shotMapper.update(null, new LambdaUpdateWrapper<AiVideoShotPo>()
                 .set(AiVideoShotPo::getConfirmStatus, CONFIRM_APPROVED)
                 .eq(AiVideoShotPo::getProjectId, projectId)
@@ -1588,6 +1686,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 .set(AiVideoScenePo::getConfirmStatus, CONFIRM_PENDING)
                 .eq(AiVideoScenePo::getProjectId, projectId)
                 .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL));
+        if (propMapper != null) {
+            propMapper.update(null, new LambdaUpdateWrapper<AiVideoPropPo>()
+                    .set(AiVideoPropPo::getConfirmStatus, CONFIRM_PENDING)
+                    .eq(AiVideoPropPo::getProjectId, projectId)
+                    .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL));
+        }
         shotMapper.update(null, new LambdaUpdateWrapper<AiVideoShotPo>()
                 .set(AiVideoShotPo::getConfirmStatus, CONFIRM_PENDING)
                 .eq(AiVideoShotPo::getProjectId, projectId)
@@ -1617,6 +1721,17 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 fillUpdateAudit(scene);
                 sceneMapper.updateById(scene);
                 insertReview(project, TARGET_SCENE, targetId, ACTION_CONFIRM, before, CONFIRM_APPROVED, comment, null);
+            }
+            case TARGET_PROP -> {
+                AiVideoPropPo prop = requirePropMapper().selectById(targetId);
+                if (prop == null || !Objects.equals(project.getProjectId(), prop.getProjectId())) {
+                    throw new BusinessException("道具资产不存在");
+                }
+                String before = prop.getConfirmStatus();
+                prop.setConfirmStatus(CONFIRM_APPROVED);
+                fillUpdateAudit(prop);
+                requirePropMapper().updateById(prop);
+                insertReview(project, TARGET_PROP, targetId, ACTION_CONFIRM, before, CONFIRM_APPROVED, comment, null);
             }
             case TARGET_SHOT -> {
                 AiVideoShotPo shot = shotMapper.selectById(targetId);
@@ -1658,6 +1773,18 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 fillUpdateAudit(scene);
                 sceneMapper.updateById(scene);
                 insertReview(project, TARGET_SCENE, targetId, ACTION_CANCEL_CONFIRM, before, CONFIRM_PENDING, comment, null);
+            }
+            case TARGET_PROP -> {
+                AiVideoPropPo prop = requirePropMapper().selectById(targetId);
+                if (prop == null || !Objects.equals(project.getProjectId(), prop.getProjectId())
+                        || !Integer.valueOf(DEL_FLAG_NORMAL).equals(prop.getDelFlag())) {
+                    throw new BusinessException("道具资产不存在");
+                }
+                String before = prop.getConfirmStatus();
+                prop.setConfirmStatus(CONFIRM_PENDING);
+                fillUpdateAudit(prop);
+                requirePropMapper().updateById(prop);
+                insertReview(project, TARGET_PROP, targetId, ACTION_CANCEL_CONFIRM, before, CONFIRM_PENDING, comment, null);
             }
             case TARGET_SHOT -> {
                 AiVideoShotPo shot = shotMapper.selectById(targetId);
@@ -1770,6 +1897,11 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return sceneMapper.selectList(baseSceneWrapper(projectId).orderByAsc(AiVideoScenePo::getSortOrder));
     }
 
+    private List<AiVideoPropPo> selectProps(Long projectId) {
+        return propMapper == null ? List.of() : propMapper.selectList(basePropWrapper(projectId)
+                .orderByAsc(AiVideoPropPo::getSortOrder));
+    }
+
     private List<AiVideoShotPo> selectShots(Long projectId) {
         return shotMapper.selectList(baseShotWrapper(projectId)
                 .orderByAsc(AiVideoShotPo::getEpisodeNo)
@@ -1787,6 +1919,12 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return new LambdaQueryWrapper<AiVideoScenePo>()
                 .eq(AiVideoScenePo::getProjectId, projectId)
                 .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL);
+    }
+
+    private LambdaQueryWrapper<AiVideoPropPo> basePropWrapper(Long projectId) {
+        return new LambdaQueryWrapper<AiVideoPropPo>()
+                .eq(AiVideoPropPo::getProjectId, projectId)
+                .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL);
     }
 
     private LambdaQueryWrapper<AiVideoShotPo> baseShotWrapper(Long projectId) {
@@ -1842,7 +1980,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private String buildAssetPrompt(AiVideoProjectPo project, AiVideoProjectSettingPo setting, String scriptText) {
         int duration = defaultShotDuration(setting);
-        return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【角色、场景、分镜】。"
+        return "请严格依据下面三组参考提示词规则，从短剧剧本中提取【角色、场景、关键道具、分镜】。"
                 + "必须只输出 JSON 对象，不要输出解释、Markdown 围栏或额外说明。JSON key 必须保持英文，所有字段值必须使用中文。\n\n"
                 + "【最高优先级：紧凑输出，防止 JSON 被截断】\n"
                 + "1. 资产阶段只输出可入库的稳定锚点，不在这里写长篇图片/视频执行提示词；角色图、场景图、分镜视频会在后续阶段再扩写 prompt。\n"
@@ -1916,6 +2054,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "\"scenes\":[{\"sceneName\":\"\",\"sceneType\":\"\",\"episodeNo\":1,\"timeDesc\":\"\",\"weather\":\"\",\"atmosphere\":\"\","
                 + "\"visualFeatures\":\"\",\"colorTone\":\"\",\"props\":\"\",\"negativeElements\":\"\",\"promptText\":\"\",\"completeness\":\"\","
                 + "\"missingFields\":[\"\"]}],"
+                + "\"props\":[{\"propName\":\"\",\"propType\":\"\",\"visualDesc\":\"\",\"color\":\"\",\"material\":\"\",\"shape\":\"\","
+                + "\"ownerCharacterName\":\"\",\"firstShotNo\":1,\"lastHolder\":\"\",\"continuityRules\":\"\",\"promptText\":\"\"}],"
                 + "\"soundDesign\":{\"voiceProfiles\":[{\"characterName\":\"\",\"voiceStyle\":\"\",\"speed\":\"\",\"emotionRange\":\"\",\"recommendedVoiceType\":\"\",\"referenceAudioNeed\":\"\",\"rules\":\"\"}],"
                 + "\"narrationProfile\":{\"voiceStyle\":\"\",\"speed\":\"\",\"emotionRange\":\"\",\"recommendedVoiceType\":\"\",\"rules\":\"\"},"
                 + "\"bgmPlan\":[{\"scope\":\"\",\"mood\":\"\",\"style\":\"\",\"startShot\":1,\"endShot\":1,\"mixRule\":\"\"}],"
@@ -2013,6 +2153,13 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private <T> List<T> safeList(List<T> values) {
         return values == null ? List.of() : values;
+    }
+
+    private AiVideoPropMapper requirePropMapper() {
+        if (propMapper == null) {
+            throw new BusinessException("道具资产能力未初始化");
+        }
+        return propMapper;
     }
 
     private List<ShotContinuitySnapshot> toShotContinuitySnapshots(List<ShotPayload> shots) {
@@ -2190,6 +2337,18 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         scene.setUpdateTime(now());
     }
 
+    private void fillCreateAudit(AiVideoPropPo prop) {
+        prop.setCreateBy(resolveOperator());
+        prop.setCreateTime(now());
+        prop.setUpdateBy(resolveOperator());
+        prop.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoPropPo prop) {
+        prop.setUpdateBy(resolveOperator());
+        prop.setUpdateTime(now());
+    }
+
     private void fillCreateAudit(AiVideoShotPo shot) {
         shot.setCreateBy(resolveOperator());
         shot.setCreateTime(now());
@@ -2206,6 +2365,8 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static class AssetPayload {
         public List<CharacterPayload> characters;
         public List<ScenePayload> scenes;
+        public List<PropPayload> props;
+        public SoundDesignPayload soundDesign;
         public List<ShotPayload> shots;
     }
 
@@ -2243,6 +2404,39 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         public String promptText;
         public String completeness;
         public List<String> missingFields;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class PropPayload {
+        public String propName;
+        public String propType;
+        public String visualDesc;
+        public String color;
+        public String material;
+        public String shape;
+        public String ownerCharacterName;
+        public Integer firstShotNo;
+        public String lastHolder;
+        public String continuityRules;
+        public String promptText;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class SoundDesignPayload {
+        public List<VoiceProfilePayload> voiceProfiles;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class VoiceProfilePayload {
+        public String characterName;
+        public String voiceName;
+        public String voiceStyle;
+        public String speed;
+        public String emotionRange;
+        public String recommendedVoiceType;
+        public String referenceAudioNeed;
+        public String rules;
+        public String sampleText;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

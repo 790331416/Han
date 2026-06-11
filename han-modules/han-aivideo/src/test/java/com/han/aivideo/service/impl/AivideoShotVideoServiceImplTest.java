@@ -14,6 +14,7 @@ import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.api.ai.AiServiceClient;
+import com.han.api.ai.domain.AiTextGenerateRequest;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,31 @@ class AivideoShotVideoServiceImplTest {
 
         assertTrue(exception.getMessage().contains("朝向衔接"), exception::getMessage);
         assertTrue(exception.getMessage().contains("转身"), exception::getMessage);
+    }
+
+    @Test
+    void previewAcceptsPropImageAsVideoReferenceAnchor() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setTransitionBeforeType("INSERT");
+        fixture.currentShot.setTransitionBeforeDesc("同场景道具交接插入镜头，不强制继承上一尾帧。");
+        fixture.currentShot.setActionDesc("狗小汪从画面左侧把蓝色透明收纳盒递给画面右侧的喵小萌，最后喵小萌双手拿着收纳盒。");
+        AiVideoMediaAssetPo propImage = TestFixture.media(500L, "PROP_IMAGE", "/file/public/blue-box.png");
+        propImage.setSelected("Y");
+        propImage.setAssetStatus("SELECTED");
+        when(fixture.mediaAssetMapper.selectById(500L)).thenReturn(propImage);
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenAnswer(invocation -> {
+            AiTextGenerateRequest request = invocation.getArgument(0);
+            return R.ok(request.getUserPrompt());
+        });
+
+        AivideoShotVideoGenerateDto dto = fixture.dto();
+        dto.setReferenceMediaIds(List.of(500L));
+
+        String prompt = fixture.service.previewShotVideoPrompt(dto).getUserPrompt();
+
+        assertTrue(prompt.contains("reference_image/prop_anchor"), prompt);
+        assertTrue(prompt.contains("道具锚定图"), prompt);
+        assertTrue(prompt.contains("蓝色透明收纳盒"), prompt);
     }
 
     private static class TestFixture {

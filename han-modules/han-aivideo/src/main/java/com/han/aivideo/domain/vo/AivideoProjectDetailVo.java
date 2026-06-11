@@ -3,6 +3,7 @@ package com.han.aivideo.domain.vo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoContentVersionPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
@@ -29,6 +30,8 @@ public class AivideoProjectDetailVo {
     private List<AiVideoCharacterPo> characters;
 
     private List<AiVideoScenePo> scenes;
+
+    private List<AiVideoPropPo> props;
 
     private List<AiVideoShotPo> shots;
 

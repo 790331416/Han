@@ -46,6 +46,99 @@
       </div>
     </section>
 
+    <section v-if="propsList.length" class="structure-section">
+      <div class="structure-title">
+        <h4>道具</h4>
+        <el-tag type="danger" effect="plain">{{ propsList.length }} 个</el-tag>
+      </div>
+      <div class="structure-grid">
+        <article v-for="(item, index) in propsList" :key="`prop-${index}`" class="structure-card">
+          <header>
+            <strong>{{ index + 1 }}. {{ item.propName || `道具 ${index + 1}` }}</strong>
+            <el-tag v-if="item.propType" size="small" effect="plain">{{ item.propType }}</el-tag>
+          </header>
+          <dl>
+            <template v-for="field in propFields" :key="field.key">
+              <div v-if="formatValue(item[field.key], field.key)" class="field-row">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatValue(item[field.key], field.key) }}</dd>
+              </div>
+            </template>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <section v-if="hasSoundDesign" class="structure-section">
+      <div class="structure-title">
+        <h4>声音设计</h4>
+        <el-tag type="info" effect="plain">后期语音 / BGM / 音效</el-tag>
+      </div>
+      <div v-if="voiceProfiles.length" class="structure-grid">
+        <article v-for="(item, index) in voiceProfiles" :key="`voice-${index}`" class="structure-card">
+          <header>
+            <strong>{{ index + 1 }}. {{ item.characterName || `角色声线 ${index + 1}` }}</strong>
+            <el-tag v-if="item.recommendedVoiceType" size="small" effect="plain">{{ item.recommendedVoiceType }}</el-tag>
+          </header>
+          <dl>
+            <template v-for="field in voiceProfileFields" :key="field.key">
+              <div v-if="formatValue(item[field.key], field.key)" class="field-row">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatValue(item[field.key], field.key) }}</dd>
+              </div>
+            </template>
+          </dl>
+        </article>
+      </div>
+      <div v-if="narrationProfile" class="structure-grid">
+        <article class="structure-card">
+          <header>
+            <strong>旁白声线</strong>
+          </header>
+          <dl>
+            <template v-for="field in narrationProfileFields" :key="field.key">
+              <div v-if="formatValue(narrationProfile[field.key], field.key)" class="field-row">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatValue(narrationProfile[field.key], field.key) }}</dd>
+              </div>
+            </template>
+          </dl>
+        </article>
+      </div>
+      <div v-if="bgmPlan.length" class="structure-grid">
+        <article v-for="(item, index) in bgmPlan" :key="`bgm-${index}`" class="structure-card">
+          <header>
+            <strong>{{ index + 1 }}. {{ item.scope || `BGM 段落 ${index + 1}` }}</strong>
+            <el-tag v-if="item.mood" size="small" effect="plain">{{ item.mood }}</el-tag>
+          </header>
+          <dl>
+            <template v-for="field in bgmPlanFields" :key="field.key">
+              <div v-if="formatValue(item[field.key], field.key)" class="field-row">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatValue(item[field.key], field.key) }}</dd>
+              </div>
+            </template>
+          </dl>
+        </article>
+      </div>
+      <div v-if="sfxPlan.length" class="structure-grid">
+        <article v-for="(item, index) in sfxPlan" :key="`sfx-${index}`" class="structure-card">
+          <header>
+            <strong>{{ index + 1 }}. {{ item.effect || `音效 ${index + 1}` }}</strong>
+            <el-tag v-if="item.shotNo" size="small" effect="plain">镜头 {{ item.shotNo }}</el-tag>
+          </header>
+          <dl>
+            <template v-for="field in sfxPlanFields" :key="field.key">
+              <div v-if="formatValue(item[field.key], field.key)" class="field-row">
+                <dt>{{ field.label }}</dt>
+                <dd>{{ formatValue(item[field.key], field.key) }}</dd>
+              </div>
+            </template>
+          </dl>
+        </article>
+      </div>
+    </section>
+
     <section v-if="shots.length" class="structure-section">
       <div class="structure-title">
         <h4>分镜</h4>
@@ -107,6 +200,33 @@ const fieldLabels: Record<string, string> = {
   visualFeatures: '视觉特征',
   colorTone: '色调',
   props: '道具',
+  propName: '道具名称',
+  propType: '道具类型',
+  visualDesc: '视觉描述',
+  color: '颜色',
+  material: '材质',
+  shape: '形状',
+  ownerCharacterName: '归属角色',
+  firstShotNo: '首次镜头',
+  lastHolder: '最后持有者',
+  continuityRules: '连续性规则',
+  voiceStyle: '音色风格',
+  speed: '语速',
+  emotionRange: '情绪范围',
+  recommendedVoiceType: '推荐音色ID',
+  referenceAudioNeed: '参考音频要求',
+  rules: '声音规则',
+  sampleText: '试听文本',
+  scope: '作用范围',
+  mood: '情绪',
+  style: '风格',
+  startShot: '开始镜头',
+  endShot: '结束镜头',
+  mixRule: '混音规则',
+  effect: '音效',
+  triggerAction: '触发动作',
+  timing: '触发时间',
+  volume: '音量',
   negativeElements: '负面元素',
   shotNo: '镜头号',
   durationSec: '镜头秒数',
@@ -118,6 +238,8 @@ const fieldLabels: Record<string, string> = {
   dialogue: '对白',
   voiceOver: '旁白',
   emotion: '情绪',
+  bgmCue: 'BGM提示',
+  sfxCues: '音效提示',
   sceneId: '场景ID',
   characterIds: '人物ID'
 }
@@ -130,14 +252,40 @@ const sceneFields = fields([
   'sceneType', 'episodeNo', 'timeDesc', 'weather', 'atmosphere', 'visualFeatures',
   'colorTone', 'props', 'negativeElements', 'promptText', 'missingFields'
 ])
+const propFields = fields([
+  'visualDesc', 'color', 'material', 'shape', 'ownerCharacterName', 'firstShotNo',
+  'lastHolder', 'continuityRules', 'promptText'
+])
+const voiceProfileFields = fields([
+  'voiceStyle', 'speed', 'emotionRange', 'recommendedVoiceType', 'referenceAudioNeed', 'rules', 'sampleText'
+])
+const narrationProfileFields = fields([
+  'voiceStyle', 'speed', 'emotionRange', 'recommendedVoiceType', 'rules'
+])
+const bgmPlanFields = fields([
+  'style', 'mood', 'startShot', 'endShot', 'mixRule'
+])
+const sfxPlanFields = fields([
+  'shotNo', 'triggerAction', 'timing', 'volume'
+])
 const shotFields = fields([
   'sceneName', 'characterNames', 'shotType', 'cameraPosition', 'cameraMovement',
-  'actionDesc', 'dialogue', 'voiceOver', 'emotion', 'promptText'
+  'actionDesc', 'dialogue', 'voiceOver', 'emotion', 'bgmCue', 'sfxCues', 'promptText'
 ])
 
 const payload = computed<JsonRecord | null>(() => parseJsonPayload(props.content || ''))
 const characters = computed<JsonRecord[]>(() => safeArray(payload.value?.characters))
 const scenes = computed<JsonRecord[]>(() => safeArray(payload.value?.scenes))
+const propsList = computed<JsonRecord[]>(() => safeArray(payload.value?.props))
+const soundDesign = computed<JsonRecord | null>(() => safeObject(payload.value?.soundDesign))
+const voiceProfiles = computed<JsonRecord[]>(() => safeArray(soundDesign.value?.voiceProfiles))
+const narrationProfile = computed<JsonRecord | null>(() => safeObject(soundDesign.value?.narrationProfile))
+const bgmPlan = computed<JsonRecord[]>(() => safeArray(soundDesign.value?.bgmPlan))
+const sfxPlan = computed<JsonRecord[]>(() => safeArray(soundDesign.value?.sfxPlan))
+const hasSoundDesign = computed(() => voiceProfiles.value.length > 0
+  || !!narrationProfile.value
+  || bgmPlan.value.length > 0
+  || sfxPlan.value.length > 0)
 const shots = computed<JsonRecord[]>(() => safeArray(payload.value?.shots))
 
 function fields(keys: string[]) {
@@ -146,6 +294,10 @@ function fields(keys: string[]) {
 
 function safeArray(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : []
+}
+
+function safeObject(value: unknown): JsonRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null
 }
 
 function parseJsonPayload(content: string): JsonRecord | null {
