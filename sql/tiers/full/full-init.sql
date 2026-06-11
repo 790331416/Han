@@ -505,7 +505,10 @@ INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
 (8, '系统状态', 'sys_common_status', 0, '登录状态列表'),
 (9, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
 (10, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
-(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表');
+(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表'),
+(12, 'AI模型类型', 'ai_model_type', 0, 'AI模型管理模型类型列表'),
+(13, 'AI模型供应商', 'ai_model_provider', 0, 'AI模型管理供应商列表'),
+(14, 'AI Prompt模板分类', 'ai_prompt_category', 0, 'AI Prompt模板分类列表');
 
 -- 12. 字典数据
 INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
@@ -547,7 +550,38 @@ INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css
 (36, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
 (37, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
 (38, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
-(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0);
+(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0),
+(40, 'ai_model_type', '大语言模型', 'LLM', 10, '', 'primary', 1, 0),
+(41, 'ai_model_type', '图片生成模型', 'IMAGE', 20, '', 'success', 0, 0),
+(42, 'ai_model_type', '视频生成模型', 'VIDEO', 30, '', 'warning', 0, 0),
+(43, 'ai_model_type', '视频剪辑合成', 'VIDEO_EDIT', 40, '', 'warning', 0, 0),
+(44, 'ai_model_type', '向量模型', 'EMBEDDING', 50, '', 'info', 0, 0),
+(45, 'ai_model_type', '重排模型', 'RERANK', 60, '', 'info', 0, 0),
+(46, 'ai_model_type', '语音合成', 'TTS', 70, '', 'success', 0, 0),
+(47, 'ai_model_type', '语音识别', 'STT', 80, '', 'info', 0, 0),
+(48, 'ai_model_provider', 'OpenAI', 'openai', 10, '', 'primary', 0, 0),
+(49, 'ai_model_provider', '火山引擎/方舟', 'volcengine', 20, '', 'warning', 1, 0),
+(50, 'ai_model_provider', 'DeepSeek', 'deepseek', 30, '', 'success', 0, 0),
+(51, 'ai_model_provider', '通义千问', 'qwen', 40, '', 'success', 0, 0),
+(52, 'ai_model_provider', '智谱AI', 'zhipu', 50, '', 'primary', 0, 0),
+(53, 'ai_model_provider', '百度千帆', 'baidu', 60, '', 'primary', 0, 0),
+(54, 'ai_model_provider', 'Ollama', 'ollama', 70, '', 'info', 0, 0),
+(55, 'ai_model_provider', 'Azure OpenAI', 'azure', 80, '', 'primary', 0, 0),
+(56, 'ai_model_provider', 'Anthropic', 'anthropic', 90, '', 'info', 0, 0),
+(57, 'ai_model_provider', 'SiliconFlow', 'siliconflow', 100, '', 'success', 0, 0),
+(58, 'ai_model_provider', 'Coze(扣子)', 'coze', 110, '', 'warning', 0, 0),
+(59, 'ai_model_provider', 'DIFY', 'dify', 120, '', 'info', 0, 0),
+(60, 'ai_model_provider', 'FastGPT', 'fastgpt', 130, '', 'info', 0, 0),
+(61, 'ai_prompt_category', '系统提示词', 'system', 10, '', 'primary', 1, 0),
+(62, 'ai_prompt_category', '用户模板', 'user', 20, '', 'success', 0, 0),
+(63, 'ai_prompt_category', '助手模板', 'assistant', 30, '', 'warning', 0, 0),
+(64, 'ai_prompt_category', 'AIVideo 文本润色', 'aivideo_text', 40, '', 'primary', 0, 0),
+(65, 'ai_prompt_category', 'AIVideo 剧本生成', 'aivideo_script', 50, '', 'primary', 0, 0),
+(66, 'ai_prompt_category', 'AIVideo 资产提取', 'aivideo_asset', 60, '', 'success', 0, 0),
+(67, 'ai_prompt_category', 'AIVideo 分镜提取', 'aivideo_storyboard', 70, '', 'warning', 0, 0),
+(68, 'ai_prompt_category', 'AIVideo 图片生成', 'aivideo_image', 80, '', 'success', 0, 0),
+(69, 'ai_prompt_category', 'AIVideo 视频生成', 'aivideo_video', 90, '', 'warning', 0, 0),
+(70, 'ai_prompt_category', 'AIVideo 语音合成', 'aivideo_tts', 100, '', 'info', 0, 0);
 
 -- 13. 参数配置
 INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, remark) VALUES

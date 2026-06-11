@@ -147,9 +147,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import {
   listPromptTemplate, addPromptTemplate, editPromptTemplate, removePromptTemplate,
-  renderPromptTemplate, promptCategoryOptions,
+  renderPromptTemplate, promptCategoryOptions as fallbackPromptCategoryOptions,
   type AiPromptTemplate
 } from '@/api/ai'
+import { AI_PROMPT_CATEGORY_DICT, loadDictOptions, type DictOption } from '@/utils/dict-options'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const loading = ref(false)
@@ -161,6 +162,7 @@ const submitLoading = ref(false)
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 const renderedContent = ref('')
+const promptCategoryOptions = ref<DictOption[]>([...fallbackPromptCategoryOptions])
 
 const queryParams = reactive({ templateName: '', category: '', status: '', pageNum: 1, pageSize: 10 })
 
@@ -184,7 +186,7 @@ const rules: FormRules = {
   content: [{ required: true, message: '请输入模板内容', trigger: 'blur' }]
 }
 
-const getCategoryLabel = (v: string) => promptCategoryOptions.find(i => i.value === v)?.label || v
+const getCategoryLabel = (v: string) => promptCategoryOptions.value.find(i => i.value === v)?.label || v
 
 const parsedVariables = computed(() => {
   try {
@@ -200,7 +202,12 @@ const getList = async () => {
     const res = await listPromptTemplate(queryParams)
     templateList.value = res.data.rows
     total.value = res.data.total
-  } catch { /* */ } finally {
+  } catch (error) {
+    templateList.value = []
+    total.value = 0
+    console.error('加载 Prompt 模板列表失败:', error)
+    ElMessage.error('Prompt 模板列表加载失败，请检查权限或接口状态')
+  } finally {
     loading.value = false
   }
 }
@@ -260,7 +267,10 @@ const handleRender = async () => {
   }
 }
 
-onMounted(() => getList())
+onMounted(async () => {
+  promptCategoryOptions.value = await loadDictOptions(AI_PROMPT_CATEGORY_DICT, fallbackPromptCategoryOptions)
+  getList()
+})
 </script>
 
 <style lang="scss" scoped>

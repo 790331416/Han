@@ -322,13 +322,14 @@ import {
   deleteAiModel,
   getAiModel,
   listAiModel,
-  modelTypeOptions,
-  providerOptions,
+  modelTypeOptions as fallbackModelTypeOptions,
+  providerOptions as fallbackProviderOptions,
   testAiModel,
   updateAiModel,
   type AiModel,
   type AiModelQuery
 } from '@/api/ai'
+import { AI_MODEL_PROVIDER_DICT, AI_MODEL_TYPE_DICT, loadDictOptions, type DictOption } from '@/utils/dict-options'
 
 interface ProviderPreset {
   baseUrl: string
@@ -430,6 +431,8 @@ const submitLoading = ref(false)
 const total = ref(0)
 const dialogVisible = ref(false)
 const modelList = ref<AiModel[]>([])
+const modelTypeOptions = ref<DictOption[]>([...fallbackModelTypeOptions])
+const providerOptions = ref<DictOption[]>([...fallbackProviderOptions])
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 
@@ -509,11 +512,11 @@ const credentialAlertDescription = computed(() => {
 })
 
 function getModelTypeLabel(value: string) {
-  return modelTypeOptions.find((item) => item.value === value)?.label || value
+  return modelTypeOptions.value.find((item) => item.value === value)?.label || value
 }
 
 function getProviderLabel(value: string) {
-  return providerOptions.find((item) => item.value === value)?.label || value
+  return providerOptions.value.find((item) => item.value === value)?.label || value
 }
 
 function getCredentialSourceLabel(value?: string) {
@@ -629,7 +632,13 @@ async function handleTest(row: AiModel) {
   ElMessage.success(res.data || '测试完成')
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const [modelTypes, providers] = await Promise.all([
+    loadDictOptions(AI_MODEL_TYPE_DICT, fallbackModelTypeOptions),
+    loadDictOptions(AI_MODEL_PROVIDER_DICT, fallbackProviderOptions)
+  ])
+  modelTypeOptions.value = modelTypes
+  providerOptions.value = providers
   getList()
 })
 </script>
