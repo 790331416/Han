@@ -30,6 +30,7 @@
 - `20260607_aivideo_audio_track_prompt.sql`：AI 短剧剧本/分镜/视频 Prompt 改为对白、旁白/画外音、心声/心理活动三轨规则，避免把心理画面朗读成配音
 - `20260610_aivideo_sound_design_prompt.sql`：AI 短剧剧本/资产/分镜 Prompt 增加角色声线、BGM 和音效规划，前置输出 `soundDesign`、`bgmCue` 和 `sfxCues`
 - `20260610_aivideo_shot_sound_cues.sql`：AI 短剧分镜表增加 `bgm_cue`、`sfx_cues`，让资产提取出的 BGM/音效计划可被后期语音和剪辑混音阶段读取
+- `20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 模板分类的系统字典，保证管理端下拉与列表筛选可从公共字典模块读取
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 

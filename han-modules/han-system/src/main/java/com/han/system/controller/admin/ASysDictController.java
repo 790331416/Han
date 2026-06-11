@@ -6,6 +6,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
+import com.han.system.builtin.SysBuiltinDictRegistry;
 import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.domain.po.SysDictTypePo;
 import com.han.system.mapper.SysDictDataMapper;
@@ -24,6 +25,7 @@ public class ASysDictController {
 
     private final SysDictTypeMapper dictTypeMapper;
     private final SysDictDataMapper dictDataMapper;
+    private final SysBuiltinDictRegistry builtinDictRegistry;
 
     // ==================== 字典类型 ====================
 
@@ -34,6 +36,7 @@ public class ASysDictController {
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
             @RequestParam(value = "dictName", required = false) String dictName,
             @RequestParam(value = "dictType", required = false) String dictType) {
+        builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictTypePo> wrapper = new LambdaQueryWrapper<SysDictTypePo>()
                 .like(dictName != null && !dictName.isEmpty(), SysDictTypePo::getDictName, dictName)
                 .like(dictType != null && !dictType.isEmpty(), SysDictTypePo::getDictType, dictType);
@@ -43,6 +46,7 @@ public class ASysDictController {
 
     @GetMapping("/type/all")
     public R<List<SysDictTypePo>> listAllTypes() {
+        builtinDictRegistry.ensureBuiltInDictionaries();
         return R.ok(dictTypeMapper.selectList(null));
     }
 
@@ -84,6 +88,7 @@ public class ASysDictController {
             @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
             @RequestParam(value = "dictType", required = false) String dictType) {
+        builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictDataPo> wrapper = new LambdaQueryWrapper<SysDictDataPo>()
                 .eq(dictType != null && !dictType.isEmpty(), SysDictDataPo::getDictType, dictType)
                 .orderByAsc(SysDictDataPo::getDictSort);
@@ -93,6 +98,7 @@ public class ASysDictController {
 
     @GetMapping("/data/type/{dictType}")
     public R<List<SysDictDataPo>> listDataByType(@PathVariable String dictType) {
+        builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictDataPo> wrapper = new LambdaQueryWrapper<SysDictDataPo>()
                 .eq(SysDictDataPo::getDictType, dictType)
                 .eq(SysDictDataPo::getStatus, 0)
