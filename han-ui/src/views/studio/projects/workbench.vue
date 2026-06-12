@@ -1973,6 +1973,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
+const invalidProjectRouteHandled = ref(false)
 const savingStrategies = ref(false)
 const paramsEditing = ref(false)
 const polishStreaming = ref(false)
@@ -2145,7 +2146,14 @@ const strategyLabels: Record<StrategyKey, string> = {
   characterDesignType: '角色造型类型'
 }
 
-const projectId = computed(() => String(route.params.id))
+const projectId = computed(() => {
+  const value = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
+  if (value === null || value === undefined) {
+    return ''
+  }
+  return String(value).trim()
+})
+const hasValidProjectId = computed(() => /^[1-9]\d*$/.test(projectId.value))
 const documents = computed(() => detail.documents || [])
 const latestDocument = computed(() => documents.value[0])
 const latestSourceText = computed(() => latestDocument.value?.parsedText || latestDocument.value?.rawText || '')
@@ -2184,6 +2192,34 @@ const shotVideoReferencePreviewList = computed(() => shotVideoReferenceOptions.v
   .filter((item) => (item.mediaKind || 'image') === 'image')
   .map((item) => referencePreviewUrls.value[item.mediaId])
   .filter(Boolean))
+
+function shouldRedirectForInvalidProject(error: any) {
+  const message = String(error?.message || '')
+  return [
+    '项目不存在',
+    '无权访问该项目',
+    '请求参数错误',
+    'status code 400',
+    'status code 404'
+  ].some((keyword) => message.includes(keyword))
+}
+
+function redirectToProjectList(message = '项目不存在或链接已失效，已返回项目列表') {
+  if (invalidProjectRouteHandled.value) {
+    return
+  }
+  invalidProjectRouteHandled.value = true
+  ElMessage.warning(message)
+  void router.replace('/studio/projects')
+}
+
+function ensureProjectContext(message = '项目链接无效，已返回项目列表') {
+  if (hasValidProjectId.value) {
+    return true
+  }
+  redirectToProjectList(message)
+  return false
+}
 const mediaRegisterAccept = computed(() => mediaRegisterContext.value?.accept || '')
 const selectedShotScreenCharacterRule = computed(() => buildShotScreenCharacterRule(selectedShotForVideo.value))
 const selectedShotTtsAudio = computed(() => shotTtsAudios.value.find(isSelectedMediaAsset))
@@ -4088,6 +4124,9 @@ async function handleGenerateProjectEdit() {
 }
 
 async function loadDetailInternal(silentError = false) {
+  if (!ensureProjectContext()) {
+    return
+  }
   loading.value = true
   try {
     const res = await getAivideoProject(projectId.value, { silentError })
@@ -4126,6 +4165,12 @@ async function loadDetailInternal(silentError = false) {
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
     await refreshAssetPromptPreview()
+  } catch (error: any) {
+    if (shouldRedirectForInvalidProject(error)) {
+      redirectToProjectList(error?.message || '项目不存在或链接已失效')
+      return
+    }
+    throw error
   } finally {
     loading.value = false
   }
@@ -5037,6 +5082,9 @@ async function handleSaveProjectStrategies() {
 }
 
 function handleConfirmDocument() {
+  if (!ensureProjectContext('当前项目无效，无法确认原文')) {
+    return
+  }
   const doc = latestDocument.value
   if (!doc) return
   withSubmit(
@@ -5070,6 +5118,9 @@ async function handleSourceFileChange(event: Event) {
 }
 
 function handleSaveDocument(confirmAfterSave: boolean) {
+  if (!ensureProjectContext('当前项目无效，无法保存原文')) {
+    return
+  }
   if (!hasSourceDraftText.value) {
     ElMessage.warning('请先填写原文内容')
     return
@@ -5780,6 +5831,21 @@ function promptScopeByTab(tab: WorkbenchTab): PromptScope {
 }
 
 onMounted(async () => {
+  if (!ensureProjectContext()) {
+    return
+  }
+  await loadDetail()
+  await recoverLatestAssetTask()
+})
+
+watch(projectId, async (next, previous) => {
+  if (next === previous) {
+    return
+  }
+  invalidProjectRouteHandled.value = false
+  if (!ensureProjectContext()) {
+    return
+  }
   await loadDetail()
   await recoverLatestAssetTask()
 })
