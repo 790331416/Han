@@ -70,22 +70,26 @@ public class SysBuiltinDictRegistry {
 
     @Transactional(rollbackFor = Exception.class)
     public synchronized void ensureBuiltInDictionaries() {
-        TenantHelper.ignore(() -> {
-            for (DictDefinition definition : DEFINITIONS) {
-                ensureDictType(definition);
-                ensureDictItems(definition);
-            }
-        });
+        Long tenantId = resolveTenantId();
+        for (DictDefinition definition : DEFINITIONS) {
+            ensureDictType(definition, tenantId);
+            ensureDictItems(definition, tenantId);
+        }
     }
 
-    private void ensureDictType(DictDefinition definition) {
+    private Long resolveTenantId() {
+        Long tenantId = TenantHelper.getTenantId();
+        return tenantId != null ? tenantId : 0L;
+    }
+
+    private void ensureDictType(DictDefinition definition, Long tenantId) {
         Long count = dictTypeMapper.selectCount(new LambdaQueryWrapper<SysDictTypePo>()
                 .eq(SysDictTypePo::getDictType, definition.dictType()));
         if (count != null && count > 0) {
             return;
         }
         SysDictTypePo type = new SysDictTypePo();
-        type.setTenantId(0L);
+        type.setTenantId(tenantId);
         type.setDictName(definition.dictName());
         type.setDictType(definition.dictType());
         type.setStatus(STATUS_ENABLED);
@@ -93,7 +97,7 @@ public class SysBuiltinDictRegistry {
         dictTypeMapper.insert(type);
     }
 
-    private void ensureDictItems(DictDefinition definition) {
+    private void ensureDictItems(DictDefinition definition, Long tenantId) {
         for (DictItem item : definition.items()) {
             Long count = dictDataMapper.selectCount(new LambdaQueryWrapper<SysDictDataPo>()
                     .eq(SysDictDataPo::getDictType, definition.dictType())
@@ -102,7 +106,7 @@ public class SysBuiltinDictRegistry {
                 continue;
             }
             SysDictDataPo data = new SysDictDataPo();
-            data.setTenantId(0L);
+            data.setTenantId(tenantId);
             data.setDictType(definition.dictType());
             data.setDictLabel(item.dictLabel());
             data.setDictValue(item.dictValue());

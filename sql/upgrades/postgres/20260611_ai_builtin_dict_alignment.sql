@@ -3,21 +3,37 @@
 
 BEGIN;
 
-WITH type_items(dict_name, dict_type, remark, status) AS (
+WITH target_tenants AS (
+    SELECT DISTINCT tenant_id
+    FROM (
+        VALUES (0::BIGINT)
+        UNION ALL
+        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
+        UNION ALL
+        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
+    ) source(tenant_id)
+),
+type_items(dict_name, dict_type, remark, status) AS (
     VALUES
         ('AI模型类型', 'ai_model_type', 'AI模型管理模型类型列表', 0),
         ('AI模型供应商', 'ai_model_provider', 'AI模型管理供应商列表', 0),
         ('AI Prompt模板分类', 'ai_prompt_category', 'AI Prompt模板分类列表', 0)
 ),
+type_candidates AS (
+    SELECT tenants.tenant_id, item.*
+    FROM target_tenants tenants
+    CROSS JOIN type_items item
+),
 missing_types AS (
     SELECT
-        item.*,
-        ROW_NUMBER() OVER (ORDER BY item.dict_type) AS rn
-    FROM type_items item
+        candidate.*,
+        ROW_NUMBER() OVER (ORDER BY candidate.tenant_id, candidate.dict_type) AS rn
+    FROM type_candidates candidate
     WHERE NOT EXISTS (
         SELECT 1
         FROM sys_dict_type target
-        WHERE target.dict_type = item.dict_type
+        WHERE target.tenant_id IS NOT DISTINCT FROM candidate.tenant_id
+          AND target.dict_type = candidate.dict_type
     )
 ),
 type_base AS (
@@ -26,7 +42,7 @@ type_base AS (
 INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark)
 SELECT
     type_base.max_id + missing_types.rn,
-    0,
+    missing_types.tenant_id,
     missing_types.dict_name,
     missing_types.dict_type,
     missing_types.status,
@@ -34,7 +50,17 @@ SELECT
 FROM missing_types
 CROSS JOIN type_base;
 
-WITH data_items(dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) AS (
+WITH target_tenants AS (
+    SELECT DISTINCT tenant_id
+    FROM (
+        VALUES (0::BIGINT)
+        UNION ALL
+        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
+        UNION ALL
+        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
+    ) source(tenant_id)
+),
+data_items(dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) AS (
     VALUES
         ('ai_model_type', '大语言模型', 'LLM', 10, '', 'primary', 1, 0),
         ('ai_model_type', '图片生成模型', 'IMAGE', 20, '', 'success', 0, 0),
@@ -68,16 +94,22 @@ WITH data_items(dict_type, dict_label, dict_value, dict_sort, css_class, list_cl
         ('ai_prompt_category', 'AIVideo 视频生成', 'aivideo_video', 90, '', 'warning', 0, 0),
         ('ai_prompt_category', 'AIVideo 语音合成', 'aivideo_tts', 100, '', 'info', 0, 0)
 ),
+data_candidates AS (
+    SELECT tenants.tenant_id, item.*
+    FROM target_tenants tenants
+    CROSS JOIN data_items item
+),
 missing_data AS (
     SELECT
-        item.*,
-        ROW_NUMBER() OVER (ORDER BY item.dict_type, item.dict_sort, item.dict_value) AS rn
-    FROM data_items item
+        candidate.*,
+        ROW_NUMBER() OVER (ORDER BY candidate.tenant_id, candidate.dict_type, candidate.dict_sort, candidate.dict_value) AS rn
+    FROM data_candidates candidate
     WHERE NOT EXISTS (
         SELECT 1
         FROM sys_dict_data target
-        WHERE target.dict_type = item.dict_type
-          AND target.dict_value = item.dict_value
+        WHERE target.tenant_id IS NOT DISTINCT FROM candidate.tenant_id
+          AND target.dict_type = candidate.dict_type
+          AND target.dict_value = candidate.dict_value
     )
 ),
 data_base AS (
@@ -86,7 +118,7 @@ data_base AS (
 INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status)
 SELECT
     data_base.max_id + missing_data.rn,
-    0,
+    missing_data.tenant_id,
     missing_data.dict_type,
     missing_data.dict_label,
     missing_data.dict_value,

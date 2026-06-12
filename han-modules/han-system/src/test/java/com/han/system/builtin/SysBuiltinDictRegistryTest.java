@@ -23,6 +23,20 @@ class SysBuiltinDictRegistryTest {
     }
 
     @Test
+    void builtInRegistryBackfillsCurrentTenantVisibleDictionaryRows() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String registry = Files.readString(
+                repoRoot.resolve("han-modules/han-system/src/main/java/com/han/system/builtin/SysBuiltinDictRegistry.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(registry).contains("TenantHelper.getTenantId()");
+        assertThat(registry).contains("resolveTenantId()");
+        assertThat(registry).contains("type.setTenantId(tenantId)");
+        assertThat(registry).contains("data.setTenantId(tenantId)");
+        assertThat(registry).doesNotContain("TenantHelper.ignore(() ->");
+    }
+
+    @Test
     void fullAppWorkflowBuildsAndPushesHanSystemImage() throws Exception {
         Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
         String workflow = Files.readString(
@@ -47,6 +61,8 @@ class SysBuiltinDictRegistryTest {
 
         assertThat(upgrade).contains("sys_dict_type");
         assertThat(upgrade).contains("sys_dict_data");
+        assertThat(upgrade).contains("target_tenants");
+        assertThat(upgrade).contains("sys_tenant");
         assertThat(upgrade).contains("ai_model_type");
         assertThat(upgrade).contains("ai_model_provider");
         assertThat(upgrade).contains("ai_prompt_category");
