@@ -3917,12 +3917,12 @@ function scopedCustomPrompt(scope: PromptScope) {
     .join('\n\n')
 }
 
-async function refreshShotMediaAssets() {
+async function refreshShotMediaAssets(silentError = false) {
   try {
     const res = await listAivideoMedia({
       projectId: projectId.value,
       bizType: 'SHOT'
-    })
+    }, { silentError })
     shotMediaAssets.value = (res.data || []).filter((item) => String(item.bizType || '').toUpperCase() === 'SHOT')
   } catch (_error) {
     shotMediaAssets.value = []
@@ -3957,31 +3957,35 @@ async function loadProjectEditTasks() {
   }
 }
 
-async function loadProjectEditVideos() {
+async function loadProjectEditVideos(silentError = false) {
   try {
     const res = await listAivideoMedia({
       projectId: projectId.value,
       assetType: 'PROJECT_EDIT_VIDEO',
       bizType: 'PROJECT',
       bizId: projectId.value
-    })
+    }, { silentError })
     projectEditVideos.value = res.data || []
   } catch (_error) {
     projectEditVideos.value = []
   }
 }
 
-async function refreshProjectEditPanel() {
+async function refreshProjectEditPanelWithOptions(silentError = false) {
   projectEditLoading.value = true
   try {
     await Promise.all([
       loadProjectEditPreflight(),
       loadProjectEditTasks(),
-      loadProjectEditVideos()
+      loadProjectEditVideos(silentError)
     ])
   } finally {
     projectEditLoading.value = false
   }
+}
+
+async function refreshProjectEditPanel() {
+  await refreshProjectEditPanelWithOptions(false)
 }
 
 function clearProjectEditPollingTimer() {
@@ -4083,10 +4087,10 @@ async function handleGenerateProjectEdit() {
   }
 }
 
-async function loadDetail() {
+async function loadDetailInternal(silentError = false) {
   loading.value = true
   try {
-    const res = await getAivideoProject(projectId.value)
+    const res = await getAivideoProject(projectId.value, { silentError })
     Object.assign(detail, res.data || {})
     const settingParams = parseParamsJson(res.data.setting?.paramsJson)
     if (!paramsEditing.value) {
@@ -4117,14 +4121,18 @@ async function loadDetail() {
         shotVideo: strategyValue(settingParams, 'shotVideoPrompt', '')
       })
     }
-    await refreshShotMediaAssets()
-    await refreshProjectEditPanel()
+    await refreshShotMediaAssets(silentError)
+    await refreshProjectEditPanelWithOptions(silentError)
     await refreshPolishPromptPreview()
     await refreshScriptPromptPreview()
     await refreshAssetPromptPreview()
   } finally {
     loading.value = false
   }
+}
+
+async function loadDetail() {
+  await loadDetailInternal(false)
 }
 
 async function refreshPolishPromptPreview() {
@@ -4924,8 +4932,17 @@ async function withSubmit(action: () => Promise<void>, successMessage: string) {
   submitting.value = true
   try {
     await action()
+    let refreshFailed = false
+    try {
+      await loadDetailInternal(true)
+    } catch (error) {
+      refreshFailed = true
+      console.error('操作成功后刷新项目详情失败', error)
+    }
     ElMessage.success(successMessage)
-    await loadDetail()
+    if (refreshFailed) {
+      ElMessage.warning('操作已生效，但页面刷新失败，请点击右上角刷新')
+    }
   } finally {
     submitting.value = false
   }

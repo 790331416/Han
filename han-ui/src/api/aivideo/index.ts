@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios'
 import { get, post, request } from '@/utils/request'
 import type { PageQuery, PageResult } from '@/types'
 
@@ -398,8 +399,8 @@ export function listAivideoProject(query: AivideoProjectQuery) {
   return get<PageResult<AivideoProject>>('/aivideo/studio/project/list', query)
 }
 
-export function getAivideoProject(projectId: string | number) {
-  return get<AivideoProjectDetail>(`/aivideo/studio/project/${projectId}`)
+export function getAivideoProject(projectId: string | number, config?: AxiosRequestConfig) {
+  return get<AivideoProjectDetail>(`/aivideo/studio/project/${projectId}`, undefined, config)
 }
 
 export function addAivideoProject(data: AivideoProjectForm) {
@@ -624,8 +625,8 @@ export function listAivideoMedia(query: {
   assetType?: string
   bizType?: string
   bizId?: string | number
-}) {
-  return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query)
+}, config?: AxiosRequestConfig) {
+  return get<AivideoMediaAsset[]>('/aivideo/studio/media/list', query, config)
 }
 
 export function generateAivideoShotTtsAudio(data: {
