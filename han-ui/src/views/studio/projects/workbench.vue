@@ -3742,11 +3742,20 @@ function shotBudgetFor(durationSec: number) {
 }
 
 function splitShotActionBeats(shot?: AivideoShot) {
-  const text = [shot?.actionDesc, shot?.promptText].filter(Boolean).join('，')
+  // 动作预算只看结构化动作；视频执行提示词会复述动作，混算会造成重复预警。
+  const text = (shot?.actionDesc || shot?.promptText || '')
     .replace(/然后|接着|随后|同时|再/g, '，')
+  const seen = new Set<string>()
   return text.split(/[，,；;。！？!?\n]+/)
     .map((item) => item.trim())
     .filter(Boolean)
+    .filter((item) => {
+      if (seen.has(item)) {
+        return false
+      }
+      seen.add(item)
+      return true
+    })
 }
 
 function matchedKeywords(text: string, keywords: string[]) {

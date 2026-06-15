@@ -37,6 +37,16 @@ class AivideoShotRuleAnalyzerTest {
     }
 
     @Test
+    void fiveSecondShotDoesNotDoubleCountPromptRepeatingActionDesc() {
+        assertDoesNotThrow(() ->
+                AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
+                        2,
+                        5,
+                        "剑魂右手拔出寒光剑，剑身显出冷白光，嘴角勾起拽笑，结尾停在寒光剑完全握在右手、剑身横在身前的姿态。",
+                        "9:16竖屏3DQ萌国漫，剑魂单人中景，右手拔出寒光剑，剑身显出冷白光，嘴角拽笑，结尾寒光剑完全握在右手、剑身横在身前。"));
+    }
+
+    @Test
     void detectsNamedWeaponAsRequiredProp() {
         List<String> names = AivideoShotRuleAnalyzer.detectRequiredPropNames(
                 "剑魂右手拔出寒光剑，剑尖指向深渊柱。");

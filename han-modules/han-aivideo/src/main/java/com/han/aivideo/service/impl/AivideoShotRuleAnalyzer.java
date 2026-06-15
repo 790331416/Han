@@ -155,7 +155,9 @@ final class AivideoShotRuleAnalyzer {
     }
 
     private static List<String> splitBeats(String actionDesc, String promptText) {
-        String text = String.join("，", safeText(actionDesc), safeText(promptText))
+        // 动作预算只看结构化动作；执行提示词会复述动作，混算会把同一动作重复计费。
+        String text = StringUtils.hasText(actionDesc) ? actionDesc : safeText(promptText);
+        text = text
                 .replace("然后", "，")
                 .replace("接着", "，")
                 .replace("随后", "，")
@@ -163,9 +165,11 @@ final class AivideoShotRuleAnalyzer {
                 .replace("同时", "，");
         String[] parts = text.split("[，,；;。！？!?\\n]+");
         List<String> beats = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
         for (String part : parts) {
-            if (StringUtils.hasText(part)) {
-                beats.add(part.trim());
+            String beat = part.trim();
+            if (StringUtils.hasText(beat) && seen.add(beat)) {
+                beats.add(beat);
             }
         }
         return beats;
