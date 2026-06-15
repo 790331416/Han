@@ -8,6 +8,7 @@ import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
@@ -18,6 +19,7 @@ import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.aivideo.service.IAivideoShotVideoService;
@@ -33,6 +35,7 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -108,6 +111,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private final AiServiceClient aiServiceClient;
     private final FileServiceClient fileServiceClient;
     private final TransactionTemplate transactionTemplate;
+
+    @Autowired(required = false)
+    private AiVideoPropMapper propMapper;
 
     @Value("${han.aivideo.media.public-file-origin:}")
     private String publicFileOrigin;
@@ -381,6 +387,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 projectSetting != null ? projectSetting.getDefaultShotDuration() : null,
                 globalSetting != null ? globalSetting.getDefaultShotDuration() : null,
                 project.getDefaultShotDuration(), 5));
+        validateShotActionBudgetAndProps(project.getProjectId(), shot, durationSec);
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
@@ -542,6 +549,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 addReferenceMedia(references, requireReferenceImage(projectId, mediaId));
             }
         }
+        addRequiredPropReferenceMedias(projectId, shot, references);
         addCharacterReferenceMedias(projectId, shot, references);
         if (references.isEmpty()) {
             throw new BusinessException("视频生成参考图不能为空，请先选择场景图或角色图");
@@ -642,6 +650,44 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 // 老数据可能存角色名，无法反查锁定图时仅保留文字锚点。
             }
         }
+    }
+
+    private void addRequiredPropReferenceMedias(Long projectId, AiVideoShotPo shot,
+                                                Map<Long, AiVideoMediaAssetPo> references) {
+        if (projectId == null || shot == null) {
+            return;
+        }
+        List<String> requiredPropNames = AivideoShotRuleAnalyzer.detectRequiredPropNames(collectShotText(shot));
+        if (requiredPropNames.isEmpty()) {
+            return;
+        }
+        List<AiVideoPropPo> projectProps = selectProjectProps(projectId);
+        for (String requiredName : requiredPropNames) {
+            AiVideoPropPo prop = findMatchedProp(requiredName, projectProps);
+            if (prop == null || prop.getLockedMediaId() == null) {
+                continue;
+            }
+            addReferenceMedia(references, requireReferenceImage(projectId, prop.getLockedMediaId()));
+        }
+    }
+
+    private AiVideoPropPo findMatchedProp(String requiredName, List<AiVideoPropPo> projectProps) {
+        if (!StringUtils.hasText(requiredName) || projectProps == null) {
+            return null;
+        }
+        for (AiVideoPropPo prop : projectProps) {
+            if (prop == null || Integer.valueOf(1).equals(prop.getDelFlag())) {
+                continue;
+            }
+            String propName = prop.getPropName();
+            if (!StringUtils.hasText(propName)) {
+                continue;
+            }
+            if (propName.contains(requiredName) || requiredName.contains(propName)) {
+                return prop;
+            }
+        }
+        return null;
     }
 
     private AiVideoMediaAssetPo requireReferenceImage(Long projectId, Long mediaId) {
@@ -1759,6 +1805,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         validateRuntimeCharacterPresence(projectId, shot, previousShot, text);
         validateRuntimeFacingContinuity(text, previousText);
+    }
+
+    private void validateShotActionBudgetAndProps(Long projectId, AiVideoShotPo shot, int durationSec) {
+        if (shot == null) {
+            return;
+        }
+        String text = collectShotText(shot);
+        AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
+                shot.getShotNo(), durationSec, shot.getActionDesc(), shot.getPromptText());
+        AivideoShotRuleAnalyzer.validateRequiredPropsOrThrow(text, selectProjectProps(projectId), true);
+    }
+
+    private List<AiVideoPropPo> selectProjectProps(Long projectId) {
+        if (projectId == null || propMapper == null) {
+            return List.of();
+        }
+        return propMapper.selectList(new LambdaQueryWrapper<AiVideoPropPo>()
+                .eq(AiVideoPropPo::getProjectId, projectId)
+                .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL));
     }
 
     private void validateRuntimePropHandoff(String text) {

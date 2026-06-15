@@ -3503,6 +3503,18 @@ function buildShotVideoAutoReferenceOptions(shot?: AivideoShot) {
       mediaKind: 'image'
     })
   }
+  autoShotRequiredProps(shot)
+    .map(({ prop }) => prop)
+    .filter((prop): prop is AivideoProp => !!prop?.lockedMediaId)
+    .forEach((prop) => {
+      addShotReferenceOption(options, {
+        mediaId: String(prop.lockedMediaId),
+        label: `道具：${prop.propName || '未命名道具'} #${prop.lockedMediaId}`,
+        subtitle: propAppearanceSummary(prop),
+        sourceName: prop.propName || '当前分镜道具',
+        mediaKind: 'image'
+      })
+    })
   const characterIdSet = new Set(resolveEffectiveShotCharacterIds(shot))
   characters.value
     .filter((item) => item.lockedMediaId && characterIdSet.has(String(item.characterId)))
@@ -3690,11 +3702,184 @@ function characterDesignPreflightRule(value?: string) {
   }
 }
 
+const shotStrongActionKeywords = [
+  '拔出', '拔剑', '出鞘', '挥剑', '挥砍', '斩', '刺向', '冲刺', '冲向', '跳起',
+  '飞跃', '变身', '爆炸', '倒地', '起身', '悬浮', '坠落', '落水', '救援', '打斗',
+  '搏斗', '俯冲', '释放', '施法', '掰弯', '击中', '劈中', '抽搐', '电流包裹', '飞起', '落下'
+]
+const shotMainActionKeywords = [
+  '拿起', '抬起', '低头', '抬头', '转身', '转向', '看向', '靠近', '走向', '递给',
+  '接过', '交给', '传给', '展示', '指向', '站起', '坐下', '放入', '拉开', '推开',
+  '合上', '打开', '写', '读', '跑', '跳', '抽出', '举起', '握住', '挥动', '靠拢'
+]
+const shotReactionKeywords = ['嘴角', '微笑', '笑', '表情', '眼神', '露出', '发现', '惊讶', '困惑', '点头', '认可', '凝视', '深吸']
+const shotEndStateKeywords = ['结尾', '最后', '停在', '定格', '保持', '站定', '结束', '收束']
+const requiredPropKeywords = [
+  '蓝色透明收纳盒', '寒光剑', '价格标签', '收纳盒', '试卷', '账本', '存折', '票据',
+  '皮球', '钥匙', '手机', '书包', '笔记本', '铅笔', '卡片', '长剑', '光剑', '法杖',
+  '魔杖', '盾牌', '盾', '弓箭', '弓', '匕首', '刀', '剑', '枪'
+]
+
+function normalizeShotDurationForBudget(durationSec?: number) {
+  const duration = Number(durationSec || params.defaultShotDuration || 5)
+  if (duration <= 5) {
+    return 5
+  }
+  if (duration <= 6) {
+    return 6
+  }
+  return 8
+}
+
+function shotBudgetFor(durationSec: number) {
+  if (durationSec <= 5) {
+    return { maxMain: 1, maxStrong: 1, maxCost: 2.25 }
+  }
+  if (durationSec <= 6) {
+    return { maxMain: 2, maxStrong: 1, maxCost: 3.25 }
+  }
+  return { maxMain: 3, maxStrong: 2, maxCost: 4.25 }
+}
+
+function splitShotActionBeats(shot?: AivideoShot) {
+  const text = [shot?.actionDesc, shot?.promptText].filter(Boolean).join('，')
+    .replace(/然后|接着|随后|同时|再/g, '，')
+  return text.split(/[，,；;。！？!?\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function matchedKeywords(text: string, keywords: string[]) {
+  return keywords.filter((keyword) => keyword && text.includes(keyword))
+}
+
+function inspectShotActionBudget(shot?: AivideoShot): ShotVideoPreflightItem | undefined {
+  if (!shot) {
+    return undefined
+  }
+  const duration = normalizeShotDurationForBudget(shot.durationSec)
+  const budget = shotBudgetFor(duration)
+  let cost = 0
+  let mainActionCount = 0
+  let strongActionCount = 0
+  let reactionCount = 0
+  const usedKeywords: string[] = []
+  splitShotActionBeats(shot).forEach((beat) => {
+    const strongMatches = matchedKeywords(beat, shotStrongActionKeywords)
+    if (strongMatches.length) {
+      cost += 2
+      mainActionCount += 1
+      strongActionCount += 1
+      usedKeywords.push(...strongMatches)
+      return
+    }
+    const isEndState = matchedKeywords(beat, shotEndStateKeywords).length > 0
+    const mainMatches = matchedKeywords(beat, shotMainActionKeywords)
+    if (mainMatches.length && !isEndState) {
+      cost += 1
+      mainActionCount += 1
+      usedKeywords.push(...mainMatches)
+      return
+    }
+    const reactionMatches = matchedKeywords(beat, shotReactionKeywords)
+    if (reactionMatches.length) {
+      cost += 0.25
+      reactionCount += 1
+      usedKeywords.push(...reactionMatches)
+    }
+  })
+  const overBudget = mainActionCount > budget.maxMain || strongActionCount > budget.maxStrong || cost > budget.maxCost
+  const keywordSummary = Array.from(new Set(usedKeywords)).slice(0, 8).join('、') || '未命中明显动作词'
+  if (overBudget) {
+    return {
+      status: 'fail',
+      title: `动作预算过载：${duration} 秒镜头`,
+      detail: `当前约 ${mainActionCount} 个主动作、${strongActionCount} 个强动作、${reactionCount} 个反应，成本 ${cost.toFixed(2)}，命中动作词：${keywordSummary}。建议拆镜：镜头A保留起始状态+核心强动作，镜头B承接结果状态+反应/结尾状态。`
+    }
+  }
+  return {
+    status: 'pass',
+    title: `动作预算通过：${duration} 秒镜头`,
+    detail: `当前约 ${mainActionCount} 个主动作、${strongActionCount} 个强动作、${reactionCount} 个反应，处于稳定生成范围；命中动作词：${keywordSummary}。`
+  }
+}
+
+function removeContainedPropNames(names: string[]) {
+  return names.filter((name) => !names.some((other) => other.length > name.length && other.includes(name)))
+}
+
+function detectShotRequiredPropNames(shot?: AivideoShot) {
+  const text = shotRelationshipText(shot)
+  if (!text) {
+    return []
+  }
+  const names: string[] = []
+  requiredPropKeywords.forEach((keyword) => {
+    if (!keyword || !text.includes(keyword)) {
+      return
+    }
+    if (keyword === '剑' && (text.includes('寒光剑') || text.includes('长剑') || text.includes('光剑'))) {
+      return
+    }
+    if (!names.includes(keyword)) {
+      names.push(keyword)
+    }
+  })
+  return removeContainedPropNames(names)
+}
+
+function findMatchedPropByName(requiredName: string) {
+  return props.value.find((prop) => {
+    const propName = String(prop.propName || '').trim()
+    return !!propName && (propName.includes(requiredName) || requiredName.includes(propName))
+  })
+}
+
+function requiresLockedPropReference(shot: AivideoShot | undefined, requiredName: string) {
+  const text = shotRelationshipText(shot)
+  return /剑|刀|枪|法杖|魔杖|盾|弓|匕首/.test(requiredName)
+    || /拔出|拔剑|出鞘|持|握住|举起|挥动|指向|递给|接过|交给|传给|发光|亮起/.test(text)
+}
+
+function autoShotRequiredProps(shot?: AivideoShot) {
+  return detectShotRequiredPropNames(shot)
+    .map((name) => ({ name, prop: findMatchedPropByName(name) }))
+}
+
 function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightItem[] {
   if (!shot) {
     return []
   }
   const items: ShotVideoPreflightItem[] = []
+  const actionBudgetItem = inspectShotActionBudget(shot)
+  if (actionBudgetItem) {
+    items.push(actionBudgetItem)
+  }
+  autoShotRequiredProps(shot).forEach(({ name, prop }) => {
+    if (!prop) {
+      items.push({
+        status: 'fail',
+        title: `道具资产缺失：${name}`,
+        detail: '当前分镜出现了武器、手持物、发光物、交接物或剧情推进物，但资产里没有同名道具。请重新提取资产或先补道具资产，否则视频里容易变色、变形或凭空消失。'
+      })
+      return
+    }
+    if (requiresLockedPropReference(shot, name) && !prop.lockedMediaId) {
+      items.push({
+        status: 'fail',
+        title: `道具图未锁定：${prop.propName || name}`,
+        detail: '该道具参与持有、拔出、指向、挥动、交接或发光动作，必须先生成并确认道具图；系统会在非上一尾帧首帧模式下自动作为道具锚点传入视频请求。'
+      })
+      return
+    }
+    items.push({
+      status: prop.lockedMediaId ? 'pass' : 'warn',
+      title: prop.lockedMediaId ? `道具图已锁定：${prop.propName || name} #${prop.lockedMediaId}` : `道具资产已关联：${prop.propName || name}`,
+      detail: prop.lockedMediaId
+        ? '系统会把已确认道具图作为颜色、材质、形状、尺寸和交接关系锚点，减少跨镜漂移。'
+        : '当前道具已有资产，但暂未锁图；如果它不是关键手持/交接/发光道具可以继续，否则建议先补道具图。'
+    })
+  })
   const transitionType = normalizedShotTransitionType(shot)
   const previousShot = findPreviousShot(shot)
   items.push({

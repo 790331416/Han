@@ -1003,6 +1003,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     }
 
     private void insertAssets(AiVideoProjectPo project, AssetPayload payload, AiVideoProjectSettingPo setting) {
+        validateAssetShotRules(payload);
         validateShotSpatialContinuity(toShotContinuitySnapshots(payload == null ? null : payload.shots));
 
         Map<String, Long> characterIdMap = new LinkedHashMap<>();
@@ -1128,6 +1129,36 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shotMapper.insert(shot);
             previousShot = shot;
         }
+    }
+
+    private void validateAssetShotRules(AssetPayload payload) {
+        if (payload == null) {
+            return;
+        }
+        List<AiVideoPropPo> props = toTemporaryProps(payload.props);
+        for (ShotPayload shot : safeList(payload.shots)) {
+            if (shot == null) {
+                continue;
+            }
+            String text = collectShotPayloadText(shot);
+            AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
+                    shot.shotNo, shot.durationSec, shot.actionDesc, shot.promptText);
+            AivideoShotRuleAnalyzer.validateRequiredPropsOrThrow(text, props, false);
+        }
+    }
+
+    private List<AiVideoPropPo> toTemporaryProps(List<PropPayload> payloadProps) {
+        List<AiVideoPropPo> props = new ArrayList<>();
+        for (PropPayload item : safeList(payloadProps)) {
+            if (item == null || !StringUtils.hasText(item.propName)) {
+                continue;
+            }
+            AiVideoPropPo prop = new AiVideoPropPo();
+            prop.setPropName(item.propName);
+            prop.setDelFlag(DEL_FLAG_NORMAL);
+            props.add(prop);
+        }
+        return props;
     }
 
     private Map<String, VoiceProfilePayload> buildVoiceProfileMap(SoundDesignPayload soundDesign) {
@@ -2168,13 +2199,21 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             if (shot == null) {
                 continue;
             }
-            snapshots.add(new ShotContinuitySnapshot(shot.shotNo, shot.sceneName, shot.actionDesc, shot.promptText));
+            snapshots.add(new ShotContinuitySnapshot(
+                    shot.shotNo, shot.sceneName, shot.actionDesc, shot.promptText, shot.durationSec));
         }
         return snapshots;
     }
 
     static void validateShotSpatialContinuity(List<ShotContinuitySnapshot> shots) {
-        if (shots == null || shots.size() < 2) {
+        if (shots == null || shots.isEmpty()) {
+            return;
+        }
+        for (ShotContinuitySnapshot shot : shots) {
+            AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
+                    shotNo(shot, 0), shot.durationSec(), shot.actionDesc(), shot.promptText());
+        }
+        if (shots.size() < 2) {
             return;
         }
         for (int i = 1; i < shots.size(); i++) {
@@ -2464,6 +2503,10 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         public String promptText;
     }
 
-    record ShotContinuitySnapshot(Integer shotNo, String sceneName, String actionDesc, String promptText) {
+    record ShotContinuitySnapshot(Integer shotNo, String sceneName, String actionDesc, String promptText,
+                                  Integer durationSec) {
+        ShotContinuitySnapshot(Integer shotNo, String sceneName, String actionDesc, String promptText) {
+            this(shotNo, sceneName, actionDesc, promptText, 5);
+        }
     }
 }

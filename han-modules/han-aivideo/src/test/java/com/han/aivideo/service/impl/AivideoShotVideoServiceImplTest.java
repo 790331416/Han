@@ -4,6 +4,7 @@ import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
+import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
@@ -11,6 +12,7 @@ import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoProjectSettingMapper;
+import com.han.aivideo.mapper.AiVideoPropMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
 import com.han.api.ai.AiServiceClient;
@@ -95,7 +97,13 @@ class AivideoShotVideoServiceImplTest {
         AiVideoMediaAssetPo propImage = TestFixture.media(500L, "PROP_IMAGE", "/file/public/blue-box.png");
         propImage.setSelected("Y");
         propImage.setAssetStatus("SELECTED");
+        AiVideoPropPo prop = new AiVideoPropPo();
+        prop.setProjectId(1L);
+        prop.setPropName("蓝色透明收纳盒");
+        prop.setLockedMediaId(500L);
+        prop.setDelFlag(0);
         when(fixture.mediaAssetMapper.selectById(500L)).thenReturn(propImage);
+        when(fixture.propMapper.selectList(any())).thenReturn(List.of(prop));
         when(fixture.aiServiceClient.renderTextPrompt(any())).thenAnswer(invocation -> {
             AiTextGenerateRequest request = invocation.getArgument(0);
             return R.ok(request.getUserPrompt());
@@ -111,11 +119,83 @@ class AivideoShotVideoServiceImplTest {
         assertTrue(prompt.contains("蓝色透明收纳盒"), prompt);
     }
 
+    @Test
+    void previewAutomaticallyAddsLockedPropImageAsVideoReferenceAnchor() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setDurationSec(6);
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，结尾持剑站定。");
+        AiVideoMediaAssetPo propImage = TestFixture.media(501L, "PROP_IMAGE", "/file/public/cold-sword.png");
+        propImage.setSelected("Y");
+        propImage.setAssetStatus("SELECTED");
+        AiVideoPropPo prop = new AiVideoPropPo();
+        prop.setProjectId(1L);
+        prop.setPropName("寒光剑");
+        prop.setLockedMediaId(501L);
+        prop.setDelFlag(0);
+        when(fixture.mediaAssetMapper.selectById(501L)).thenReturn(propImage);
+        when(fixture.propMapper.selectList(any())).thenReturn(List.of(prop));
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenAnswer(invocation -> {
+            AiTextGenerateRequest request = invocation.getArgument(0);
+            return R.ok(request.getUserPrompt());
+        });
+
+        String prompt = fixture.service.previewShotVideoPrompt(fixture.dto()).getUserPrompt();
+
+        assertTrue(prompt.contains("reference_image/prop_anchor"), prompt);
+        assertTrue(prompt.contains("寒光剑"), prompt);
+    }
+
+    @Test
+    void previewRejectsOverBudgetStrongActionChainBeforeVideoGeneration() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setDurationSec(5);
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，剑尖指向深渊柱，嘴角勾起笑，结尾持剑站在柱前。");
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> fixture.service.previewShotVideoPrompt(fixture.dto()));
+
+        assertTrue(exception.getMessage().contains("动作预算过载"), exception::getMessage);
+        assertTrue(exception.getMessage().contains("拆成"), exception::getMessage);
+    }
+
+    @Test
+    void previewRejectsWeaponActionWithoutLinkedPropAsset() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setDurationSec(6);
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，结尾持剑站定。");
+        when(fixture.propMapper.selectList(any())).thenReturn(List.of());
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> fixture.service.previewShotVideoPrompt(fixture.dto()));
+
+        assertTrue(exception.getMessage().contains("道具未关联"), exception::getMessage);
+        assertTrue(exception.getMessage().contains("寒光剑"), exception::getMessage);
+    }
+
+    @Test
+    void previewRejectsWeaponActionWithoutLockedPropImage() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setDurationSec(6);
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，结尾持剑站定。");
+        AiVideoPropPo prop = new AiVideoPropPo();
+        prop.setProjectId(1L);
+        prop.setPropName("寒光剑");
+        prop.setDelFlag(0);
+        when(fixture.propMapper.selectList(any())).thenReturn(List.of(prop));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> fixture.service.previewShotVideoPrompt(fixture.dto()));
+
+        assertTrue(exception.getMessage().contains("道具未锁定参考图"), exception::getMessage);
+        assertTrue(exception.getMessage().contains("寒光剑"), exception::getMessage);
+    }
+
     private static class TestFixture {
         private final AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
         private final AiVideoProjectSettingMapper settingMapper = mock(AiVideoProjectSettingMapper.class);
         private final AiVideoSceneMapper sceneMapper = mock(AiVideoSceneMapper.class);
         private final AiVideoShotMapper shotMapper = mock(AiVideoShotMapper.class);
+        private final AiVideoPropMapper propMapper = mock(AiVideoPropMapper.class);
         private final AiVideoCharacterMapper characterMapper = mock(AiVideoCharacterMapper.class);
         private final AiVideoGenerationTaskMapper taskMapper = mock(AiVideoGenerationTaskMapper.class);
         private final AiVideoMediaAssetMapper mediaAssetMapper = mock(AiVideoMediaAssetMapper.class);
@@ -131,6 +211,7 @@ class AivideoShotVideoServiceImplTest {
 
         private TestFixture() {
             setField(service, "publicFileOrigin", "https://han.scavengers.cn");
+            setField(service, "propMapper", propMapper);
             project.setProjectId(1L);
             project.setTenantId(9L);
             project.setProjectName("喵小萌阳光账本");
@@ -156,6 +237,7 @@ class AivideoShotVideoServiceImplTest {
             when(shotMapper.selectOne(any())).thenReturn(previousShot);
             when(mediaAssetMapper.selectById(300L)).thenReturn(sceneImage);
             when(mediaAssetMapper.selectList(any())).thenReturn(List.of());
+            when(propMapper.selectList(any())).thenReturn(List.of());
             when(characterMapper.selectList(any())).thenReturn(List.of());
             when(settingMapper.selectOne(any())).thenReturn(null);
             when(aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("rendered prompt"));
