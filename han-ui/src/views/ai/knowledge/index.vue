@@ -162,9 +162,10 @@ import { Search, Refresh, Plus, Upload, Document, Tickets, Collection, MoreFille
 import {
   listKnowledgeBase, addKnowledgeBase, updateKnowledgeBase, deleteKnowledgeBase,
   listKbDocument, uploadKbDocument, reindexKbDocument, deleteKbDocument,
-  listAllModels, hitTestKnowledgeBase, kbTypeOptions, indexStatusOptions,
+  listAllModels, hitTestKnowledgeBase, kbTypeOptions as fallbackKbTypeOptions, indexStatusOptions as fallbackIndexStatusOptions,
   type KnowledgeBase, type KnowledgeBaseQuery, type KbDocument, type AiModel
 } from '@/api/ai'
+import { AI_KB_TYPE_DICT, AI_KNOWLEDGE_INDEX_STATUS_DICT, findDictLabel, loadDictOptionSet, type DictOption } from '@/utils/dict-options'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 
 const loading = ref(false)
@@ -179,6 +180,8 @@ const currentKb = ref<KnowledgeBase | null>(null)
 const embeddingModels = ref<AiModel[]>([])
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
+const kbTypeOptions = ref<DictOption[]>([...fallbackKbTypeOptions])
+const indexStatusOptions = ref<DictOption[]>([...fallbackIndexStatusOptions])
 
 const queryParams = reactive<KnowledgeBaseQuery>({ pageNum: 1, pageSize: 8 })
 const form = reactive<any>({ kbId: undefined, kbName: '', kbType: 'general', description: '', embeddingModelId: undefined })
@@ -188,8 +191,11 @@ const rules: FormRules = {
   kbType: [{ required: true, message: '请选择类型', trigger: 'change' }]
 }
 
-const getKbTypeLabel = (v: string) => kbTypeOptions.find(i => i.value === v)?.label || v
-const getIndexStatusLabel = (v: string) => indexStatusOptions.find(i => i.value === v)?.label || v
+/**
+ * 知识库页面统一复用系统字典，避免知识库类型、索引状态在页面内长期写死。
+ */
+const getKbTypeLabel = (v: string) => findDictLabel(kbTypeOptions.value, v, v)
+const getIndexStatusLabel = (v: string) => findDictLabel(indexStatusOptions.value, v, v)
 const getIndexStatusType = (v: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' => {
   const m: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = { pending: 'info', indexing: 'warning', completed: 'success', failed: 'danger' }
   return m[v] || 'info'
@@ -323,7 +329,15 @@ const handleDeleteDoc = async (doc: KbDocument) => {
   } catch { /* 接口不可用 */ }
 }
 
-onMounted(() => getList())
+onMounted(async () => {
+  const options = await loadDictOptionSet({
+    kbTypeOptions: { dictType: AI_KB_TYPE_DICT, fallback: fallbackKbTypeOptions },
+    indexStatusOptions: { dictType: AI_KNOWLEDGE_INDEX_STATUS_DICT, fallback: fallbackIndexStatusOptions }
+  })
+  kbTypeOptions.value = options.kbTypeOptions
+  indexStatusOptions.value = options.indexStatusOptions
+  await getList()
+})
 </script>
 
 <style lang="scss" scoped>

@@ -77,7 +77,10 @@ import { Bell, Loading } from '@element-plus/icons-vue'
 import { getLatestNotices, getUnreadCount, markAllNoticeRead, markNoticeRead } from '@/api/system/notice'
 import type { Notice } from '@/api/system/notice'
 import { getToken } from '@/utils/auth'
+import { tryRefreshSession } from '@/utils/session-refresh'
 import { useUserStore } from '@/stores/user'
+
+const NOTICE_POLL_INTERVAL_MS = 60000
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -88,7 +91,8 @@ const detailVisible = ref(false)
 const currentNotice = ref<Notice | null>(null)
 const canViewAll = userStore.hasPermission('system:notice:list')
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let eventSource: EventSource | null = null
+let streamAbortController: AbortController | null = null
+let isComponentUnmounted = false
 
 const formatTime = (time: string) => {
   if (!time) return ''
@@ -158,40 +162,139 @@ const handleMarkAllRead = async () => {
   }
 }
 
-const connectSse = () => {
-  try {
-    const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
-    const token = getToken() || ''
-    if (!token) return
-    const url = `${baseUrl}/system/notice/sse?token=${token}`
-    eventSource = new EventSource(url)
+const buildNoticeStreamUrl = (baseUrl: string) => {
+  const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  return normalizedBaseUrl ? `${normalizedBaseUrl}/system/notice/sse` : '/system/notice/sse'
+}
 
-    eventSource.addEventListener('notice', () => {
-      refreshNoticeState()
+const startPolling = () => {
+  if (pollTimer || isComponentUnmounted) {
+    return
+  }
+  pollTimer = setInterval(refreshNoticeState, NOTICE_POLL_INTERVAL_MS)
+}
+
+const stopPolling = () => {
+  if (!pollTimer) {
+    return
+  }
+  clearInterval(pollTimer)
+  pollTimer = null
+}
+
+const closeNoticeStream = () => {
+  if (!streamAbortController) {
+    return
+  }
+  streamAbortController.abort()
+  streamAbortController = null
+}
+
+const handleNoticeStreamSegment = (segment: string) => {
+  if (!segment.trim()) {
+    return
+  }
+  const eventName = segment
+    .split(/\r?\n/)
+    .find((line) => line.startsWith('event:'))
+    ?.replace(/^event:\s*/, '')
+    .trim()
+
+  if (eventName === 'notice') {
+    void refreshNoticeState()
+  }
+}
+
+const consumeNoticeStream = async (body: ReadableStream<Uint8Array>, signal: AbortSignal) => {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const segments = buffer.split(/\r?\n\r?\n/)
+      buffer = segments.pop() || ''
+      segments.forEach(handleNoticeStreamSegment)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+const connectSse = async (accessToken = getToken() || '') => {
+  if (!accessToken || isComponentUnmounted) {
+    startPolling()
+    return
+  }
+
+  closeNoticeStream()
+  const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
+  const controller = new AbortController()
+  streamAbortController = controller
+  let shouldFallbackToPolling = true
+
+  try {
+    const response = await fetch(buildNoticeStreamUrl(baseUrl), {
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${accessToken}`
+      },
+      signal: controller.signal
     })
 
-    eventSource.onerror = () => {
-      eventSource?.close()
-      eventSource = null
-      // SSE 不可用时降级为轮询
-      if (!pollTimer) {
-        pollTimer = setInterval(refreshNoticeState, 60000)
-      }
+    if (controller.signal.aborted) {
+      return
     }
+
+    if (response.status === 401) {
+      const refreshResult = await tryRefreshSession(baseUrl)
+      if (refreshResult.status === 'success' && refreshResult.accessToken) {
+        shouldFallbackToPolling = false
+        await connectSse(refreshResult.accessToken)
+        return
+      }
+      startPolling()
+      return
+    }
+
+    const contentType = response.headers.get('content-type') || ''
+    if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+      startPolling()
+      return
+    }
+
+    stopPolling()
+    await consumeNoticeStream(response.body, controller.signal)
   } catch {
-    // SSE 不可用时降级为轮询
-    pollTimer = setInterval(refreshNoticeState, 60000)
+    if (!controller.signal.aborted) {
+      startPolling()
+    }
+  } finally {
+    if (streamAbortController === controller) {
+      streamAbortController = null
+    }
+    if (shouldFallbackToPolling && !controller.signal.aborted && !isComponentUnmounted) {
+      startPolling()
+    }
   }
 }
 
 onMounted(() => {
+  isComponentUnmounted = false
   refreshNoticeState()
-  connectSse()
+  void connectSse()
 })
 
 onUnmounted(() => {
-  eventSource?.close()
-  if (pollTimer) clearInterval(pollTimer)
+  isComponentUnmounted = true
+  closeNoticeStream()
+  stopPolling()
 })
 </script>
 

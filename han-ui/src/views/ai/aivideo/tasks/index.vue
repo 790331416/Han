@@ -10,7 +10,7 @@
         </el-form-item>
         <el-form-item label="任务状态" prop="taskStatus">
           <el-select v-model="queryParams.taskStatus" placeholder="全部" clearable style="width: 160px">
-            <el-option v-for="item in aivideoTaskStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in taskStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -73,7 +73,8 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Search, View } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
-import { aivideoTaskStatusOptions, listAivideoTask, type AivideoTask, type AivideoTaskQuery } from '@/api/aivideo'
+import { listAivideoTask, type AivideoTask, type AivideoTaskQuery } from '@/api/aivideo'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
 
 const router = useRouter()
 const loading = ref(false)
@@ -81,13 +82,22 @@ const total = ref(0)
 const taskList = ref<AivideoTask[]>([])
 const queryFormRef = ref<FormInstance>()
 
+/**
+ * 任务状态统一走系统字典，后续新增状态时页面无需再改模板枚举。
+ */
+const {
+  loadStatusOptions,
+  taskStatusOptions,
+  labelOf
+} = createAivideoDictOptionState()
+
 const queryParams = reactive<AivideoTaskQuery>({
   pageNum: 1,
   pageSize: 10
 })
 
 function getTaskStatusLabel(value?: string) {
-  return aivideoTaskStatusOptions.find((item) => item.value === value)?.label || value || '待执行'
+  return labelOf(taskStatusOptions, value, '待执行')
 }
 
 function getTaskTag(value?: string) {
@@ -118,8 +128,8 @@ function resetQuery() {
   handleQuery()
 }
 
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await Promise.all([loadStatusOptions(), getList()])
 })
 </script>
 

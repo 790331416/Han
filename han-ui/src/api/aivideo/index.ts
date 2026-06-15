@@ -716,6 +716,12 @@ export function updateAivideoSetting(data: AivideoSetting) {
   return post<void>('/aivideo/admin/setting/edit', data)
 }
 
+/**
+ * 以下枚举继续保留在 API 层作为前端兜底选项。
+ *
+ * <p>当系统字典尚未初始化、接口暂时不可用或页面需要首屏兜底时，
+ * 公共字典加载器会优先尝试读取字典中心，失败后回退到这里。
+ */
 export const aivideoProjectStageOptions = [
   { label: '草稿', value: 'DRAFT' },
   { label: '原文已保存', value: 'DOCUMENT_SAVED' },
@@ -825,4 +831,9 @@ export const characterDesignTypeOptions = [
   { label: '动物本体萌化', value: 'ANIMAL_BODY_CUTE' },
   { label: '拟人化角色', value: 'ANTHROPOMORPHIC' },
   { label: '怪物/夸张反派', value: 'MONSTER_VILLAIN' }
+]
+
+export const mediaAccessPolicyOptions = [
+  { label: '登录可见', value: 'PRIVATE' },
+  { label: '公开可见', value: 'PUBLIC' }
 ]

@@ -12,8 +12,7 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="queryParams.status" placeholder="请选择" clearable>
-            <el-option label="正常" value="0" />
-            <el-option label="停用" value="1" />
+            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -57,7 +56,7 @@
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === '0' ? 'success' : 'danger'" size="small">
-              {{ row.status === '0' ? '正常' : '停用' }}
+              {{ getStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -100,8 +99,7 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio value="0">正常</el-radio>
-            <el-radio value="1">停用</el-radio>
+            <el-radio v-for="item in statusOptions" :key="item.value" :value="item.value">{{ item.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -146,11 +144,13 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import {
-  listPromptTemplate, addPromptTemplate, editPromptTemplate, removePromptTemplate,
+  listPromptTemplate, listAllPromptTemplate, addPromptTemplate, editPromptTemplate, removePromptTemplate,
   renderPromptTemplate, promptCategoryOptions as fallbackPromptCategoryOptions,
   type AiPromptTemplate
 } from '@/api/ai'
-import { AI_PROMPT_CATEGORY_DICT, loadDictOptions, type DictOption } from '@/utils/dict-options'
+import { AI_PROMPT_CATEGORY_DICT, findDictLabel, loadDictOptions, SYS_NORMAL_DISABLE_DICT, type DictOption } from '@/utils/dict-options'
+import { resolvePageResult } from '@/utils/page-result'
+import { paginatePromptTemplates, shouldFallbackToAllPromptTemplates } from './listing'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const loading = ref(false)
@@ -163,6 +163,10 @@ const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 const renderedContent = ref('')
 const promptCategoryOptions = ref<DictOption[]>([...fallbackPromptCategoryOptions])
+const statusOptions = ref<DictOption[]>([
+  { label: '正常', value: '0' },
+  { label: '停用', value: '1' }
+])
 
 const queryParams = reactive({ templateName: '', category: '', status: '', pageNum: 1, pageSize: 10 })
 
@@ -186,7 +190,11 @@ const rules: FormRules = {
   content: [{ required: true, message: '请输入模板内容', trigger: 'blur' }]
 }
 
+/**
+ * Prompt 模板页优先复用系统字典，避免“分类、状态”在 AI 模块各页面各写一套。
+ */
 const getCategoryLabel = (v: string) => promptCategoryOptions.value.find(i => i.value === v)?.label || v
+const getStatusLabel = (v: string) => findDictLabel(statusOptions.value, v, '正常')
 
 const parsedVariables = computed(() => {
   try {
@@ -196,13 +204,43 @@ const parsedVariables = computed(() => {
   }
 })
 
+const loadFallbackPromptTemplates = async () => {
+  const allRes = await listAllPromptTemplate()
+  const allRows = resolvePageResult<AiPromptTemplate>((allRes as any).data).rows
+  return paginatePromptTemplates(allRows, queryParams)
+}
+
 const getList = async () => {
   loading.value = true
   try {
     const res = await listPromptTemplate(queryParams)
-    templateList.value = res.data.rows
-    total.value = res.data.total
+    let pageResult = resolvePageResult<AiPromptTemplate>((res as any).data)
+
+    /**
+     * 某些环境的分页接口仍可能返回空列表，但 `/all` 接口已经有完整模板。
+     * 这里仅对“第一页且无筛选”的场景做兜底，避免用户看到整页空白。
+     */
+    if (shouldFallbackToAllPromptTemplates(queryParams, pageResult.rows)) {
+      pageResult = await loadFallbackPromptTemplates()
+    }
+
+    templateList.value = pageResult.rows
+    total.value = pageResult.total
   } catch (error) {
+    if (shouldFallbackToAllPromptTemplates(queryParams, [])) {
+      try {
+        const pageResult = await loadFallbackPromptTemplates()
+        templateList.value = pageResult.rows
+        total.value = pageResult.total
+        if (pageResult.rows.length > 0) {
+          ElMessage.warning('分页接口暂时异常，已使用全部模板接口兜底展示')
+          return
+        }
+      } catch (fallbackError) {
+        console.error('Prompt 模板 /all 兜底加载失败:', fallbackError)
+      }
+    }
+
     templateList.value = []
     total.value = 0
     console.error('加载 Prompt 模板列表失败:', error)
@@ -268,8 +306,13 @@ const handleRender = async () => {
 }
 
 onMounted(async () => {
-  promptCategoryOptions.value = await loadDictOptions(AI_PROMPT_CATEGORY_DICT, fallbackPromptCategoryOptions)
-  getList()
+  const [categories, statuses] = await Promise.all([
+    loadDictOptions(AI_PROMPT_CATEGORY_DICT, fallbackPromptCategoryOptions),
+    loadDictOptions(SYS_NORMAL_DISABLE_DICT, statusOptions.value)
+  ])
+  promptCategoryOptions.value = categories
+  statusOptions.value = statuses
+  await getList()
 })
 </script>
 

@@ -3,7 +3,10 @@ package com.han.ai.service.impl;
 import java.util.List;
 
 /**
- * Built-in prompt templates that must be available even when upgrade SQL was missed.
+ * 内置 Prompt 模板注册表。
+ *
+ * <p>用于在升级 SQL 漏执行或新租户缺少模板时提供运行期兜底，保证
+ * Java fallback、SQL 初始化和管理端模板列表三套来源尽量保持一致。
  */
 final class AiPromptTemplateBuiltinRegistry {
 
@@ -163,6 +166,15 @@ final class AiPromptTemplateBuiltinRegistry {
         );
     }
 
+    /**
+     * 内置模板种子数据。
+     *
+     * @param templateName 模板名称
+     * @param category 模板分类
+     * @param content 模板正文
+     * @param variables 模板变量 JSON
+     * @param description 模板说明
+     */
     record Seed(String templateName, String category, String content, String variables, String description) {
     }
 }

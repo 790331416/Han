@@ -1850,19 +1850,13 @@ import {
   AIVIDEO_SCENE_IMAGE_STREAM_PATH,
   AIVIDEO_SCRIPT_STREAM_PATH,
   AIVIDEO_SHOT_VIDEO_STREAM_PATH,
-  actionIntensityOptions,
-  aivideoProjectStageOptions,
-  audioModeOptions,
   cancelConfirmAivideoAsset,
   cancelConfirmAivideoPolish,
   cancelConfirmAivideoScript,
-  characterDesignTypeOptions,
-  continuityLevelOptions,
   confirmAivideoAsset,
   confirmAivideoDocument,
   confirmAivideoPolish,
   confirmAivideoScript,
-  generationStrategyOptions,
   generateAivideoShotTtsAudio,
   generateAivideoProjectEdit,
   getAivideoProjectEditPreflight,
@@ -1872,7 +1866,6 @@ import {
   listAivideoMedia,
   listAivideoProjectEditTasks,
   listAivideoShotVideoTasks,
-  multiRoleStrategyOptions,
   pollAivideoProjectEditTask,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
@@ -1881,17 +1874,13 @@ import {
   previewAivideoSceneImagePrompt,
   previewAivideoShotVideoPrompt,
   previewAivideoScriptPrompt,
-  ratioOptions,
   registerAivideoMedia,
-  referenceStrategyOptions,
   saveAivideoDocument,
   selectAivideoMedia,
-  subtitleModeOptions,
   updateAivideoCharacterVoice,
   updateAivideoProject,
   uploadAivideoMediaFile,
   uploadAivideoReferenceImage,
-  visualStyleOptions,
   type AivideoCharacter,
   type AivideoMediaAsset,
   type AivideoProp,
@@ -1905,6 +1894,7 @@ import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
 import MarkdownViewer from '@/components/aivideo/MarkdownViewer.vue'
 import ReferenceImagePicker from '@/components/aivideo/ReferenceImagePicker.vue'
 import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
 import { useUserStore } from '@/stores/user'
 
 type WorkbenchTab = 'document' | 'polish' | 'script' | 'assets' | 'task'
@@ -1958,6 +1948,25 @@ interface MediaRegisterContext {
   successMessage?: string
   afterRegistered?: (asset: AivideoMediaAsset) => Promise<void> | void
 }
+
+/**
+ * 工作台同时消费项目状态字典和生成策略字典，统一走公共状态层避免和设置页分叉。
+ */
+const {
+  actionIntensityOptions,
+  audioModeOptions,
+  characterDesignTypeOptions,
+  continuityLevelOptions,
+  generationStrategyOptions,
+  loadAllOptions,
+  multiRoleStrategyOptions,
+  projectStageOptions,
+  ratioOptions,
+  referenceStrategyOptions,
+  subtitleModeOptions,
+  visualStyleOptions,
+  labelOf
+} = createAivideoDictOptionState()
 
 interface ShotScreenCharacterRule {
   onscreenCharacters: AivideoCharacter[]
@@ -2333,7 +2342,7 @@ const shotMediaByShotId = computed(() => {
 })
 
 function getStageLabel(value?: string) {
-  return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
+  return labelOf(projectStageOptions, value, '草稿')
 }
 
 function findPreviousShot(shot?: AivideoShot) {
@@ -2516,8 +2525,12 @@ function strategyValue(settingParams: Record<string, string>, key: string, fallb
   return value && String(value).trim() ? String(value).trim() : fallback
 }
 
-function optionLabel(options: Array<{ label: string; value: string }>, value?: string) {
-  return options.find((item) => item.value === value)?.label || value || ''
+function optionLabel(
+  options: Array<{ label: string; value: string }> | Ref<Array<{ label: string; value: string }>>,
+  value?: string
+) {
+  const optionList = Array.isArray(options) ? options : options.value
+  return optionList.find((item) => item.value === value)?.label || value || ''
 }
 
 function strategyDisplayValue(key: StrategyKey) {
@@ -3649,7 +3662,7 @@ function resolveEffectiveCharacterDesignType() {
 }
 
 function characterDesignLabel(value?: string) {
-  return characterDesignTypeOptions.find((item) => item.value === value)?.label || value || '自动'
+  return labelOf(characterDesignTypeOptions, value, '自动')
 }
 
 function characterDesignPreflightRule(value?: string) {
@@ -5834,7 +5847,7 @@ onMounted(async () => {
   if (!ensureProjectContext()) {
     return
   }
-  await loadDetail()
+  await Promise.all([loadAllOptions(), loadDetail()])
   await recoverLatestAssetTask()
 })
 

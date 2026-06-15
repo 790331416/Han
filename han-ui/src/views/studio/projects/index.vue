@@ -7,12 +7,12 @@
         </el-form-item>
         <el-form-item label="状态" prop="projectStatus">
           <el-select v-model="queryParams.projectStatus" placeholder="全部" clearable style="width: 160px">
-            <el-option v-for="item in aivideoProjectStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in projectStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="阶段" prop="currentStage">
           <el-select v-model="queryParams.currentStage" placeholder="全部" clearable style="width: 180px">
-            <el-option v-for="item in aivideoProjectStageOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in projectStageOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -68,12 +68,11 @@ import { useRouter } from 'vue-router'
 import { Operation, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import {
-  aivideoProjectStageOptions,
-  aivideoProjectStatusOptions,
   listAivideoProject,
   type AivideoProject,
   type AivideoProjectQuery
 } from '@/api/aivideo'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
 
 const router = useRouter()
 const loading = ref(false)
@@ -81,17 +80,27 @@ const total = ref(0)
 const projectList = ref<AivideoProject[]>([])
 const queryFormRef = ref<FormInstance>()
 
+/**
+ * 项目列表只展示状态与阶段，不维护本地写死枚举，避免和系统字典脱节。
+ */
+const {
+  loadStatusOptions,
+  projectStageOptions,
+  projectStatusOptions,
+  labelOf
+} = createAivideoDictOptionState()
+
 const queryParams = reactive<AivideoProjectQuery>({
   pageNum: 1,
   pageSize: 10
 })
 
 function getStageLabel(value?: string) {
-  return aivideoProjectStageOptions.find((item) => item.value === value)?.label || value || '草稿'
+  return labelOf(projectStageOptions, value, '草稿')
 }
 
 function getStatusLabel(value?: string) {
-  return aivideoProjectStatusOptions.find((item) => item.value === value)?.label || value || '草稿'
+  return labelOf(projectStatusOptions, value, '草稿')
 }
 
 function getStatusTag(value?: string) {
@@ -125,8 +134,8 @@ function openWorkbench(row: AivideoProject) {
   router.push(`/studio/projects/${row.projectId}/workbench`)
 }
 
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await Promise.all([loadStatusOptions(), getList()])
 })
 </script>
 

@@ -583,6 +583,114 @@ INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css
 (69, 'ai_prompt_category', 'AIVideo 视频生成', 'aivideo_video', 90, '', 'warning', 0, 0),
 (70, 'ai_prompt_category', 'AIVideo 语音合成', 'aivideo_tts', 100, '', 'info', 0, 0);
 
+-- 12.1 AI / AIVideo 扩展字典类型
+INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
+(15, 'AI知识库类型', 'ai_kb_type', 0, 'AI知识库类型列表'),
+(16, 'AI MCP传输类型', 'ai_mcp_transport_type', 0, 'AI MCP 传输类型列表'),
+(17, 'AI工作流类型', 'ai_workflow_type', 0, 'AI工作流类型列表'),
+(18, 'AI知识库索引状态', 'ai_knowledge_index_status', 0, 'AI知识库索引状态列表'),
+(19, 'AIVideo 项目阶段', 'aivideo_project_stage', 0, 'AI短剧项目阶段列表'),
+(20, 'AIVideo 项目状态', 'aivideo_project_status', 0, 'AI短剧项目状态列表'),
+(21, 'AIVideo 任务状态', 'aivideo_task_status', 0, 'AI短剧任务状态列表'),
+(22, 'AIVideo 画幅', 'aivideo_ratio', 0, 'AI短剧项目画幅列表'),
+(23, 'AIVideo 清晰度', 'aivideo_resolution', 0, 'AI短剧项目清晰度列表'),
+(24, 'AIVideo 视觉风格', 'aivideo_visual_style', 0, 'AI短剧视觉风格列表'),
+(25, 'AIVideo 生成策略', 'aivideo_generation_strategy', 0, 'AI短剧视频生成策略列表'),
+(26, 'AIVideo 声音模式', 'aivideo_audio_mode', 0, 'AI短剧声音模式列表'),
+(27, 'AIVideo 字幕模式', 'aivideo_subtitle_mode', 0, 'AI短剧字幕模式列表'),
+(28, 'AIVideo 参考素材策略', 'aivideo_reference_strategy', 0, 'AI短剧参考素材策略列表'),
+(29, 'AIVideo 动作强度', 'aivideo_action_intensity', 0, 'AI短剧动作强度列表'),
+(30, 'AIVideo 连续性强度', 'aivideo_continuity_level', 0, 'AI短剧连续性强度列表'),
+(31, 'AIVideo 多角色策略', 'aivideo_multi_role_strategy', 0, 'AI短剧多角色策略列表'),
+(32, 'AIVideo 角色造型类型', 'aivideo_character_design_type', 0, 'AI短剧角色造型类型列表'),
+(33, 'AIVideo 素材访问策略', 'aivideo_media_access_policy', 0, 'AI短剧素材访问策略列表');
+
+-- 12.2 AI / AIVideo 扩展字典数据
+INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+(71, 'ai_kb_type', '通用知识库', 'general', 10, '', 'primary', 1, 0),
+(72, 'ai_kb_type', 'QA问答库', 'qa', 20, '', 'success', 0, 0),
+(73, 'ai_kb_type', '网页爬取', 'web', 30, '', 'warning', 0, 0),
+(74, 'ai_mcp_transport_type', 'SSE', 'sse', 10, '', 'primary', 1, 0),
+(75, 'ai_mcp_transport_type', 'Streamable HTTP', 'streamable_http', 20, '', 'success', 0, 0),
+(76, 'ai_mcp_transport_type', 'Stdio', 'stdio', 30, '', 'info', 0, 0),
+(77, 'ai_workflow_type', '简单对话', 'simple', 10, '', 'primary', 1, 0),
+(78, 'ai_workflow_type', '高级编排', 'advanced', 20, '', 'success', 0, 0),
+(79, 'ai_knowledge_index_status', '待处理', 'pending', 10, '', 'info', 0, 0),
+(80, 'ai_knowledge_index_status', '索引中', 'indexing', 20, '', 'warning', 0, 0),
+(81, 'ai_knowledge_index_status', '已完成', 'completed', 30, '', 'success', 0, 0),
+(82, 'ai_knowledge_index_status', '失败', 'failed', 40, '', 'danger', 0, 0),
+(83, 'aivideo_project_stage', '草稿', 'DRAFT', 10, '', 'info', 0, 0),
+(84, 'aivideo_project_stage', '原文已保存', 'DOCUMENT_SAVED', 20, '', 'primary', 0, 0),
+(85, 'aivideo_project_stage', '文档已确认', 'DOCUMENT_PARSED', 30, '', 'primary', 0, 0),
+(86, 'aivideo_project_stage', '润色已确认', 'POLISH_CONFIRMED', 40, '', 'success', 0, 0),
+(87, 'aivideo_project_stage', '剧本已确认', 'SCRIPT_CONFIRMED', 50, '', 'success', 0, 0),
+(88, 'aivideo_project_stage', '资产已确认', 'ASSET_CONFIRMED', 60, '', 'success', 0, 0),
+(89, 'aivideo_project_stage', '视频生成中', 'VIDEO_GENERATING', 70, '', 'warning', 0, 0),
+(90, 'aivideo_project_stage', '视频已确认', 'VIDEO_CONFIRMED', 80, '', 'success', 0, 0),
+(91, 'aivideo_project_status', '草稿', 'DRAFT', 10, '', 'info', 0, 0),
+(92, 'aivideo_project_status', '进行中', 'RUNNING', 20, '', 'warning', 0, 0),
+(93, 'aivideo_project_status', '暂停', 'PAUSED', 30, '', 'info', 0, 0),
+(94, 'aivideo_project_status', '已完成', 'FINISHED', 40, '', 'success', 0, 0),
+(95, 'aivideo_project_status', '已归档', 'ARCHIVED', 50, '', 'danger', 0, 0),
+(96, 'aivideo_task_status', '待执行', 'PENDING', 10, '', 'info', 0, 0),
+(97, 'aivideo_task_status', '执行中', 'RUNNING', 20, '', 'warning', 0, 0),
+(98, 'aivideo_task_status', '成功', 'SUCCESS', 30, '', 'success', 0, 0),
+(99, 'aivideo_task_status', '失败', 'FAILED', 40, '', 'danger', 0, 0),
+(100, 'aivideo_task_status', '已取消', 'CANCELED', 50, '', 'info', 0, 0),
+(101, 'aivideo_ratio', '9:16', '9:16', 10, '', 'primary', 1, 0),
+(102, 'aivideo_ratio', '16:9', '16:9', 20, '', 'success', 0, 0),
+(103, 'aivideo_ratio', '1:1', '1:1', 30, '', 'info', 0, 0),
+(104, 'aivideo_ratio', '4:3', '4:3', 40, '', 'warning', 0, 0),
+(105, 'aivideo_resolution', '720p', '720p', 10, '', 'primary', 1, 0),
+(106, 'aivideo_resolution', '1080p', '1080p', 20, '', 'success', 0, 0),
+(107, 'aivideo_resolution', '2K', '2K', 30, '', 'warning', 0, 0),
+(108, 'aivideo_visual_style', '写实电影感', '写实电影感', 10, '', 'primary', 0, 0),
+(109, 'aivideo_visual_style', '3D 国漫 CG', '3D 国漫 CG', 20, '', 'success', 0, 0),
+(110, 'aivideo_visual_style', '2D 日漫', '2D 日漫', 30, '', 'warning', 0, 0),
+(111, 'aivideo_visual_style', '复古胶片', '复古胶片', 40, '', 'info', 0, 0),
+(112, 'aivideo_visual_style', '赛博朋克', '赛博朋克', 50, '', 'danger', 0, 0),
+(113, 'aivideo_visual_style', '童话绘本', '童话绘本', 60, '', 'success', 0, 0),
+(114, 'aivideo_visual_style', '国风水墨', '国风水墨', 70, '', 'primary', 0, 0),
+(115, 'aivideo_generation_strategy', '自动', 'AUTO', 10, '', 'primary', 1, 0),
+(116, 'aivideo_generation_strategy', '视频延长', 'VIDEO_EXTEND', 20, '', 'warning', 0, 0),
+(117, 'aivideo_generation_strategy', '分段拼接', 'SEGMENT_STITCH', 30, '', 'success', 0, 0),
+(118, 'aivideo_generation_strategy', '轨道补齐', 'TRACK_FILL', 40, '', 'info', 0, 0),
+(119, 'aivideo_audio_mode', '静音', 'SILENT', 10, '', 'info', 0, 0),
+(120, 'aivideo_audio_mode', '原生有声', 'NATIVE_AUDIO', 20, '', 'success', 0, 0),
+(121, 'aivideo_audio_mode', '参考音频有声', 'REFERENCE_AUDIO', 30, '', 'warning', 0, 0),
+(122, 'aivideo_audio_mode', '后期 TTS', 'POST_TTS', 40, '', 'primary', 0, 0),
+(123, 'aivideo_subtitle_mode', '无字幕', 'NONE', 10, '', 'info', 0, 0),
+(124, 'aivideo_subtitle_mode', '底部字幕', 'BOTTOM', 20, '', 'primary', 0, 0),
+(125, 'aivideo_subtitle_mode', '气泡台词', 'BUBBLE', 30, '', 'success', 0, 0),
+(126, 'aivideo_subtitle_mode', '标题文字', 'TITLE', 40, '', 'warning', 0, 0),
+(127, 'aivideo_reference_strategy', '角色锚定', 'CHARACTER_ANCHOR', 10, '', 'primary', 0, 0),
+(128, 'aivideo_reference_strategy', '场景定调', 'SCENE_TONE', 20, '', 'success', 0, 0),
+(129, 'aivideo_reference_strategy', '运镜参考', 'CAMERA_REFERENCE', 30, '', 'warning', 0, 0),
+(130, 'aivideo_reference_strategy', '动作参考', 'ACTION_REFERENCE', 40, '', 'info', 0, 0),
+(131, 'aivideo_reference_strategy', '音频参考', 'AUDIO_REFERENCE', 50, '', 'warning', 0, 0),
+(132, 'aivideo_reference_strategy', '角色 + 场景', 'CHARACTER_SCENE', 60, '', 'primary', 1, 0),
+(133, 'aivideo_action_intensity', '低缓动作', 'LOW', 10, '', 'info', 0, 0),
+(134, 'aivideo_action_intensity', '普通动作', 'NORMAL', 20, '', 'primary', 1, 0),
+(135, 'aivideo_action_intensity', '强动作', 'STRONG', 30, '', 'warning', 0, 0),
+(136, 'aivideo_continuity_level', '普通', 'NORMAL', 10, '', 'info', 0, 0),
+(137, 'aivideo_continuity_level', '严格', 'STRICT', 20, '', 'primary', 1, 0),
+(138, 'aivideo_continuity_level', '极严格', 'ULTRA_STRICT', 30, '', 'warning', 0, 0),
+(139, 'aivideo_multi_role_strategy', '单角色优先', 'SINGLE_FIRST', 10, '', 'primary', 1, 0),
+(140, 'aivideo_multi_role_strategy', '多角色允许', 'MULTI_ALLOWED', 20, '', 'success', 0, 0),
+(141, 'aivideo_multi_role_strategy', '超过 4 人自动拆镜', 'SPLIT_OVER_FOUR', 30, '', 'warning', 0, 0),
+(142, 'aivideo_character_design_type', '自动', 'AUTO', 10, '', 'info', 1, 0),
+(143, 'aivideo_character_design_type', '写实自然比例', 'REALISTIC_NATURAL', 20, '', 'primary', 0, 0),
+(144, 'aivideo_character_design_type', '半写实卡通', 'SEMI_REAL_CARTOON', 30, '', 'success', 0, 0),
+(145, 'aivideo_character_design_type', '3D动漫/国漫CG', 'THREE_D_ANIME_CG', 40, '', 'warning', 0, 0),
+(146, 'aivideo_character_design_type', '2D动漫/日漫', 'TWO_D_ANIME', 50, '', 'warning', 0, 0),
+(147, 'aivideo_character_design_type', 'Q版萌系全身', 'CHIBI_FULL_BODY', 60, '', 'success', 0, 0),
+(148, 'aivideo_character_design_type', '低龄儿童绘本', 'CHILDREN_PICTURE_BOOK', 70, '', 'info', 0, 0),
+(149, 'aivideo_character_design_type', '动物本体萌化', 'ANIMAL_BODY_CUTE', 80, '', 'success', 0, 0),
+(150, 'aivideo_character_design_type', '拟人化角色', 'ANTHROPOMORPHIC', 90, '', 'primary', 0, 0),
+(151, 'aivideo_character_design_type', '怪物/夸张反派', 'MONSTER_VILLAIN', 100, '', 'danger', 0, 0),
+(152, 'aivideo_media_access_policy', '登录可见', 'PRIVATE', 10, '', 'info', 1, 0),
+(153, 'aivideo_media_access_policy', '公开可见', 'PUBLIC', 20, '', 'success', 0, 0);
+
 -- 13. 参数配置
 INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, remark) VALUES
 (1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
@@ -2380,30 +2488,20 @@ SELECT NULL, 'AI短剧后期语音合成', 'aivideo_tts',
 $aivideo_tts$
 # AI短剧后期语音合成默认模板
 
-你是短剧后期配音导演。请基于单条分镜，只整理需要真正朗读的对白和旁白，不处理画面动作、心理活动和脑海闪回。
-
-## 核心规则
-1. 只合成说出口的 dialogue，以及明确需要播出的 voiceOver。
-2. “心声、内心、脑海里闪过、想到、意识到、心里一动、画面说明、动作描述”默认不朗读。
-3. 每句台词必须保留说话角色、情绪、语速、停顿建议和音色类型。
-4. 单个分镜音频必须贴合分镜时长，不得超出 {{durationSec}} 秒。
-5. 同一角色后续必须使用相同 voiceType 或角色声线参考，避免声线漂移。
-
-## 分镜信息
-- 项目：{{projectName}}
-- 镜头号：{{shotNo}}
-- 角色：{{characterName}}
-- 对白：{{dialogue}}
-- 旁白/画外音：{{voiceOver}}
-- 情绪：{{emotion}}
-- 推荐音色：{{voiceType}}
-- 镜头时长：{{durationSec}} 秒
+你是短剧后期声音导演。请为整片剪辑后的时间线生成配音/旁白/音效/背景音乐计划。
 
 ## 输出要求
-请输出可直接送入 TTS 的文本，不要加入动作说明、括号舞台说明、镜头说明或心理活动。
+1. 只处理已剪辑成片后的统一声音，不重新生成分镜视频。
+2. dialogueLines 只包含说出口台词，必须给 speaker、text、startSec、endSec、voiceProfile。
+3. thoughtLines 是心理活动，只能转旁白或内心独白，不让角色嘴型开口。
+4. narrationLines 是旁白，和角色对白分开。
+5. voiceProfiles 最多选择 3 个 referenceAudioUrls 作为声线参考；超过 3 个发声角色要提示拆分或改后期 TTS 固定音色。
+6. bgmCue 写背景音乐起止时间、情绪、音量，不压对白。
+7. sfxCues 写音效名称、起止时间、强度和画面动作绑定。
+8. 最终声音必须贴合整片剪辑时间线，不能每个分镜各自乱生成声音。
 $aivideo_tts$,
-'["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]',
-'AI短剧后期语音合成默认模板，区分说出口台词与心理活动', 1, '0'
+'[]',
+'AI短剧后期语音合成默认模板', 1, '0'
 WHERE NOT EXISTS (SELECT 1 FROM ai_prompt_template WHERE template_name = 'AI短剧后期语音合成');
 
 -- Keep clean full initialization aligned with 20260601 action-budget upgrade.
@@ -2779,7 +2877,7 @@ SET variables = '["projectName","targetPlatform","ratio","style","defaultShotDur
 WHERE template_name = 'AI短剧资产提取';
 
 UPDATE ai_prompt_template
-SET variables = '["projectName","shotNo","characterName","dialogue","voiceOver","emotion","voiceType","durationSec"]',
+SET variables = '[]',
     update_by = 'system',
     update_time = CURRENT_TIMESTAMP
 WHERE template_name = 'AI短剧后期语音合成';

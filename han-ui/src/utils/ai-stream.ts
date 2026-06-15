@@ -1,4 +1,9 @@
+import { useUserStore } from '@/stores/user'
 import { getToken, removeRefreshToken, removeToken } from '@/utils/auth'
+import {
+  clearSessionAndRedirectToLogin,
+  tryRefreshSession
+} from '@/utils/session-refresh'
 
 export interface AiStreamRequestOptions {
   baseUrl: string
@@ -39,27 +44,42 @@ export interface AiStreamMetaPayload {
 }
 
 /**
- * Send an AI streaming request and aggregate SSE chunks into the final content.
+ * 发送 AI 流式请求，并把 SSE 增量片段聚合为最终文本。
  */
 export async function requestAiStream(options: AiStreamRequestOptions): Promise<string> {
   const token = getToken() || options.token
   if (!token) {
-    handleUnauthorizedStream()
+    clearSessionAndRedirectToLogin()
     throw new Error('登录状态已过期，请重新登录')
   }
 
-  const response = await fetch(resolveUrl(options.baseUrl, options.path), {
-    method: 'POST',
-    headers: buildHeaders(token, options.tenantId, options.body !== undefined),
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    signal: options.signal
-  })
+  const response = await sendAiStreamRequest(options, token)
+
+  if (response.status === 401) {
+    const refreshResult = await tryRefreshSession(options.baseUrl)
+    if (refreshResult.status === 'success' && refreshResult.accessToken) {
+      const retriedResponse = await sendAiStreamRequest(options, refreshResult.accessToken)
+      return consumeAiStreamResponse(retriedResponse, options)
+    }
+
+    if (refreshResult.status === 'failed') {
+      options.onError?.(refreshResult.message)
+      throw new Error(refreshResult.message)
+    }
+
+    clearSessionAndRedirectToLogin()
+    options.onError?.('登录状态已过期，请重新登录')
+    throw new Error('登录状态已过期，请重新登录')
+  }
 
   return consumeAiStreamResponse(response, options)
 }
 
 /**
- * Consume an existing AI SSE response.
+ * 消费已有的 AI SSE 响应。
+ *
+ * <p>这里兼容模型返回的 delta、meta、error 三类事件，统一向页面输出
+ * 增量文本、元数据和错误信息，避免各业务页重复解析 SSE。
  */
 export async function consumeAiStreamResponse(response: Response, options: AiStreamConsumeOptions = {}): Promise<string> {
   if (!response.ok) {
@@ -139,6 +159,18 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
   }
 }
 
+/**
+ * 流式请求发送入口，统一封装 headers 与 body 结构，便于 401 后按新 token 重试。
+ */
+async function sendAiStreamRequest(options: AiStreamRequestOptions, token: string): Promise<Response> {
+  return fetch(resolveUrl(options.baseUrl, options.path), {
+    method: 'POST',
+    headers: buildHeaders(token, options.tenantId, options.body !== undefined),
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: options.signal
+  })
+}
+
 function parseAiStreamEvent(segment: string): ParsedAiStreamEvent | null {
   const lines = segment
     .split('\n')
@@ -212,11 +244,20 @@ function buildHeaders(token: string, tenantId?: string | number | null, includeJ
 }
 
 function handleUnauthorizedStream(): void {
-  removeToken()
-  removeRefreshToken()
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+  /**
+   * 流式接口命中 401 时必须走统一会话清理入口，
+   * 否则只删裸 token 不清理持久化 Store，会留下“页面已回登录、但本地会话仍像已登录”的脏状态。
+   */
+  try {
+    const userStore = useUserStore()
+    userStore.resetToken()
+  } catch {
+    removeToken()
+    removeRefreshToken()
+    window.localStorage.removeItem('HAN-user')
   }
+
+  clearSessionAndRedirectToLogin()
 }
 
 function normalizeLineBreaks(content: string): string {

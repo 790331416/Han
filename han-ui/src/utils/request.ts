@@ -1,17 +1,45 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig
+} from 'axios'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import router from '@/router'
 import type { R } from '@/types'
+import {
+  canAttemptSessionRefresh,
+  clearSessionAndRedirectToLogin,
+  tryRefreshSession,
+  type SessionRefreshResult
+} from '@/utils/session-refresh'
 
-/** 扩展 AxiosRequestConfig，支持静默错误（不弹全局提示） */
+/**
+ * 扩展 Axios 配置：
+ * `silentError=true` 时由调用方自行处理错误提示，请求层不再弹全局消息。
+ */
 declare module 'axios' {
   interface AxiosRequestConfig {
     silentError?: boolean
+    /** 已经尝试过自动续期的请求，禁止二次刷新形成死循环。 */
+    _retryAfterRefresh?: boolean
   }
 }
 
-// 创建axios实例
+/**
+ * 请求层统一透传的运行时错误。
+ *
+ * 说明：
+ * 1. `unauthorized` 专门给路由守卫和上层流程判断“是否真的应该清会话并跳登录”。
+ * 2. `httpStatus` / `bizCode` 保留失败来源，便于区分是 HTTP 401 还是业务 code=401。
+ */
+export interface RequestRuntimeError extends Error {
+  unauthorized?: boolean
+  httpStatus?: number
+  bizCode?: number
+  sessionRefreshFailed?: boolean
+}
+
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_API || '',
   timeout: 30000,
@@ -20,36 +48,91 @@ const service: AxiosInstance = axios.create({
   }
 })
 
-// 防止401重复弹窗
-let isReloginShowing = false
+/**
+ * `X-User-Id` 仅允许在本地显式打开调试开关时发送。
+ * 线上默认绝不能携带这个头，否则旧的调试身份会污染后端鉴权。
+ */
+const shouldSendDebugIdentityHeader =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEBUG_IDENTITY_HEADER === 'true'
 
-function resetTokenAndGoLogin() {
-  const userStore = useUserStore()
-  userStore.resetToken()
-  router.push('/login').finally(() => {
-    window.setTimeout(() => {
-      isReloginShowing = false
-    }, 800)
+function buildRequestRuntimeError(
+  message: string,
+  extras: Partial<RequestRuntimeError> = {}
+): RequestRuntimeError {
+  return Object.assign(new Error(message), extras)
+}
+
+/**
+ * 统一处理 401：
+ * 1. 优先尝试刷新会话并重放原请求；
+ * 2. 只有刷新凭证真实失效时才清会话跳登录；
+ * 3. 若只是认证服务临时失败，则保留当前会话并把错误抛给上层。
+ */
+async function resolveUnauthorizedRequest(
+  originalConfig: AxiosRequestConfig,
+  expiredMessage: string
+) {
+  const canRetryAfterRefresh =
+    !originalConfig._retryAfterRefresh && canAttemptSessionRefresh(originalConfig.url)
+
+  if (canRetryAfterRefresh) {
+    const refreshResult = await tryRefreshSession(service.defaults.baseURL || '')
+    const retriedResponse = await retryOriginalRequestAfterRefresh(originalConfig, refreshResult)
+    if (retriedResponse) {
+      return retriedResponse
+    }
+  }
+
+  clearSessionAndRedirectToLogin()
+  throw buildRequestRuntimeError(expiredMessage, {
+    unauthorized: true,
+    httpStatus: 401,
+    bizCode: 401
   })
 }
 
-// 请求拦截器
+async function retryOriginalRequestAfterRefresh(
+  originalConfig: AxiosRequestConfig,
+  refreshResult: SessionRefreshResult
+) {
+  if (refreshResult.status === 'success' && refreshResult.accessToken) {
+    originalConfig._retryAfterRefresh = true
+    return service(originalConfig)
+  }
+
+  if (refreshResult.status === 'failed') {
+    if (!originalConfig.silentError) {
+      ElMessage.error(refreshResult.message)
+    }
+    throw buildRequestRuntimeError(refreshResult.message, {
+      sessionRefreshFailed: true,
+      httpStatus: refreshResult.httpStatus,
+      bizCode: refreshResult.bizCode
+    })
+  }
+
+  return null
+}
+
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const userStore = useUserStore()
+
     if (userStore.token) {
-      config.headers['Authorization'] = `Bearer ${userStore.token}`
+      config.headers.Authorization = `Bearer ${userStore.token}`
     }
-    // 用户ID（本地开发绕过网关时需要手动注入，生产环境由网关注入）
-    if (userStore._userId) {
+
+    if (shouldSendDebugIdentityHeader && userStore._userId) {
       config.headers['X-User-Id'] = String(userStore._userId)
     }
-    // 租户ID（登录相关接口不发送，避免旧租户上下文影响平台管理员登录）
+
+    // 登录、租户切换等认证接口不主动附带旧租户上下文，避免污染新会话。
     const isAuthRequest = config.url?.startsWith('/auth/') || config.url?.startsWith('/tenant/')
     if (userStore.tenantId && !isAuthRequest) {
       config.headers['X-Tenant-Id'] = userStore.tenantId
     }
-    // 清理空参数（支持搜索表单"全部"选项用空字符串表示）
+
+    // 搜索表单中的“全部”通常用空串表示，这里统一裁掉无意义参数。
     if (config.params) {
       const cleanParams: Record<string, any> = {}
       for (const [key, value] of Object.entries(config.params)) {
@@ -59,6 +142,7 @@ service.interceptors.request.use(
       }
       config.params = cleanParams
     }
+
     return config
   },
   (error) => {
@@ -67,57 +151,42 @@ service.interceptors.request.use(
   }
 )
 
-/**
- * 日期显示格式化工具（仅用于模板展示，不修改原始数据）
- */
+/** 仅用于模板渲染的日期格式化工具，不修改原始值。 */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return ''
   return value.replace('T', ' ').replace(/\.\d+$/, '')
 }
 
-// 响应拦截器
 service.interceptors.response.use(
-  (response: AxiosResponse) => {
+  async (response: AxiosResponse) => {
     const res = response.data as R
-    
-    // 文件下载
+
     if (response.config.responseType === 'blob') {
       return response
     }
-    
-    // 业务错误
+
     if (res.code !== 200) {
-      // 401: Token过期
       if (res.code === 401) {
-        if (!isReloginShowing) {
-          isReloginShowing = true
-          ElMessageBox.confirm('登录状态已过期，请重新登录', '系统提示', {
-            confirmButtonText: '重新登录',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }).then(() => {
-            resetTokenAndGoLogin()
-          }).catch(() => {
-            isReloginShowing = false
-          })
-        }
-        return Promise.reject(new Error(res.msg || '登录状态已过期，请重新登录'))
+        return resolveUnauthorizedRequest(response.config, res.msg || '登录状态已过期，请重新登录')
       }
 
       if (!response.config.silentError) {
         ElMessage.error(res.msg || '请求失败')
       }
 
-      return Promise.reject(new Error(res.msg || '请求失败'))
+      return Promise.reject(buildRequestRuntimeError(res.msg || '请求失败', {
+        bizCode: res.code
+      }))
     }
 
     return res as any
   },
-  (error) => {
+  async (error) => {
     console.error('响应错误:', error)
+
     let message = error.message || '请求失败'
     let unauthorized = false
-    
+
     if (error.response) {
       switch (error.response.status) {
         case 400:
@@ -126,11 +195,10 @@ service.interceptors.response.use(
         case 401:
           unauthorized = true
           message = '登录状态已过期，请重新登录'
-          if (!isReloginShowing) {
-            isReloginShowing = true
-            resetTokenAndGoLogin()
-          }
-          break
+          return resolveUnauthorizedRequest(
+            (error.config || {}) as AxiosRequestConfig,
+            message
+          )
         case 403:
           message = '拒绝访问'
           break
@@ -143,20 +211,24 @@ service.interceptors.response.use(
         default:
           message = `请求失败: ${error.response.status}`
       }
-    } else if (error.message.includes('timeout')) {
+    } else if (typeof error.message === 'string' && error.message.includes('timeout')) {
       message = '请求超时'
-    } else if (error.message.includes('Network')) {
+    } else if (typeof error.message === 'string' && error.message.includes('Network')) {
       message = '网络错误'
     }
-    
+
     if (!unauthorized && !error.config?.silentError) {
       ElMessage.error(message)
     }
-    return Promise.reject(error)
+
+    return Promise.reject(Object.assign(error, {
+      message,
+      unauthorized,
+      httpStatus: error.response?.status
+    }))
   }
 )
 
-// 封装请求方法
 export function request<T = any>(config: AxiosRequestConfig): Promise<R<T>> {
   return service(config) as Promise<R<T>>
 }

@@ -448,6 +448,11 @@ export function hitTestKnowledgeBase(kbId: string | number, query: string) {
 }
 
 // ===================== 选项常量 =====================
+//
+// 说明：
+// 1. 这里保留的是前端兜底选项，防止字典尚未初始化或字典接口暂时不可用时页面直接失效。
+// 2. 正常情况下，页面应优先通过系统字典加载这些枚举；不要在业务页继续复制一份本地常量。
+// 3. 若后续某一组选项已经完全迁移到字典中心，可在确认所有页面都已改造后再移除对应 fallback。
 
 export const modelTypeOptions = [
   { label: '大语言模型', value: 'LLM' },

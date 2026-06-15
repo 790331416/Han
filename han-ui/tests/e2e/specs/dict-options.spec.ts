@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { normalizeDictOptions } from '../../../src/utils/dict-options'
+import { findDictLabel, normalizeDictOptions } from '../../../src/utils/dict-options'
 
 test.describe('dict option helpers', () => {
   test('normalizes enabled dict rows by sort order', () => {
@@ -22,5 +22,17 @@ test.describe('dict option helpers', () => {
     const options = normalizeDictOptions([], [{ label: '大语言模型', value: 'LLM' }])
 
     expect(options).toEqual([{ label: '大语言模型', value: 'LLM' }])
+  })
+
+  test('finds label when backend status value is numeric', () => {
+    const label = findDictLabel(
+      [
+        { label: '正常', value: '0' },
+        { label: '停用', value: '1' }
+      ],
+      0
+    )
+
+    expect(label).toBe('正常')
   })
 })

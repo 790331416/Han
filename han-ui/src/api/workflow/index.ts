@@ -188,7 +188,10 @@ export function revokeTask(taskId: string) {
   return post<void>(`/workflow/task/revoke/${taskId}`)
 }
 
-// 流程分类选项
+// 流程分类选项。
+//
+// 说明：当前工作流模块仍保留本地 fallback，后续若管理端需要统一维护分类和实例状态，
+// 可以迁移到系统字典中心，再由页面通过公共字典加载器复用。
 export const categoryOptions = [
   { label: 'OA审批', value: 'OA' },
   { label: '人事管理', value: 'HR' },
@@ -197,7 +200,7 @@ export const categoryOptions = [
   { label: '其他', value: 'OTHER' }
 ]
 
-// 流程状态选项
+// 流程状态选项。
 export const instanceStatusOptions = [
   { label: '运行中', value: 'running' },
   { label: '已完成', value: 'completed' },

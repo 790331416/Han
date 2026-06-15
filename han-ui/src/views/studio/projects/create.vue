@@ -143,29 +143,37 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
-  actionIntensityOptions,
   addAivideoProject,
-  audioModeOptions,
-  characterDesignTypeOptions,
-  continuityLevelOptions,
-  generationStrategyOptions,
-  multiRoleStrategyOptions,
-  ratioOptions,
-  referenceStrategyOptions,
-  subtitleModeOptions,
-  visualStyleOptions,
   type AivideoProjectForm
 } from '@/api/aivideo'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+
+/**
+ * 新建项目页直接复用系统字典，保证项目默认策略和后台基础配置同源。
+ */
+const {
+  actionIntensityOptions,
+  audioModeOptions,
+  characterDesignTypeOptions,
+  continuityLevelOptions,
+  generationStrategyOptions,
+  loadStrategyOptions,
+  multiRoleStrategyOptions,
+  ratioOptions,
+  referenceStrategyOptions,
+  subtitleModeOptions,
+  visualStyleOptions
+} = createAivideoDictOptionState()
 
 const form = reactive<AivideoProjectForm>({
   projectName: '',
@@ -191,6 +199,10 @@ const form = reactive<AivideoProjectForm>({
 const rules: FormRules = {
   projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
 }
+
+onMounted(async () => {
+  await loadStrategyOptions()
+})
 
 async function handleSubmit() {
   const valid = await formRef.value?.validate()

@@ -31,8 +31,7 @@
           <el-col :span="8">
             <el-form-item label="素材访问策略">
               <el-select v-model="form.mediaAccessPolicy">
-                <el-option label="登录可见" value="PRIVATE" />
-                <el-option label="公开可见" value="PUBLIC" />
+                <el-option v-for="item in mediaAccessPolicyOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -187,24 +186,33 @@ import { onMounted, reactive, ref } from 'vue'
 import { Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
+  getAivideoSetting,
+  updateAivideoSetting,
+  type AivideoSetting
+} from '@/api/aivideo'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
+
+const loading = ref(false)
+const submitting = ref(false)
+
+/**
+ * 基础配置页是 AIVideo 公共参数的源头页，所有下拉统一从系统字典加载。
+ */
+const {
   actionIntensityOptions,
   audioModeOptions,
   characterDesignTypeOptions,
   continuityLevelOptions,
   generationStrategyOptions,
-  getAivideoSetting,
+  loadSettingOptions,
+  mediaAccessPolicyOptions,
   multiRoleStrategyOptions,
+  ratioOptions,
   referenceStrategyOptions,
   resolutionOptions,
-  ratioOptions,
   subtitleModeOptions,
-  updateAivideoSetting,
-  visualStyleOptions,
-  type AivideoSetting
-} from '@/api/aivideo'
-
-const loading = ref(false)
-const submitting = ref(false)
+  visualStyleOptions
+} = createAivideoDictOptionState()
 
 const form = reactive<AivideoSetting>({
   defaultRatio: '9:16',
@@ -248,8 +256,8 @@ async function handleSubmit() {
   }
 }
 
-onMounted(() => {
-  loadSetting()
+onMounted(async () => {
+  await Promise.all([loadSettingOptions(), loadSetting()])
 })
 </script>
 

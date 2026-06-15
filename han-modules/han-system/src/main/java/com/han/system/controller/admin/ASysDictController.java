@@ -17,6 +17,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 管理端字典接口。
+ *
+ * <p>负责字典类型、字典值的 CRUD，以及运行期的内置字典补齐。
+ */
 @AdminAuth
 @RestController("adminSysDictController")
 @RequestMapping("/system/dict")
@@ -27,35 +32,47 @@ public class ASysDictController {
     private final SysDictDataMapper dictDataMapper;
     private final SysBuiltinDictRegistry builtinDictRegistry;
 
-    // ==================== 字典类型 ====================
-
+    /**
+     * 分页查询字典类型。
+     */
     @GetMapping("/type/list")
     @PreAuthorize("@ss.hasAuthority('system:dict:list')")
     public R<PageResult<SysDictTypePo>> listType(
             @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
             @RequestParam(value = "dictName", required = false) String dictName,
-            @RequestParam(value = "dictType", required = false) String dictType) {
+            @RequestParam(value = "dictType", required = false) String dictType,
+            @RequestParam(value = "status", required = false) Integer status) {
         builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictTypePo> wrapper = new LambdaQueryWrapper<SysDictTypePo>()
                 .like(dictName != null && !dictName.isEmpty(), SysDictTypePo::getDictName, dictName)
-                .like(dictType != null && !dictType.isEmpty(), SysDictTypePo::getDictType, dictType);
+                .like(dictType != null && !dictType.isEmpty(), SysDictTypePo::getDictType, dictType)
+                .eq(status != null, SysDictTypePo::getStatus, status);
         Page<SysDictTypePo> page = dictTypeMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
     }
 
+    /**
+     * 查询全部字典类型。
+     */
     @GetMapping("/type/all")
     public R<List<SysDictTypePo>> listAllTypes() {
         builtinDictRegistry.ensureBuiltInDictionaries();
         return R.ok(dictTypeMapper.selectList(null));
     }
 
+    /**
+     * 查询字典类型详情。
+     */
     @GetMapping("/type/{dictId}")
     @PreAuthorize("@ss.hasAuthority('system:dict:query')")
     public R<SysDictTypePo> getType(@PathVariable Long dictId) {
         return R.ok(dictTypeMapper.selectById(dictId));
     }
 
+    /**
+     * 新增字典类型。
+     */
     @RepeatSubmit
     @PostMapping("/type")
     @PreAuthorize("@ss.hasAuthority('system:dict:add')")
@@ -64,6 +81,9 @@ public class ASysDictController {
         return R.ok();
     }
 
+    /**
+     * 修改字典类型。
+     */
     @RepeatSubmit
     @PostMapping("/type/edit")
     @PreAuthorize("@ss.hasAuthority('system:dict:edit')")
@@ -72,6 +92,9 @@ public class ASysDictController {
         return R.ok();
     }
 
+    /**
+     * 删除字典类型。
+     */
     @RepeatSubmit
     @PostMapping("/type/remove/{dictId}")
     @PreAuthorize("@ss.hasAuthority('system:dict:remove')")
@@ -80,22 +103,32 @@ public class ASysDictController {
         return R.ok();
     }
 
-    // ==================== 字典数据 ====================
-
+    /**
+     * 分页查询字典值。
+     *
+     * <p>支持按字典类型、字典标签和状态过滤，供字典数据维护页直接使用。
+     */
     @GetMapping("/data/list")
     @PreAuthorize("@ss.hasAuthority('system:dict:list')")
     public R<PageResult<SysDictDataPo>> listData(
             @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize,
-            @RequestParam(value = "dictType", required = false) String dictType) {
+            @RequestParam(value = "dictType", required = false) String dictType,
+            @RequestParam(value = "dictLabel", required = false) String dictLabel,
+            @RequestParam(value = "status", required = false) Integer status) {
         builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictDataPo> wrapper = new LambdaQueryWrapper<SysDictDataPo>()
                 .eq(dictType != null && !dictType.isEmpty(), SysDictDataPo::getDictType, dictType)
+                .like(dictLabel != null && !dictLabel.isEmpty(), SysDictDataPo::getDictLabel, dictLabel)
+                .eq(status != null, SysDictDataPo::getStatus, status)
                 .orderByAsc(SysDictDataPo::getDictSort);
         Page<SysDictDataPo> page = dictDataMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
     }
 
+    /**
+     * 按字典类型查询启用中的字典值。
+     */
     @GetMapping("/data/type/{dictType}")
     public R<List<SysDictDataPo>> listDataByType(@PathVariable String dictType) {
         builtinDictRegistry.ensureBuiltInDictionaries();
@@ -106,12 +139,18 @@ public class ASysDictController {
         return R.ok(dictDataMapper.selectList(wrapper));
     }
 
+    /**
+     * 查询字典值详情。
+     */
     @GetMapping("/data/{dictCode}")
     @PreAuthorize("@ss.hasAuthority('system:dict:query')")
     public R<SysDictDataPo> getData(@PathVariable Long dictCode) {
         return R.ok(dictDataMapper.selectById(dictCode));
     }
 
+    /**
+     * 新增字典值。
+     */
     @RepeatSubmit
     @PostMapping("/data")
     @PreAuthorize("@ss.hasAuthority('system:dict:add')")
@@ -120,6 +159,9 @@ public class ASysDictController {
         return R.ok();
     }
 
+    /**
+     * 修改字典值。
+     */
     @RepeatSubmit
     @PostMapping("/data/edit")
     @PreAuthorize("@ss.hasAuthority('system:dict:edit')")
@@ -128,6 +170,9 @@ public class ASysDictController {
         return R.ok();
     }
 
+    /**
+     * 删除字典值。
+     */
     @RepeatSubmit
     @PostMapping("/data/remove/{dictCode}")
     @PreAuthorize("@ss.hasAuthority('system:dict:remove')")

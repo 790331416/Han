@@ -8,60 +8,60 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Prompt template service.
+ * Prompt 模板服务接口。
  */
 public interface IAiPromptTemplateService {
 
     /**
-     * Query paged template list.
+     * 分页查询 Prompt 模板。
      *
-     * @param query query params
-     * @return page result
+     * @param query 查询参数
+     * @return 分页结果
      */
     PageResult<AiPromptTemplatePo> selectPage(AiPromptTemplateQuery query);
 
     /**
-     * Query template detail.
+     * 查询 Prompt 模板详情。
      *
-     * @param templateId template id
-     * @return detail
+     * @param templateId 模板 ID
+     * @return 模板详情
      */
     AiPromptTemplatePo selectById(Long templateId);
 
     /**
-     * Query all enabled templates.
+     * 查询全部启用模板。
      *
-     * @return template list
+     * @return 模板列表
      */
     List<AiPromptTemplatePo> selectAll();
 
     /**
-     * Insert template.
+     * 新增 Prompt 模板。
      *
-     * @param template template data
+     * @param template 模板数据
      */
     void insert(AiPromptTemplatePo template);
 
     /**
-     * Update template.
+     * 更新 Prompt 模板。
      *
-     * @param template template data
+     * @param template 模板数据
      */
     void update(AiPromptTemplatePo template);
 
     /**
-     * Delete template.
+     * 删除 Prompt 模板。
      *
-     * @param templateId template id
+     * @param templateId 模板 ID
      */
     void deleteById(Long templateId);
 
     /**
-     * Render template with variables.
+     * 使用变量渲染 Prompt 模板内容。
      *
-     * @param templateId template id
-     * @param variables render variables
-     * @return rendered content
+     * @param templateId 模板 ID
+     * @param variables 渲染变量
+     * @return 渲染后的内容
      */
     String render(Long templateId, Map<String, String> variables);
 }
