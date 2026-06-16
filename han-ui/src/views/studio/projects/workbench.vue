@@ -1136,7 +1136,7 @@
         <el-empty v-if="!sceneImageCandidates.length && !sceneImageGenerating" description="暂无场景候选图" />
         <div v-else class="scene-image-grid">
           <article
-            v-for="item in sceneImageCandidates"
+            v-for="(item, index) in sceneImageCandidates"
             :key="item.mediaId"
             class="scene-image-card"
             :class="{ selected: item.selected === '1' }"
@@ -1150,7 +1150,7 @@
               <el-empty v-else description="图片加载中" />
             </div>
             <div class="scene-image-meta">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ index + 1 }}</el-tag>
               <span v-if="item.taskId">任务 {{ item.taskId }}</span>
             </div>
             <el-button
@@ -1259,7 +1259,7 @@
         <el-empty v-if="!characterImageCandidates.length && !characterImageGenerating" description="暂无角色候选图" />
         <div v-else class="scene-image-grid">
           <article
-            v-for="item in characterImageCandidates"
+            v-for="(item, index) in characterImageCandidates"
             :key="item.mediaId"
             class="scene-image-card"
             :class="{ selected: item.selected === '1' }"
@@ -1273,7 +1273,7 @@
               <el-empty v-else description="图片加载中" />
             </div>
             <div class="scene-image-meta">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ index + 1 }}</el-tag>
               <span v-if="item.taskId">任务 {{ item.taskId }}</span>
             </div>
             <el-button
@@ -1804,7 +1804,7 @@
         <el-empty v-if="!shotVideoCandidates.length && !shotVideoGenerating && !shotVideoTasks.length && !shotVideoLoading" description="暂无分镜视频候选" />
         <div v-if="shotVideoCandidates.length || shotVideoGenerating" class="scene-image-grid">
           <article
-            v-for="item in shotVideoCandidates"
+            v-for="(item, index) in shotVideoCandidates"
             :key="item.mediaId"
             class="scene-image-card"
             :class="{ selected: item.selected === '1' }"
@@ -1820,7 +1820,7 @@
               <el-empty v-else description="视频加载中" />
             </div>
             <div class="scene-image-meta shot-video-candidate-meta">
-              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ item.candidateNo }}</el-tag>
+              <el-tag :type="item.selected === '1' ? 'success' : 'info'">候选 {{ index + 1 }}</el-tag>
               <span>视频 #{{ item.mediaId }}</span>
               <span v-if="item.taskId">任务 #{{ item.taskId }}</span>
             </div>
@@ -1998,6 +1998,8 @@ interface ShotScreenCharacterRule {
   missingCharacters: AivideoCharacter[]
   offscreenCharacters: AivideoCharacter[]
   previousMissingCharacters: AivideoCharacter[]
+  expectedOnscreenCount: number
+  expectedOnscreenCountReason: string
   positionRequirement: string
 }
 
@@ -3111,7 +3113,7 @@ function defaultCharacterReferenceMediaIds(character: AivideoCharacter) {
   return character.lockedMediaId ? [String(character.lockedMediaId)] : []
 }
 
-function parseShotCharacterIds(value?: string) {
+function parseShotCharacterTokens(value?: string) {
   if (!value) {
     return []
   }
@@ -3125,7 +3127,7 @@ function parseShotCharacterIds(value?: string) {
       return parsed
         .map((item) => {
           if (item && typeof item === 'object') {
-            return String(item.characterId || item.id || '')
+            return String(item.characterId || item.id || item.characterName || item.name || '')
           }
           return String(item)
         })
@@ -3135,6 +3137,63 @@ function parseShotCharacterIds(value?: string) {
     // 兼容逗号、中文逗号或分号分隔的老数据。
   }
   return text.split(/[,，;；\s]+/).map((item) => item.trim()).filter(Boolean)
+}
+
+function normalizeCharacterTokenKey(value?: string | number) {
+  return String(value || '').trim().replace(/[\s　]+/g, '')
+}
+
+function characterNameAliases(value?: string) {
+  const text = String(value || '').trim()
+  if (!text) {
+    return []
+  }
+  const aliases = new Set<string>()
+  const addAlias = (item?: string) => {
+    const alias = normalizeCharacterTokenKey(item)
+    if (alias) {
+      aliases.add(alias)
+    }
+  }
+  addAlias(text)
+  addAlias(text.replace(/[（(][^）)]*[）)]/g, ''))
+  const bracketPattern = /[（(]([^）)]+)[）)]/g
+  let match = bracketPattern.exec(text)
+  while (match) {
+    addAlias(match[1])
+    match = bracketPattern.exec(text)
+  }
+  return Array.from(aliases)
+}
+
+function resolveCharacterTokenToId(token?: string) {
+  const normalized = normalizeCharacterTokenKey(token)
+  if (!normalized) {
+    return ''
+  }
+  const matched = characters.value.find((character) => {
+    const characterId = String(character.characterId || '')
+    if (characterId && characterId === normalized) {
+      return true
+    }
+    return characterNameAliases(character.characterName).includes(normalized)
+  })
+  return matched?.characterId ? String(matched.characterId) : ''
+}
+
+function parseShotCharacterIds(value?: string) {
+  const ids: string[] = []
+  parseShotCharacterTokens(value).forEach((token) => {
+    const id = resolveCharacterTokenToId(token)
+    if (id && !ids.includes(id)) {
+      ids.push(id)
+    }
+  })
+  return ids
+}
+
+function unresolvedShotCharacterTokens(value?: string) {
+  return parseShotCharacterTokens(value).filter((token) => !resolveCharacterTokenToId(token))
 }
 
 function shotRelationshipText(shot?: AivideoShot) {
@@ -3377,6 +3436,57 @@ function textContainsAny(value: string, keywords: string[]) {
   return keywords.some((keyword) => keyword && value.includes(keyword))
 }
 
+function parseChineseOrArabicCount(value?: string) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return 0
+  }
+  if (/^\d+$/.test(raw)) {
+    return Number(raw)
+  }
+  const map: Record<string, number> = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10
+  }
+  return map[raw] || 0
+}
+
+function inferShotExpectedOnscreenCount(text: string) {
+  let count = 0
+  let reason = ''
+  const update = (nextCount: number, nextReason: string) => {
+    if (nextCount > count) {
+      count = nextCount
+      reason = nextReason
+    }
+  }
+  Array.from(text.matchAll(/当前镜头在场角色\s*[:：]\s*(\d+|[一二两三四五六七八九十])\s*人/g)).forEach((match) => {
+    update(parseChineseOrArabicCount(match[1]), `写明当前镜头在场角色 ${match[1]} 人`)
+  })
+  Array.from(text.matchAll(/其余\s*(\d+|[一二两三四五六七八九十])\s*人/g)).forEach((match) => {
+    const remaining = parseChineseOrArabicCount(match[1])
+    if (remaining > 0) {
+      update(remaining + 1, `出现“其余${match[1]}人”，至少需要 ${remaining + 1} 个画内角色`)
+    }
+  })
+  Array.from(text.matchAll(/(\d+|[一二两三四五六七八九十])\s*(人|个角色|名角色|位角色)/g)).forEach((match) => {
+    update(parseChineseOrArabicCount(match[1]), `出现“${match[0]}”`)
+  })
+  if (textContainsAny(text, ['全员', '所有角色', '全部角色', '全体角色']) && characters.value.length) {
+    update(characters.value.length, `出现“全员/所有角色”，按当前项目 ${characters.value.length} 个角色校验`)
+  }
+  return { count, reason }
+}
+
 function isOffscreenCharacterMention(text: string, characterName?: string) {
   const name = String(characterName || '').trim()
   if (!text || !name || !text.includes(name)) {
@@ -3437,6 +3547,7 @@ function buildShotScreenCharacterRule(shot?: AivideoShot): ShotScreenCharacterRu
   const onscreenIdSet = new Set(onscreenCharacters.map((item) => String(item.characterId)))
   const mentionedCharacters = shotMentionedCharacters(shot)
   const text = shotRelationshipText(shot)
+  const expected = inferShotExpectedOnscreenCount(text)
   const offscreenCharacters = mentionedCharacters.filter((character) => {
     return !onscreenIdSet.has(String(character.characterId))
       && isOffscreenCharacterMention(text, character.characterName)
@@ -3459,6 +3570,8 @@ function buildShotScreenCharacterRule(shot?: AivideoShot): ShotScreenCharacterRu
     missingCharacters,
     offscreenCharacters,
     previousMissingCharacters,
+    expectedOnscreenCount: expected.count,
+    expectedOnscreenCountReason: expected.reason,
     positionRequirement: extractShotPositionRequirement(shot, onscreenCharacters)
   }
 }
@@ -3960,6 +4073,7 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
 
   const onscreenCharacterIds = parseShotCharacterIds(shot.characterIds)
   const referenceCharacterIds = resolveEffectiveShotCharacterIds(shot)
+  const unresolvedCharacterTokens = unresolvedShotCharacterTokens(shot.characterIds)
   const autoAddedCharacters = autoAddedShotCharacters(shot)
   const screenRule = buildShotScreenCharacterRule(shot)
   if (autoAddedCharacters.length) {
@@ -3974,6 +4088,14 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       status: 'pass',
       title: `画内人物已规定：${screenRule.onscreenCharacters.map(characterDisplayName).join('、')}`,
       detail: screenRule.positionRequirement
+    })
+  }
+  if (screenRule.expectedOnscreenCount > 0
+    && screenRule.onscreenCharacters.length < screenRule.expectedOnscreenCount) {
+    items.push({
+      status: 'fail',
+      title: `画内角色绑定不足：需要 ${screenRule.expectedOnscreenCount} 人，当前 ${screenRule.onscreenCharacters.length} 人`,
+      detail: `分镜文案${screenRule.expectedOnscreenCountReason}，但画内只绑定了 ${screenRule.onscreenCharacters.map(characterDisplayName).join('、') || '未绑定'}。请回资产分镜补齐全部角色名，禁止用“其余三人/全员/同伴”让模型自行补人。`
     })
   }
   if (screenRule.missingCharacters.length) {
@@ -3995,6 +4117,13 @@ function buildShotVideoPreflightItems(shot?: AivideoShot): ShotVideoPreflightIte
       status: 'warn',
       title: '分镜未绑定角色',
       detail: '如果这个镜头确实是纯场景可以继续；如果有角色动作，请先在资产分镜中绑定角色。'
+    })
+  }
+  if (unresolvedCharacterTokens.length) {
+    items.push({
+      status: 'fail',
+      title: `角色绑定异常：${Array.from(new Set(unresolvedCharacterTokens)).join('、')}`,
+      detail: '分镜 characterIds/characterNames 中存在无法匹配到角色资产的名称或旧 ID。请重新提取资产，或在角色资产中补齐这些角色；如果只是职业/阵营/群演描述，不要写入分镜绑定角色。'
     })
   }
   if (referenceCharacterIds.length > 4) {

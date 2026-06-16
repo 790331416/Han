@@ -61,6 +61,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -90,6 +92,14 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
     private static final String TARGET_ALL = "ALL";
     private static final String ACTION_CONFIRM = "CONFIRM";
     private static final String ACTION_CANCEL_CONFIRM = "CANCEL_CONFIRM";
+    private static final Pattern EXPLICIT_ONSCREEN_COUNT_PATTERN =
+            Pattern.compile("当前镜头在场角色\\s*[:：]\\s*(\\d+|[一二两三四五六七八九十])\\s*人");
+    private static final Pattern REMAINING_PEOPLE_PATTERN =
+            Pattern.compile("其余\\s*(\\d+|[一二两三四五六七八九十])\\s*人");
+    private static final Pattern GROUP_PEOPLE_PATTERN =
+            Pattern.compile("(\\d+|[一二两三四五六七八九十])\\s*(人|个角色|名角色|位角色)");
+    private static final List<String> AMBIGUOUS_CHARACTER_BINDING_TOKENS =
+            List.of("其余", "全员", "众人", "其他人", "同伴", "队友", "所有人", "大家");
 
     private final AiVideoProjectMapper projectMapper;
     private final AiVideoProjectSettingMapper settingMapper;
@@ -1031,9 +1041,10 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         int index = 1;
         for (CharacterPayload item : safeList(payload.characters)) {
             AiVideoCharacterPo character = new AiVideoCharacterPo();
+            String characterName = defaultString(item.characterName, "角色" + index);
             character.setProjectId(project.getProjectId());
             character.setTenantId(project.getTenantId());
-            character.setCharacterName(defaultString(item.characterName, "角色" + index));
+            character.setCharacterName(characterName);
             character.setGender(item.gender);
             character.setAgeDesc(item.ageDesc);
             character.setIdentityDesc(item.identityDesc);
@@ -1045,7 +1056,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             character.setCostume(item.costume);
             character.setColorStyle(item.colorStyle);
             character.setNegativeTraits(item.negativeTraits);
-            character.setPromptText(item.promptText);
+            character.setPromptText(appendOwnedWeaponPrompt(item.promptText, characterName, payload.props));
             character.setCompleteness(item.completeness);
             character.setMissingFields(join(item.missingFields));
             applyVoiceProfile(character, voiceProfileMap.get(normalizeAssetName(character.getCharacterName())));
@@ -1108,6 +1119,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         }
 
         Map<String, String> characterNameById = buildCharacterNameById(characterIdMap);
+        Map<String, Long> characterAliasIdMap = buildCharacterAliasIdMap(characterIdMap);
         int duration = normalizeShotDuration(setting != null ? setting.getDefaultShotDuration() : null);
         index = 1;
         AiVideoShotPo previousShot = null;
@@ -1120,7 +1132,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             shot.setShotNo(item.shotNo != null ? item.shotNo : index);
             shot.setDurationSec(normalizeShotDuration(item.durationSec != null ? item.durationSec : duration));
             shot.setSceneId(resolveSceneId(item, sceneIdMap));
-            shot.setCharacterIds(resolveCharacterIds(item, characterIdMap));
+            shot.setCharacterIds(resolveCharacterIds(item, characterIdMap, characterAliasIdMap));
             shot.setShotType(item.shotType);
             shot.setCameraPosition(item.cameraPosition);
             shot.setCameraMovement(item.cameraMovement);
@@ -1164,7 +1176,106 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
                     shot.shotNo, shot.durationSec, shot.actionDesc, shot.promptText);
             AivideoShotRuleAnalyzer.validateRequiredPropsOrThrow(text, props, false);
+            validateGroupShotCharacterBinding(shot, payload.characters);
         }
+    }
+
+    private void validateGroupShotCharacterBinding(ShotPayload shot, List<CharacterPayload> characters) {
+        List<String> boundTokens = collectShotBoundCharacterTokens(shot);
+        List<String> ambiguousTokens = boundTokens.stream()
+                .filter(this::isAmbiguousCharacterBindingToken)
+                .distinct()
+                .toList();
+        if (!ambiguousTokens.isEmpty()) {
+            throw new BusinessException("分镜角色绑定失败：第" + shotPayloadNo(shot)
+                    + "镜 characterNames 不能写“" + String.join("、", ambiguousTokens)
+                    + "”。多人镜头必须逐一写入已定义角色全名，例如奶奶、剑魂、狂战士、男散打。");
+        }
+
+        int expectedCount = inferExpectedOnscreenCount(collectShotPayloadText(shot), safeList(characters).size());
+        if (expectedCount > 0 && boundTokens.size() < expectedCount) {
+            throw new BusinessException("分镜角色绑定失败：第" + shotPayloadNo(shot)
+                    + "镜文案推断至少需要" + expectedCount + "个画内角色，但 characterNames/characterIds 只绑定了"
+                    + boundTokens.size() + "个（" + (boundTokens.isEmpty() ? "未绑定" : String.join("、", boundTokens))
+                    + "）。请把所有画内角色逐一写入 characterNames，禁止用“其余三人/全员/同伴”代替。");
+        }
+    }
+
+    private int shotPayloadNo(ShotPayload shot) {
+        return shot != null && shot.shotNo != null ? shot.shotNo : 0;
+    }
+
+    private List<String> collectShotBoundCharacterTokens(ShotPayload shot) {
+        Set<String> result = new LinkedHashSet<>();
+        if (shot == null) {
+            return List.of();
+        }
+        if (StringUtils.hasText(shot.characterIds)) {
+            result.addAll(parseCharacterTokens(shot.characterIds));
+        }
+        for (String name : safeList(shot.characterNames)) {
+            if (StringUtils.hasText(name)) {
+                result.add(name.trim());
+            }
+        }
+        return new ArrayList<>(result);
+    }
+
+    private boolean isAmbiguousCharacterBindingToken(String token) {
+        if (!StringUtils.hasText(token)) {
+            return false;
+        }
+        String compact = normalizeAssetName(token);
+        return AMBIGUOUS_CHARACTER_BINDING_TOKENS.stream().anyMatch(compact::contains);
+    }
+
+    private int inferExpectedOnscreenCount(String text, int allCharacterCount) {
+        if (!StringUtils.hasText(text)) {
+            return 0;
+        }
+        int expected = 0;
+        Matcher explicitMatcher = EXPLICIT_ONSCREEN_COUNT_PATTERN.matcher(text);
+        while (explicitMatcher.find()) {
+            expected = Math.max(expected, parseChineseOrArabicNumber(explicitMatcher.group(1)));
+        }
+        Matcher remainingMatcher = REMAINING_PEOPLE_PATTERN.matcher(text);
+        while (remainingMatcher.find()) {
+            int remaining = parseChineseOrArabicNumber(remainingMatcher.group(1));
+            if (remaining > 0) {
+                expected = Math.max(expected, remaining + 1);
+            }
+        }
+        Matcher groupMatcher = GROUP_PEOPLE_PATTERN.matcher(text);
+        while (groupMatcher.find()) {
+            expected = Math.max(expected, parseChineseOrArabicNumber(groupMatcher.group(1)));
+        }
+        if (containsAny(text, "全员", "所有角色", "全部角色", "全体角色") && allCharacterCount > 0) {
+            expected = Math.max(expected, allCharacterCount);
+        }
+        return expected;
+    }
+
+    private int parseChineseOrArabicNumber(String value) {
+        if (!StringUtils.hasText(value)) {
+            return 0;
+        }
+        String trimmed = value.trim();
+        if (trimmed.matches("\\d+")) {
+            return Integer.parseInt(trimmed);
+        }
+        return switch (trimmed) {
+            case "一" -> 1;
+            case "二", "两" -> 2;
+            case "三" -> 3;
+            case "四" -> 4;
+            case "五" -> 5;
+            case "六" -> 6;
+            case "七" -> 7;
+            case "八" -> 8;
+            case "九" -> 9;
+            case "十" -> 10;
+            default -> 0;
+        };
     }
 
     private List<AiVideoPropPo> toTemporaryProps(List<PropPayload> payloadProps) {
@@ -1211,6 +1322,42 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         character.setVoiceSampleText(limit(firstText(profile.sampleText, profile.referenceAudioNeed), 512));
     }
 
+    private String appendOwnedWeaponPrompt(String promptText, String characterName, List<PropPayload> props) {
+        StringBuilder builder = new StringBuilder(StringUtils.hasText(promptText) ? promptText.trim() : "");
+        for (PropPayload prop : safeList(props)) {
+            if (!isStableCharacterWeapon(prop) || !isSameAssetByAlias(characterName, prop.ownerCharacterName)) {
+                continue;
+            }
+            if (!builder.isEmpty()) {
+                builder.append("；");
+            }
+            builder.append("常驻手持道具：").append(prop.propName);
+            String visualDesc = firstText(prop.visualDesc, prop.promptText);
+            if (StringUtils.hasText(visualDesc)) {
+                builder.append("（").append(visualDesc.trim()).append("）");
+            }
+            builder.append("。角色图必须完整露出该道具，保持在角色手中，禁止漏掉、变色或替换。");
+        }
+        return builder.isEmpty() ? null : builder.toString();
+    }
+
+    private boolean isStableCharacterWeapon(PropPayload prop) {
+        if (prop == null || !StringUtils.hasText(prop.propName) || !StringUtils.hasText(prop.ownerCharacterName)) {
+            return false;
+        }
+        String text = compactText(prop.propName, prop.propType, prop.visualDesc, prop.continuityRules, prop.promptText);
+        return containsAny(text, "常驻", "随身", "标志", "武器", "兵器", "剑", "刀", "枪", "弓", "杖", "盾", "法器");
+    }
+
+    private boolean isSameAssetByAlias(String left, String right) {
+        Set<String> leftAliases = buildAssetNameAliases(left);
+        Set<String> rightAliases = buildAssetNameAliases(right);
+        if (leftAliases.isEmpty() || rightAliases.isEmpty()) {
+            return false;
+        }
+        return leftAliases.stream().anyMatch(rightAliases::contains);
+    }
+
     private String joinNonBlank(String delimiter, String... values) {
         if (values == null || values.length == 0) {
             return null;
@@ -1226,6 +1373,58 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             return "";
         }
         return value.trim().replaceAll("[\\s　]+", "");
+    }
+
+    private Set<String> buildAssetNameAliases(String value) {
+        Set<String> aliases = new LinkedHashSet<>();
+        if (!StringUtils.hasText(value)) {
+            return aliases;
+        }
+        String text = value.trim();
+        addNormalizedAlias(aliases, text);
+        String withoutBracket = text.replaceAll("[（(][^）)]*[）)]", "");
+        addNormalizedAlias(aliases, withoutBracket);
+        int start = findBracketStart(text, 0);
+        while (start >= 0) {
+            int end = findBracketEnd(text, start + 1);
+            if (end <= start) {
+                break;
+            }
+            addNormalizedAlias(aliases, text.substring(start + 1, end));
+            start = findBracketStart(text, end + 1);
+        }
+        return aliases;
+    }
+
+    private int findBracketStart(String text, int fromIndex) {
+        int chinese = text.indexOf('（', fromIndex);
+        int english = text.indexOf('(', fromIndex);
+        if (chinese < 0) {
+            return english;
+        }
+        if (english < 0) {
+            return chinese;
+        }
+        return Math.min(chinese, english);
+    }
+
+    private int findBracketEnd(String text, int fromIndex) {
+        int chinese = text.indexOf('）', fromIndex);
+        int english = text.indexOf(')', fromIndex);
+        if (chinese < 0) {
+            return english;
+        }
+        if (english < 0) {
+            return chinese;
+        }
+        return Math.min(chinese, english);
+    }
+
+    private void addNormalizedAlias(Set<String> aliases, String value) {
+        String alias = normalizeAssetName(value);
+        if (StringUtils.hasText(alias)) {
+            aliases.add(alias);
+        }
     }
 
     static String normalizeTransitionBeforeType(String value, AiVideoShotPo shot, AiVideoShotPo previousShot) {
@@ -1464,25 +1663,77 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return null;
     }
 
-    private String resolveCharacterIds(ShotPayload item, Map<String, Long> characterIdMap) {
+    private String resolveCharacterIds(ShotPayload item, Map<String, Long> characterIdMap,
+                                       Map<String, Long> characterAliasIdMap) {
         if (item == null) {
             return null;
         }
         Set<String> ids = new LinkedHashSet<>();
+        List<String> unknownNames = new ArrayList<>();
         if (StringUtils.hasText(item.characterIds)) {
-            ids.addAll(parseCharacterTokens(item.characterIds));
+            for (String token : parseCharacterTokens(item.characterIds)) {
+                addResolvedCharacterId(ids, unknownNames, token, characterIdMap, characterAliasIdMap);
+            }
         }
         if (item.characterNames != null) {
             for (String name : item.characterNames) {
                 if (!StringUtils.hasText(name)) {
                     continue;
                 }
-                Long id = characterIdMap.get(name.trim());
-                ids.add(id == null ? name.trim() : String.valueOf(id));
+                addResolvedCharacterId(ids, unknownNames, name, characterIdMap, characterAliasIdMap);
             }
         }
-        addMentionedRelationCharacterIds(ids, characterIdMap, collectShotPayloadText(item));
+        if (!unknownNames.isEmpty()) {
+            throw new BusinessException("分镜角色绑定失败：第" + (item.shotNo != null ? item.shotNo : "?")
+                    + "镜包含未定义角色：" + String.join("、", unknownNames)
+                    + "。请在角色资产中补齐角色，或把分镜 characterNames 改为已定义角色全名/简称。");
+        }
+        addMentionedRelationCharacterIds(ids, characterAliasIdMap, collectShotPayloadText(item));
         return ids.isEmpty() ? null : String.join(",", ids);
+    }
+
+    private void addResolvedCharacterId(Set<String> ids, List<String> unknownNames, String token,
+                                        Map<String, Long> characterIdMap, Map<String, Long> characterAliasIdMap) {
+        if (!StringUtils.hasText(token)) {
+            return;
+        }
+        String trimmed = token.trim();
+        Long resolvedId = resolveCharacterId(trimmed, characterIdMap, characterAliasIdMap);
+        if (resolvedId == null) {
+            if (!unknownNames.contains(trimmed)) {
+                unknownNames.add(trimmed);
+            }
+            return;
+        }
+        ids.add(String.valueOf(resolvedId));
+    }
+
+    private Long resolveCharacterId(String token, Map<String, Long> characterIdMap, Map<String, Long> characterAliasIdMap) {
+        if (!StringUtils.hasText(token)) {
+            return null;
+        }
+        if (token.matches("\\d+")) {
+            Long id = Long.valueOf(token);
+            return characterIdMap != null && characterIdMap.containsValue(id) ? id : null;
+        }
+        String normalized = normalizeAssetName(token);
+        return characterAliasIdMap != null ? characterAliasIdMap.get(normalized) : null;
+    }
+
+    private Map<String, Long> buildCharacterAliasIdMap(Map<String, Long> characterIdMap) {
+        Map<String, Long> aliasMap = new LinkedHashMap<>();
+        if (characterIdMap == null || characterIdMap.isEmpty()) {
+            return aliasMap;
+        }
+        for (Map.Entry<String, Long> entry : characterIdMap.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            for (String alias : buildAssetNameAliases(entry.getKey())) {
+                aliasMap.putIfAbsent(alias, entry.getValue());
+            }
+        }
+        return aliasMap;
     }
 
     private void addMentionedRelationCharacterIds(Set<String> ids, Map<String, Long> characterIdMap, String text) {
@@ -1490,18 +1741,19 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 || !isRelationshipActionText(text)) {
             return;
         }
+        String normalizedText = normalizeAssetName(text);
         for (Map.Entry<String, Long> entry : characterIdMap.entrySet()) {
             String name = entry.getKey();
             Long id = entry.getValue();
-            if (!StringUtils.hasText(name) || id == null || !text.contains(name.trim())) {
+            if (!StringUtils.hasText(name) || id == null || !normalizedText.contains(name.trim())) {
                 continue;
             }
             String idText = String.valueOf(id);
             String trimmedName = name.trim();
-            if (isOffscreenCharacterMention(text, trimmedName)) {
+            if (isOffscreenCharacterMention(text, trimmedName) || isOffscreenCharacterMention(normalizedText, trimmedName)) {
                 continue;
             }
-            if (!ids.contains(idText) && !ids.contains(trimmedName)) {
+            if (!ids.contains(idText)) {
                 ids.add(idText);
             }
         }
@@ -2045,7 +2297,9 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "3. 如果角色是动物、宠物、怪物、机器人、器物精灵或其他非人类，必须在 identityDesc、appearance、promptText 中保留物种本体，写清品种/体型/毛色/眼睛/标志性特征，禁止改成人类演员。\n"
                 + "4. 多角色必须在色彩、轮廓、材质或身体特征上显著区别，严禁视觉雷同。\n"
                 + "5. promptText 要可直接用于 Seedance 视频角色锚定图生成，必须写成单一主体、纯白/浅灰极简背景、3/4 正面或轻微侧正面自然站姿、全身完整可见、主体占画面 60%-75%。\n"
-                + "6. 角色 promptText 禁止写头部特写、面部特写、半身像、三视图、四方向、正侧背、多视图、分栏或同款分身；动物保持自然四足站立，不拟人化。\n\n"
+                + "6. 角色 promptText 禁止写头部特写、面部特写、半身像、三视图、四方向、正侧背、多视图、分栏或同款分身；动物保持自然四足站立，不拟人化。\n"
+                + "7. 如果角色长期持有武器、法器、乐器、翅膀、尾巴、机械臂等标志性随身物，必须同时输出到 props，并在角色 promptText 写“常驻手持/随身道具：道具名 + 外观 + 位置”，角色图必须完整露出该道具；临时交接物、票据、收纳盒、皮球等剧情道具只输出到 props，不默认塞进角色图。\n"
+                + "8. characterName 是后续分镜绑定唯一标准名称；后续 shots.characterNames 必须使用这里输出的完整 characterName，不要临时改写成简称、职业名、外号或“其余三人”。\n\n"
                 + "【Seedance 视频场景锚点规则】\n"
                 + "1. 场景必须纯净无人，场景描述和 promptText 严禁出现角色姓名、人影或额外人物。\n"
                 + "2. 场景名称必须四个字以上，不能只写单一名词，要通过修饰词增加辨识度。\n"
@@ -2054,7 +2308,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 + "5. 场景 promptText 必须写成单镜头视频首帧/环境锚点：前景、中景、远景和地面可行动区域清楚，禁止拼图、分栏、设定板、漫画格、文字标签。\n\n"
                 + "【剧本分镜规则】\n"
                 + "1. 你是顶级影视剧导演与分镜规划专家，需要面向 Seedance 2.0 / 即梦 2.0 的视频生成逻辑拆解镜头。\n"
-                + "2. 禁止引入未在角色表、characterNames 或背景人群说明中的无关人物；单人镜头锁定当前核心主角，多人镜头必须按 characterNames 全部入画，不得用单人特写、主观视角或环境遮挡替代同框关系。\n"
+                + "2. 禁止引入未在角色表、characterNames 或背景人群说明中的无关人物；shots.characterNames 只能填写 characters.characterName 的完整名称，禁止输出 characterIds，禁止写简称、外号、职业简称或“其余三人”；单人镜头锁定当前核心主角，多人镜头必须按 characterNames 全部入画，不得用单人特写、主观视角或环境遮挡替代同框关系。\n"
                 + "3. 严格区分 dialogue、voiceOver 和心理画面：dialogue 只写角色说出口并可口型同步的话；voiceOver 只写可发声但角色不张嘴的旁白/画外音；心理活动默认不写入 voiceOver。\n"
                 + "4. dialogue 必须只写当前 characterNames 中角色能直接说出口的话；多角色同镜时必须写成“角色名：台词”。低声报数、低声说、耳语、小声说、念出、读出都属于说出口的对白，必须写入 dialogue，禁止塞进 voiceOver。\n"
                 + "5. voiceOver 必须显式标注说话人：统一旁白写“旁白：内容”，角色画外音写“角色名（画外音）：内容”，角色旁白写“角色名（旁白）：内容”；只有确实要被听见的内心独白才写“角色名（内心独白）：内容”。\n"

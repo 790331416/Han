@@ -159,6 +159,22 @@ class AivideoShotVideoServiceImplTest {
     }
 
     @Test
+    void previewRejectsGroupShotWhenBoundCharactersLessThanTextCount() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setShotNo(1);
+        fixture.currentShot.setCharacterIds("奶奶,剑魂");
+        fixture.currentShot.setActionDesc("奶奶抬右手比1手势，其余三人点燃身前符文。");
+        fixture.currentShot.setPromptText("四人副本开场，所有角色都在画内。");
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> fixture.service.previewShotVideoPrompt(fixture.dto()));
+
+        assertTrue(exception.getMessage().contains("画内角色绑定不足"), exception::getMessage);
+        assertTrue(exception.getMessage().contains("至少需要4个画内角色"), exception::getMessage);
+        assertTrue(exception.getMessage().contains("只绑定了2个"), exception::getMessage);
+    }
+
+    @Test
     void previewRejectsWeaponActionWithoutLinkedPropAsset() {
         TestFixture fixture = new TestFixture();
         fixture.currentShot.setDurationSec(6);

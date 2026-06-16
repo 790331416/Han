@@ -31,10 +31,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.math.BigDecimal;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -302,7 +304,7 @@ class AivideoTextServiceImplTest {
                         new AivideoTextServiceImpl.ShotContinuitySnapshot(
                                 3,
                                 "暴雨夜小区街道",
-                                "延续上一镜，狗狗在街边抬头望向广告牌铁架，身体绷紧，准备冲向商铺雨棚。",
+                                "延续上一镜，狗狗在街边抬头望向广告牌铁架，结尾保持身体绷紧。",
                                 ""
                         )
                 )));
@@ -315,13 +317,13 @@ class AivideoTextServiceImplTest {
                         new AivideoTextServiceImpl.ShotContinuitySnapshot(
                                 4,
                                 "整洁明亮文具店",
-                                "站在货架前，拿起一个收纳盒，眼睛发亮，展示给画外",
+                                "狗小汪把收纳盒展示给画外，结尾停在展示姿态。",
                                 ""
                         ),
                         new AivideoTextServiceImpl.ShotContinuitySnapshot(
                                 5,
                                 "整洁明亮文具店",
-                                "接过收纳盒看了看，点头认可，然后转身仔细查看旁边贴纸的价格标签",
+                                "接过收纳盒，结尾停在拿稳状态。",
                                 ""
                         )
                 )));
@@ -338,13 +340,13 @@ class AivideoTextServiceImplTest {
                         new AivideoTextServiceImpl.ShotContinuitySnapshot(
                                 4,
                                 "整洁明亮文具店",
-                                "狗小汪站在货架前拿起收纳盒，转向画面右侧的喵小萌展示，结尾停在把收纳盒递向喵小萌的姿态。",
+                                "狗小汪从画面左侧把收纳盒递向画面右侧的喵小萌，结尾停在递出的姿态。",
                                 ""
                         ),
                         new AivideoTextServiceImpl.ShotContinuitySnapshot(
                                 5,
                                 "整洁明亮文具店",
-                                "狗小汪的手从画面左侧入画，把收纳盒递给喵小萌；喵小萌从狗小汪手中接过收纳盒并点头认可。",
+                                "狗小汪的手从画面左侧入画，喵小萌从狗小汪手中接过收纳盒，结尾收纳盒归喵小萌持有。",
                                 ""
                         )
                 )));
@@ -537,6 +539,231 @@ class AivideoTextServiceImplTest {
         assertEquals("PENDING", insertedProp.get().getConfirmStatus());
         assertEquals(1L, insertedProp.get().getProjectId());
         assertEquals(9L, insertedProp.get().getTenantId());
+    }
+
+    @Test
+    void assetExtractionResolvesShotCharacterAliasesBeforePersisting() throws Exception {
+        AtomicLong characterIdSequence = new AtomicLong(9);
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        AiVideoCharacterPo character = (AiVideoCharacterPo) args[0];
+                        character.setCharacterId(characterIdSequence.incrementAndGet());
+                        return 1;
+                    }
+                    return null;
+                });
+        AtomicReference<AiVideoShotPo> insertedShot = new AtomicReference<>();
+        AiVideoShotMapper shotMapper = (AiVideoShotMapper) Proxy.newProxyInstance(
+                AiVideoShotMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoShotMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        insertedShot.set((AiVideoShotPo) args[0]);
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, characterMapper, null, shotMapper, null, null, null, null);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [
+                    {"characterName": "狂战士（红狗）", "promptText": "Q版狂战士全身"},
+                    {"characterName": "男散打（乌鸡）", "promptText": "Q版男散打全身"}
+                  ],
+                  "scenes": [],
+                  "shots": [
+                    {
+                      "episodeNo": 1,
+                      "shotNo": 1,
+                      "durationSec": 5,
+                      "characterNames": ["狂战士", "男散打"],
+                      "actionDesc": "狂战士点头，男散打看向深渊柱。",
+                      "promptText": "二人副本开场，狂战士和男散打在场。"
+                    }
+                  ]
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        insertMethod.invoke(service, project, payload, null);
+
+        assertEquals("10,11", insertedShot.get().getCharacterIds());
+    }
+
+    @Test
+    void assetExtractionRejectsGroupShotWithoutAllNamedCharacters() throws Exception {
+        AtomicLong characterIdSequence = new AtomicLong(20);
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        AiVideoCharacterPo character = (AiVideoCharacterPo) args[0];
+                        character.setCharacterId(characterIdSequence.incrementAndGet());
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, characterMapper, null, null, null, null, null, null);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [
+                    {"characterName": "奶奶", "promptText": "Q版奶妈全身"},
+                    {"characterName": "剑魂", "promptText": "Q版剑魂全身，手持寒光剑"},
+                    {"characterName": "狂战士", "promptText": "Q版狂战士全身"},
+                    {"characterName": "男散打", "promptText": "Q版男散打全身"}
+                  ],
+                  "scenes": [],
+                  "shots": [
+                    {
+                      "episodeNo": 1,
+                      "shotNo": 1,
+                      "durationSec": 5,
+                      "characterNames": ["奶奶", "剑魂"],
+                      "actionDesc": "奶奶抬右手比1手势，其余三人点燃身前符文。",
+                      "promptText": "四人副本开场，所有角色都在画内。"
+                    }
+                  ]
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        InvocationTargetException exception = assertThrows(InvocationTargetException.class,
+                () -> insertMethod.invoke(service, project, payload, null));
+
+        assertTrue(exception.getCause() instanceof BusinessException);
+        assertTrue(exception.getCause().getMessage().contains("至少需要4个画内角色"), exception.getCause()::getMessage);
+        assertTrue(exception.getCause().getMessage().contains("只绑定了2个"), exception.getCause()::getMessage);
+    }
+
+    @Test
+    void assetExtractionRejectsUnknownShotCharacterBeforePersisting() throws Exception {
+        AtomicLong characterIdSequence = new AtomicLong(7);
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        AiVideoCharacterPo character = (AiVideoCharacterPo) args[0];
+                        character.setCharacterId(characterIdSequence.incrementAndGet());
+                        return 1;
+                    }
+                    return null;
+                });
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, characterMapper, null, null, null, null, null, null);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [
+                    {"characterName": "奶妈", "promptText": "Q版奶妈全身"}
+                  ],
+                  "scenes": [],
+                  "shots": [
+                    {
+                      "episodeNo": 1,
+                      "shotNo": 1,
+                      "durationSec": 5,
+                      "characterNames": ["勇散打"],
+                      "actionDesc": "勇散打突然入画。",
+                      "promptText": "勇散打站在副本入口。"
+                    }
+                  ]
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        InvocationTargetException exception = assertThrows(InvocationTargetException.class,
+                () -> insertMethod.invoke(service, project, payload, null));
+
+        assertTrue(exception.getCause() instanceof BusinessException);
+        assertTrue(exception.getCause().getMessage().contains("第1镜"));
+        assertTrue(exception.getCause().getMessage().contains("勇散打"));
+    }
+
+    @Test
+    void assetExtractionAppendsOwnedWeaponToCharacterPrompt() throws Exception {
+        AtomicReference<AiVideoCharacterPo> insertedCharacter = new AtomicReference<>();
+        AiVideoCharacterMapper characterMapper = (AiVideoCharacterMapper) Proxy.newProxyInstance(
+                AiVideoCharacterMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoCharacterMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        AiVideoCharacterPo character = (AiVideoCharacterPo) args[0];
+                        character.setCharacterId(9L);
+                        insertedCharacter.set(character);
+                        return 1;
+                    }
+                    return null;
+                });
+        AiVideoPropMapper propMapper = (AiVideoPropMapper) Proxy.newProxyInstance(
+                AiVideoPropMapper.class.getClassLoader(),
+                new Class<?>[]{AiVideoPropMapper.class},
+                (proxy, method, args) -> "insert".equals(method.getName()) ? 1 : null);
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, characterMapper, null, null, null, null, null, null);
+        service.setPropMapper(propMapper);
+        Method parseMethod = AivideoTextServiceImpl.class.getDeclaredMethod("parseAssetPayload", String.class);
+        parseMethod.setAccessible(true);
+        String json = """
+                {
+                  "characters": [
+                    {"characterName": "剑魂", "promptText": "Q版剑魂完整全身，白底。"}
+                  ],
+                  "scenes": [],
+                  "props": [
+                    {
+                      "propName": "寒光剑",
+                      "propType": "常驻武器",
+                      "visualDesc": "剑刃带冰蓝色寒光",
+                      "ownerCharacterName": "剑魂",
+                      "promptText": "寒光剑单体道具图，冰蓝色剑光"
+                    }
+                  ],
+                  "shots": []
+                }
+                """;
+        Object payload = parseMethod.invoke(service, json);
+        Method insertMethod = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "insertAssets", AiVideoProjectPo.class, payload.getClass(), AiVideoProjectSettingPo.class);
+        insertMethod.setAccessible(true);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(1L);
+        project.setTenantId(9L);
+
+        insertMethod.invoke(service, project, payload, null);
+
+        assertTrue(insertedCharacter.get().getPromptText().contains("常驻手持道具：寒光剑"));
+        assertTrue(insertedCharacter.get().getPromptText().contains("冰蓝色寒光"));
+        assertTrue(insertedCharacter.get().getPromptText().contains("角色图必须完整露出该道具"));
     }
 
     @Test
@@ -1245,10 +1472,11 @@ class AivideoTextServiceImplTest {
         actionDesc.setAccessible(true);
         actionDesc.set(payload, "听到数字后，耳朵突然竖起，身体凑近旁边的喵小萌");
         Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
-                "resolveCharacterIds", payloadClass, Map.class);
+                "resolveCharacterIds", payloadClass, Map.class, Map.class);
         method.setAccessible(true);
 
-        String resolved = (String) method.invoke(service, payload, Map.of("喵小萌", 5L, "狗小汪", 6L));
+        Map<String, Long> characterIdMap = Map.of("喵小萌", 5L, "狗小汪", 6L);
+        String resolved = (String) method.invoke(service, payload, characterIdMap, characterIdMap);
 
         assertEquals("6,5", resolved);
     }

@@ -62,6 +62,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Single shot video candidate workflow implementation.
@@ -85,6 +87,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private static final int AUTO_RECOVERY_IDLE_SECONDS = 60;
     private static final int AUTO_RECOVERY_BATCH_SIZE = 5;
     private static final int PROVIDER_TASK_TIMEOUT_MINUTES = 30;
+    private static final Pattern EXPLICIT_ONSCREEN_COUNT_PATTERN =
+            Pattern.compile("当前镜头在场角色\\s*[:：]\\s*(\\d+|[一二两三四五六七八九十])\\s*人");
+    private static final Pattern REMAINING_PEOPLE_PATTERN =
+            Pattern.compile("其余\\s*(\\d+|[一二两三四五六七八九十])\\s*人");
+    private static final Pattern GROUP_PEOPLE_PATTERN =
+            Pattern.compile("(\\d+|[一二两三四五六七八九十])\\s*(人|个角色|名角色|位角色)");
     private static final String SHOT_VIDEO_SYSTEM_PROMPT = """
             你是电影级短剧分镜视频导演。
             核心规则：
@@ -388,6 +396,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 globalSetting != null ? globalSetting.getDefaultShotDuration() : null,
                 project.getDefaultShotDuration(), 5));
         validateShotActionBudgetAndProps(project.getProjectId(), shot, durationSec);
+        validateShotOnscreenCharacterCount(project.getProjectId(), shot);
         Long promptTemplateId = firstLong(
                 projectSetting != null ? projectSetting.getVideoPromptTemplateId() : null,
                 globalSetting != null ? globalSetting.getVideoPromptTemplateId() : null);
@@ -1815,6 +1824,75 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         AivideoShotRuleAnalyzer.validateActionBudgetOrThrow(
                 shot.getShotNo(), durationSec, shot.getActionDesc(), shot.getPromptText());
         AivideoShotRuleAnalyzer.validateRequiredPropsOrThrow(text, selectProjectProps(projectId), true);
+    }
+
+    private void validateShotOnscreenCharacterCount(Long projectId, AiVideoShotPo shot) {
+        if (shot == null) {
+            return;
+        }
+        String text = collectShotText(shot);
+        int expectedCount = inferExpectedOnscreenCount(text, selectProjectCharacters(projectId).size());
+        if (expectedCount <= 0) {
+            return;
+        }
+        List<String> boundTokens = parseCharacterTokens(shot.getCharacterIds());
+        if (boundTokens.size() >= expectedCount) {
+            return;
+        }
+        String names = resolveCharacterNames(projectId, shot.getCharacterIds());
+        throw new BusinessException("画内角色绑定不足：第" + shot.getShotNo()
+                + "镜文案推断至少需要" + expectedCount + "个画内角色，但当前只绑定了"
+                + boundTokens.size() + "个（" + (StringUtils.hasText(names) ? names : "未绑定")
+                + "）。请回资产分镜补齐全部角色，不要让视频模型根据“其余三人/全员/四人”自行脑补。");
+    }
+
+    private int inferExpectedOnscreenCount(String text, int allCharacterCount) {
+        if (!StringUtils.hasText(text)) {
+            return 0;
+        }
+        int expected = 0;
+        Matcher explicitMatcher = EXPLICIT_ONSCREEN_COUNT_PATTERN.matcher(text);
+        while (explicitMatcher.find()) {
+            expected = Math.max(expected, parseChineseOrArabicNumber(explicitMatcher.group(1)));
+        }
+        Matcher remainingMatcher = REMAINING_PEOPLE_PATTERN.matcher(text);
+        while (remainingMatcher.find()) {
+            int remaining = parseChineseOrArabicNumber(remainingMatcher.group(1));
+            if (remaining > 0) {
+                expected = Math.max(expected, remaining + 1);
+            }
+        }
+        Matcher groupMatcher = GROUP_PEOPLE_PATTERN.matcher(text);
+        while (groupMatcher.find()) {
+            expected = Math.max(expected, parseChineseOrArabicNumber(groupMatcher.group(1)));
+        }
+        if (containsAny(text, "全员", "所有角色", "全部角色", "全体角色") && allCharacterCount > 0) {
+            expected = Math.max(expected, allCharacterCount);
+        }
+        return expected;
+    }
+
+    private int parseChineseOrArabicNumber(String value) {
+        if (!StringUtils.hasText(value)) {
+            return 0;
+        }
+        String trimmed = value.trim();
+        if (trimmed.matches("\\d+")) {
+            return Integer.parseInt(trimmed);
+        }
+        return switch (trimmed) {
+            case "一" -> 1;
+            case "二", "两" -> 2;
+            case "三" -> 3;
+            case "四" -> 4;
+            case "五" -> 5;
+            case "六" -> 6;
+            case "七" -> 7;
+            case "八" -> 8;
+            case "九" -> 9;
+            case "十" -> 10;
+            default -> 0;
+        };
     }
 
     private List<AiVideoPropPo> selectProjectProps(Long projectId) {
