@@ -227,7 +227,7 @@ echo "Deploy finished."
 $remoteCommand = "TAG='$Tag' REGISTRY='$Registry' DEPLOY_DIR='$DeployDir' SERVICES='$serviceCsv' WAIT_SECONDS='$wait' HEALTH_CHECK='$healthCheck' bash -s"
 $tempRemoteScript = New-TemporaryFile
 try {
-    # PowerShell 管道给 ssh 传字符串时可能带入 BOM，导致远端 bash 的 set -e 失效。
+    # Avoid a BOM on stdin; otherwise remote bash may not enable set -e.
     $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
     [System.IO.File]::WriteAllText($tempRemoteScript.FullName, $remoteScript, $utf8NoBom)
     $process = Start-Process -FilePath 'ssh' `
