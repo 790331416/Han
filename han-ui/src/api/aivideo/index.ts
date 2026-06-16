@@ -425,6 +425,14 @@ export function confirmAivideoDocument(data: {
   return post<void>('/aivideo/studio/document/confirm', data)
 }
 
+export function cancelConfirmAivideoDocument(data: {
+  projectId: string | number
+  documentId?: string | number
+  comment?: string
+}) {
+  return post<void>('/aivideo/studio/document/confirm/cancel', data)
+}
+
 export function generateAivideoPolish(data: {
   projectId: string | number
   documentId?: string | number

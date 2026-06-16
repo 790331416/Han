@@ -6,6 +6,15 @@
         <h2>{{ detail.project?.projectName || '短剧项目' }}</h2>
       </div>
       <div class="header-actions">
+        <el-button
+          v-if="hasAnyConfirmedItem"
+          type="warning"
+          plain
+          :loading="submitting"
+          @click="handleCancelAllConfirmations"
+        >
+          取消全部确认
+        </el-button>
         <el-tag type="primary" effect="plain">{{ getStageLabel(detail.project?.currentStage) }}</el-tag>
         <el-button :icon="Refresh" @click="loadDetail">刷新</el-button>
       </div>
@@ -31,17 +40,28 @@
         <div v-if="activeTab === 'document'" class="result-section">
           <div class="section-head">
             <h3>原文</h3>
-            <el-button
-              type="primary"
-              :icon="DocumentChecked"
-              :disabled="!latestDocument || latestDocument.confirmed === '1'"
-              :loading="submitting"
-              @click="handleConfirmDocument"
-            >
-              确认原文
-            </el-button>
+            <div class="section-actions">
+              <el-button
+                v-if="latestDocument?.confirmed === '1'"
+                type="warning"
+                plain
+                :loading="submitting"
+                @click="handleCancelConfirmDocument"
+              >
+                取消确认原文
+              </el-button>
+              <el-button
+                type="primary"
+                :icon="DocumentChecked"
+                :disabled="!latestDocument || latestDocument.confirmed === '1'"
+                :loading="submitting"
+                @click="handleConfirmDocument"
+              >
+                确认原文
+              </el-button>
+            </div>
           </div>
-          <div v-if="!documents.length" class="document-editor">
+          <div v-if="showDocumentEditor" class="document-editor">
             <div class="editor-toolbar">
               <el-select v-model="sourceDraft.sourceType" class="source-type-select">
                 <el-option label="纯文本" value="TEXT" />
@@ -65,7 +85,9 @@
               placeholder="粘贴小说、文档、剧情梗概或 Markdown，保存后再确认原文。"
             />
             <div class="editor-actions">
-              <span class="editor-tip">保存后会生成一条待确认原文，用于后续润色和剧本生成。</span>
+              <span class="editor-tip">
+                {{ sourceDraftDocumentId ? '正在修改当前待确认原文，保存后后续生成会使用这版内容。' : '保存后会生成一条待确认原文，用于后续润色和剧本生成。' }}
+              </span>
               <div class="editor-buttons">
                 <el-button :disabled="!hasSourceDraftText" :loading="submitting" @click="handleSaveDocument(false)">
                   保存原文
@@ -76,7 +98,7 @@
               </div>
             </div>
           </div>
-          <article v-for="doc in documents" :key="doc.documentId" class="text-block">
+          <article v-for="doc in visibleDocuments" :key="doc.documentId" class="text-block">
             <div class="meta-line">
               <el-tag>{{ doc.sourceType || 'TEXT' }}</el-tag>
               <span>{{ doc.charCount || 0 }} 字</span>
@@ -1851,6 +1873,7 @@ import {
   AIVIDEO_SCRIPT_STREAM_PATH,
   AIVIDEO_SHOT_VIDEO_STREAM_PATH,
   cancelConfirmAivideoAsset,
+  cancelConfirmAivideoDocument,
   cancelConfirmAivideoPolish,
   cancelConfirmAivideoScript,
   confirmAivideoAsset,
@@ -1888,6 +1911,7 @@ import {
   type AivideoProjectDetail,
   type AivideoScene,
   type AivideoShot,
+  type AivideoSourceDocument,
   type AivideoTask
 } from '@/api/aivideo'
 import JsonStructureViewer from '@/components/aivideo/JsonStructureViewer.vue'
@@ -2100,6 +2124,8 @@ const sourceDraft = reactive({
   fileName: '',
   rawText: ''
 })
+const sourceDraftDocumentId = ref<string | number>()
+const sourceDraftHydratedDocumentKey = ref('')
 
 const params = reactive({
   defaultRatio: '9:16',
@@ -2166,6 +2192,13 @@ const hasValidProjectId = computed(() => /^[1-9]\d*$/.test(projectId.value))
 const documents = computed(() => detail.documents || [])
 const latestDocument = computed(() => documents.value[0])
 const latestSourceText = computed(() => latestDocument.value?.parsedText || latestDocument.value?.rawText || '')
+const showDocumentEditor = computed(() => !documents.value.length || latestDocument.value?.confirmed !== '1')
+const visibleDocuments = computed(() => documents.value.filter((doc) => {
+  if (!sourceDraftDocumentId.value) {
+    return true
+  }
+  return String(doc.documentId) !== String(sourceDraftDocumentId.value)
+}))
 const hasSourceDraftText = computed(() => sourceDraft.rawText.trim().length > 0)
 const contentVersions = computed(() => detail.contentVersions || [])
 const polishVersions = computed(() => contentVersions.value.filter((item) => item.contentType === 'POLISH'))
@@ -2280,6 +2313,12 @@ const hasApprovedAssets = computed(() => [
   ...props.value,
   ...shots.value
 ].some((item) => item.confirmStatus === 'APPROVED'))
+const hasAnyConfirmedItem = computed(() =>
+  latestDocument.value?.confirmed === '1'
+  || !!selectedPolish.value
+  || !!selectedScript.value
+  || hasApprovedAssets.value
+)
 const activeStageStrategyItems = computed(() => stageStrategyItems(activePromptScope.value))
 const sceneImageDrawerTitle = computed(() => selectedSceneForImage.value?.sceneName
   ? `场景图候选：${selectedSceneForImage.value.sceneName}`
@@ -5221,6 +5260,31 @@ function normalizeProjectParamsForSave() {
   params.videoCandidateCount = clampInteger(params.videoCandidateCount, 1, 3, 1)
 }
 
+function resetSourceDraft() {
+  sourceDraftDocumentId.value = undefined
+  sourceDraftHydratedDocumentKey.value = ''
+  sourceDraft.fileName = ''
+  sourceDraft.rawText = ''
+  sourceDraft.sourceType = 'TEXT'
+}
+
+function hydrateSourceDraftFromDocument(doc?: AivideoSourceDocument) {
+  if (!doc || doc.confirmed === '1') {
+    sourceDraftDocumentId.value = undefined
+    sourceDraftHydratedDocumentKey.value = ''
+    return
+  }
+  const documentKey = String(doc.documentId)
+  if (sourceDraftHydratedDocumentKey.value === documentKey) {
+    return
+  }
+  sourceDraftDocumentId.value = doc.documentId
+  sourceDraftHydratedDocumentKey.value = documentKey
+  sourceDraft.sourceType = doc.sourceType || 'TEXT'
+  sourceDraft.fileName = doc.fileName || ''
+  sourceDraft.rawText = doc.parsedText || doc.rawText || ''
+}
+
 function handleEditProjectParams() {
   if (savingStrategies.value) {
     return
@@ -5294,6 +5358,10 @@ function handleConfirmDocument() {
   }
   const doc = latestDocument.value
   if (!doc) return
+  if (sourceDraftDocumentId.value && String(sourceDraftDocumentId.value) === String(doc.documentId) && hasSourceDraftText.value) {
+    handleSaveDocument(true)
+    return
+  }
   withSubmit(
     () => confirmAivideoDocument({
       projectId: projectId.value,
@@ -5301,6 +5369,24 @@ function handleConfirmDocument() {
       parsedText: doc.parsedText || doc.rawText
     }).then(() => undefined),
     '原文已确认'
+  )
+}
+
+function handleCancelConfirmDocument() {
+  if (!ensureProjectContext('当前项目无效，无法取消确认原文')) {
+    return
+  }
+  const doc = latestDocument.value
+  if (!doc) return
+  withSubmit(
+    () => cancelConfirmAivideoDocument({
+      projectId: projectId.value,
+      documentId: doc.documentId,
+      comment: '取消确认后重新修改原文'
+    }).then(() => {
+      hydrateSourceDraftFromDocument({ ...doc, confirmed: '0' })
+    }),
+    '原文已取消确认'
   )
 }
 
@@ -5337,6 +5423,7 @@ function handleSaveDocument(confirmAfterSave: boolean) {
     async () => {
       const res = await saveAivideoDocument({
         projectId: projectId.value,
+        documentId: sourceDraftDocumentId.value,
         sourceType: sourceDraft.sourceType,
         fileName: sourceDraft.fileName,
         rawText
@@ -5348,11 +5435,61 @@ function handleSaveDocument(confirmAfterSave: boolean) {
           parsedText: rawText
         })
       }
-      sourceDraft.fileName = ''
-      sourceDraft.rawText = ''
-      sourceDraft.sourceType = 'TEXT'
+      if (confirmAfterSave) {
+        resetSourceDraft()
+      } else {
+        sourceDraftDocumentId.value = res.data
+        sourceDraftHydratedDocumentKey.value = String(res.data)
+      }
     },
     confirmAfterSave ? '原文已保存并确认' : '原文已保存'
+  )
+}
+
+async function handleCancelAllConfirmations() {
+  if (!ensureProjectContext('当前项目无效，无法取消确认')) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '将按资产、剧本、润色、原文的顺序取消已确认内容，取消后你可以重新修改上游内容。是否继续？',
+      '取消全部确认',
+      { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '先不取消' }
+    )
+  } catch {
+    return
+  }
+  withSubmit(
+    async () => {
+      if (hasApprovedAssets.value) {
+        await cancelConfirmAivideoAsset({ projectId: projectId.value, targetType: 'ALL', comment: '取消全部确认' })
+      }
+      if (selectedScript.value) {
+        await cancelConfirmAivideoScript({
+          projectId: projectId.value,
+          versionId: selectedScript.value.versionId,
+          comment: '取消全部确认'
+        })
+      }
+      if (selectedPolish.value) {
+        await cancelConfirmAivideoPolish({
+          projectId: projectId.value,
+          versionId: selectedPolish.value.versionId,
+          comment: '取消全部确认'
+        })
+      }
+      const doc = latestDocument.value
+      if (doc?.confirmed === '1') {
+        await cancelConfirmAivideoDocument({
+          projectId: projectId.value,
+          documentId: doc.documentId,
+          comment: '取消全部确认'
+        })
+        hydrateSourceDraftFromDocument({ ...doc, confirmed: '0' })
+      }
+      assetContextCollapsed.value = false
+    },
+    '已取消全部确认'
   )
 }
 
@@ -6056,6 +6193,10 @@ watch(projectId, async (next, previous) => {
   await loadDetail()
   await recoverLatestAssetTask()
 })
+
+watch(latestDocument, (doc) => {
+  hydrateSourceDraftFromDocument(doc)
+}, { immediate: true })
 
 watch(promptScopes, () => {
   schedulePolishPromptPreview()

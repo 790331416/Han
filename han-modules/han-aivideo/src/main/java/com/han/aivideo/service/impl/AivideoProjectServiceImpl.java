@@ -142,6 +142,9 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
         if (!StringUtils.hasText(dto.getRawText()) && dto.getFileId() == null) {
             throw new BusinessException("原文内容或文件ID至少填写一个");
         }
+        if (dto.getDocumentId() != null) {
+            return updateDocument(dto);
+        }
         AiVideoSourceDocumentPo document = new AiVideoSourceDocumentPo();
         document.setProjectId(dto.getProjectId());
         document.setTenantId(resolveTenantIdForWrite());
@@ -162,6 +165,26 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
             fillUpdateAudit(project);
             projectMapper.updateById(project);
         }
+        return document.getDocumentId();
+    }
+
+    private Long updateDocument(AivideoDocumentSaveDto dto) {
+        AiVideoSourceDocumentPo document = requireDocument(dto.getProjectId(), dto.getDocumentId());
+        if (YES.equals(document.getConfirmed())) {
+            throw new BusinessException("已确认原文请先取消确认后再修改");
+        }
+        document.setSourceType(defaultString(dto.getSourceType(), "TEXT"));
+        document.setFileId(dto.getFileId());
+        document.setFileName(trimToNull(dto.getFileName()));
+        document.setRawText(trimToNull(dto.getRawText()));
+        document.setParsedText(null);
+        document.setChapterJson(null);
+        document.setCharCount(dto.getRawText() == null ? 0L : (long) dto.getRawText().length());
+        document.setParseStatus("PENDING");
+        document.setParseError(null);
+        document.setConfirmed(NO);
+        fillUpdateAudit(document);
+        documentMapper.updateById(document);
         return document.getDocumentId();
     }
 
@@ -201,6 +224,18 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
             throw new BusinessException("无权访问该项目");
         }
         return project;
+    }
+
+    private AiVideoSourceDocumentPo requireDocument(Long projectId, Long documentId) {
+        if (documentId == null) {
+            throw new BusinessException("原文ID不能为空");
+        }
+        AiVideoSourceDocumentPo document = documentMapper.selectById(documentId);
+        if (document == null || !projectId.equals(document.getProjectId())
+                || !Integer.valueOf(DEL_FLAG_NORMAL).equals(document.getDelFlag())) {
+            throw new BusinessException("原文不存在");
+        }
+        return document;
     }
 
     private AiVideoProjectSettingPo selectSetting(Long projectId) {
@@ -512,6 +547,11 @@ public class AivideoProjectServiceImpl extends AivideoServiceSupport implements 
     private void fillCreateAudit(AiVideoSourceDocumentPo document) {
         document.setCreateBy(resolveOperator());
         document.setCreateTime(now());
+        document.setUpdateBy(resolveOperator());
+        document.setUpdateTime(now());
+    }
+
+    private void fillUpdateAudit(AiVideoSourceDocumentPo document) {
         document.setUpdateBy(resolveOperator());
         document.setUpdateTime(now());
     }

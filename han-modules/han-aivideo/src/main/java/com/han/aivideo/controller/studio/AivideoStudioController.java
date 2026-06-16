@@ -104,6 +104,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     }
 
     @RepeatSubmit
+    @PostMapping("/document/confirm/cancel")
+    @PreAuthorize("@ss.isLogin()")
+    public R<Void> cancelConfirmSourceDocument(@Valid @RequestBody AivideoDocumentConfirmDto dto) {
+        return cancelConfirmDocument(dto);
+    }
+
+    @RepeatSubmit
     @PostMapping("/text/polish/generate")
     @PreAuthorize("@ss.isLogin()")
     public R<AiVideoContentVersionPo> generatePolishText(@Valid @RequestBody AivideoTextGenerateDto dto) {

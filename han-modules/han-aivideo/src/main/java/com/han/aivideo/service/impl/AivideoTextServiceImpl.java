@@ -138,6 +138,26 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void cancelConfirmDocument(AivideoDocumentConfirmDto dto) {
+        if (dto == null || dto.getProjectId() == null) {
+            throw new BusinessException("项目ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoSourceDocumentPo document = requireDocument(project.getProjectId(), dto.getDocumentId());
+        String beforeStatus = document.getConfirmed();
+        document.setConfirmed(NO);
+        document.setParseStatus("PENDING");
+        document.setParseError(null);
+        fillUpdateAudit(document);
+        documentMapper.updateById(document);
+
+        markProjectStage(project, AivideoProjectStage.DOCUMENT_SAVED);
+        insertReview(project, TARGET_DOCUMENT, document.getDocumentId(), ACTION_CANCEL_CONFIRM,
+                beforeStatus, NO, dto.getComment(), null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public AiVideoContentVersionPo generatePolish(AivideoTextGenerateDto dto) {
         if (dto == null || dto.getProjectId() == null) {
             throw new BusinessException("项目ID不能为空");

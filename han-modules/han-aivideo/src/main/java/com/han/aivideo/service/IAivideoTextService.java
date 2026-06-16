@@ -20,6 +20,8 @@ public interface IAivideoTextService {
 
     void confirmDocument(AivideoDocumentConfirmDto dto);
 
+    void cancelConfirmDocument(AivideoDocumentConfirmDto dto);
+
     AiVideoContentVersionPo generatePolish(AivideoTextGenerateDto dto);
 
     SseEmitter generatePolishStream(AivideoTextGenerateDto dto);

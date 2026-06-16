@@ -92,6 +92,11 @@ public class BAivideoStudioController {
         return R.ok();
     }
 
+    protected R<Void> cancelConfirmDocument(AivideoDocumentConfirmDto dto) {
+        textService.cancelConfirmDocument(dto);
+        return R.ok();
+    }
+
     protected R<AiVideoContentVersionPo> generatePolish(AivideoTextGenerateDto dto) {
         return R.ok(textService.generatePolish(dto));
     }

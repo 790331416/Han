@@ -2,23 +2,30 @@ package com.han.aivideo.service.impl;
 
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
+import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoPropPo;
+import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
+import com.han.aivideo.domain.po.AiVideoSourceDocumentPo;
+import com.han.aivideo.enums.AivideoProjectStage;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoPropMapper;
+import com.han.aivideo.mapper.AiVideoReviewRecordMapper;
 import com.han.aivideo.mapper.AiVideoSceneMapper;
 import com.han.aivideo.mapper.AiVideoShotMapper;
+import com.han.aivideo.mapper.AiVideoSourceDocumentMapper;
 import com.han.api.ai.domain.AiVideoGenerateRequest;
 import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.math.BigDecimal;
@@ -35,8 +42,57 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AivideoTextServiceImplTest {
+
+    @Test
+    void cancelConfirmDocumentReopensDocumentAndRollsBackStage() {
+        AiVideoProjectMapper projectMapper = mock(AiVideoProjectMapper.class);
+        AiVideoSourceDocumentMapper documentMapper = mock(AiVideoSourceDocumentMapper.class);
+        AiVideoReviewRecordMapper reviewRecordMapper = mock(AiVideoReviewRecordMapper.class);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectId(9L);
+        project.setProjectName("短剧项目");
+        project.setCurrentStage(AivideoProjectStage.ASSET_CONFIRMED.name());
+        project.setDelFlag(0);
+        when(projectMapper.selectById(9L)).thenReturn(project);
+
+        AiVideoSourceDocumentPo document = new AiVideoSourceDocumentPo();
+        document.setDocumentId(88L);
+        document.setProjectId(9L);
+        document.setConfirmed("1");
+        document.setParseStatus("CONFIRMED");
+        document.setDelFlag(0);
+        when(documentMapper.selectById(88L)).thenReturn(document);
+
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                projectMapper, null, documentMapper, null, null, null, null, null,
+                reviewRecordMapper, null, null, null);
+        AivideoDocumentConfirmDto dto = new AivideoDocumentConfirmDto();
+        dto.setProjectId(9L);
+        dto.setDocumentId(88L);
+        dto.setComment("重新修改原文");
+
+        service.cancelConfirmDocument(dto);
+
+        ArgumentCaptor<AiVideoSourceDocumentPo> documentCaptor =
+                ArgumentCaptor.forClass(AiVideoSourceDocumentPo.class);
+        ArgumentCaptor<AiVideoProjectPo> projectCaptor =
+                ArgumentCaptor.forClass(AiVideoProjectPo.class);
+        ArgumentCaptor<AiVideoReviewRecordPo> reviewCaptor =
+                ArgumentCaptor.forClass(AiVideoReviewRecordPo.class);
+        verify(documentMapper).updateById(documentCaptor.capture());
+        verify(projectMapper).updateById(projectCaptor.capture());
+        verify(reviewRecordMapper).insert(reviewCaptor.capture());
+        assertEquals("0", documentCaptor.getValue().getConfirmed());
+        assertEquals("PENDING", documentCaptor.getValue().getParseStatus());
+        assertEquals(AivideoProjectStage.DOCUMENT_SAVED.name(), projectCaptor.getValue().getCurrentStage());
+        assertEquals("DOCUMENT", reviewCaptor.getValue().getTargetType());
+        assertEquals("CANCEL_CONFIRM", reviewCaptor.getValue().getActionType());
+    }
 
     @Test
     @SuppressWarnings("unchecked")
