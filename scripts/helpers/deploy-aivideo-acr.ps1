@@ -225,7 +225,21 @@ echo "Deploy finished."
 '@
 
 $remoteCommand = "TAG='$Tag' REGISTRY='$Registry' DEPLOY_DIR='$DeployDir' SERVICES='$serviceCsv' WAIT_SECONDS='$wait' HEALTH_CHECK='$healthCheck' bash -s"
-$remoteScript | & ssh $SshTarget $remoteCommand
-if ($LASTEXITCODE -ne 0) {
-    throw "Remote deploy failed with exit code $LASTEXITCODE"
+$tempRemoteScript = New-TemporaryFile
+try {
+    # PowerShell 管道给 ssh 传字符串时可能带入 BOM，导致远端 bash 的 set -e 失效。
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tempRemoteScript.FullName, $remoteScript, $utf8NoBom)
+    $process = Start-Process -FilePath 'ssh' `
+        -ArgumentList @($SshTarget, $remoteCommand) `
+        -NoNewWindow `
+        -Wait `
+        -PassThru `
+        -RedirectStandardInput $tempRemoteScript.FullName
+    if ($process.ExitCode -ne 0) {
+        throw "Remote deploy failed with exit code $($process.ExitCode)"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRemoteScript.FullName -Force -ErrorAction SilentlyContinue
 }
