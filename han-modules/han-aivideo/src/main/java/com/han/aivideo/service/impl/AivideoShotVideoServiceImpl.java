@@ -154,8 +154,8 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 "projectName", firstText(project.getProjectName()),
                 "shotNo", String.valueOf(firstInteger(shot.getShotNo(), 0))
         ));
-        String json = AivideoTextServiceImpl.normalizeAssetJsonBlock(rawResult);
-        ShotScriptOptimizePayload payload = XuJsonUtil.parseObject(json, ShotScriptOptimizePayload.class);
+        String json = normalizeShotScriptOptimizeJson(project, rawResult, userPrompt, dto.getCustomPrompt());
+        ShotScriptOptimizePayload payload = parseShotScriptOptimizePayload(json, rawResult);
         if (payload == null) {
             throw new BusinessException("分镜优化结果为空");
         }
@@ -516,6 +516,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 6. 如果出现武器、发光物、收纳盒、试卷、账本、价格标签等关键道具，必须在 actionDesc 或 promptText 里锁定颜色、材质、持有人和结尾归属。
                 7. 5 秒镜头最多 1 个主动作 + 1 个反应 + 1 个结尾状态；动作过多时压缩当前镜头，不要硬塞。
                 8. dialogue 只写真正说出口的台词；voiceOver 只写旁白/画外音；心理活动不要写成会发声的台词。
+
+                ## 必须返回的 JSON 结构
+                {
+                  "durationSec": 5,
+                  "shotType": "单人近景",
+                  "cameraPosition": "正面平视",
+                  "cameraMovement": "固定",
+                  "transitionBeforeType": "CONTINUE",
+                  "transitionBeforeDesc": "连续镜头：明确说明上一镜角色/道具/方位如何衔接。",
+                  "actionDesc": "只写当前镜头可执行动作，控制在本镜秒数预算内。",
+                  "dialogue": "",
+                  "voiceOver": "",
+                  "emotion": "紧张",
+                  "bgmCue": "",
+                  "sfxCues": "",
+                  "promptText": "给视频模型看的补充执行提示，锁定画内角色、道具、方位和结尾状态。",
+                  "characterIds": "只写当前镜头画内角色名称或ID，多个用逗号分隔",
+                  "referenceMediaIds": ""
+                }
                 """.formatted(
                 firstText(project.getProjectName()),
                 scene == null ? "未绑定" : firstText(scene.getSceneName(), String.valueOf(scene.getSceneId())),
@@ -542,6 +561,73 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 firstText(shot.getReferenceMediaIds()),
                 failures,
                 firstText(dto.getCustomPrompt(), "无")
+        );
+    }
+
+    private String normalizeShotScriptOptimizeJson(AiVideoProjectPo project, String rawResult, String sourcePrompt, String customPrompt) {
+        try {
+            String json = AivideoTextServiceImpl.normalizeAssetJsonBlock(rawResult);
+            parseShotScriptOptimizePayload(json, rawResult);
+            return json;
+        } catch (RuntimeException primaryException) {
+            String repairPrompt = buildShotScriptOptimizeJsonRepairPrompt(rawResult, sourcePrompt, primaryException.getMessage());
+            String repaired = renderPrompt(project, null, customPrompt, repairPrompt, Map.of(
+                    "projectName", firstText(project.getProjectName()),
+                    "repairType", "shot-script-optimize-json"
+            ));
+            try {
+                String json = AivideoTextServiceImpl.normalizeAssetJsonBlock(repaired);
+                parseShotScriptOptimizePayload(json, repaired);
+                return json;
+            } catch (RuntimeException repairException) {
+                throw new BusinessException("分镜优化结果不是可用 JSON，请补充提示词后重试。原始输出："
+                        + truncateForError(rawResult, 300));
+            }
+        }
+    }
+
+    private ShotScriptOptimizePayload parseShotScriptOptimizePayload(String json, String sourceText) {
+        try {
+            ShotScriptOptimizePayload payload = XuJsonUtil.parseObject(json, ShotScriptOptimizePayload.class);
+            if (payload == null) {
+                throw new BusinessException("分镜优化结果为空");
+            }
+            return payload;
+        } catch (RuntimeException exception) {
+            throw new BusinessException("分镜优化 JSON 解析失败：" + truncateForError(sourceText, 300));
+        }
+    }
+
+    private String buildShotScriptOptimizeJsonRepairPrompt(String rawResult, String sourcePrompt, String errorMessage) {
+        return """
+                你是严格 JSON 修复器。请把【模型原始输出】整理成一个可被后端直接解析的 JSON 对象。
+
+                ## 解析失败原因
+                %s
+
+                ## 原始优化任务
+                %s
+
+                ## 模型原始输出
+                %s
+
+                ## 硬规则
+                1. 只输出一个 JSON 对象，不要解释、不要 Markdown、不要代码围栏。
+                2. 只允许使用这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、dialogue、voiceOver、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
+                3. 如果原始输出没有明确给出某个字段，就不要编造该字段；确实需要保留空值时用空字符串。
+                4. dialogue 只放说出口的台词；voiceOver 只放旁白/画外音；心理活动不能写成台词。
+
+                ## 返回结构示例
+                {
+                  "transitionBeforeDesc": "单人镜头：画内主体锁定为X，上一镜其他角色被裁切在画外不入画。",
+                  "actionDesc": "X完成一个主动作，结尾状态明确。",
+                  "promptText": "锁定画内角色、道具、方位和结尾状态。",
+                  "characterIds": "X"
+                }
+                """.formatted(
+                truncateForPrompt(errorMessage, 500),
+                truncateForPrompt(sourcePrompt, 2500),
+                truncateForPrompt(rawResult, 2500)
         );
     }
 
@@ -2605,6 +2691,28 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
             }
         }
         return String.join("、", names);
+    }
+
+    private String truncateForPrompt(String text, int maxLength) {
+        if (!StringUtils.hasText(text)) {
+            return "无";
+        }
+        String normalized = text.trim();
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "...";
+    }
+
+    private String truncateForError(String text, int maxLength) {
+        if (!StringUtils.hasText(text)) {
+            return "无";
+        }
+        String normalized = text.trim().replaceAll("\\s+", " ");
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "...";
     }
 
     private List<String> parseCharacterTokens(String characterIds) {

@@ -29,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AivideoShotVideoServiceImplTest {
@@ -97,6 +99,40 @@ class AivideoShotVideoServiceImplTest {
         assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("单人镜头"), fixture.currentShot::getTransitionBeforeDesc);
         assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("男散打（乌鸡）"), fixture.currentShot::getTransitionBeforeDesc);
         assertTrue(fixture.currentShot.getActionDesc().contains("结尾持剑站定"), fixture.currentShot::getActionDesc);
+    }
+
+    @Test
+    void optimizeShotScriptRepairsNaturalLanguageAiResultIntoJson() {
+        TestFixture fixture = new TestFixture();
+        fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
+        fixture.currentShot.setCharacterIds("剑魂");
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，剑尖显出冷白光。");
+        when(fixture.aiServiceClient.renderTextPrompt(any()))
+                .thenReturn(R.ok("""
+                        建议这样优化：
+                        transitionBeforeDesc 写成单人镜头，明确狂战士（红狗）和男散打（乌鸡）在画外不入画。
+                        actionDesc 写成剑魂右手拔出寒光剑，剑身显出冷白光，结尾持剑站定。
+                        """))
+                .thenReturn(R.ok("""
+                        {
+                          "transitionBeforeDesc": "连续镜头，单人镜头：画内主体锁定为剑魂，狂战士（红狗）和男散打（乌鸡）被裁切在画外不入画。",
+                          "actionDesc": "剑魂右手拔出寒光剑，剑身显出冷白光，结尾持剑站定。",
+                          "promptText": "只拍剑魂单人，其他角色不自动入画。",
+                          "characterIds": "剑魂"
+                        }
+                        """));
+
+        AivideoShotScriptOptimizeDto dto = new AivideoShotScriptOptimizeDto();
+        dto.setProjectId(1L);
+        dto.setShotId(101L);
+        dto.setPreflightFailures(List.of("上一镜角色疑似无说明消失：狂战士（红狗）、男散打（乌鸡）"));
+
+        fixture.service.optimizeShotScript(dto);
+
+        verify(fixture.aiServiceClient, times(2)).renderTextPrompt(any());
+        assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("画外不入画"), fixture.currentShot::getTransitionBeforeDesc);
+        assertTrue(fixture.currentShot.getActionDesc().contains("结尾持剑站定"), fixture.currentShot::getActionDesc);
+        assertTrue(fixture.currentShot.getPromptText().contains("其他角色不自动入画"), fixture.currentShot::getPromptText);
     }
 
     @Test
