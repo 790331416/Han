@@ -1660,7 +1660,19 @@
         <section class="shot-video-preflight-panel">
           <div class="panel-title-row">
             <strong>视频生成前预检</strong>
-            <el-tag :type="shotVideoPreflightLevel" effect="plain">{{ shotVideoPreflightSummary }}</el-tag>
+            <div class="preflight-title-actions">
+              <el-button
+                v-if="shotVideoFailedPreflightItems.length"
+                size="small"
+                type="primary"
+                plain
+                :loading="shotScriptOptimizing"
+                @click="handleOptimizeShotScriptFromPreflight"
+              >
+                优化分镜脚本
+              </el-button>
+              <el-tag :type="shotVideoPreflightLevel" effect="plain">{{ shotVideoPreflightSummary }}</el-tag>
+            </div>
           </div>
           <ul class="shot-video-preflight-list">
             <li v-for="item in shotVideoPreflightItems" :key="`${item.status}-${item.title}`">
@@ -1889,6 +1901,7 @@ import {
   listAivideoMedia,
   listAivideoProjectEditTasks,
   listAivideoShotVideoTasks,
+  optimizeAivideoShotScript,
   pollAivideoProjectEditTask,
   previewAivideoMedia,
   previewAivideoAssetPrompt,
@@ -2065,6 +2078,7 @@ const selectedShotForVideo = ref<AivideoShot>()
 const shotVideoPromptPreviewText = ref('')
 const shotVideoLoading = ref(false)
 const shotVideoGenerating = ref(false)
+const shotScriptOptimizing = ref(false)
 const shotMediaAssets = ref<AivideoMediaAsset[]>([])
 const shotVideoCandidates = ref<AivideoMediaAsset[]>([])
 const shotVideoTasks = ref<AivideoTask[]>([])
@@ -2268,6 +2282,7 @@ const mediaRegisterAccept = computed(() => mediaRegisterContext.value?.accept ||
 const selectedShotScreenCharacterRule = computed(() => buildShotScreenCharacterRule(selectedShotForVideo.value))
 const selectedShotTtsAudio = computed(() => shotTtsAudios.value.find(isSelectedMediaAsset))
 const shotVideoPreflightItems = computed(() => buildShotVideoPreflightItems(selectedShotForVideo.value))
+const shotVideoFailedPreflightItems = computed(() => shotVideoPreflightItems.value.filter((item) => item.status === 'fail'))
 const shotVideoPreflightLevel = computed(() => {
   if (shotVideoPreflightItems.value.some((item) => item.status === 'fail')) {
     return 'danger'
@@ -4286,6 +4301,76 @@ async function confirmShotVideoPreflight() {
     return true
   } catch {
     return false
+  }
+}
+
+async function handleOptimizeShotScriptFromPreflight() {
+  const shot = selectedShotForVideo.value
+  if (!shot || shotScriptOptimizing.value) {
+    return
+  }
+  const failures = shotVideoFailedPreflightItems.value.map((item) => `${item.title}：${item.detail}`)
+  if (!failures.length) {
+    ElMessage.info('当前没有需要优化的不合格项')
+    return
+  }
+  const failureHtml = failures.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+  let customPrompt = ''
+  try {
+    const result = await ElMessageBox.prompt(
+      `
+        <div class="shot-video-preflight-dialog">
+          <p>系统会根据以下不合格项优化当前分镜脚本，保存后会自动重新评估：</p>
+          <ul>${failureHtml}</ul>
+          <p>也可以补充本次优化要求，例如“保持单人镜头，只补画外/裁切说明”。</p>
+        </div>
+      `,
+      '优化分镜脚本',
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '开始优化',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputPlaceholder: '补充你希望大模型遵守的优化要求，可不填',
+        inputValue: '',
+        distinguishCancelAndClose: true
+      }
+    )
+    customPrompt = String(result.value || '').trim()
+  } catch {
+    return
+  }
+  shotScriptOptimizing.value = true
+  try {
+    const response = await optimizeAivideoShotScript({
+      projectId: projectId.value,
+      shotId: shot.shotId,
+      customPrompt,
+      preflightFailures: failures
+    })
+    if (response.data?.shot) {
+      mergeOptimizedShot(response.data.shot)
+    }
+    await loadDetailInternal(true)
+    selectedShotForVideo.value = shots.value.find((item) => String(item.shotId) === String(shot.shotId))
+      || selectedShotForVideo.value
+    await refreshShotVideoPromptPreview()
+    ElMessage.success('分镜脚本已优化，请复核新的预检结果')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '分镜脚本优化失败')
+  } finally {
+    shotScriptOptimizing.value = false
+  }
+}
+
+function mergeOptimizedShot(shot: AivideoShot) {
+  const list = detail.shots || []
+  const index = list.findIndex((item) => String(item.shotId) === String(shot.shotId))
+  if (index >= 0) {
+    list[index] = { ...list[index], ...shot }
+  }
+  if (selectedShotForVideo.value && String(selectedShotForVideo.value.shotId) === String(shot.shotId)) {
+    selectedShotForVideo.value = { ...selectedShotForVideo.value, ...shot }
   }
 }
 
@@ -6566,6 +6651,14 @@ onBeforeUnmount(() => {
     margin: 0;
     font-size: 15px;
   }
+}
+
+.preflight-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .source-preview-text {

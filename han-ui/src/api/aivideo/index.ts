@@ -200,6 +200,12 @@ export interface AivideoShot {
   tailFrameMediaId?: string | number
 }
 
+export interface AivideoShotScriptOptimizeResult {
+  shot?: AivideoShot
+  optimizedJson?: string
+  rawResult?: string
+}
+
 export interface AivideoAssetSummary {
   characters?: AivideoCharacter[]
   scenes?: AivideoScene[]
@@ -619,6 +625,15 @@ export function previewAivideoShotVideoPrompt(data: {
   referenceMediaIds?: Array<string | number>
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/media/shot/video/prompt-preview', data, { silentError: true })
+}
+
+export function optimizeAivideoShotScript(data: {
+  projectId: string | number
+  shotId: string | number
+  customPrompt?: string
+  preflightFailures?: string[]
+}) {
+  return post<AivideoShotScriptOptimizeResult>('/aivideo/studio/media/shot/script/optimize', data)
 }
 
 export function listAivideoShotVideoTasks(query: {

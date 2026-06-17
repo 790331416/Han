@@ -1,8 +1,10 @@
 package com.han.aivideo.service;
 
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
+import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
+import com.han.aivideo.domain.vo.AivideoShotScriptOptimizeVo;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -13,6 +15,8 @@ import java.util.List;
 public interface IAivideoShotVideoService {
 
     AivideoPromptPreviewVo previewShotVideoPrompt(AivideoShotVideoGenerateDto dto);
+
+    AivideoShotScriptOptimizeVo optimizeShotScript(AivideoShotScriptOptimizeDto dto);
 
     SseEmitter generateShotVideosStream(AivideoShotVideoGenerateDto dto);
 

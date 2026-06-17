@@ -14,6 +14,7 @@ import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
+import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.dto.AivideoShotTtsGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
@@ -26,6 +27,7 @@ import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectEditPreflightVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
+import com.han.aivideo.domain.vo.AivideoShotScriptOptimizeVo;
 import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
@@ -265,6 +267,13 @@ public class AivideoStudioController extends BAivideoStudioController {
     @PreAuthorize("@ss.isLogin()")
     public R<AivideoPromptPreviewVo> previewShotVideo(@Valid @RequestBody AivideoShotVideoGenerateDto dto) {
         return previewShotVideoPrompt(dto);
+    }
+
+    @PostMapping("/media/shot/script/optimize")
+    @PreAuthorize("@ss.isLogin()")
+    public R<AivideoShotScriptOptimizeVo> optimizeShotScriptForVideo(
+            @Valid @RequestBody AivideoShotScriptOptimizeDto dto) {
+        return optimizeShotScript(dto);
     }
 
     @PostMapping(value = "/media/shot/video/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

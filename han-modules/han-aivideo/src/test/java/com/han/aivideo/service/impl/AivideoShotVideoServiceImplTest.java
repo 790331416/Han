@@ -1,5 +1,6 @@
 package com.han.aivideo.service.impl;
 
+import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
@@ -68,6 +69,34 @@ class AivideoShotVideoServiceImplTest {
 
         assertTrue(exception.getMessage().contains("上一镜角色疑似无说明消失"), exception::getMessage);
         assertTrue(exception.getMessage().contains("狗小汪"), exception::getMessage);
+    }
+
+    @Test
+    void optimizeShotScriptUpdatesCurrentShotWithAiReturnedFields() {
+        TestFixture fixture = new TestFixture();
+        fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
+        fixture.previousShot.setActionDesc("剑魂、狂战士（红狗）、男散打（乌鸡）同处暗黑深渊副本密闭空间。");
+        fixture.currentShot.setCharacterIds("剑魂");
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，剑尖显出冷白光。");
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("""
+                {
+                  "transitionBeforeDesc": "连续镜头，单人镜头：画内主体锁定为剑魂，狂战士（红狗）和男散打（乌鸡）被裁切在画外不入画。",
+                  "actionDesc": "剑魂右手拔出寒光剑，剑尖显出冷白光，结尾持剑站定。",
+                  "promptText": "只拍剑魂单人半身，其他角色不得自动出现。"
+                }
+                """));
+
+        AivideoShotScriptOptimizeDto dto = new AivideoShotScriptOptimizeDto();
+        dto.setProjectId(1L);
+        dto.setShotId(101L);
+        dto.setCustomPrompt("保持剑魂单人镜头，不要把其他角色塞回画面。");
+        dto.setPreflightFailures(List.of("上一镜角色疑似无说明消失：狂战士（红狗）、男散打（乌鸡）"));
+
+        fixture.service.optimizeShotScript(dto);
+
+        assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("单人镜头"), fixture.currentShot::getTransitionBeforeDesc);
+        assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("男散打（乌鸡）"), fixture.currentShot::getTransitionBeforeDesc);
+        assertTrue(fixture.currentShot.getActionDesc().contains("结尾持剑站定"), fixture.currentShot::getActionDesc);
     }
 
     @Test

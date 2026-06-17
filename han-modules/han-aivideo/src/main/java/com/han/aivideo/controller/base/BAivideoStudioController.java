@@ -13,6 +13,7 @@ import com.han.aivideo.domain.dto.AivideoProjectEditGenerateDto;
 import com.han.aivideo.domain.dto.AivideoProjectDto;
 import com.han.aivideo.domain.dto.AivideoSceneImageGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotSceneUpdateDto;
+import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.dto.AivideoShotTtsGenerateDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.dto.AivideoTextGenerateDto;
@@ -27,6 +28,7 @@ import com.han.aivideo.domain.vo.AivideoMediaPreviewResource;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
 import com.han.aivideo.domain.vo.AivideoProjectEditPreflightVo;
 import com.han.aivideo.domain.vo.AivideoProjectDetailVo;
+import com.han.aivideo.domain.vo.AivideoShotScriptOptimizeVo;
 import com.han.aivideo.service.IAivideoProjectEditService;
 import com.han.aivideo.service.IAivideoProjectService;
 import com.han.aivideo.service.IAivideoSceneImageService;
@@ -203,6 +205,10 @@ public class BAivideoStudioController {
 
     protected R<AivideoPromptPreviewVo> previewShotVideoPrompt(AivideoShotVideoGenerateDto dto) {
         return R.ok(shotVideoService.previewShotVideoPrompt(dto));
+    }
+
+    protected R<AivideoShotScriptOptimizeVo> optimizeShotScript(AivideoShotScriptOptimizeDto dto) {
+        return R.ok(shotVideoService.optimizeShotScript(dto));
     }
 
     protected SseEmitter generateShotVideos(AivideoShotVideoGenerateDto dto) {

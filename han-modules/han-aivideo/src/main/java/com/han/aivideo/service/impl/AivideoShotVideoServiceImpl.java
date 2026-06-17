@@ -2,6 +2,7 @@ package com.han.aivideo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
@@ -13,6 +14,7 @@ import com.han.aivideo.domain.po.AiVideoScenePo;
 import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.vo.AivideoMediaAssetVo;
 import com.han.aivideo.domain.vo.AivideoPromptPreviewVo;
+import com.han.aivideo.domain.vo.AivideoShotScriptOptimizeVo;
 import com.han.aivideo.enums.AivideoTaskStatus;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
 import com.han.aivideo.mapper.AiVideoGenerationTaskMapper;
@@ -135,6 +137,37 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         vo.setUserPrompt(context.prompt());
         vo.setCustomPrompt(dto.getCustomPrompt());
         vo.setEffectivePrompt("系统提示词：\n" + SHOT_VIDEO_SYSTEM_PROMPT + "\n\n用户提示词：\n" + context.prompt());
+        return vo;
+    }
+
+    @Override
+    public AivideoShotScriptOptimizeVo optimizeShotScript(AivideoShotScriptOptimizeDto dto) {
+        if (dto == null || dto.getProjectId() == null || dto.getShotId() == null) {
+            throw new BusinessException("项目ID和分镜ID不能为空");
+        }
+        AiVideoProjectPo project = requireProject(dto.getProjectId());
+        AiVideoShotPo shot = requireShot(project.getProjectId(), dto.getShotId());
+        AiVideoScenePo scene = shot.getSceneId() == null ? null : requireScene(project.getProjectId(), shot.getSceneId());
+        AiVideoShotPo previousShot = findPreviousShot(project, shot);
+        String userPrompt = buildShotScriptOptimizePrompt(project, scene, shot, previousShot, dto);
+        String rawResult = renderPrompt(project, null, dto.getCustomPrompt(), userPrompt, Map.of(
+                "projectName", firstText(project.getProjectName()),
+                "shotNo", String.valueOf(firstInteger(shot.getShotNo(), 0))
+        ));
+        String json = AivideoTextServiceImpl.normalizeAssetJsonBlock(rawResult);
+        ShotScriptOptimizePayload payload = XuJsonUtil.parseObject(json, ShotScriptOptimizePayload.class);
+        if (payload == null) {
+            throw new BusinessException("分镜优化结果为空");
+        }
+        applyShotScriptOptimization(shot, payload);
+        shot.setUpdateBy(resolveOperator());
+        shot.setUpdateTime(now());
+        shotMapper.updateById(shot);
+
+        AivideoShotScriptOptimizeVo vo = new AivideoShotScriptOptimizeVo();
+        vo.setShot(shot);
+        vo.setOptimizedJson(json);
+        vo.setRawResult(rawResult);
         return vo;
     }
 
@@ -419,6 +452,157 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 candidateCount, ratio, resolution, durationSec, dto.getCustomPrompt(), prompt,
                 referenceImageUrl, referenceImageUrls, referenceVideoUrl, referenceAudioUrl, referenceMedias,
                 referenceImageAsFirstFrame, referenceAudioSeedAllowed, variables, strategy);
+    }
+
+    private String buildShotScriptOptimizePrompt(AiVideoProjectPo project, AiVideoScenePo scene,
+                                                 AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                 AivideoShotScriptOptimizeDto dto) {
+        String failures = dto.getPreflightFailures() == null || dto.getPreflightFailures().isEmpty()
+                ? "无，按当前分镜视频预检规则主动优化。"
+                : String.join("\n", dto.getPreflightFailures());
+        String projectCharacters = selectProjectCharacters(project.getProjectId()).stream()
+                .map(item -> item.getCharacterName() + "#" + item.getCharacterId())
+                .filter(StringUtils::hasText)
+                .toList()
+                .toString();
+        String projectProps = selectProjectProps(project.getProjectId()).stream()
+                .map(item -> firstText(item.getPropName()) + (item.getLockedMediaId() == null ? "" : "#" + item.getLockedMediaId()))
+                .filter(StringUtils::hasText)
+                .toList()
+                .toString();
+        return """
+                你是短剧分镜连续性审片和修稿助手。请只优化“当前分镜脚本字段”，不要重写整部剧本。
+
+                ## 项目信息
+                项目：%s
+                场景：%s
+                项目角色：%s
+                项目道具：%s
+
+                ## 上一分镜
+                %s
+
+                ## 当前分镜原始字段
+                shotId=%s，episodeNo=%s，shotNo=%s，durationSec=%s
+                characterIds=%s
+                shotType=%s
+                cameraPosition=%s
+                cameraMovement=%s
+                transitionBeforeType=%s
+                transitionBeforeDesc=%s
+                actionDesc=%s
+                dialogue=%s
+                voiceOver=%s
+                emotion=%s
+                bgmCue=%s
+                sfxCues=%s
+                promptText=%s
+                referenceMediaIds=%s
+
+                ## 当前不合格项
+                %s
+
+                ## 用户追加优化要求
+                %s
+
+                ## 硬规则
+                1. 只输出一个 JSON 对象，不要解释、不要 Markdown。
+                2. 只允许返回这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、dialogue、voiceOver、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
+                3. 不要改 episodeNo、shotNo、sceneId、keyframeMediaId、tailFrameMediaId、videoMediaId、confirmStatus、generationStatus。
+                4. 如果失败项是“上一镜角色疑似无说明消失”，优先判断当前镜头是否是单人镜头、单人反应、特写裁切或插入镜头：
+                   - 如果当前只绑定一个画内主体且没有递给/接过/靠近/同框/对话等互动动作，请在 transitionBeforeDesc 或 promptText 中明确：“单人镜头：画内主体锁定为X，上一镜其他角色A、B被裁切在画外不入画，不自动出现。”
+                   - 如果当前动作确实需要其他角色入画，请把这些角色写入 characterIds，并在 actionDesc 中点名每个人的位置、动作和结尾状态。
+                5. 如果动作里有递给、接过、交给、展示给、拿给，必须补清 giver、receiver、prop、screenDirection、finalOwner。
+                6. 如果出现武器、发光物、收纳盒、试卷、账本、价格标签等关键道具，必须在 actionDesc 或 promptText 里锁定颜色、材质、持有人和结尾归属。
+                7. 5 秒镜头最多 1 个主动作 + 1 个反应 + 1 个结尾状态；动作过多时压缩当前镜头，不要硬塞。
+                8. dialogue 只写真正说出口的台词；voiceOver 只写旁白/画外音；心理活动不要写成会发声的台词。
+                """.formatted(
+                firstText(project.getProjectName()),
+                scene == null ? "未绑定" : firstText(scene.getSceneName(), String.valueOf(scene.getSceneId())),
+                projectCharacters,
+                projectProps,
+                shotSnapshot(previousShot),
+                shot.getShotId(),
+                firstInteger(shot.getEpisodeNo(), 0),
+                firstInteger(shot.getShotNo(), 0),
+                firstInteger(shot.getDurationSec(), 0),
+                firstText(shot.getCharacterIds()),
+                firstText(shot.getShotType()),
+                firstText(shot.getCameraPosition()),
+                firstText(shot.getCameraMovement()),
+                firstText(shot.getTransitionBeforeType()),
+                firstText(shot.getTransitionBeforeDesc()),
+                firstText(shot.getActionDesc()),
+                firstText(shot.getDialogue()),
+                firstText(shot.getVoiceOver()),
+                firstText(shot.getEmotion()),
+                firstText(shot.getBgmCue()),
+                firstText(shot.getSfxCues()),
+                firstText(shot.getPromptText()),
+                firstText(shot.getReferenceMediaIds()),
+                failures,
+                firstText(dto.getCustomPrompt(), "无")
+        );
+    }
+
+    private String shotSnapshot(AiVideoShotPo shot) {
+        if (shot == null) {
+            return "无上一分镜。";
+        }
+        return "shotNo=" + firstInteger(shot.getShotNo(), 0)
+                + "，characterIds=" + firstText(shot.getCharacterIds())
+                + "，transitionBeforeType=" + firstText(shot.getTransitionBeforeType())
+                + "，transitionBeforeDesc=" + firstText(shot.getTransitionBeforeDesc())
+                + "，actionDesc=" + firstText(shot.getActionDesc())
+                + "，promptText=" + firstText(shot.getPromptText());
+    }
+
+    private void applyShotScriptOptimization(AiVideoShotPo shot, ShotScriptOptimizePayload payload) {
+        if (payload.durationSec != null) {
+            shot.setDurationSec(normalizeAivideoShotDuration(payload.durationSec));
+        }
+        if (StringUtils.hasText(payload.shotType)) {
+            shot.setShotType(payload.shotType.trim());
+        }
+        if (StringUtils.hasText(payload.cameraPosition)) {
+            shot.setCameraPosition(payload.cameraPosition.trim());
+        }
+        if (StringUtils.hasText(payload.cameraMovement)) {
+            shot.setCameraMovement(payload.cameraMovement.trim());
+        }
+        if (StringUtils.hasText(payload.transitionBeforeType)) {
+            shot.setTransitionBeforeType(payload.transitionBeforeType.trim());
+        }
+        if (StringUtils.hasText(payload.transitionBeforeDesc)) {
+            shot.setTransitionBeforeDesc(payload.transitionBeforeDesc.trim());
+        }
+        if (StringUtils.hasText(payload.actionDesc)) {
+            shot.setActionDesc(payload.actionDesc.trim());
+        }
+        if (StringUtils.hasText(payload.dialogue)) {
+            shot.setDialogue(payload.dialogue.trim());
+        }
+        if (StringUtils.hasText(payload.voiceOver)) {
+            shot.setVoiceOver(payload.voiceOver.trim());
+        }
+        if (StringUtils.hasText(payload.emotion)) {
+            shot.setEmotion(payload.emotion.trim());
+        }
+        if (StringUtils.hasText(payload.bgmCue)) {
+            shot.setBgmCue(payload.bgmCue.trim());
+        }
+        if (StringUtils.hasText(payload.sfxCues)) {
+            shot.setSfxCues(payload.sfxCues.trim());
+        }
+        if (StringUtils.hasText(payload.promptText)) {
+            shot.setPromptText(payload.promptText.trim());
+        }
+        if (StringUtils.hasText(payload.characterIds)) {
+            shot.setCharacterIds(payload.characterIds.trim());
+        }
+        if (StringUtils.hasText(payload.referenceMediaIds)) {
+            shot.setReferenceMediaIds(payload.referenceMediaIds.trim());
+        }
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {
@@ -2869,6 +3053,25 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private record VideoBytes(byte[] bytes, String mimeType) {
+    }
+
+    @lombok.Data
+    private static final class ShotScriptOptimizePayload {
+        private Integer durationSec;
+        private String shotType;
+        private String cameraPosition;
+        private String cameraMovement;
+        private String transitionBeforeType;
+        private String transitionBeforeDesc;
+        private String actionDesc;
+        private String dialogue;
+        private String voiceOver;
+        private String emotion;
+        private String bgmCue;
+        private String sfxCues;
+        private String promptText;
+        private String characterIds;
+        private String referenceMediaIds;
     }
 
     private static final class ProviderTaskPendingException extends RuntimeException {
