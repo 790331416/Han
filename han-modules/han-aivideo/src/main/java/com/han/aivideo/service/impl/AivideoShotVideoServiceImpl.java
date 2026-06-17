@@ -159,7 +159,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (payload == null) {
             throw new BusinessException("分镜优化结果为空");
         }
-        applyShotScriptOptimization(shot, payload);
+        applyShotScriptOptimization(project.getProjectId(), shot, payload);
         shot.setUpdateBy(resolveOperator());
         shot.setUpdateTime(now());
         shotMapper.updateById(shot);
@@ -517,22 +517,17 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 7. 5 秒镜头最多 1 个主动作 + 1 个反应 + 1 个结尾状态；动作过多时压缩当前镜头，不要硬塞。
                 8. dialogue 只写真正说出口的台词；voiceOver 只写旁白/画外音；心理活动不要写成会发声的台词。
 
-                ## 必须返回的 JSON 结构
+                ## 返回 JSON 形状说明
+                - 只返回确实需要修改的字段；不需要修改的字段请直接省略。
+                - 下方空字符串只是字段形状示意，禁止照抄说明文字或把字段说明写入结果。
                 {
                   "durationSec": 5,
-                  "shotType": "单人近景",
-                  "cameraPosition": "正面平视",
-                  "cameraMovement": "固定",
-                  "transitionBeforeType": "CONTINUE",
-                  "transitionBeforeDesc": "连续镜头：明确说明上一镜角色/道具/方位如何衔接。",
-                  "actionDesc": "只写当前镜头可执行动作，控制在本镜秒数预算内。",
+                  "transitionBeforeDesc": "",
+                  "actionDesc": "",
                   "dialogue": "",
                   "voiceOver": "",
-                  "emotion": "紧张",
-                  "bgmCue": "",
-                  "sfxCues": "",
-                  "promptText": "给视频模型看的补充执行提示，锁定画内角色、道具、方位和结尾状态。",
-                  "characterIds": "只写当前镜头画内角色名称或ID，多个用逗号分隔",
+                  "promptText": "",
+                  "characterIds": "",
                   "referenceMediaIds": ""
                 }
                 """.formatted(
@@ -618,11 +613,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 4. dialogue 只放说出口的台词；voiceOver 只放旁白/画外音；心理活动不能写成台词。
 
                 ## 返回结构示例
+                - 空字符串只是字段形状示意，禁止照抄空值以外的说明文字。
                 {
-                  "transitionBeforeDesc": "单人镜头：画内主体锁定为X，上一镜其他角色被裁切在画外不入画。",
-                  "actionDesc": "X完成一个主动作，结尾状态明确。",
-                  "promptText": "锁定画内角色、道具、方位和结尾状态。",
-                  "characterIds": "X"
+                  "transitionBeforeDesc": "",
+                  "actionDesc": "",
+                  "promptText": "",
+                  "characterIds": ""
                 }
                 """.formatted(
                 truncateForPrompt(errorMessage, 500),
@@ -643,52 +639,147 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 + "，promptText=" + firstText(shot.getPromptText());
     }
 
-    private void applyShotScriptOptimization(AiVideoShotPo shot, ShotScriptOptimizePayload payload) {
+    private void applyShotScriptOptimization(Long projectId, AiVideoShotPo shot, ShotScriptOptimizePayload payload) {
         if (payload.durationSec != null) {
             shot.setDurationSec(normalizeAivideoShotDuration(payload.durationSec));
         }
-        if (StringUtils.hasText(payload.shotType)) {
-            shot.setShotType(payload.shotType.trim());
+        String shotType = sanitizeShotOptimizeText(payload.shotType);
+        if (StringUtils.hasText(shotType)) {
+            shot.setShotType(shotType);
         }
-        if (StringUtils.hasText(payload.cameraPosition)) {
-            shot.setCameraPosition(payload.cameraPosition.trim());
+        String cameraPosition = sanitizeShotOptimizeText(payload.cameraPosition);
+        if (StringUtils.hasText(cameraPosition)) {
+            shot.setCameraPosition(cameraPosition);
         }
-        if (StringUtils.hasText(payload.cameraMovement)) {
-            shot.setCameraMovement(payload.cameraMovement.trim());
+        String cameraMovement = sanitizeShotOptimizeText(payload.cameraMovement);
+        if (StringUtils.hasText(cameraMovement)) {
+            shot.setCameraMovement(cameraMovement);
         }
-        if (StringUtils.hasText(payload.transitionBeforeType)) {
-            shot.setTransitionBeforeType(payload.transitionBeforeType.trim());
+        String transitionBeforeType = sanitizeShotOptimizeText(payload.transitionBeforeType);
+        if (StringUtils.hasText(transitionBeforeType)) {
+            shot.setTransitionBeforeType(transitionBeforeType);
         }
-        if (StringUtils.hasText(payload.transitionBeforeDesc)) {
-            shot.setTransitionBeforeDesc(payload.transitionBeforeDesc.trim());
+        String transitionBeforeDesc = sanitizeShotOptimizeText(payload.transitionBeforeDesc);
+        if (StringUtils.hasText(transitionBeforeDesc)) {
+            shot.setTransitionBeforeDesc(transitionBeforeDesc);
         }
-        if (StringUtils.hasText(payload.actionDesc)) {
-            shot.setActionDesc(payload.actionDesc.trim());
+        String actionDesc = sanitizeShotOptimizeText(payload.actionDesc);
+        if (StringUtils.hasText(actionDesc)) {
+            shot.setActionDesc(actionDesc);
         }
-        if (StringUtils.hasText(payload.dialogue)) {
-            shot.setDialogue(payload.dialogue.trim());
+        String dialogue = sanitizeShotOptimizeText(payload.dialogue);
+        if (StringUtils.hasText(dialogue)) {
+            shot.setDialogue(dialogue);
         }
-        if (StringUtils.hasText(payload.voiceOver)) {
-            shot.setVoiceOver(payload.voiceOver.trim());
+        String voiceOver = sanitizeShotOptimizeText(payload.voiceOver);
+        if (StringUtils.hasText(voiceOver)) {
+            shot.setVoiceOver(voiceOver);
         }
-        if (StringUtils.hasText(payload.emotion)) {
-            shot.setEmotion(payload.emotion.trim());
+        String emotion = sanitizeShotOptimizeText(payload.emotion);
+        if (StringUtils.hasText(emotion)) {
+            shot.setEmotion(emotion);
         }
-        if (StringUtils.hasText(payload.bgmCue)) {
-            shot.setBgmCue(payload.bgmCue.trim());
+        String bgmCue = sanitizeShotOptimizeText(payload.bgmCue);
+        if (StringUtils.hasText(bgmCue)) {
+            shot.setBgmCue(bgmCue);
         }
-        if (StringUtils.hasText(payload.sfxCues)) {
-            shot.setSfxCues(payload.sfxCues.trim());
+        String sfxCues = sanitizeShotOptimizeText(payload.sfxCues);
+        if (StringUtils.hasText(sfxCues)) {
+            shot.setSfxCues(sfxCues);
         }
-        if (StringUtils.hasText(payload.promptText)) {
-            shot.setPromptText(payload.promptText.trim());
+        String promptText = sanitizeShotOptimizeText(payload.promptText);
+        if (StringUtils.hasText(promptText)) {
+            shot.setPromptText(promptText);
         }
-        if (StringUtils.hasText(payload.characterIds)) {
-            shot.setCharacterIds(payload.characterIds.trim());
+        String characterIds = sanitizeOptimizedCharacterIds(projectId, payload.characterIds);
+        if (StringUtils.hasText(characterIds)) {
+            shot.setCharacterIds(characterIds);
         }
-        if (StringUtils.hasText(payload.referenceMediaIds)) {
-            shot.setReferenceMediaIds(payload.referenceMediaIds.trim());
+        String referenceMediaIds = sanitizeReferenceMediaIds(payload.referenceMediaIds);
+        if (StringUtils.hasText(referenceMediaIds)) {
+            shot.setReferenceMediaIds(referenceMediaIds);
         }
+    }
+
+    private String sanitizeShotOptimizeText(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return isShotOptimizePlaceholder(trimmed) ? null : trimmed;
+    }
+
+    private boolean isShotOptimizePlaceholder(String value) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        String text = value.trim();
+        if ("X".equalsIgnoreCase(text)) {
+            return true;
+        }
+        return text.contains("只写当前镜头可执行动作")
+                || text.contains("控制在本镜秒数预算内")
+                || text.contains("给视频模型看的补充执行提示")
+                || text.contains("只写当前镜头画内角色名称或ID")
+                || text.contains("多个用逗号分隔")
+                || text.contains("名称或ID")
+                || text.contains("明确说明上一镜角色/道具/方位如何衔接")
+                || text.contains("锁定画内角色、道具、方位和结尾状态")
+                || text.contains("X完成一个主动作")
+                || text.contains("画内主体锁定为X");
+    }
+
+    private String sanitizeOptimizedCharacterIds(Long projectId, String value) {
+        String sanitized = sanitizeShotOptimizeText(value);
+        if (!StringUtils.hasText(sanitized) || projectId == null) {
+            return null;
+        }
+        List<String> tokens = parseCharacterTokens(sanitized);
+        if (tokens.isEmpty()) {
+            return null;
+        }
+        List<AiVideoCharacterPo> characters = selectProjectCharacters(projectId);
+        if (characters.isEmpty()) {
+            return null;
+        }
+        Set<String> validTokens = new LinkedHashSet<>();
+        for (String token : tokens) {
+            String matched = matchProjectCharacterToken(token, characters);
+            if (StringUtils.hasText(matched)) {
+                validTokens.add(matched);
+            }
+        }
+        return validTokens.isEmpty() ? null : String.join(",", validTokens);
+    }
+
+    private String matchProjectCharacterToken(String token, List<AiVideoCharacterPo> characters) {
+        if (!StringUtils.hasText(token)) {
+            return null;
+        }
+        String normalized = token.trim();
+        for (AiVideoCharacterPo character : characters) {
+            if (character == null || !StringUtils.hasText(character.getCharacterName())) {
+                continue;
+            }
+            String idText = character.getCharacterId() == null ? "" : String.valueOf(character.getCharacterId());
+            if (normalized.equals(idText) || normalized.equals(character.getCharacterName().trim())) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    private String sanitizeReferenceMediaIds(String value) {
+        String sanitized = sanitizeShotOptimizeText(value);
+        if (!StringUtils.hasText(sanitized)) {
+            return null;
+        }
+        List<String> mediaIds = Arrays.stream(sanitized.replace("[", "").replace("]", "").replace("\"", "")
+                        .split("[,，、]"))
+                .map(String::trim)
+                .filter(item -> item.matches("\\d+"))
+                .toList();
+        return mediaIds.isEmpty() ? null : String.join(",", mediaIds);
     }
 
     private AiVideoGenerateResponse invokeVideoGeneration(RequestContext context) {

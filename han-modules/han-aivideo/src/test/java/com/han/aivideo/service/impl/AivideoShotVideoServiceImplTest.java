@@ -2,6 +2,7 @@ package com.han.aivideo.service.impl;
 
 import com.han.aivideo.domain.dto.AivideoShotScriptOptimizeDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
+import com.han.aivideo.domain.po.AiVideoCharacterPo;
 import com.han.aivideo.domain.po.AiVideoGenerationTaskPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoProjectPo;
@@ -25,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -133,6 +136,60 @@ class AivideoShotVideoServiceImplTest {
         assertTrue(fixture.currentShot.getTransitionBeforeDesc().contains("画外不入画"), fixture.currentShot::getTransitionBeforeDesc);
         assertTrue(fixture.currentShot.getActionDesc().contains("结尾持剑站定"), fixture.currentShot::getActionDesc);
         assertTrue(fixture.currentShot.getPromptText().contains("其他角色不自动入画"), fixture.currentShot::getPromptText);
+    }
+
+    @Test
+    void optimizeShotScriptIgnoresJsonExamplePlaceholderValues() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setCharacterIds("剑魂");
+        fixture.currentShot.setTransitionBeforeDesc("连续镜头：上一镜剑魂保持拔剑起势。");
+        fixture.currentShot.setActionDesc("剑魂右手拔出寒光剑，剑尖显出冷白光。");
+        fixture.currentShot.setPromptText("只拍剑魂单人，寒光剑保持在右手。");
+        when(fixture.characterMapper.selectList(any()))
+                .thenReturn(List.of(TestFixture.character(11L, "剑魂"), TestFixture.character(12L, "奶妈")));
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("""
+                {
+                  "transitionBeforeDesc": "连续镜头：明确说明上一镜角色/道具/方位如何衔接。",
+                  "actionDesc": "只写当前镜头可执行动作，控制在本镜秒数预算内。",
+                  "promptText": "给视频模型看的补充执行提示，锁定画内角色、道具、方位和结尾状态。",
+                  "characterIds": "只写当前镜头画内角色名称或ID，多个用逗号分隔"
+                }
+                """));
+
+        AivideoShotScriptOptimizeDto dto = new AivideoShotScriptOptimizeDto();
+        dto.setProjectId(1L);
+        dto.setShotId(101L);
+
+        fixture.service.optimizeShotScript(dto);
+
+        assertEquals("剑魂", fixture.currentShot.getCharacterIds());
+        assertEquals("连续镜头：上一镜剑魂保持拔剑起势。", fixture.currentShot.getTransitionBeforeDesc());
+        assertEquals("剑魂右手拔出寒光剑，剑尖显出冷白光。", fixture.currentShot.getActionDesc());
+        assertEquals("只拍剑魂单人，寒光剑保持在右手。", fixture.currentShot.getPromptText());
+    }
+
+    @Test
+    void optimizeShotScriptKeepsCurrentCharactersWhenAiReturnsUnknownCharacter() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setCharacterIds("剑魂");
+        when(fixture.characterMapper.selectList(any()))
+                .thenReturn(List.of(TestFixture.character(11L, "剑魂"), TestFixture.character(12L, "奶妈")));
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("""
+                {
+                  "actionDesc": "剑魂右手拔出寒光剑，剑身冷白光稳定汇聚。",
+                  "characterIds": "不存在角色"
+                }
+                """));
+
+        AivideoShotScriptOptimizeDto dto = new AivideoShotScriptOptimizeDto();
+        dto.setProjectId(1L);
+        dto.setShotId(101L);
+
+        fixture.service.optimizeShotScript(dto);
+
+        assertEquals("剑魂", fixture.currentShot.getCharacterIds());
+        assertFalse(fixture.currentShot.getCharacterIds().contains("不存在角色"));
+        assertTrue(fixture.currentShot.getActionDesc().contains("冷白光稳定汇聚"));
     }
 
     @Test
@@ -352,6 +409,15 @@ class AivideoShotVideoServiceImplTest {
             media.setFileUrl(fileUrl);
             media.setDelFlag(0);
             return media;
+        }
+
+        private static AiVideoCharacterPo character(Long characterId, String characterName) {
+            AiVideoCharacterPo character = new AiVideoCharacterPo();
+            character.setCharacterId(characterId);
+            character.setProjectId(1L);
+            character.setCharacterName(characterName);
+            character.setDelFlag(0);
+            return character;
         }
 
         private static void setField(Object target, String fieldName, Object value) {
