@@ -3235,11 +3235,11 @@ function resolveEffectiveShotCharacterIds(shot?: AivideoShot) {
   const result = [...ids]
   characters.value.forEach((character) => {
     const characterId = String(character.characterId || '')
-    const characterName = String(character.characterName || '').trim()
-    if (!characterId || !characterName || !text.includes(characterName)) {
+    const aliases = characterNameAliases(character.characterName)
+    if (!characterId || !aliases.length || !aliases.some((alias) => text.includes(alias))) {
       return
     }
-    if (isOffscreenCharacterMention(text, characterName)) {
+    if (isOffscreenCharacterMention(text, character.characterName)) {
       return
     }
     if (!result.includes(characterId)) {
@@ -3442,8 +3442,8 @@ function shotMentionedCharacters(shot?: AivideoShot) {
     return []
   }
   return characters.value.filter((character) => {
-    const name = String(character.characterName || '').trim()
-    return !!name && text.includes(name)
+    const aliases = characterNameAliases(character.characterName)
+    return aliases.some((alias) => text.includes(alias))
   })
 }
 
@@ -3503,18 +3503,20 @@ function inferShotExpectedOnscreenCount(text: string) {
 }
 
 function isOffscreenCharacterMention(text: string, characterName?: string) {
-  const name = String(characterName || '').trim()
-  if (!text || !name || !text.includes(name)) {
+  const aliases = characterNameAliases(characterName)
+  if (!text || !aliases.length) {
     return false
   }
   const offscreenKeywords = ['画外', '画外音', '旁白', '不出现', '不入画', '镜外', '离场', '离开', '退出画面', '退出画外', '只闻其声', '声音传来', '脑海', '心里', '内心独白', '单人反应', '只拍', '只露手', '只露肩', '只露背影', '特写裁切']
-  let index = text.indexOf(name)
-  while (index >= 0) {
-    const context = text.slice(Math.max(0, index - 16), Math.min(text.length, index + name.length + 16))
-    if (textContainsAny(context, offscreenKeywords)) {
-      return true
+  for (const alias of aliases) {
+    let index = text.indexOf(alias)
+    while (index >= 0) {
+      const context = text.slice(Math.max(0, index - 16), Math.min(text.length, index + alias.length + 16))
+      if (textContainsAny(context, offscreenKeywords)) {
+        return true
+      }
+      index = text.indexOf(alias, index + alias.length)
     }
-    index = text.indexOf(name, index + name.length)
   }
   return false
 }

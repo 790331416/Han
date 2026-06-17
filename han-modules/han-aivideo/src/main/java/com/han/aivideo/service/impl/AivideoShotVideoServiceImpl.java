@@ -762,8 +762,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 continue;
             }
             String idText = character.getCharacterId() == null ? "" : String.valueOf(character.getCharacterId());
-            if (normalized.equals(idText) || normalized.equals(character.getCharacterName().trim())) {
-                return normalized;
+            if (normalized.equals(idText)) {
+                return idText;
+            }
+            if (characterNameAliases(character.getCharacterName()).contains(normalized)) {
+                return character.getCharacterName().trim();
             }
         }
         return null;
@@ -2643,7 +2646,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         for (AiVideoCharacterPo character : selectProjectCharacters(projectId)) {
             if (character == null || character.getCharacterId() == null
                     || !StringUtils.hasText(character.getCharacterName())
-                    || !text.contains(character.getCharacterName().trim())) {
+                    || !textMentionsCharacter(text, character.getCharacterName())) {
                 continue;
             }
             String idText = String.valueOf(character.getCharacterId());
@@ -2675,21 +2678,58 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     }
 
     private boolean isOffscreenCharacterMention(String text, String characterName) {
-        if (!StringUtils.hasText(text) || !StringUtils.hasText(characterName) || !text.contains(characterName.trim())) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(characterName)) {
             return false;
         }
-        String name = characterName.trim();
-        int index = text.indexOf(name);
-        while (index >= 0) {
-            String context = text.substring(Math.max(0, index - 16), Math.min(text.length(), index + name.length() + 16));
-            if (containsAny(context, "画外", "画外音", "旁白", "不出现", "不入画", "镜外", "离场", "离开",
-                    "退出画面", "退出画外", "只闻其声", "声音传来", "脑海", "心里", "内心独白",
-                    "单人反应", "只拍", "只露手", "只露肩", "只露背影", "特写裁切")) {
-                return true;
+        for (String alias : characterNameAliases(characterName)) {
+            int index = text.indexOf(alias);
+            while (index >= 0) {
+                String context = text.substring(Math.max(0, index - 16), Math.min(text.length(), index + alias.length() + 16));
+                if (containsAny(context, "画外", "画外音", "旁白", "不出现", "不入画", "镜外", "离场", "离开",
+                        "退出画面", "退出画外", "只闻其声", "声音传来", "脑海", "心里", "内心独白",
+                        "单人反应", "只拍", "只露手", "只露肩", "只露背影", "特写裁切")) {
+                    return true;
+                }
+                index = text.indexOf(alias, index + alias.length());
             }
-            index = text.indexOf(name, index + name.length());
         }
         return false;
+    }
+
+    private boolean textMentionsCharacter(String text, String characterName) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(characterName)) {
+            return false;
+        }
+        for (String alias : characterNameAliases(characterName)) {
+            if (text.contains(alias)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> characterNameAliases(String characterName) {
+        if (!StringUtils.hasText(characterName)) {
+            return List.of();
+        }
+        LinkedHashSet<String> aliases = new LinkedHashSet<>();
+        addCharacterAlias(aliases, characterName);
+        addCharacterAlias(aliases, characterName.replaceAll("[（(][^（）()]*[）)]", ""));
+        Matcher matcher = Pattern.compile("[（(]([^（）()]+)[）)]").matcher(characterName);
+        while (matcher.find()) {
+            addCharacterAlias(aliases, matcher.group(1));
+        }
+        return new ArrayList<>(aliases);
+    }
+
+    private void addCharacterAlias(Set<String> aliases, String value) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        String normalized = value.trim();
+        if (StringUtils.hasText(normalized)) {
+            aliases.add(normalized);
+        }
     }
 
     private List<String> detectRelationshipTargetNames(String text) {

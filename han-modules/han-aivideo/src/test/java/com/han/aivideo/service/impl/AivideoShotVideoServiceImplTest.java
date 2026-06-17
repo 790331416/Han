@@ -77,6 +77,35 @@ class AivideoShotVideoServiceImplTest {
     }
 
     @Test
+    void previewAcceptsOffscreenExplanationUsingCharacterAliasShortName() {
+        TestFixture fixture = new TestFixture();
+        fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
+        fixture.previousShot.setActionDesc("剑魂、狂战士（红狗）、男散打（乌鸡）同处暗黑深渊副本密闭空间。");
+        fixture.currentShot.setCharacterIds("剑魂");
+        fixture.currentShot.setTransitionBeforeType("CONTINUE");
+        fixture.currentShot.setTransitionBeforeDesc("连续镜头：单人镜头，画内主体锁定为剑魂；狂战士、男散打在画外右侧近旁不入画。");
+        fixture.currentShot.setActionDesc("剑魂盯住深渊柱，嘴角冷笑，结尾站定。");
+        when(fixture.characterMapper.selectList(any())).thenReturn(List.of(
+                TestFixture.character(11L, "剑魂"),
+                TestFixture.character(12L, "狂战士（红狗）"),
+                TestFixture.character(13L, "男散打（乌鸡）")));
+        AiVideoPropPo prop = new AiVideoPropPo();
+        prop.setProjectId(1L);
+        prop.setPropName("剑");
+        prop.setLockedMediaId(501L);
+        prop.setDelFlag(0);
+        when(fixture.propMapper.selectList(any())).thenReturn(List.of(prop));
+        AiVideoMediaAssetPo propImage = TestFixture.media(501L, "PROP_IMAGE", "/file/public/sword.png");
+        propImage.setSelected("Y");
+        propImage.setAssetStatus("SELECTED");
+        when(fixture.mediaAssetMapper.selectById(501L)).thenReturn(propImage);
+
+        String prompt = fixture.service.previewShotVideoPrompt(fixture.dto()).getUserPrompt();
+
+        assertEquals("rendered prompt", prompt);
+    }
+
+    @Test
     void optimizeShotScriptUpdatesCurrentShotWithAiReturnedFields() {
         TestFixture fixture = new TestFixture();
         fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
