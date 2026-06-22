@@ -106,6 +106,27 @@ class AivideoShotVideoServiceImplTest {
     }
 
     @Test
+    void previewAppendsTailFrameFirstFrameGuardWhenTemplateDoesNotMentionCurrentShot() {
+        TestFixture fixture = new TestFixture();
+        fixture.previousShot.setTailFrameMediaId(600L);
+        fixture.previousShot.setActionDesc("上一镜里小猫保持站立，镜头缓慢推进。");
+        fixture.currentShot.setTransitionBeforeType("CONTINUE");
+        fixture.currentShot.setTransitionBeforeDesc("连续镜头：从上一镜尾帧起步，但只把尾帧作为首帧锚点。");
+        fixture.currentShot.setActionDesc("小猫抬头看向远处，嘴角冷笑，结尾站定。");
+        AiVideoMediaAssetPo tailFrame = TestFixture.media(600L, "SHOT_TAIL_FRAME", "/file/public/shot-1-tail.png");
+        when(fixture.mediaAssetMapper.selectById(600L)).thenReturn(tailFrame);
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("旧数据库模板输出：仅说明连续上一镜。"));
+
+        String prompt = fixture.service.previewShotVideoPrompt(fixture.dto()).getUserPrompt();
+
+        assertTrue(prompt.contains("上一尾帧首帧执行协议"), prompt);
+        assertTrue(prompt.contains("当前生成目标是第2镜头"), prompt);
+        assertTrue(prompt.contains("不是第1镜头"), prompt);
+        assertTrue(prompt.contains("禁止把上一尾帧或上一镜视频延长成整段"), prompt);
+        assertTrue(prompt.contains("小猫抬头看向远处"), prompt);
+    }
+
+    @Test
     void optimizeShotScriptUpdatesCurrentShotWithAiReturnedFields() {
         TestFixture fixture = new TestFixture();
         fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");

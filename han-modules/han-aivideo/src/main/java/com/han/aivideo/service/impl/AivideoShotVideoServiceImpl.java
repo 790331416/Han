@@ -445,7 +445,11 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String fallbackPrompt = buildShotVideoPrompt(project, scene, shot, previousShot, previousTailFrameMedia,
                 ratio, resolution, durationSec, referenceMedias, referenceImageUrls,
                 referenceVideoUrl, referenceAudioUrl, referenceAudioSeedAllowed, strategy);
+        String tailFrameFirstFrameExecutionGuard = buildTailFrameFirstFrameExecutionGuard(shot, previousShot,
+                referenceImageAsFirstFrame);
+        variables.put("tailFrameFirstFrameExecutionGuard", tailFrameFirstFrameExecutionGuard);
         String prompt = renderPrompt(project, promptTemplateId, dto.getCustomPrompt(), fallbackPrompt, variables);
+        prompt = appendTailFrameFirstFrameExecutionGuard(prompt, shot, previousShot, referenceImageAsFirstFrame);
         variables.put("candidateCount", String.valueOf(candidateCount));
         variables.put("referenceImageAsFirstFrame", String.valueOf(referenceImageAsFirstFrame));
         return new RequestContext(project, scene, shot, referenceMedia, modelId, promptTemplateId,
@@ -1726,6 +1730,45 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 .map(String::valueOf)
                 .reduce((left, right) -> left + "," + right)
                 .orElse("");
+    }
+
+    private String appendTailFrameFirstFrameExecutionGuard(String prompt, AiVideoShotPo shot,
+                                                           AiVideoShotPo previousShot,
+                                                           boolean referenceImageAsFirstFrame) {
+        String guard = buildTailFrameFirstFrameExecutionGuard(shot, previousShot, referenceImageAsFirstFrame);
+        if (!StringUtils.hasText(guard)
+                || (StringUtils.hasText(prompt) && prompt.contains("\u4E0A\u4E00\u5C3E\u5E27\u9996\u5E27\u6267\u884C\u534F\u8BAE"))) {
+            return prompt;
+        }
+        if (!StringUtils.hasText(prompt)) {
+            return guard;
+        }
+        return prompt.trim() + "\n\n" + guard;
+    }
+
+    private String buildTailFrameFirstFrameExecutionGuard(AiVideoShotPo shot, AiVideoShotPo previousShot,
+                                                          boolean referenceImageAsFirstFrame) {
+        if (!referenceImageAsFirstFrame) {
+            return "";
+        }
+        String currentShotLabel = shot == null
+                ? "\u5F53\u524D\u955C\u5934"
+                : "\u7B2C" + firstInteger(shot.getShotNo(), 1) + "\u955C\u5934";
+        String previousShotLabel = previousShot == null
+                ? "\u4E0A\u4E00\u955C\u5934"
+                : "\u7B2C" + firstInteger(previousShot.getShotNo(), 1) + "\u955C\u5934";
+        String currentAction = firstText(shot != null ? shot.getActionDesc() : null,
+                shot != null ? shot.getPromptText() : null,
+                "\u5F53\u524D\u955C\u5934\u52A8\u4F5C");
+        String currentEndState = buildCurrentEndState(shot);
+        return """
+                ## \u4E0A\u4E00\u5C3E\u5E27\u9996\u5E27\u6267\u884C\u534F\u8BAE(\u786C\u6027)
+                - \u5F53\u524D\u751F\u6210\u76EE\u6807\u662F%s,\u4E0D\u662F%s; \u4E0A\u4E00\u5C3E\u5E27\u53EA\u5141\u8BB8\u4F5C\u4E3A\u7B2C0\u5E27/\u8D77\u59CB\u59FF\u6001\u951A\u70B9.
+                - \u7981\u6B62\u628A\u4E0A\u4E00\u5C3E\u5E27\u6216\u4E0A\u4E00\u955C\u89C6\u9891\u5EF6\u957F\u6210\u6574\u6BB5; \u7981\u6B62\u91CD\u590D\u4E0A\u4E00\u955C\u52A8\u4F5C/\u53F0\u8BCD/\u6784\u56FE\u63A8\u8FDB; \u7981\u6B62\u751F\u6210\u4E0E\u4E0A\u4E00\u955C\u51E0\u4E4E\u76F8\u540C\u7684\u5019\u9009.
+                - 0-0.5\u79D2: \u8D34\u5408\u4E0A\u4E00\u5C3E\u5E27\u7684\u89D2\u8272\u4F4D\u7F6E/\u671D\u5411/\u59FF\u6001/\u5149\u5F71/\u573A\u666F\u7A7A\u95F4.
+                - 0.5\u79D2\u540E: \u5FC5\u987B\u5207\u5165\u5E76\u5B8C\u6210\u5F53\u524D\u955C\u52A8\u4F5C: %s.
+                - \u7ED3\u5C3E\u5FC5\u987B\u505C\u5728\u5F53\u524D\u955C\u7ED3\u5C3E\u72B6\u6001: %s.
+                """.formatted(currentShotLabel, previousShotLabel, safeValue(currentAction), safeValue(currentEndState)).trim();
     }
 
     private String buildReferenceFrameType(List<AiVideoMediaAssetPo> referenceMedias,
