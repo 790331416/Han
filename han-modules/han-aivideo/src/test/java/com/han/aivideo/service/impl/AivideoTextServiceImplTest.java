@@ -1883,6 +1883,28 @@ class AivideoTextServiceImplTest {
     }
 
     @Test
+    void scriptPromptForcesShortContentToSplitIntoVisualSegments() throws Exception {
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, null, null, null, null, null, null, null, null);
+        AiVideoProjectPo project = new AiVideoProjectPo();
+        project.setProjectName("生日祝福");
+        project.setTargetPlatform("短剧");
+        project.setDefaultRatio("9:16");
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "buildScriptPrompt", AiVideoProjectPo.class, String.class);
+        method.setAccessible(true);
+
+        String prompt = (String) method.invoke(service, project, "西格玛给姗宝送生日祝福。");
+
+        assertTrue(prompt.contains("短内容"));
+        assertTrue(prompt.contains("不能默认压成 1 个镜头"));
+        assertTrue(prompt.contains("至少拆出"));
+        assertTrue(prompt.contains("建立主体/道具锚点"));
+        assertTrue(prompt.contains("核心动作"));
+        assertTrue(prompt.contains("台词或结尾状态"));
+        assertTrue(prompt.contains("一镜到底"));
+    }
+    @Test
     void sendSseSafelyReturnsFalseAfterEmitterCompleted() {
         SseEmitter emitter = new SseEmitter();
         emitter.complete();
@@ -1939,4 +1961,3 @@ class AivideoTextServiceImplTest {
         }
     }
 }
-
