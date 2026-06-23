@@ -343,7 +343,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("项目ID不能为空");
         }
         AiVideoProjectPo project = requireProject(dto.getProjectId());
-        AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
+        AiVideoContentVersionPo script = resolveAssetScript(dto, project.getProjectId());
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
         Long promptTemplateId = firstTemplateId(setting);
         String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
@@ -360,7 +360,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             AiTextGenerateResponse response = invokeAssetTextGeneration(project, setting,
                     null, null, prompt, variables);
             AssetPayload payload = parseAssetPayload(response.getContent());
-            softDeletePendingAssets(project.getProjectId());
+            resetAssetsBeforeInsert(project.getProjectId(), dto.getForceRefresh());
             insertAssets(project, payload, setting);
 
             AiVideoContentVersionPo assetVersion = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
@@ -381,7 +381,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("项目ID不能为空");
         }
         AiVideoProjectPo project = requireProject(dto.getProjectId());
-        AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
+        AiVideoContentVersionPo script = resolveAssetScript(dto, project.getProjectId());
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
         Long promptTemplateId = firstTemplateId(setting);
         String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
@@ -402,7 +402,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
                 "progress", task.getProgress()
         ));
         CompletableFuture.runAsync(() -> runAssetStream(project, setting, promptTemplateId,
-                dto.getCustomPrompt(), taskPrompt, variables, task, operator, emitter));
+                dto.getCustomPrompt(), taskPrompt, variables, dto.getForceRefresh(), task, operator, emitter));
         return emitter;
     }
 
@@ -412,7 +412,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             throw new BusinessException("项目ID不能为空");
         }
         AiVideoProjectPo project = requireProject(dto.getProjectId());
-        AiVideoContentVersionPo script = requireSelectedContent(project.getProjectId(), CONTENT_SCRIPT, "请先确认短剧剧本");
+        AiVideoContentVersionPo script = resolveAssetScript(dto, project.getProjectId());
         AiVideoProjectSettingPo setting = selectSetting(project.getProjectId());
         Long promptTemplateId = firstTemplateId(setting);
         String fallbackPrompt = buildAssetPrompt(project, setting, script.getContentText());
@@ -656,7 +656,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
 
     private void runAssetStream(AiVideoProjectPo project, AiVideoProjectSettingPo setting,
                                 Long promptTemplateId, String customPrompt, String userPrompt,
-                                Map<String, String> variables, AiVideoGenerationTaskPo task,
+                                Map<String, String> variables, Boolean forceRefresh, AiVideoGenerationTaskPo task,
                                 String operator, SseEmitter emitter) {
         String generatedContent = null;
         Long generatedModelId = null;
@@ -675,7 +675,7 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
             String assetContent = generatedContent;
             Long assetModelId = generatedModelId;
             AiVideoContentVersionPo assetVersion = transactionTemplate.execute(status -> {
-                softDeletePendingAssets(project.getProjectId());
+                resetAssetsBeforeInsert(project.getProjectId(), forceRefresh);
                 insertAssets(project, payload, setting);
 
                 AiVideoContentVersionPo version = buildContentVersion(project, null, CONTENT_ASSET_EXTRACT,
@@ -929,6 +929,17 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         return settingMapper.selectOne(new LambdaQueryWrapper<AiVideoProjectSettingPo>()
                 .eq(AiVideoProjectSettingPo::getProjectId, projectId)
                 .last("limit 1"));
+    }
+
+    private AiVideoContentVersionPo resolveAssetScript(AivideoAssetExtractDto dto, Long projectId) {
+        if (dto != null && dto.getScriptVersionId() != null) {
+            AiVideoContentVersionPo version = requireContentVersion(projectId, dto.getScriptVersionId(), CONTENT_SCRIPT);
+            if (!YES.equals(version.getSelected()) || !CONFIRM_APPROVED.equals(version.getConfirmStatus())) {
+                throw new BusinessException("请先确认当前短剧剧本");
+            }
+            return version;
+        }
+        return requireSelectedContent(projectId, CONTENT_SCRIPT, "请先确认短剧剧本");
     }
 
     private AiVideoContentVersionPo requireSelectedContent(Long projectId, String contentType, String message) {
@@ -1932,6 +1943,35 @@ public class AivideoTextServiceImpl extends AivideoServiceSupport implements IAi
         counts.put("props", propMapper == null ? 0 : propMapper.selectCount(basePropWrapper(projectId)));
         counts.put("shots", shotMapper.selectCount(baseShotWrapper(projectId)));
         return counts;
+    }
+
+    private void resetAssetsBeforeInsert(Long projectId, Boolean forceRefresh) {
+        if (Boolean.TRUE.equals(forceRefresh)) {
+            softDeleteAllAssets(projectId);
+        } else {
+            softDeletePendingAssets(projectId);
+        }
+    }
+
+    private void softDeleteAllAssets(Long projectId) {
+        characterMapper.update(null, new LambdaUpdateWrapper<AiVideoCharacterPo>()
+                .set(AiVideoCharacterPo::getDelFlag, 1)
+                .eq(AiVideoCharacterPo::getProjectId, projectId)
+                .eq(AiVideoCharacterPo::getDelFlag, DEL_FLAG_NORMAL));
+        sceneMapper.update(null, new LambdaUpdateWrapper<AiVideoScenePo>()
+                .set(AiVideoScenePo::getDelFlag, 1)
+                .eq(AiVideoScenePo::getProjectId, projectId)
+                .eq(AiVideoScenePo::getDelFlag, DEL_FLAG_NORMAL));
+        if (propMapper != null) {
+            propMapper.update(null, new LambdaUpdateWrapper<AiVideoPropPo>()
+                    .set(AiVideoPropPo::getDelFlag, 1)
+                    .eq(AiVideoPropPo::getProjectId, projectId)
+                    .eq(AiVideoPropPo::getDelFlag, DEL_FLAG_NORMAL));
+        }
+        shotMapper.update(null, new LambdaUpdateWrapper<AiVideoShotPo>()
+                .set(AiVideoShotPo::getDelFlag, 1)
+                .eq(AiVideoShotPo::getProjectId, projectId)
+                .eq(AiVideoShotPo::getDelFlag, DEL_FLAG_NORMAL));
     }
 
     private void softDeletePendingAssets(Long projectId) {

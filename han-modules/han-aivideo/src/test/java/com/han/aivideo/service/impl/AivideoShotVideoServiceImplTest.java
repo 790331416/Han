@@ -24,6 +24,7 @@ import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -103,6 +104,29 @@ class AivideoShotVideoServiceImplTest {
         String prompt = fixture.service.previewShotVideoPrompt(fixture.dto()).getUserPrompt();
 
         assertEquals("rendered prompt", prompt);
+    }
+
+    @Test
+    void firstShotStartAndTimingPlanDoNotImplyEnteringFromOffscreen() throws Exception {
+        AivideoShotVideoServiceImpl service = new AivideoShotVideoServiceImpl(
+                null, null, null, null, null, null, null, null, null, null);
+        Method startMethod = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildCurrentStartState", AiVideoShotPo.class, AiVideoMediaAssetPo.class);
+        startMethod.setAccessible(true);
+        Method timingMethod = AivideoShotVideoServiceImpl.class.getDeclaredMethod(
+                "buildTimingPlan", AiVideoShotPo.class, int.class);
+        timingMethod.setAccessible(true);
+        AiVideoShotPo firstShot = new AiVideoShotPo();
+        firstShot.setActionDesc("起始西格玛玛站C位，左手夹未激活黑卡垂眼；荧光粉字弹出。话说完后卡字稳定定格。");
+
+        String startState = (String) startMethod.invoke(service, null, null);
+        String timingPlan = (String) timingMethod.invoke(service, firstShot, 6);
+
+        assertTrue(startState.contains("主体已在位"), startState);
+        assertTrue(startState.contains("不得从画外走入"), startState);
+        assertFalse(startState.contains("按本镜头分镜描述进入"), startState);
+        assertFalse(timingPlan.contains("自然进入"), timingPlan);
+        assertFalse(timingPlan.contains("进入本镜头"), timingPlan);
     }
 
     @Test
@@ -481,3 +505,4 @@ class AivideoShotVideoServiceImplTest {
         }
     }
 }
+

@@ -503,6 +503,8 @@ export function cancelConfirmAivideoScript(data: {
 
 export function extractAivideoAssets(data: {
   projectId: string | number
+  scriptVersionId?: string | number
+  forceRefresh?: boolean
   customPrompt?: string
 }) {
   return post<AivideoAssetSummary>('/aivideo/studio/assets/extract', data)
@@ -510,6 +512,7 @@ export function extractAivideoAssets(data: {
 
 export function previewAivideoAssetPrompt(data: {
   projectId: string | number
+  scriptVersionId?: string | number
   customPrompt?: string
 }) {
   return post<AivideoPromptPreview>('/aivideo/studio/assets/prompt-preview', data, { silentError: true })

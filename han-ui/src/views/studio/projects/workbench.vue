@@ -4698,6 +4698,7 @@ async function refreshAssetPromptPreview() {
   try {
     const res = await previewAivideoAssetPrompt({
       projectId: projectId.value,
+      scriptVersionId: selectedScript.value.versionId,
       customPrompt: scopedCustomPrompt('asset')
     })
     assetPromptPreviewText.value = res.data?.effectivePrompt || res.data?.userPrompt || ''
@@ -5935,6 +5936,8 @@ async function handleExtractAssets() {
       tenantId: userStore.tenantId,
       body: {
         projectId: projectId.value,
+        scriptVersionId: selectedScript.value.versionId,
+        forceRefresh: hasAssets.value,
         customPrompt: scopedCustomPrompt('asset')
       },
       onDelta: ({ fullContent }) => {

@@ -2139,10 +2139,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
     private String buildCurrentStartState(AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia) {
         if (previousShot == null) {
-            return "首镜头从当前参考场景图自然开场，主体位置和动作按本镜头分镜描述进入。";
+            return "首镜头从当前参考场景图或角色图的静态起始姿态开始，主体已在位；不得从画外走入、跑入、走出来或新增入场动作。";
         }
         if (previousTailFrameMedia != null) {
-            return "必须从上一镜头尾帧参考图开始：主体位置、姿态、朝向、光影和环境保持一致，再缓慢进入本镜头动作。";
+            return "必须从上一镜头尾帧参考图开始：主体位置、姿态、朝向、光影和环境保持一致，保持0-0.5秒后再执行本镜头动作。";
         }
         return "必须从上一镜头已确认视频的结尾状态开始，不能跳过衔接；如果没有尾帧图，按上一镜头动作描述推断结尾姿态。";
     }
@@ -2171,22 +2171,22 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
     private String buildTimingPlan(AiVideoShotPo shot, int durationSec) {
         List<String> beats = selectActionBeats(extractActionBeats(firstText(shot != null ? shot.getActionDesc() : null,
                 shot != null ? shot.getPromptText() : null)), durationSec);
-        String action1 = beats.isEmpty() ? "从起始状态进入本镜头主动作，动作缓慢清晰" : beats.get(0);
+        String action1 = beats.isEmpty() ? "主体保持起始姿态0-0.5秒后执行本镜头主动作，动作缓慢清晰" : beats.get(0);
         String action2 = beats.size() > 1 ? beats.get(1) : firstText(shot != null ? shot.getEmotion() : null, "用眼神、呼吸或姿态表现反应");
         String action3 = beats.size() > 2 ? beats.get(2) : findEndStateBeat(extractActionBeats(firstText(
                 shot != null ? shot.getActionDesc() : null, shot != null ? shot.getPromptText() : null)));
         String endState = firstText(action3, "停在本镜头自然结尾状态，便于下一镜头继续");
         if (durationSec <= 5) {
-            return "- 前段：从上一尾帧或参考图自然进入，执行主动作：" + action1 + "。\n"
+            return "- 前段：从上一尾帧或参考图的既有姿态开始，保持0-0.5秒后执行主动作：" + action1 + "。\n"
                     + "- 中段：用低幅度表情/呼吸/姿态完成反应：" + action2 + "。\n"
                     + "- 末段：停在结尾状态：" + endState + "。";
         }
         if (durationSec <= 6) {
-            return "- 前段：从上一尾帧或参考图自然进入，执行动作一：" + action1 + "。\n"
+            return "- 前段：从上一尾帧或参考图的既有姿态开始，保持0-0.5秒后执行动作一：" + action1 + "。\n"
                     + "- 中段：连续衔接动作二或反应：" + action2 + "。\n"
                     + "- 末段：停在结尾状态：" + endState + "。";
         }
-        return "- 前段：从上一尾帧或参考图自然进入，执行动作一：" + action1 + "。\n"
+        return "- 前段：从上一尾帧或参考图的既有姿态开始，保持0-0.5秒后执行动作一：" + action1 + "。\n"
                 + "- 中段：连续衔接动作二：" + action2 + "。\n"
                 + "- 末段：完成动作三或明确结尾状态：" + endState + "。";
     }

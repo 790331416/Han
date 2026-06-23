@@ -1,6 +1,7 @@
 package com.han.aivideo.service.impl;
 
 import com.han.aivideo.domain.dto.AivideoProjectDto;
+import com.han.aivideo.domain.dto.AivideoAssetExtractDto;
 import com.han.aivideo.domain.dto.AivideoCharacterVoiceUpdateDto;
 import com.han.aivideo.domain.dto.AivideoDocumentConfirmDto;
 import com.han.aivideo.domain.dto.AivideoShotVideoGenerateDto;
@@ -8,6 +9,7 @@ import com.han.aivideo.domain.po.AiVideoProjectPo;
 import com.han.aivideo.domain.po.AiVideoProjectSettingPo;
 import com.han.aivideo.domain.po.AiVideoMediaAssetPo;
 import com.han.aivideo.domain.po.AiVideoCharacterPo;
+import com.han.aivideo.domain.po.AiVideoContentVersionPo;
 import com.han.aivideo.domain.po.AiVideoPropPo;
 import com.han.aivideo.domain.po.AiVideoReviewRecordPo;
 import com.han.aivideo.domain.po.AiVideoScenePo;
@@ -15,6 +17,7 @@ import com.han.aivideo.domain.po.AiVideoShotPo;
 import com.han.aivideo.domain.po.AiVideoSourceDocumentPo;
 import com.han.aivideo.enums.AivideoProjectStage;
 import com.han.aivideo.mapper.AiVideoCharacterMapper;
+import com.han.aivideo.mapper.AiVideoContentVersionMapper;
 import com.han.aivideo.mapper.AiVideoMediaAssetMapper;
 import com.han.aivideo.mapper.AiVideoProjectMapper;
 import com.han.aivideo.mapper.AiVideoPropMapper;
@@ -398,6 +401,35 @@ class AivideoTextServiceImplTest {
         assertTrue(prompt.contains("音效"));
         assertTrue(prompt.contains("剧本阶段只定义声音意图"));
         assertTrue(prompt.contains("后期语音和混音成片阶段"));
+    }
+
+    @Test
+    void assetExtractionUsesExplicitConfirmedScriptVersionWhenRefreshing() throws Exception {
+        AiVideoContentVersionMapper contentVersionMapper = mock(AiVideoContentVersionMapper.class);
+        AiVideoContentVersionPo latestConfirmedScript = new AiVideoContentVersionPo();
+        latestConfirmedScript.setVersionId(22L);
+        latestConfirmedScript.setProjectId(1L);
+        latestConfirmedScript.setContentType("SCRIPT");
+        latestConfirmedScript.setContentText("新版剧本：第一镜站定，第二镜抬手激活生日卡。");
+        latestConfirmedScript.setSelected("1");
+        latestConfirmedScript.setConfirmStatus("APPROVED");
+        latestConfirmedScript.setDelFlag(0);
+        when(contentVersionMapper.selectById(22L)).thenReturn(latestConfirmedScript);
+        AivideoTextServiceImpl service = new AivideoTextServiceImpl(
+                null, null, null, null, contentVersionMapper, null, null, null, null, null, null, null);
+        AivideoAssetExtractDto dto = new AivideoAssetExtractDto();
+        dto.setProjectId(1L);
+        dto.setScriptVersionId(22L);
+        dto.setForceRefresh(true);
+        Method method = AivideoTextServiceImpl.class.getDeclaredMethod(
+                "resolveAssetScript", AivideoAssetExtractDto.class, Long.class);
+        method.setAccessible(true);
+
+        AiVideoContentVersionPo resolved =
+                (AiVideoContentVersionPo) method.invoke(service, dto, 1L);
+
+        assertEquals(22L, resolved.getVersionId());
+        assertTrue(resolved.getContentText().contains("新版剧本"));
     }
 
     @Test
@@ -1907,3 +1939,4 @@ class AivideoTextServiceImplTest {
         }
     }
 }
+
