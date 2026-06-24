@@ -1603,11 +1603,24 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (StringUtils.hasText(voiceOver)) {
             lines.add("锁定旁白/画外音（逐字保留，禁止改写、扩写、换成同义句）：" + voiceOver.trim());
         }
+        String pronunciationHint = buildShotPronunciationHintRequirement(shot);
+        if (StringUtils.hasText(pronunciationHint)) {
+            lines.add(pronunciationHint);
+        }
         if (!lines.isEmpty()) {
             lines.add("台词硬规则：本镜只允许使用上面的锁定对白/旁白；不得新增或替换为未出现在分镜字段里的祝福语、惊喜文案或口播。");
         }
         return String.join("\n", lines);
     }
+
+    private String buildShotPronunciationHintRequirement(AiVideoShotPo shot) {
+        String text = collectShotText(shot);
+        if (!StringUtils.hasText(text) || !text.contains("西格玛")) {
+            return "";
+        }
+        return "发音锁定：\"西格玛\"必须读作 xi ge ma（xī gé mǎ），其中\"玛\"读 ma，禁止读成 xi ge ta 或\"西格塔\"；拼音只是发音提示，不要念出拼音。";
+    }
+
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec,
@@ -2046,10 +2059,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         } else {
             audioRule = "声音模式=静音：本阶段只生成画面，generate_audio=false，不生成、不替换、不改变配音、旁白声线、BGM 或音效。";
         }
+        String pronunciationHint = buildShotPronunciationHintRequirement(shot);
         return audioRule
                 + " 对白（说出口/口型同步）：" + tracks.spokenDialogue()
                 + "；旁白/画外音（可发声/不口型）：" + tracks.audibleVoiceOver()
                 + "；心声/心理活动（不发声/不口型，仅画面表现）：" + tracks.internalThought()
+                + (StringUtils.hasText(pronunciationHint) ? "；" + pronunciationHint : "")
                 + "。只有对白允许角色张嘴和口型同步；旁白/画外音可发声但画面中的角色不张嘴、不做口型。"
                 + "心声和心理画面默认不可朗读，必须用眼神、呼吸、姿态、手部迟疑、环境空镜或画面隐喻承接情绪；"
                 + "只有明确写成“角色名（内心独白）”或“角色名（旁白）”时，才可作为可发声旁白。"

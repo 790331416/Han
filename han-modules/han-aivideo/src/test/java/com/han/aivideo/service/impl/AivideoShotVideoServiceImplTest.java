@@ -166,6 +166,11 @@ class AivideoShotVideoServiceImplTest {
             assertTrue(shotText.contains("锁定旁白"), shotText);
             assertTrue(shotText.contains("旁白：黑卡的粉色霓虹字逐渐亮起。"), shotText);
             assertTrue(shotText.contains("禁止改写"), shotText);
+            assertTrue(shotText.contains("xi ge ma"), shotText);
+            assertTrue(shotText.contains("xi ge ta"), shotText);
+            String audioVisualProtocol = request.getVariables().get("audioVisualProtocol");
+            assertTrue(audioVisualProtocol.contains("xi ge ma"), audioVisualProtocol);
+            assertTrue(audioVisualProtocol.contains("xi ge ta"), audioVisualProtocol);
             return R.ok(shotText);
         });
 
