@@ -1528,6 +1528,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String previousCharacterNames = resolveCharacterNames(project.getProjectId(),
                 previousShot != null ? previousShot.getCharacterIds() : null);
         variables.put("characterNames", safeValue(characterNames));
+        variables.put("shotText", buildShotTextForTemplate(shot, characterNames));
         variables.put("referenceCharacterNames", safeValue(referenceCharacterNames));
         variables.put("relationshipReferenceRequirement",
                 buildRelationshipReferenceRequirement(referenceCharacterNames, characterNames));
@@ -1572,6 +1573,41 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         return variables;
     }
 
+    private String buildShotTextForTemplate(AiVideoShotPo shot, String characterNames) {
+        if (shot == null) {
+            return "未填写";
+        }
+        List<String> fields = new ArrayList<>();
+        appendField(fields, "分镜动作：", shot.getActionDesc());
+        appendField(fields, "视频执行补充：", shot.getPromptText());
+        appendField(fields, "转场/衔接：", shot.getTransitionBeforeDesc());
+        appendField(fields, "画内人物：", characterNames);
+        appendField(fields, "情绪：", shot.getEmotion());
+        String speechLock = buildShotSpeechLockRequirement(shot);
+        if (StringUtils.hasText(speechLock)) {
+            fields.add(speechLock);
+        }
+        return fields.isEmpty() ? "未填写" : String.join("\n", fields);
+    }
+
+    private String buildShotSpeechLockRequirement(AiVideoShotPo shot) {
+        if (shot == null) {
+            return "";
+        }
+        List<String> lines = new ArrayList<>();
+        String dialogue = firstText(shot.getDialogue());
+        if (StringUtils.hasText(dialogue)) {
+            lines.add("锁定对白（逐字说出口/口型同步，禁止改写、扩写、换成同义句）：" + dialogue.trim());
+        }
+        String voiceOver = firstText(shot.getVoiceOver());
+        if (StringUtils.hasText(voiceOver)) {
+            lines.add("锁定旁白/画外音（逐字保留，禁止改写、扩写、换成同义句）：" + voiceOver.trim());
+        }
+        if (!lines.isEmpty()) {
+            lines.add("台词硬规则：本镜只允许使用上面的锁定对白/旁白；不得新增或替换为未出现在分镜字段里的祝福语、惊喜文案或口播。");
+        }
+        return String.join("\n", lines);
+    }
     private String buildShotVideoPrompt(AiVideoProjectPo project, AiVideoScenePo scene, AiVideoShotPo shot,
                                         AiVideoShotPo previousShot, AiVideoMediaAssetPo previousTailFrameMedia,
                                         String ratio, String resolution, int durationSec,
@@ -1732,6 +1768,10 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         String currentAction = firstText(shot != null ? shot.getActionDesc() : null,
                 shot != null ? shot.getPromptText() : null,
                 "\u5F53\u524D\u955C\u5934\u52A8\u4F5C");
+        String speechLock = buildShotSpeechLockRequirement(shot);
+        if (StringUtils.hasText(speechLock)) {
+            currentAction = currentAction + "\n" + speechLock;
+        }
         String currentEndState = buildCurrentEndState(shot);
         return """
                 ## \u4E0A\u4E00\u5C3E\u5E27\u9996\u5E27\u6267\u884C\u534F\u8BAE(\u786C\u6027)

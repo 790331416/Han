@@ -151,6 +151,31 @@ class AivideoShotVideoServiceImplTest {
     }
 
     @Test
+    void previewProvidesShotTextWithLockedSpeechForDatabaseTemplate() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setCharacterIds("Q版西格玛男人");
+        fixture.currentShot.setActionDesc("Q版西格玛男人站在雨幕霓虹前，面对镜头保持站定。");
+        fixture.currentShot.setPromptText("1-5秒开口说出口播生日祝福，口型同步。");
+        fixture.currentShot.setDialogue("Q版西格玛男人：我是西格玛，今天祝我的姗宝，生日快乐。");
+        fixture.currentShot.setVoiceOver("旁白：黑卡的粉色霓虹字逐渐亮起。");
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenAnswer(invocation -> {
+            AiTextGenerateRequest request = invocation.getArgument(0);
+            String shotText = request.getVariables().get("shotText");
+            assertTrue(shotText.contains("锁定对白"), shotText);
+            assertTrue(shotText.contains("Q版西格玛男人：我是西格玛，今天祝我的姗宝，生日快乐。"), shotText);
+            assertTrue(shotText.contains("锁定旁白"), shotText);
+            assertTrue(shotText.contains("旁白：黑卡的粉色霓虹字逐渐亮起。"), shotText);
+            assertTrue(shotText.contains("禁止改写"), shotText);
+            return R.ok(shotText);
+        });
+
+        String prompt = fixture.service.previewShotVideoPrompt(fixture.dto()).getUserPrompt();
+
+        assertTrue(prompt.contains("Q版西格玛男人：我是西格玛，今天祝我的姗宝，生日快乐。"), prompt);
+        assertTrue(prompt.contains("禁止改写"), prompt);
+        assertFalse(prompt.contains("{{shotText}}"), prompt);
+    }
+    @Test
     void optimizeShotScriptUpdatesCurrentShotWithAiReturnedFields() {
         TestFixture fixture = new TestFixture();
         fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
