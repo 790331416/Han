@@ -179,6 +179,33 @@ class AivideoShotVideoServiceImplTest {
     }
 
     @Test
+    void optimizeShotScriptKeepsExistingDialogueAndVoiceOverWhenAiReturnsRewrittenSpeech() {
+        TestFixture fixture = new TestFixture();
+        fixture.currentShot.setCharacterIds("Q版西格玛男人");
+        fixture.currentShot.setActionDesc("Q版西格玛男人站在雨幕霓虹前，左手拿着黑卡。");
+        fixture.currentShot.setDialogue("Q版西格玛男人：我是西格玛，今天祝我的姗宝，生日快乐。");
+        fixture.currentShot.setVoiceOver("旁白：黑卡的粉色霓虹字逐渐亮起。");
+        when(fixture.aiServiceClient.renderTextPrompt(any())).thenReturn(R.ok("""
+                {
+                  "actionDesc": "Q版西格玛男人站在雨幕霓虹前，左手拿着黑卡，粉色字样稳定亮起。",
+                  "dialogue": "Q版西格玛男人：生日快乐，这是给你的专属惊喜。",
+                  "voiceOver": "旁白：这是给她准备的生日惊喜。"
+                }
+                """));
+
+        AivideoShotScriptOptimizeDto dto = new AivideoShotScriptOptimizeDto();
+        dto.setProjectId(1L);
+        dto.setShotId(101L);
+        dto.setPreflightFailures(List.of("道具资产缺失：卡片"));
+
+        fixture.service.optimizeShotScript(dto);
+
+        assertTrue(fixture.currentShot.getActionDesc().contains("粉色字样稳定亮起"), fixture.currentShot::getActionDesc);
+        assertEquals("Q版西格玛男人：我是西格玛，今天祝我的姗宝，生日快乐。", fixture.currentShot.getDialogue());
+        assertEquals("旁白：黑卡的粉色霓虹字逐渐亮起。", fixture.currentShot.getVoiceOver());
+    }
+
+    @Test
     void optimizeShotScriptRepairsNaturalLanguageAiResultIntoJson() {
         TestFixture fixture = new TestFixture();
         fixture.previousShot.setCharacterIds("剑魂,狂战士（红狗）,男散打（乌鸡）");
@@ -505,4 +532,3 @@ class AivideoShotVideoServiceImplTest {
         }
     }
 }
-

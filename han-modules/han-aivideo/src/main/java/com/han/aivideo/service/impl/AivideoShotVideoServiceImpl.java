@@ -511,7 +511,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
                 ## 硬规则
                 1. 只输出一个 JSON 对象，不要解释、不要 Markdown。
-                2. 只允许返回这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、dialogue、voiceOver、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
+                2. 只允许返回这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
                 3. 不要改 episodeNo、shotNo、sceneId、keyframeMediaId、tailFrameMediaId、videoMediaId、confirmStatus、generationStatus。
                 4. 如果失败项是“上一镜角色疑似无说明消失”，优先判断当前镜头是否是单人镜头、单人反应、特写裁切或插入镜头：
                    - 如果当前只绑定一个画内主体且没有递给/接过/靠近/同框/对话等互动动作，请在 transitionBeforeDesc 或 promptText 中明确：“单人镜头：画内主体锁定为X，上一镜其他角色A、B被裁切在画外不入画，不自动出现。”
@@ -519,7 +519,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                 5. 如果动作里有递给、接过、交给、展示给、拿给，必须补清 giver、receiver、prop、screenDirection、finalOwner。
                 6. 如果出现武器、发光物、收纳盒、试卷、账本、价格标签等关键道具，必须在 actionDesc 或 promptText 里锁定颜色、材质、持有人和结尾归属。
                 7. 5 秒镜头最多 1 个主动作 + 1 个反应 + 1 个结尾状态；动作过多时压缩当前镜头，不要硬塞。
-                8. dialogue 只写真正说出口的台词；voiceOver 只写旁白/画外音；心理活动不要写成会发声的台词。
+                8. 禁止修改 dialogue 和 voiceOver；台词、旁白、画外音属于已确认文案，必须保留当前分镜原文。只优化当前不合格项直接相关的动作、转场、人物、道具和 promptText；即使觉得台词更顺，也不要返回 dialogue 或 voiceOver。
 
                 ## 返回 JSON 形状说明
                 - 只返回确实需要修改的字段；不需要修改的字段请直接省略。
@@ -528,8 +528,6 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
                   "durationSec": 5,
                   "transitionBeforeDesc": "",
                   "actionDesc": "",
-                  "dialogue": "",
-                  "voiceOver": "",
                   "promptText": "",
                   "characterIds": "",
                   "referenceMediaIds": ""
@@ -612,9 +610,9 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
 
                 ## 硬规则
                 1. 只输出一个 JSON 对象，不要解释、不要 Markdown、不要代码围栏。
-                2. 只允许使用这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、dialogue、voiceOver、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
+                2. 只允许使用这些字段：durationSec、shotType、cameraPosition、cameraMovement、transitionBeforeType、transitionBeforeDesc、actionDesc、emotion、bgmCue、sfxCues、promptText、characterIds、referenceMediaIds。
                 3. 如果原始输出没有明确给出某个字段，就不要编造该字段；确实需要保留空值时用空字符串。
-                4. dialogue 只放说出口的台词；voiceOver 只放旁白/画外音；心理活动不能写成台词。
+                4. 禁止返回或修复 dialogue、voiceOver；如果模型原始输出包含这两个字段，必须从结果 JSON 中删除，保留当前分镜原文。
 
                 ## 返回结构示例
                 - 空字符串只是字段形状示意，禁止照抄空值以外的说明文字。
@@ -671,14 +669,7 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         if (StringUtils.hasText(actionDesc)) {
             shot.setActionDesc(actionDesc);
         }
-        String dialogue = sanitizeShotOptimizeText(payload.dialogue);
-        if (StringUtils.hasText(dialogue)) {
-            shot.setDialogue(dialogue);
-        }
-        String voiceOver = sanitizeShotOptimizeText(payload.voiceOver);
-        if (StringUtils.hasText(voiceOver)) {
-            shot.setVoiceOver(voiceOver);
-        }
+        // dialogue and voiceOver are authored speech text; script optimization must not rewrite them.
         String emotion = sanitizeShotOptimizeText(payload.emotion);
         if (StringUtils.hasText(emotion)) {
             shot.setEmotion(emotion);
