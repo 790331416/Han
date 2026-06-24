@@ -3888,6 +3888,7 @@ const requiredPropKeywords = [
   '皮球', '钥匙', '手机', '书包', '笔记本', '铅笔', '卡片', '长剑', '光剑', '法杖',
   '魔杖', '盾牌', '盾', '弓箭', '弓', '匕首', '刀', '剑', '枪'
 ]
+const cardPropAliases = ['卡片', '贺卡', '卡牌', '生日卡', '祝福卡', '生日牌', '祝福牌', '发光牌', '字牌', '提示牌']
 
 function normalizeShotDurationForBudget(durationSec?: number) {
   const duration = Number(durationSec || params.defaultShotDuration || 5)
@@ -4008,9 +4009,31 @@ function detectShotRequiredPropNames(shot?: AivideoShot) {
 
 function findMatchedPropByName(requiredName: string) {
   return props.value.find((prop) => {
-    const propName = String(prop.propName || '').trim()
-    return !!propName && (propName.includes(requiredName) || requiredName.includes(propName))
+    return matchesPropField(requiredName, prop.propName, true)
+      || matchesPropField(requiredName, prop.propType, true)
+      || matchesPropField(requiredName, prop.visualDesc)
+      || matchesPropField(requiredName, prop.color)
+      || matchesPropField(requiredName, prop.material)
+      || matchesPropField(requiredName, prop.shape)
+      || matchesPropField(requiredName, prop.promptText)
+      || matchesPropField(requiredName, prop.continuityRules)
   })
+}
+
+function aliasesForRequiredProp(requiredName: string) {
+  return requiredName === '卡片' ? cardPropAliases : [requiredName]
+}
+
+function matchesPropField(requiredName: string, value?: string, allowReverseMatch = false) {
+  const text = String(value || '').trim()
+  if (!requiredName || !text) {
+    return false
+  }
+  const aliases = aliasesForRequiredProp(requiredName)
+  if (aliases.some((alias) => text.includes(alias))) {
+    return true
+  }
+  return allowReverseMatch && (requiredName.includes(text) || aliases.some((alias) => alias.includes(text)))
 }
 
 function requiresLockedPropReference(shot: AivideoShot | undefined, requiredName: string) {

@@ -36,6 +36,9 @@ final class AivideoShotRuleAnalyzer {
             "皮球", "钥匙", "手机", "书包", "笔记本", "铅笔", "卡片", "长剑", "光剑", "法杖",
             "魔杖", "盾牌", "盾", "弓箭", "弓", "匕首", "刀", "剑", "枪");
 
+    private static final List<String> CARD_PROP_ALIASES = List.of(
+            "卡片", "贺卡", "卡牌", "生日卡", "祝福卡", "生日牌", "祝福牌", "发光牌", "字牌", "提示牌");
+
     private AivideoShotRuleAnalyzer() {
     }
 
@@ -113,7 +116,7 @@ final class AivideoShotRuleAnalyzer {
 
     static void validateRequiredPropsOrThrow(String text, List<AiVideoPropPo> props, boolean requireLockedImage) {
         for (String requiredName : detectRequiredPropNames(text)) {
-            AiVideoPropPo prop = findProp(requiredName, props);
+            AiVideoPropPo prop = findMatchingProp(requiredName, props);
             if (prop == null) {
                 throw new BusinessException("道具未关联：" + requiredName
                         + "。出现武器、手持物、发光物或剧情推进物时，必须先在道具资产中建立同名道具，并在分镜中保持颜色、材质、归属和交接关系。");
@@ -135,7 +138,7 @@ final class AivideoShotRuleAnalyzer {
         return containsAny(name, List.of("剑", "刀", "枪", "法杖", "魔杖", "盾", "弓", "匕首"));
     }
 
-    private static AiVideoPropPo findProp(String requiredName, List<AiVideoPropPo> props) {
+    static AiVideoPropPo findMatchingProp(String requiredName, List<AiVideoPropPo> props) {
         if (!StringUtils.hasText(requiredName) || props == null) {
             return null;
         }
@@ -143,15 +146,45 @@ final class AivideoShotRuleAnalyzer {
             if (prop == null || Integer.valueOf(1).equals(prop.getDelFlag())) {
                 continue;
             }
-            String propName = prop.getPropName();
-            if (!StringUtils.hasText(propName)) {
-                continue;
-            }
-            if (propName.contains(requiredName) || requiredName.contains(propName)) {
+            if (matchesRequiredProp(requiredName, prop)) {
                 return prop;
             }
         }
         return null;
+    }
+
+    private static boolean matchesRequiredProp(String requiredName, AiVideoPropPo prop) {
+        return matchesPropField(requiredName, prop.getPropName(), true)
+                || matchesPropField(requiredName, prop.getPropType(), true)
+                || matchesPropField(requiredName, prop.getVisualDesc(), false)
+                || matchesPropField(requiredName, prop.getColor(), false)
+                || matchesPropField(requiredName, prop.getMaterial(), false)
+                || matchesPropField(requiredName, prop.getShape(), false)
+                || matchesPropField(requiredName, prop.getPromptText(), false)
+                || matchesPropField(requiredName, prop.getContinuityRules(), false);
+    }
+
+    private static boolean matchesPropField(String requiredName, String value, boolean allowReverseMatch) {
+        if (!StringUtils.hasText(requiredName) || !StringUtils.hasText(value)) {
+            return false;
+        }
+        String normalizedValue = value.trim().toLowerCase(Locale.ROOT);
+        for (String alias : aliasesForRequiredProp(requiredName)) {
+            String normalizedAlias = alias.trim().toLowerCase(Locale.ROOT);
+            if (normalizedValue.contains(normalizedAlias)
+                    || (allowReverseMatch && normalizedAlias.contains(normalizedValue))) {
+                return true;
+            }
+        }
+        String normalizedRequiredName = requiredName.trim().toLowerCase(Locale.ROOT);
+        return allowReverseMatch && normalizedRequiredName.contains(normalizedValue);
+    }
+
+    private static List<String> aliasesForRequiredProp(String requiredName) {
+        if ("卡片".equals(requiredName)) {
+            return CARD_PROP_ALIASES;
+        }
+        return List.of(requiredName);
     }
 
     private static List<String> splitBeats(String actionDesc, String promptText) {

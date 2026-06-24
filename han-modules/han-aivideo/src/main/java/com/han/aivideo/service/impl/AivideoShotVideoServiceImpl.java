@@ -1040,31 +1040,12 @@ public class AivideoShotVideoServiceImpl extends AivideoServiceSupport implement
         }
         List<AiVideoPropPo> projectProps = selectProjectProps(projectId);
         for (String requiredName : requiredPropNames) {
-            AiVideoPropPo prop = findMatchedProp(requiredName, projectProps);
+            AiVideoPropPo prop = AivideoShotRuleAnalyzer.findMatchingProp(requiredName, projectProps);
             if (prop == null || prop.getLockedMediaId() == null) {
                 continue;
             }
             addReferenceMedia(references, requireReferenceImage(projectId, prop.getLockedMediaId()));
         }
-    }
-
-    private AiVideoPropPo findMatchedProp(String requiredName, List<AiVideoPropPo> projectProps) {
-        if (!StringUtils.hasText(requiredName) || projectProps == null) {
-            return null;
-        }
-        for (AiVideoPropPo prop : projectProps) {
-            if (prop == null || Integer.valueOf(1).equals(prop.getDelFlag())) {
-                continue;
-            }
-            String propName = prop.getPropName();
-            if (!StringUtils.hasText(propName)) {
-                continue;
-            }
-            if (propName.contains(requiredName) || requiredName.contains(propName)) {
-                return prop;
-            }
-        }
-        return null;
     }
 
     private AiVideoMediaAssetPo requireReferenceImage(Long projectId, Long mediaId) {

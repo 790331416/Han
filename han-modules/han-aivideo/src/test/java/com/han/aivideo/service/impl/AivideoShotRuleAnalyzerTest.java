@@ -80,4 +80,19 @@ class AivideoShotRuleAnalyzerTest {
         assertTrue(exception.getMessage().contains("道具未锁定参考图"), exception::getMessage);
         assertTrue(exception.getMessage().contains("寒光剑"), exception::getMessage);
     }
+
+    @Test
+    void matchesRequiredPropByTypeOrVisualDescriptionWhenNameIsSpecific() {
+        AiVideoPropPo prop = new AiVideoPropPo();
+        prop.setPropName("迪宝生日快乐发光牌");
+        prop.setPropType("剧情卡片");
+        prop.setVisualDesc("黑色亚克力卡片，粉色霓虹字，作为当前镜头手持祝福道具。");
+        prop.setLockedMediaId(9001L);
+
+        assertDoesNotThrow(() ->
+                AivideoShotRuleAnalyzer.validateRequiredPropsOrThrow(
+                        "Q版西格玛男人左手握住卡片，正面展示粉色霓虹生日祝福字样。",
+                        List.of(prop),
+                        true));
+    }
 }
