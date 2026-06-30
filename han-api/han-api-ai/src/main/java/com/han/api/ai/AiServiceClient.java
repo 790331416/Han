@@ -1,9 +1,11 @@
 package com.han.api.ai;
 
-import com.han.api.ai.domain.AiTextGenerateRequest;
-import com.han.api.ai.domain.AiTextGenerateResponse;
 import com.han.api.ai.domain.AiImageGenerateRequest;
 import com.han.api.ai.domain.AiImageGenerateResponse;
+import com.han.api.ai.domain.AiTextGenerateRequest;
+import com.han.api.ai.domain.AiTextGenerateResponse;
+import com.han.api.ai.domain.AiTtsGenerateRequest;
+import com.han.api.ai.domain.AiTtsGenerateResponse;
 import com.han.api.ai.domain.AiVideoGenerateRequest;
 import com.han.api.ai.domain.AiVideoGenerateResponse;
 import com.han.api.ai.domain.AiVideoTaskQueryRequest;
@@ -48,4 +50,10 @@ public interface AiServiceClient {
      */
     @PostExchange("/video/task/query")
     R<AiVideoTaskQueryResponse> queryVideoTask(@RequestBody AiVideoTaskQueryRequest request);
+
+    /**
+     * Synthesize speech audio with a configured TTS model.
+     */
+    @PostExchange("/tts/synthesize")
+    R<AiTtsGenerateResponse> generateTts(@RequestBody AiTtsGenerateRequest request);
 }

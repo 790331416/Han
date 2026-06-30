@@ -1,142 +1,57 @@
 package com.han.aivideo.service.impl;
 
 import com.han.aivideo.service.AivideoTtsProvider;
+import com.han.api.ai.AiServiceClient;
+import com.han.api.ai.domain.AiTtsGenerateRequest;
+import com.han.api.ai.domain.AiTtsGenerateResponse;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
-import com.han.common.core.util.XuJsonUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
 
 /**
- * Volcengine Doubao Speech TTS provider.
+ * Text-to-speech provider backed by the shared han-ai speech capability.
+ * <p>
+ * The Volcengine speech client now lives in han-ai; this provider only adapts the
+ * aivideo business contract ({@link TtsRequest}/{@link TtsAudio}) to the inner AI service call,
+ * so generic model access no longer lives in the business module.
  */
 @Service
+@RequiredArgsConstructor
 public class AivideoVolcTtsProvider implements AivideoTtsProvider {
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
-    private final AivideoModelConfigResolver modelConfigResolver;
-
-    public AivideoVolcTtsProvider(AivideoModelConfigResolver modelConfigResolver) {
-        this.modelConfigResolver = modelConfigResolver;
-    }
+    private final AiServiceClient aiServiceClient;
 
     @Override
     public TtsAudio synthesize(TtsRequest request) {
         if (request == null || !StringUtils.hasText(request.text())) {
             throw new BusinessException("TTS文本不能为空");
         }
-        AivideoModelConfigResolver.TtsConfig config = modelConfigResolver.resolveTtsConfig();
-        if (config == null || !config.configured()) {
-            throw new BusinessException("火山语音合成未配置，请在 AI模型管理中新增并启用 TTS 配置，或设置 AIVIDEO_TTS_VOLC_APP_ID 和 AIVIDEO_TTS_VOLC_ACCESS_TOKEN");
+        AiTtsGenerateRequest generateRequest = new AiTtsGenerateRequest();
+        generateRequest.setText(request.text());
+        generateRequest.setVoiceType(request.voiceType());
+        generateRequest.setSpeedRatio(request.speedRatio());
+        generateRequest.setVolumeRatio(request.volumeRatio());
+        generateRequest.setPitchRatio(request.pitchRatio());
+        generateRequest.setRequestId(request.requestId());
+
+        R<AiTtsGenerateResponse> result = aiServiceClient.generateTts(generateRequest);
+        if (result == null || result.isFail()) {
+            throw new BusinessException(result == null ? "火山语音合成服务无响应" : result.getMsg());
         }
-        String requestId = firstText(request.requestId(), UUID.randomUUID().toString());
-        Map<String, Object> body = buildRequestBody(request, requestId, config);
-        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(config.endpoint()))
-                .timeout(Duration.ofSeconds(60))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer;" + config.accessToken())
-                .POST(HttpRequest.BodyPublishers.ofString(XuJsonUtil.toJsonString(body)))
-                .build();
-        HttpResponse<String> response;
-        try {
-            response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-        } catch (Exception exception) {
-            throw new BusinessException("火山语音合成请求失败：" + exception.getMessage());
-        }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new BusinessException("火山语音合成HTTP失败(" + response.statusCode() + "): " + response.body());
-        }
-        Map<String, Object> payload = XuJsonUtil.parseObject(response.body(), Map.class);
-        int code = parseInt(payload.get("code"), -1);
-        if (code != 3000) {
-            throw new BusinessException("火山语音合成失败(" + code + "): " + firstText(String.valueOf(payload.get("message"))));
-        }
-        String base64 = firstText(String.valueOf(payload.get("data")));
-        if (!StringUtils.hasText(base64)) {
+        AiTtsGenerateResponse data = result.getData();
+        if (data == null || !StringUtils.hasText(data.getAudioBase64())) {
             throw new BusinessException("火山语音合成未返回音频数据");
         }
-        byte[] bytes = Base64.getDecoder().decode(base64);
-        Map<?, ?> addition = payload.get("addition") instanceof Map<?, ?> map ? map : Map.of();
-        Integer durationMs = parseInt(addition.get("duration"), null);
-        return new TtsAudio(requestId, "audio/mpeg", "mp3", durationMs, bytes);
-    }
-
-    private Map<String, Object> buildRequestBody(TtsRequest request,
-                                                 String requestId,
-                                                 AivideoModelConfigResolver.TtsConfig config) {
-        Map<String, Object> app = new LinkedHashMap<>();
-        app.put("appid", config.appId());
-        app.put("token", config.accessToken());
-        app.put("cluster", config.cluster());
-
-        Map<String, Object> user = new LinkedHashMap<>();
-        user.put("uid", "aivideo");
-
-        Map<String, Object> audio = new LinkedHashMap<>();
-        audio.put("voice_type", firstText(request.voiceType(), config.defaultVoiceType()));
-        audio.put("encoding", "mp3");
-        audio.put("rate", 24000);
-        audio.put("speed_ratio", ratio(request.speedRatio()));
-        audio.put("volume_ratio", ratio(request.volumeRatio()));
-        audio.put("pitch_ratio", ratio(request.pitchRatio()));
-        audio.put("language", "cn");
-
-        Map<String, Object> req = new LinkedHashMap<>();
-        req.put("reqid", requestId);
-        req.put("text", request.text());
-        req.put("text_type", "plain");
-        req.put("operation", "query");
-        req.put("silence_duration", "125");
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("app", app);
-        body.put("user", user);
-        body.put("audio", audio);
-        body.put("request", req);
-        return body;
-    }
-
-    private double ratio(BigDecimal value) {
-        return value == null ? 1.0D : value.doubleValue();
-    }
-
-    private int parseInt(Object value, int fallback) {
-        Integer parsed = parseInt(value, null);
-        return parsed == null ? fallback : parsed;
-    }
-
-    private Integer parseInt(Object value, Integer fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value).trim());
-        } catch (NumberFormatException exception) {
-            return fallback;
-        }
-    }
-
-    private String firstText(String... values) {
-        if (values == null) {
-            return "";
-        }
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return "";
+        byte[] bytes = Base64.getDecoder().decode(data.getAudioBase64());
+        return new TtsAudio(
+                StringUtils.hasText(data.getProviderRequestId()) ? data.getProviderRequestId() : request.requestId(),
+                StringUtils.hasText(data.getMimeType()) ? data.getMimeType() : "audio/mpeg",
+                StringUtils.hasText(data.getExtension()) ? data.getExtension() : "mp3",
+                data.getDurationMs(),
+                bytes);
     }
 }

@@ -17,25 +17,6 @@ import static org.mockito.Mockito.when;
 class AivideoModelConfigResolverTest {
 
     @Test
-    void resolveTtsConfigPrefersEnabledAiModelJsonCredential() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row(
-                "base_url", "https://tts.example.com/api/v1/tts",
-                "api_key", "{\"appId\":\"db-app\",\"accessToken\":\"db-token\",\"cluster\":\"db-cluster\",\"defaultVoiceType\":\"voice-001\"}"
-        )));
-
-        AivideoModelConfigResolver resolver = new AivideoModelConfigResolver(jdbcTemplate, new MockEnvironment());
-
-        AivideoModelConfigResolver.TtsConfig config = resolver.resolveTtsConfig();
-
-        assertEquals("https://tts.example.com/api/v1/tts", config.endpoint());
-        assertEquals("db-app", config.appId());
-        assertEquals("db-token", config.accessToken());
-        assertEquals("db-cluster", config.cluster());
-        assertEquals("voice-001", config.defaultVoiceType());
-    }
-
-    @Test
     void resolveVodEditConfigPrefersEnabledAiModelJsonCredential() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of(row(
@@ -55,20 +36,16 @@ class AivideoModelConfigResolverTest {
     }
 
     @Test
-    void resolveConfigsFallBackToLegacyEnvironmentWhenAiModelMissing() {
+    void resolveVodConfigFallsBackToLegacyEnvironmentWhenAiModelMissing() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
         MockEnvironment environment = new MockEnvironment()
-                .withProperty("AIVIDEO_TTS_VOLC_APP_ID", "env-app")
-                .withProperty("AIVIDEO_TTS_VOLC_ACCESS_TOKEN", "env-token")
                 .withProperty("VOLCENGINE_VOD_ACCESS_KEY_ID", "env-ak")
                 .withProperty("VOLCENGINE_VOD_SECRET_ACCESS_KEY", "env-sk")
                 .withProperty("AIVIDEO_VOD_SPACE", "space-env");
 
         AivideoModelConfigResolver resolver = new AivideoModelConfigResolver(jdbcTemplate, environment);
 
-        assertEquals("env-app", resolver.resolveTtsConfig().appId());
-        assertEquals("env-token", resolver.resolveTtsConfig().accessToken());
         assertEquals("env-ak", resolver.resolveVodEditConfig().accessKey());
         assertEquals("env-sk", resolver.resolveVodEditConfig().secretKey());
         assertEquals("space-env", resolver.resolveVodEditConfig().space());
