@@ -29,7 +29,7 @@ class AiPromptTemplateServiceImplTest {
         AiPromptTemplateServiceImpl service = new AiPromptTemplateServiceImpl(mapper);
         AiPromptTemplatePo template = new AiPromptTemplatePo();
         template.setTemplateId(1L);
-        template.setTemplateName("AI短剧剧本生成");
+        template.setTemplateName("通用文本生成示例");
         template.setBuiltIn(1);
 
         when(mapper.selectPage(any(Page.class), any(Wrapper.class))).thenAnswer(invocation -> {
@@ -44,7 +44,7 @@ class AiPromptTemplateServiceImplTest {
         PageResult<AiPromptTemplatePo> result = service.selectPage(new AiPromptTemplateQuery());
 
         assertThat(result.getTotal()).isEqualTo(1);
-        assertThat(result.getRows()).extracting(AiPromptTemplatePo::getTemplateName).containsExactly("AI短剧剧本生成");
+        assertThat(result.getRows()).extracting(AiPromptTemplatePo::getTemplateName).containsExactly("通用文本生成示例");
     }
 
     @Test
@@ -53,7 +53,7 @@ class AiPromptTemplateServiceImplTest {
         AiPromptTemplateServiceImpl service = new AiPromptTemplateServiceImpl(mapper);
         AiPromptTemplatePo template = new AiPromptTemplatePo();
         template.setTemplateId(1L);
-        template.setTemplateName("AI短剧剧本生成");
+        template.setTemplateName("通用文本生成示例");
         template.setBuiltIn(1);
 
         when(mapper.selectList(any(Wrapper.class))).thenAnswer(invocation -> {
@@ -64,10 +64,11 @@ class AiPromptTemplateServiceImplTest {
 
         List<AiPromptTemplatePo> result = service.selectAll();
 
-        assertThat(result).extracting(AiPromptTemplatePo::getTemplateName).containsExactly("AI短剧剧本生成");
+        assertThat(result).extracting(AiPromptTemplatePo::getTemplateName).containsExactly("通用文本生成示例");
     }
+
     @Test
-    void selectPageBackfillsAivideoBuiltInTemplatesWhenDatabaseMissedUpgradeSql() {
+    void selectPageBackfillsBuiltInTemplatesWhenDatabaseMissedSeed() {
         AiPromptTemplateMapper mapper = mock(AiPromptTemplateMapper.class);
         AiPromptTemplateServiceImpl service = new AiPromptTemplateServiceImpl(mapper);
 
@@ -84,11 +85,11 @@ class AiPromptTemplateServiceImplTest {
         ArgumentCaptor<AiPromptTemplatePo> captor = ArgumentCaptor.forClass(AiPromptTemplatePo.class);
         verify(mapper, atLeastOnce()).insert(captor.capture());
         List<AiPromptTemplatePo> inserted = captor.getAllValues();
-        assertThat(inserted).hasSizeGreaterThanOrEqualTo(10);
+        assertThat(inserted).hasSizeGreaterThanOrEqualTo(2);
         assertThat(inserted).extracting(AiPromptTemplatePo::getCategory)
-                .contains("aivideo_video", "aivideo_tts");
+                .contains("general_text", "general_summary");
         assertThat(inserted).extracting(AiPromptTemplatePo::getContent)
-                .anySatisfy(content -> assertThat(content).contains("referenceAudioUrls"));
+                .anySatisfy(content -> assertThat(content).contains("{{input}}"));
     }
 
     @Test
@@ -97,8 +98,8 @@ class AiPromptTemplateServiceImplTest {
         AiPromptTemplateServiceImpl service = new AiPromptTemplateServiceImpl(mapper);
         AiPromptTemplatePo stale = new AiPromptTemplatePo();
         stale.setTemplateId(99L);
-        stale.setTemplateName("AI短剧分镜视频生成");
-        stale.setCategory("aivideo_text");
+        stale.setTemplateName("通用内容总结示例");
+        stale.setCategory("general_text");
         stale.setContent("old prompt");
         stale.setVariables("[]");
         stale.setDescription("old");
@@ -112,7 +113,7 @@ class AiPromptTemplateServiceImplTest {
         verify(mapper, atLeastOnce()).updateById(any(AiPromptTemplatePo.class));
         assertThat(stale.getBuiltIn()).isEqualTo(1);
         assertThat(stale.getStatus()).isEqualTo("0");
-        assertThat(stale.getContent()).contains("referenceAudioUrls");
+        assertThat(stale.getContent()).contains("待总结内容");
     }
 
     @Test
@@ -122,7 +123,7 @@ class AiPromptTemplateServiceImplTest {
         AiPromptTemplatePo custom = new AiPromptTemplatePo();
         custom.setTemplateId(101L);
         custom.setTenantId(9L);
-        custom.setTemplateName("AI短剧分镜视频生成");
+        custom.setTemplateName("通用内容总结示例");
         custom.setCategory("custom");
         custom.setContent("tenant custom prompt");
         custom.setBuiltIn(0);

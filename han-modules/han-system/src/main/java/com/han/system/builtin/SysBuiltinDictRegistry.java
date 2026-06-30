@@ -15,12 +15,15 @@ import java.util.List;
 /**
  * 内置字典注册中心。
  *
- * <p>这里维护 Han 公共模块和 AIVideo 模块依赖的基础字典值，目标是让：
+ * <p>这里维护 Han 公共模块依赖的通用基础字典值，目标是让：
  * <ul>
  *     <li>全量初始化 SQL 与运行期兜底保持一致；</li>
  *     <li>新租户首次访问字典接口时也能自动补齐必要字典；</li>
  *     <li>前端公共下拉选项逐步从写死常量迁移到字典中心。</li>
  * </ul>
+ *
+ * <p>仅维护与具体业务无关的通用字典；业务专属字典应由对应业务模块或业务升级 SQL 注入，
+ * 不在通用底座硬编码。
  *
  * <p>注意：这里只补齐“缺失的内置项”，不会覆盖租户已经维护过的字典内容。
  */
@@ -34,7 +37,7 @@ public class SysBuiltinDictRegistry {
     private static final int STATUS_ENABLED = 0;
 
     /**
-     * 所有运行期需要兜底补齐的内置字典定义。
+     * 所有运行期需要兜底补齐的内置字典定义（仅通用字典）。
      */
     private static final List<DictDefinition> DEFINITIONS = List.of(
             definition("通用启停状态", "sys_normal_disable", "系统通用启停状态字典", List.of(
@@ -69,14 +72,7 @@ public class SysBuiltinDictRegistry {
             definition("AI Prompt模板分类", "ai_prompt_category", "AI Prompt模板分类列表", List.of(
                     item("系统提示词", "system", 10, "primary"),
                     item("用户模板", "user", 20, "success"),
-                    item("助手模板", "assistant", 30, "warning"),
-                    item("AIVideo 文本润色", "aivideo_text", 40, "primary"),
-                    item("AIVideo 剧本生成", "aivideo_script", 50, "primary"),
-                    item("AIVideo 资产提取", "aivideo_asset", 60, "success"),
-                    item("AIVideo 分镜提取", "aivideo_storyboard", 70, "warning"),
-                    item("AIVideo 图片生成", "aivideo_image", 80, "success"),
-                    item("AIVideo 视频生成", "aivideo_video", 90, "warning"),
-                    item("AIVideo 语音合成", "aivideo_tts", 100, "info")
+                    item("助手模板", "assistant", 30, "warning")
             )),
             definition("AI知识库类型", "ai_kb_type", "AI知识库类型列表", List.of(
                     item("通用知识库", "general", 10, "primary"),
@@ -97,107 +93,6 @@ public class SysBuiltinDictRegistry {
                     item("索引中", "indexing", 20, "warning"),
                     item("已完成", "completed", 30, "success"),
                     item("失败", "failed", 40, "danger")
-            )),
-            definition("AIVideo 项目阶段", "aivideo_project_stage", "AI短剧项目阶段列表", List.of(
-                    item("草稿", "DRAFT", 10, "info"),
-                    item("原文已保存", "DOCUMENT_SAVED", 20, "primary"),
-                    item("文档已确认", "DOCUMENT_PARSED", 30, "primary"),
-                    item("润色已确认", "POLISH_CONFIRMED", 40, "success"),
-                    item("剧本已确认", "SCRIPT_CONFIRMED", 50, "success"),
-                    item("资产已确认", "ASSET_CONFIRMED", 60, "success"),
-                    item("视频生成中", "VIDEO_GENERATING", 70, "warning"),
-                    item("视频已确认", "VIDEO_CONFIRMED", 80, "success")
-            )),
-            definition("AIVideo 项目状态", "aivideo_project_status", "AI短剧项目状态列表", List.of(
-                    item("草稿", "DRAFT", 10, "info"),
-                    item("进行中", "RUNNING", 20, "warning"),
-                    item("暂停", "PAUSED", 30, "info"),
-                    item("已完成", "FINISHED", 40, "success"),
-                    item("已归档", "ARCHIVED", 50, "danger")
-            )),
-            definition("AIVideo 任务状态", "aivideo_task_status", "AI短剧任务状态列表", List.of(
-                    item("待执行", "PENDING", 10, "info"),
-                    item("执行中", "RUNNING", 20, "warning"),
-                    item("成功", "SUCCESS", 30, "success"),
-                    item("失败", "FAILED", 40, "danger"),
-                    item("已取消", "CANCELED", 50, "info")
-            )),
-            definition("AIVideo 画幅", "aivideo_ratio", "AI短剧项目画幅列表", List.of(
-                    item("9:16", "9:16", 10, "primary"),
-                    item("16:9", "16:9", 20, "success"),
-                    item("1:1", "1:1", 30, "info"),
-                    item("4:3", "4:3", 40, "warning")
-            )),
-            definition("AIVideo 清晰度", "aivideo_resolution", "AI短剧项目清晰度列表", List.of(
-                    item("720p", "720p", 10, "primary"),
-                    item("1080p", "1080p", 20, "success"),
-                    item("2K", "2K", 30, "warning")
-            )),
-            definition("AIVideo 视觉风格", "aivideo_visual_style", "AI短剧视觉风格列表", List.of(
-                    item("写实电影感", "写实电影感", 10, "primary"),
-                    item("3D 国漫 CG", "3D 国漫 CG", 20, "success"),
-                    item("2D 日漫", "2D 日漫", 30, "warning"),
-                    item("复古胶片", "复古胶片", 40, "info"),
-                    item("赛博朋克", "赛博朋克", 50, "danger"),
-                    item("童话绘本", "童话绘本", 60, "success"),
-                    item("国风水墨", "国风水墨", 70, "primary")
-            )),
-            definition("AIVideo 生成策略", "aivideo_generation_strategy", "AI短剧视频生成策略列表", List.of(
-                    item("自动", "AUTO", 10, "primary"),
-                    item("视频延长", "VIDEO_EXTEND", 20, "warning"),
-                    item("分段拼接", "SEGMENT_STITCH", 30, "success"),
-                    item("轨道补齐", "TRACK_FILL", 40, "info")
-            )),
-            definition("AIVideo 声音模式", "aivideo_audio_mode", "AI短剧声音模式列表", List.of(
-                    item("静音", "SILENT", 10, "info"),
-                    item("原生有声", "NATIVE_AUDIO", 20, "success"),
-                    item("参考音频有声", "REFERENCE_AUDIO", 30, "warning"),
-                    item("后期 TTS", "POST_TTS", 40, "primary")
-            )),
-            definition("AIVideo 字幕模式", "aivideo_subtitle_mode", "AI短剧字幕模式列表", List.of(
-                    item("无字幕", "NONE", 10, "info"),
-                    item("底部字幕", "BOTTOM", 20, "primary"),
-                    item("气泡台词", "BUBBLE", 30, "success"),
-                    item("标题文字", "TITLE", 40, "warning")
-            )),
-            definition("AIVideo 参考素材策略", "aivideo_reference_strategy", "AI短剧参考素材策略列表", List.of(
-                    item("角色锚定", "CHARACTER_ANCHOR", 10, "primary"),
-                    item("场景定调", "SCENE_TONE", 20, "success"),
-                    item("运镜参考", "CAMERA_REFERENCE", 30, "warning"),
-                    item("动作参考", "ACTION_REFERENCE", 40, "info"),
-                    item("音频参考", "AUDIO_REFERENCE", 50, "warning"),
-                    item("角色 + 场景", "CHARACTER_SCENE", 60, "primary")
-            )),
-            definition("AIVideo 动作强度", "aivideo_action_intensity", "AI短剧动作强度列表", List.of(
-                    item("低缓动作", "LOW", 10, "info"),
-                    item("普通动作", "NORMAL", 20, "primary"),
-                    item("强动作", "STRONG", 30, "warning")
-            )),
-            definition("AIVideo 连续性强度", "aivideo_continuity_level", "AI短剧连续性强度列表", List.of(
-                    item("普通", "NORMAL", 10, "info"),
-                    item("严格", "STRICT", 20, "primary"),
-                    item("极严格", "ULTRA_STRICT", 30, "warning")
-            )),
-            definition("AIVideo 多角色策略", "aivideo_multi_role_strategy", "AI短剧多角色策略列表", List.of(
-                    item("单角色优先", "SINGLE_FIRST", 10, "primary"),
-                    item("多角色允许", "MULTI_ALLOWED", 20, "success"),
-                    item("超过 4 人自动拆镜", "SPLIT_OVER_FOUR", 30, "warning")
-            )),
-            definition("AIVideo 角色造型类型", "aivideo_character_design_type", "AI短剧角色造型类型列表", List.of(
-                    item("自动", "AUTO", 10, "info"),
-                    item("写实自然比例", "REALISTIC_NATURAL", 20, "primary"),
-                    item("半写实卡通", "SEMI_REAL_CARTOON", 30, "success"),
-                    item("3D动漫/国漫CG", "THREE_D_ANIME_CG", 40, "warning"),
-                    item("2D动漫/日漫", "TWO_D_ANIME", 50, "warning"),
-                    item("Q版萌系全身", "CHIBI_FULL_BODY", 60, "success"),
-                    item("低龄儿童绘本", "CHILDREN_PICTURE_BOOK", 70, "info"),
-                    item("动物本体萌化", "ANIMAL_BODY_CUTE", 80, "success"),
-                    item("拟人化角色", "ANTHROPOMORPHIC", 90, "primary"),
-                    item("怪物/夸张反派", "MONSTER_VILLAIN", 100, "danger")
-            )),
-            definition("AIVideo 素材访问策略", "aivideo_media_access_policy", "AI短剧素材访问策略列表", List.of(
-                    item("登录可见", "PRIVATE", 10, "info"),
-                    item("公开可见", "PUBLIC", 20, "success")
             ))
     );
 

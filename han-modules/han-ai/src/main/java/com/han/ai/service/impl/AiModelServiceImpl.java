@@ -121,13 +121,13 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
             if (!credentialResolver.isCredentialConfigured(model)) {
                 throw new BusinessException("语音合成配置未填写，请在 API Key 中填写火山 TTS JSON 配置或设置环境变量");
             }
-            return "语音合成模型配置已保存；请在 AIVideo 语音合成资产中发起真实合成测试。";
+            return "语音合成模型配置已保存；请在语音合成测试入口发起真实合成测试。";
         }
         if (MODEL_TYPE_VIDEO_EDIT.equalsIgnoreCase(model.getModelType())) {
             if (!credentialResolver.isCredentialConfigured(model)) {
                 throw new BusinessException("视频剪辑合成配置未填写，请在 API Key 中填写火山 VOD JSON 配置或设置环境变量");
             }
-            return "视频剪辑合成配置已保存；请在 AIVideo 剪辑任务中发起真实合成测试。";
+            return "视频剪辑合成配置已保存；请在视频剪辑任务入口发起真实合成测试。";
         }
         return openAiCompatibleClient.testConnection(model, credentialResolver.resolveApiKey(model));
     }

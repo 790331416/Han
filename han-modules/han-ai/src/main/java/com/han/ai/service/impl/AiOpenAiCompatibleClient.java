@@ -73,7 +73,7 @@ class AiOpenAiCompatibleClient {
     String testVideoConfiguration(AiModelPo model, String apiKey) {
         validateVideoConfig(model, apiKey);
         return "视频模型配置校验通过: " + model.getProvider() + "/" + model.getModelCode()
-                + "。视频真实生成请在短剧工作台选择分镜后发起，避免配置页测试产生费用。";
+                + "。视频真实生成请在业务侧任务入口发起，避免配置页测试产生费用。";
     }
 
     String chatCompletion(AiModelPo model, String apiKey, List<ProviderMessage> messages, Integer maxTokensOverride) {

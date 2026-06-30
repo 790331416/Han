@@ -67,7 +67,6 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/open/sso/check",
             "/open/sso/validate",
             "/system/runtime/capabilities",
-            "/aivideo/public/",
             "/file/public/",
             "/doc.html",
             "/swagger-resources",
