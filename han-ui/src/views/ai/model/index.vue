@@ -194,6 +194,7 @@
                 v-model="form.modelType"
                 data-testid="ai-model-type-select"
                 placeholder="请选择模型类型"
+                @change="handleModelTypeChange"
               >
                 <el-option
                   v-for="item in modelTypeOptions"
@@ -209,8 +210,11 @@
               <el-input
                 v-model="form.modelCode"
                 data-testid="ai-model-code-input"
-                placeholder="如: qwen-plus"
+                :placeholder="currentModelCodePlaceholder"
               />
+              <div v-if="form.provider === 'volcengine'" class="field-tip">
+                {{ volcengineModelCodeTip }}
+              </div>
               <div v-if="currentSuggestions.length" class="suggestion-row">
                 <span class="suggestion-label">推荐模型</span>
                 <el-tag
@@ -231,7 +235,7 @@
           <el-input
             v-model="form.baseUrl"
             data-testid="ai-model-base-url-input"
-            placeholder="如: https://dashscope.aliyuncs.com/compatible-mode/v1"
+            :placeholder="currentBaseUrlPlaceholder"
           />
         </el-form-item>
 
@@ -239,12 +243,13 @@
           <el-input
             v-model="form.apiKey"
             data-testid="ai-model-api-key-input"
-            type="password"
-            show-password
-            placeholder="请输入 API Key，留空表示保留原值"
+            :type="apiKeyInputType"
+            :rows="apiKeyInputRows"
+            :show-password="apiKeyInputType === 'password'"
+            :placeholder="apiKeyPlaceholder"
           />
           <div class="field-tip">
-            当前供应商建议优先使用环境变量 `{{ currentCredentialEnv }}`，数据库值仅作为回退；编辑已有模型时留空会保留原值。
+            {{ apiKeyFieldTip }}
           </div>
         </el-form-item>
 
@@ -317,19 +322,22 @@ import {
   deleteAiModel,
   getAiModel,
   listAiModel,
-  modelTypeOptions,
-  providerOptions,
+  modelTypeOptions as fallbackModelTypeOptions,
+  providerOptions as fallbackProviderOptions,
   testAiModel,
   updateAiModel,
   type AiModel,
   type AiModelQuery
 } from '@/api/ai'
+import { AI_MODEL_PROVIDER_DICT, AI_MODEL_TYPE_DICT, loadDictOptions, type DictOption } from '@/utils/dict-options'
 
 interface ProviderPreset {
   baseUrl: string
   defaultModelCode: string
   suggestions: string[]
   credentialEnv: string
+  apiKeyPlaceholder?: string
+  apiKeyTip?: string
 }
 
 const providerPresets: Record<string, ProviderPreset> = {
@@ -338,6 +346,12 @@ const providerPresets: Record<string, ProviderPreset> = {
     defaultModelCode: 'gpt-4.1',
     suggestions: ['gpt-4.1', 'gpt-4.1-mini', 'text-embedding-3-large'],
     credentialEnv: 'OPENAI_API_KEY'
+  },
+  volcengine: {
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    defaultModelCode: '',
+    suggestions: [],
+    credentialEnv: 'VOLCENGINE_ARK_API_KEY'
   },
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1',
@@ -383,6 +397,29 @@ const providerPresets: Record<string, ProviderPreset> = {
   }
 }
 
+const modelTypePresets: Record<string, ProviderPreset> = {
+  TTS: {
+    baseUrl: 'https://openspeech.bytedance.com/api/v1/tts',
+    defaultModelCode: 'volc-tts',
+    suggestions: ['volc-tts'],
+    credentialEnv: 'AIVIDEO_TTS_VOLC_APP_ID / AIVIDEO_TTS_VOLC_ACCESS_TOKEN',
+    apiKeyPlaceholder:
+      '{"appId":"火山语音AppID","accessToken":"火山语音AccessToken","cluster":"volcano_tts","defaultVoiceType":"BV001_24k_streaming"}',
+    apiKeyTip:
+      '语音合成建议填写 JSON：appId、accessToken、cluster、defaultVoiceType；也兼容原 AIVIDEO_TTS_VOLC_* 环境变量。'
+  },
+  VIDEO_EDIT: {
+    baseUrl: 'https://vod.volcengineapi.com',
+    defaultModelCode: 'vod-direct-edit',
+    suggestions: ['vod-direct-edit'],
+    credentialEnv: 'VOLCENGINE_VOD_ACCESS_KEY_ID / VOLCENGINE_VOD_SECRET_ACCESS_KEY / AIVIDEO_VOD_SPACE',
+    apiKeyPlaceholder:
+      '{"accessKey":"火山AK","secretKey":"火山SK","space":"space-s54no5","application":"VideoTrackHighlight","region":"cn-north-1"}',
+    apiKeyTip:
+      '视频剪辑合成建议填写 JSON：accessKey、secretKey、space、application、region；也兼容原 VOLCENGINE_VOD_* / AIVIDEO_VOD_* 环境变量。'
+  }
+}
+
 const credentialSourceLabelMap: Record<string, string> = {
   env: '环境变量',
   database: '数据库',
@@ -394,6 +431,8 @@ const submitLoading = ref(false)
 const total = ref(0)
 const dialogVisible = ref(false)
 const modelList = ref<AiModel[]>([])
+const modelTypeOptions = ref<DictOption[]>([...fallbackModelTypeOptions])
+const providerOptions = ref<DictOption[]>([...fallbackProviderOptions])
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
 
@@ -427,8 +466,39 @@ const rules: FormRules = {
 }
 
 const currentPreset = computed(() => providerPresets[form.provider || ''] || null)
-const currentSuggestions = computed(() => currentPreset.value?.suggestions || [])
-const currentCredentialEnv = computed(() => currentPreset.value?.credentialEnv || 'HAN_AI_PROVIDER_<PROVIDER>_API_KEY')
+const currentIntegrationPreset = computed(() => {
+  return form.provider === 'volcengine' ? modelTypePresets[form.modelType || ''] || null : null
+})
+const currentEffectivePreset = computed(() => currentIntegrationPreset.value || currentPreset.value)
+const currentSuggestions = computed(() => currentEffectivePreset.value?.suggestions || [])
+const currentCredentialEnv = computed(() => currentEffectivePreset.value?.credentialEnv || 'HAN_AI_PROVIDER_<PROVIDER>_API_KEY')
+const currentModelCodePlaceholder = computed(() => {
+  if (currentIntegrationPreset.value?.defaultModelCode) {
+    return `如: ${currentIntegrationPreset.value.defaultModelCode}`
+  }
+  return form.provider === 'volcengine' ? '请输入火山方舟推理接入点 ID，如 ep-...' : '如: qwen-plus'
+})
+const currentBaseUrlPlaceholder = computed(() => {
+  return currentEffectivePreset.value?.baseUrl ? `如: ${currentEffectivePreset.value.baseUrl}` : '如: https://api.example.com/v1'
+})
+const apiKeyInputType = computed(() => currentIntegrationPreset.value ? 'textarea' : 'password')
+const apiKeyInputRows = computed(() => currentIntegrationPreset.value ? 5 : 1)
+const apiKeyPlaceholder = computed(() => {
+  return currentIntegrationPreset.value?.apiKeyPlaceholder || '请输入 API Key，留空表示保留原值'
+})
+const apiKeyFieldTip = computed(() => {
+  return currentIntegrationPreset.value?.apiKeyTip
+    || `当前供应商建议优先使用环境变量 ${currentCredentialEnv.value}，数据库值仅作为回退；编辑已有模型时留空会保留原值。`
+})
+const volcengineModelCodeTip = computed(() => {
+  if (form.modelType === 'TTS') {
+    return '火山语音合成建议填写 volc-tts，具体语音参数放在 API Key JSON 中。'
+  }
+  if (form.modelType === 'VIDEO_EDIT') {
+    return '火山 VOD 剪辑合成建议填写 vod-direct-edit，space/application/region 放在 API Key JSON 中。'
+  }
+  return '火山方舟请填写控制台中的推理接入点 ID，通常以 ep- 开头。'
+})
 const credentialAlertTitle = computed(() => {
   return form.modelId ? '编辑模型时将保留原始密钥' : '新增模型建议优先走环境变量'
 })
@@ -442,11 +512,11 @@ const credentialAlertDescription = computed(() => {
 })
 
 function getModelTypeLabel(value: string) {
-  return modelTypeOptions.find((item) => item.value === value)?.label || value
+  return modelTypeOptions.value.find((item) => item.value === value)?.label || value
 }
 
 function getProviderLabel(value: string) {
-  return providerOptions.find((item) => item.value === value)?.label || value
+  return providerOptions.value.find((item) => item.value === value)?.label || value
 }
 
 function getCredentialSourceLabel(value?: string) {
@@ -472,7 +542,7 @@ function applySuggestedModelCode(modelCode: string) {
 }
 
 function handleProviderChange(provider: string) {
-  const preset = providerPresets[provider]
+  const preset = provider === 'volcengine' ? currentEffectivePreset.value : providerPresets[provider]
   if (!preset) {
     return
   }
@@ -482,6 +552,16 @@ function handleProviderChange(provider: string) {
   if (!form.modelCode) {
     form.modelCode = preset.defaultModelCode
   }
+}
+
+function handleModelTypeChange() {
+  const preset = modelTypePresets[form.modelType || '']
+  if (!preset) {
+    return
+  }
+  form.provider = 'volcengine'
+  form.baseUrl = preset.baseUrl
+  form.modelCode = preset.defaultModelCode
 }
 
 async function getList() {
@@ -552,7 +632,13 @@ async function handleTest(row: AiModel) {
   ElMessage.success(res.data || '测试完成')
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const [modelTypes, providers] = await Promise.all([
+    loadDictOptions(AI_MODEL_TYPE_DICT, fallbackModelTypeOptions),
+    loadDictOptions(AI_MODEL_PROVIDER_DICT, fallbackProviderOptions)
+  ])
+  modelTypeOptions.value = modelTypes
+  providerOptions.value = providers
   getList()
 })
 </script>

@@ -1,0 +1,26 @@
+name: repo-guard
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check repo layout
+        run: python scripts/checks/check_repo_layout.py
+      - name: Check doc layout
+        run: python scripts/checks/check_doc_layout.py
+      - name: Check sql layout
+        run: python scripts/checks/check_sql_layout.py
+      - name: Check generated files
+        run: python scripts/checks/check_no_generated_files.py
+      - name: Check deploy layout
+        run: python scripts/checks/check_deploy_layout.py

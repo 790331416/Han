@@ -426,7 +426,7 @@ import {
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
-import { consumeAiStreamResponse, requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
+import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
 
 // marked 配置：启用代码高亮
 marked.setOptions({
@@ -1037,41 +1037,15 @@ async function handleSend() {
   streamMeta.value = null
 
   try {
-    const userStore = useUserStore()
-    const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
-    let responseMeta: AiStreamMetaPayload | null = null
-    abortController.value = new AbortController()
-    const fullContent = await requestAiStream({
-      baseUrl,
+    await processStreamRequest({
       path: '/ai/chat/stream',
-      token: userStore.token,
-      tenantId: userStore.tenantId,
       body: {
         conversationId: currentConversationId.value || null,
         workflowId: routeWorkflowId.value || currentConversation.value?.workflowId || null,
         modelId: selectedModelId.value,
         message: msg
-      },
-      signal: abortController.value.signal,
-      onDelta: ({ fullContent }) => {
-        streamContent.value = fullContent
-        scrollToBottom()
-      },
-      onMeta: (meta) => {
-        responseMeta = meta
-        streamMeta.value = meta
-      },
-      onError: (message) => {
-        ElMessage.error('AI回复出错: ' + (message || '未知错误'))
       }
     })
-
-    streaming.value = false
-    if (fullContent) {
-      messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
-    }
-
-    await syncCurrentConversationState()
   } catch (e: any) {
     streaming.value = false
     ElMessage.error('发送失败: ' + (e.message || '未知错误'))
@@ -1120,19 +1094,9 @@ async function handleRegenerate() {
   streamContent.value = ''
   streamMeta.value = null
   try {
-    const userStore = useUserStore()
-    const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
-    abortController.value = new AbortController()
-    const response = await fetch(`${baseUrl}/ai/chat/regenerate/${currentConversationId.value}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.token}`,
-        ...(userStore.tenantId ? { 'X-Tenant-Id': String(userStore.tenantId) } : {})
-      },
-      signal: abortController.value.signal
+    await processStreamRequest({
+      path: `/ai/chat/regenerate/${currentConversationId.value}`
     })
-    await processSSEResponse(response)
   } catch (e: any) {
     if (e.name !== 'AbortError') {
       streaming.value = false
@@ -1181,24 +1145,14 @@ async function submitEditMessage(msg: AiChatMessage) {
   scrollToBottom()
 
   try {
-    const userStore = useUserStore()
-    const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
-    abortController.value = new AbortController()
-    const response = await fetch(`${baseUrl}/ai/chat/edit-regenerate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.token}`,
-        ...(userStore.tenantId ? { 'X-Tenant-Id': String(userStore.tenantId) } : {})
-      },
-      body: JSON.stringify({
+    await processStreamRequest({
+      path: '/ai/chat/edit-regenerate',
+      body: {
         conversationId: currentConversationId.value,
         messageId: msg.messageId,
         content: editMessageContent.value
-      }),
-      signal: abortController.value.signal
+      }
     })
-    await processSSEResponse(response)
   } catch (e: any) {
     if (e.name !== 'AbortError') {
       streaming.value = false
@@ -1231,11 +1185,20 @@ async function saveTitle() {
   }
 }
 
-// ==================== SSE 响应处理 ====================
-async function processSSEResponse(response: Response) {
+// ==================== 统一流式请求处理 ====================
+async function processStreamRequest(options: { path: string; body?: unknown }) {
+  const userStore = useUserStore()
+  const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
   streamMeta.value = null
   let responseMeta: AiStreamMetaPayload | null = null
-  const fullContent = await consumeAiStreamResponse(response, {
+  abortController.value = new AbortController()
+  const fullContent = await requestAiStream({
+    baseUrl,
+    path: options.path,
+    token: userStore.token,
+    tenantId: userStore.tenantId,
+    body: options.body,
+    signal: abortController.value.signal,
     onDelta: ({ fullContent }) => {
       streamContent.value = fullContent
       scrollToBottom()
@@ -1248,7 +1211,6 @@ async function processSSEResponse(response: Response) {
       ElMessage.error('AI回复出错: ' + (message || '未知错误'))
     }
   })
-
   streaming.value = false
   if (fullContent) {
     messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))

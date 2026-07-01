@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import { useUserStore } from '@/stores/user'
+import type { RequestRuntimeError } from '@/utils/request'
 
 NProgress.configure({ showSpinner: false })
 
@@ -380,9 +381,20 @@ router.beforeEach(async (to, _from, next) => {
           await userStore.getInfo()
           next({ ...to, replace: true })
         } catch (error) {
-          userStore.resetToken()
-          next(`/login?redirect=${to.path}`)
-          NProgress.done()
+          const requestError = error as RequestRuntimeError
+          const isUnauthorized =
+            requestError?.unauthorized === true ||
+            requestError?.httpStatus === 401 ||
+            requestError?.bizCode === 401
+
+          if (isUnauthorized) {
+            userStore.resetToken()
+            next(`/login?redirect=${to.path}`)
+            NProgress.done()
+            return
+          }
+
+          next()
         }
       } else {
         next()

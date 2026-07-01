@@ -23,6 +23,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AiModelServiceImpl extends AiServiceSupport implements IAiModelService {
 
+    private static final String MODEL_TYPE_IMAGE = "IMAGE";
+    private static final String MODEL_TYPE_VIDEO = "VIDEO";
+    private static final String MODEL_TYPE_TTS = "TTS";
+    private static final String MODEL_TYPE_VIDEO_EDIT = "VIDEO_EDIT";
+
     private final AiModelMapper aiModelMapper;
     private final AiModelCredentialResolver credentialResolver;
     private final AiOpenAiCompatibleClient openAiCompatibleClient;
@@ -105,6 +110,24 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         AiModelPo model = requireExisting(modelId);
         if (!STATUS_ENABLED.equals(model.getStatus())) {
             throw new BusinessException("当前模型已停用，无法测试");
+        }
+        if (MODEL_TYPE_IMAGE.equalsIgnoreCase(model.getModelType())) {
+            return openAiCompatibleClient.testImageGeneration(model, credentialResolver.resolveApiKey(model));
+        }
+        if (MODEL_TYPE_VIDEO.equalsIgnoreCase(model.getModelType())) {
+            return openAiCompatibleClient.testVideoConfiguration(model, credentialResolver.resolveApiKey(model));
+        }
+        if (MODEL_TYPE_TTS.equalsIgnoreCase(model.getModelType())) {
+            if (!credentialResolver.isCredentialConfigured(model)) {
+                throw new BusinessException("语音合成配置未填写，请在 API Key 中填写火山 TTS JSON 配置或设置环境变量");
+            }
+            return "语音合成模型配置已保存；请在语音合成测试入口发起真实合成测试。";
+        }
+        if (MODEL_TYPE_VIDEO_EDIT.equalsIgnoreCase(model.getModelType())) {
+            if (!credentialResolver.isCredentialConfigured(model)) {
+                throw new BusinessException("视频剪辑合成配置未填写，请在 API Key 中填写火山 VOD JSON 配置或设置环境变量");
+            }
+            return "视频剪辑合成配置已保存；请在视频剪辑任务入口发起真实合成测试。";
         }
         return openAiCompatibleClient.testConnection(model, credentialResolver.resolveApiKey(model));
     }

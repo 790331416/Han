@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Prompt template controller.
+ * Prompt 模板管理控制器。
  */
 @AdminAuth
 @RestController
@@ -32,10 +32,10 @@ public class AiPromptController {
     private final IAiPromptTemplateService aiPromptTemplateService;
 
     /**
-     * Query paged template list.
+     * 分页查询 Prompt 模板列表。
      *
-     * @param query query params
-     * @return page result
+     * @param query 查询参数
+     * @return 分页结果
      */
     @GetMapping("/list")
     @PreAuthorize("@ss.hasAuthority('ai:prompt:list')")
@@ -44,10 +44,10 @@ public class AiPromptController {
     }
 
     /**
-     * Query template detail.
+     * 查询 Prompt 模板详情。
      *
-     * @param templateId template id
-     * @return detail
+     * @param templateId 模板 ID
+     * @return 模板详情
      */
     @GetMapping("/{templateId}")
     @PreAuthorize("@ss.hasAuthority('ai:prompt:query')")
@@ -56,9 +56,9 @@ public class AiPromptController {
     }
 
     /**
-     * Query all enabled templates.
+     * 查询全部启用模板。
      *
-     * @return template list
+     * @return 模板列表
      */
     @GetMapping("/all")
     @PreAuthorize("@ss.hasAuthority('ai:prompt:list')")
@@ -67,10 +67,10 @@ public class AiPromptController {
     }
 
     /**
-     * Create template.
+     * 新增 Prompt 模板。
      *
-     * @param template template data
-     * @return result
+     * @param template 模板数据
+     * @return 操作结果
      */
     @RepeatSubmit
     @PostMapping
@@ -81,10 +81,10 @@ public class AiPromptController {
     }
 
     /**
-     * Update template.
+     * 更新 Prompt 模板。
      *
-     * @param template template data
-     * @return result
+     * @param template 模板数据
+     * @return 操作结果
      */
     @RepeatSubmit
     @PostMapping("/edit")
@@ -95,10 +95,10 @@ public class AiPromptController {
     }
 
     /**
-     * Delete template.
+     * 删除 Prompt 模板。
      *
-     * @param templateId template id
-     * @return result
+     * @param templateId 模板 ID
+     * @return 操作结果
      */
     @RepeatSubmit
     @PostMapping("/remove/{templateId}")
@@ -109,11 +109,11 @@ public class AiPromptController {
     }
 
     /**
-     * Render template with variables.
+     * 使用变量渲染 Prompt 模板。
      *
-     * @param templateId template id
-     * @param variables variables
-     * @return rendered content
+     * @param templateId 模板 ID
+     * @param variables 渲染变量
+     * @return 渲染后的内容
      */
     @PostMapping("/render/{templateId}")
     @PreAuthorize("@ss.hasAuthority('ai:prompt:list')")

@@ -75,10 +75,20 @@ class AiModelCredentialResolver {
             propertyNames.add("HAN_AI_" + provider + "_API_KEY");
             propertyNames.add(provider + "_API_KEY");
         }
+        if (isVolcengineArk(provider, modelCode)) {
+            propertyNames.add("VOLCENGINE_ARK_API_KEY");
+            propertyNames.add("ARK_API_KEY");
+        }
         if ("QWEN".equals(provider)) {
             propertyNames.add("DASHSCOPE_API_KEY");
         }
         return propertyNames;
+    }
+
+    private boolean isVolcengineArk(String provider, String modelCode) {
+        return "VOLCENGINE".equals(provider)
+                || "ARK".equals(provider)
+                || (modelCode != null && (modelCode.contains("DOUBAO") || modelCode.contains("ARK")));
     }
 
     private boolean isMaskedValue(String value) {

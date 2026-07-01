@@ -44,12 +44,12 @@ test('ai prompt page smoke should load and support create or preview entry', asy
   await page.waitForLoadState('networkidle')
   await expect(page.getByTestId('ai-prompt-page')).toBeVisible()
   await expect(page.getByTestId('ai-prompt-table')).toBeVisible()
+  await expect(page.getByTestId('ai-prompt-table')).toContainText('AI短剧分镜视频生成')
+  await expect(page.getByTestId('ai-prompt-preview-button').first()).toBeVisible()
   await page.getByTestId('ai-prompt-create-button').click()
   await expect(page.getByTestId('ai-prompt-form')).toBeVisible()
   await page.keyboard.press('Escape')
 
-  if (await page.getByTestId('ai-prompt-preview-button').count()) {
-    await page.getByTestId('ai-prompt-preview-button').first().click()
-    await expect(page.getByTestId('ai-prompt-preview-panel')).toBeVisible()
-  }
+  await page.getByTestId('ai-prompt-preview-button').first().click()
+  await expect(page.getByTestId('ai-prompt-preview-panel')).toBeVisible()
 })

@@ -92,22 +92,27 @@ last_updated: 2026-05-15
 - 文件：`D:\code\Han\.codex\rules\60-han-execution.md`
 - 内容：Han 微服务技术栈、正式入口、三档部署、SQL 结构、95 发布、A/I/B 开发边界。
 
-### 6.9 流程钩子
+### 6.9 AI 短剧开发手册
+
+- 文件：`D:\code\Han\docs\08-AI短剧开发手册.md`
+- 内容：AIVideo / AI 短剧开发入口、代码落位、模块边界、Han 反哺规则、开发门禁和验证要求。
+
+### 6.10 流程钩子
 
 - 目录：`D:\code\Han\.codex\hooks`
 - 作用：在开始任务、高风险操作前、交付前触发固定检查清单。
 
-### 6.10 项目模式卡
+### 6.11 项目模式卡
 
 - 目录：`D:\code\Han\.codex\skills`
 - 作用：固化 `Protection mode`、`Design first`、`Evidence mode`、`Release gate`。
 
-### 6.11 子角色职责
+### 6.12 子角色职责
 
 - 目录：`D:\code\Han\.codex\agents`
 - 作用：定义规划、实现、验证三个角色的边界、输入输出和审核关系。
 
-### 6.12 记忆闭环
+### 6.13 记忆闭环
 
 - 目录：`D:\code\Han\.codex\memory`
 - 文件：

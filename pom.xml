@@ -65,6 +65,9 @@
 
         <!-- 开放平台(OAuth2授权服务器) -->
         <spring-authorization-server.version>1.5.2</spring-authorization-server.version>
+
+        <!-- 火山引擎 SDK -->
+        <volcengine.sdk.version>1.0.272</volcengine.sdk.version>
     </properties>
 
     <dependencyManagement>
@@ -175,6 +178,11 @@
             <dependency>
                 <groupId>com.han</groupId>
                 <artifactId>han-api-tenant</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.han</groupId>
+                <artifactId>han-api-ai</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -340,6 +348,13 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>transmittable-thread-local</artifactId>
                 <version>${ttl.version}</version>
+            </dependency>
+
+            <!-- 火山引擎 VOD / 视频剪辑 SDK -->
+            <dependency>
+                <groupId>com.volcengine</groupId>
+                <artifactId>volc-sdk-java</artifactId>
+                <version>${volcengine.sdk.version}</version>
             </dependency>
 
             <!-- ==================== 工作流引擎 ==================== -->

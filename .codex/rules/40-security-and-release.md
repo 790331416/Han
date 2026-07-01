@@ -31,6 +31,25 @@
 - 操作服务前：确认服务名、动作类型、影响范围。
 - 操作数据库前：确认环境、数据库、备份状态、是否允许执行结构变更或数据修复。
 
+## 4.1 本机 D 盘工具链
+
+- BOSS 当前 Windows 开发机处理 Han / AIVideo 验证时，Java、Maven、Node、pnpm、Git、Python、FFmpeg 固定使用 D 盘工具链，不允许自动从 C 盘路径兜底查找。
+- 执行 Maven、pnpm、FFmpeg、Python、Git 相关本机命令前，先加载：
+
+```powershell
+. D:\code\Han\scripts\helpers\use-d-drive-dev-env.ps1
+```
+
+- 固定路径：
+  - `D:\Program Files\Java\jdk-21.0.10`
+  - `D:\Program Files\apache-maven-3.9.12`
+  - `D:\Program Files\nodejs`
+  - `D:\Program Files\nodejs\node_modules\corepack\shims\pnpm.cmd`
+  - `D:\Program Files\Git\bin\git.exe`
+  - `D:\Program Files\ffmpeg-2024-03-07-git-97beb63a66-full_build\bin\ffmpeg.exe`
+  - `D:\Program Files\Python\python.exe`
+- 如果上述 D 盘工具不可用，必须报告阻塞并修复 D 盘工具链，不能静默改用 C 盘 Java、用户 npm 全局目录或 WindowsApps 别名。
+
 ## 5. Han 发布门禁
 
 - 未完成必要测试、风险确认、回滚预案，不得上线。
@@ -38,6 +57,20 @@
 - 生产变更优先走 Git 仓库、审核、流水线和审计日志。
 - 95 发布只能从 `/opt/han/repo/Han` 与 `/opt/han/deploy/{small,medium,full}` 产出。
 - 发布完成后必须验证关键路径、错误率、告警与日志。
+
+## 5.1 AIVideo 双机脚本化发布门禁
+
+- AIVideo 双机联调环境发布优先调用：
+
+```powershell
+. D:\code\Han\scripts\helpers\use-d-drive-dev-env.ps1
+D:\code\Han\scripts\helpers\deploy-aivideo-acr.ps1 -Tag <commit短SHA> -Services ai,aivideo,ui
+```
+
+- 默认目标为 `ubuntu@124.223.116.125:/opt/han/deploy/full-app`，镜像仓库为 `registry.cn-hangzhou.aliyuncs.com/xzy0112`。
+- 该脚本只能部署已由 GitHub Actions 构建并推送到 ACR 的镜像；腾讯云服务器只允许 manifest 检查、`.env` 镜像 tag 更新、`docker compose pull`、`docker compose up -d`、健康检查和日志查看。
+- 禁止在腾讯云服务器执行 Maven package、pnpm build、Docker build 作为发布兜底。
+- ACR tag 缺失时，必须修复 GitHub Actions / ACR 推送，不得绕过脚本改走服务器构建。
 
 ## 6. 默认禁止的猜测性操作
 

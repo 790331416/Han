@@ -448,9 +448,17 @@ export function hitTestKnowledgeBase(kbId: string | number, query: string) {
 }
 
 // ===================== 选项常量 =====================
+//
+// 说明：
+// 1. 这里保留的是前端兜底选项，防止字典尚未初始化或字典接口暂时不可用时页面直接失效。
+// 2. 正常情况下，页面应优先通过系统字典加载这些枚举；不要在业务页继续复制一份本地常量。
+// 3. 若后续某一组选项已经完全迁移到字典中心，可在确认所有页面都已改造后再移除对应 fallback。
 
 export const modelTypeOptions = [
   { label: '大语言模型', value: 'LLM' },
+  { label: '图片生成模型', value: 'IMAGE' },
+  { label: '视频生成模型', value: 'VIDEO' },
+  { label: '视频剪辑合成', value: 'VIDEO_EDIT' },
   { label: '向量模型', value: 'EMBEDDING' },
   { label: '重排模型', value: 'RERANK' },
   { label: '语音合成', value: 'TTS' },
@@ -459,6 +467,7 @@ export const modelTypeOptions = [
 
 export const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
+  { label: '火山引擎/方舟', value: 'volcengine' },
   { label: 'DeepSeek', value: 'deepseek' },
   { label: '通义千问', value: 'qwen' },
   { label: '智谱AI', value: 'zhipu' },
@@ -475,7 +484,14 @@ export const providerOptions = [
 export const promptCategoryOptions = [
   { label: '系统提示词', value: 'system' },
   { label: '用户模板', value: 'user' },
-  { label: '助手模板', value: 'assistant' }
+  { label: '助手模板', value: 'assistant' },
+  { label: 'AIVideo 文本润色', value: 'aivideo_text' },
+  { label: 'AIVideo 剧本生成', value: 'aivideo_script' },
+  { label: 'AIVideo 资产提取', value: 'aivideo_asset' },
+  { label: 'AIVideo 分镜提取', value: 'aivideo_storyboard' },
+  { label: 'AIVideo 图片生成', value: 'aivideo_image' },
+  { label: 'AIVideo 视频生成', value: 'aivideo_video' },
+  { label: 'AIVideo 语音合成', value: 'aivideo_tts' }
 ]
 
 export const kbTypeOptions = [

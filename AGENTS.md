@@ -70,6 +70,7 @@
 | 部署手册 | `D:\code\Han\docs\03-部署手册.md` |
 | 测试与验收 | `D:\code\Han\docs\04-测试与验收手册.md` |
 | 95 运维 | `D:\code\Han\docs\05-运维与95环境手册.md` |
+| AI 短剧开发 | `D:\code\Han\docs\08-AI短剧开发手册.md` |
 
 ## 8. 自进化目录结构
 

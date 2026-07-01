@@ -15,8 +15,9 @@ ALLOWED_ROOT_FILES = {
     "05-运维与95环境手册.md",
     "06-牛马协作总规则.md",
     "07-仓库整理与重构执行计划.md",
+    "08-AI短剧开发手册.md",
 }
-ALLOWED_ROOT_DIRS = {"archive"}
+ALLOWED_ROOT_DIRS = {"archive", "aivideo"}
 
 
 def tracked_docs() -> list[Path]:
@@ -55,6 +56,8 @@ def main() -> int:
         if not rel.parts:
             continue
         if rel.parts[0] == "archive":
+            continue
+        if rel.parts[0] == "aivideo":
             continue
         if len(rel.parts) != 1:
             violations.append(f"正式文档不允许继续使用拆分目录: {path.as_posix()}")

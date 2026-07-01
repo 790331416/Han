@@ -9,6 +9,10 @@ spring:
       - "optional:nacos:han-file.yml"
   application:
     name: han-file
+  servlet:
+    multipart:
+      max-file-size: ${HAN_FILE_MAX_FILE_SIZE:300MB}
+      max-request-size: ${HAN_FILE_MAX_REQUEST_SIZE:320MB}
   cloud:
     nacos:
       discovery:

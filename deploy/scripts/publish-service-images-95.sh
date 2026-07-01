@@ -10,12 +10,12 @@ DRY_RUN=0
 RETAG_FROM_SOURCE=0
 declare -a IMAGE_TOKENS=()
 declare -a TARGET_IMAGES=()
-declare -a DEFAULT_SERVICES=("han-open" "han-file" "han-ai")
+declare -a DEFAULT_SERVICES=("han-open" "han-file" "han-ai" "han-aivideo")
 
 usage() {
   cat <<'USAGE'
 Usage:
-  publish-service-images-95.sh [--images open,file,ai|all|<image>] [--verify-pull] [--yes] [--dry-run]
+  publish-service-images-95.sh [--images open,file,ai,aivideo|all|<image>] [--verify-pull] [--yes] [--dry-run]
 
 Publishes already-built service images from the current Docker host to the
 configured registry, then verifies that the remote manifest exists.
@@ -23,11 +23,11 @@ configured registry, then verifies that the remote manifest exists.
 Defaults:
   registry: registry.cn-hangzhou.aliyuncs.com/xzy0112
   tag:      latest
-  images:   han-open, han-file, han-ai
+  images:   han-open, han-file, han-ai, han-aivideo
 
 Options:
   --images <list>       Comma-separated services or full image refs.
-                        Service names may be open,file,ai or han-open style.
+                        Service names may be open,file,ai,aivideo or han-open style.
   --image <image>       Add one image or service token. Can be repeated.
   --registry <registry> Override registry prefix.
   --tag <tag>           Override tag for service tokens.

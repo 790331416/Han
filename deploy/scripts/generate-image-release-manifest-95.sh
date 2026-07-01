@@ -3,7 +3,7 @@ set -euo pipefail
 
 REGISTRY="${HAN_IMAGE_REGISTRY:-registry.cn-hangzhou.aliyuncs.com/xzy0112}"
 TAG=""
-SERVICES="gateway,auth,system,job,tenant,workflow,open,file,ai,gen,ui"
+SERVICES="gateway,auth,system,job,tenant,workflow,open,file,ai,aivideo,gen,ui"
 OUTPUT=""
 SOURCE_COMMIT=""
 
