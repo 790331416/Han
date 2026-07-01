@@ -26,7 +26,7 @@ $serviceMap = @{
     file    = @{ image = 'han-file'; env = 'HAN_FILE_IMAGE' }
     ai      = @{ image = 'han-ai'; env = 'HAN_AI_IMAGE' }
     aivideo = @{ image = 'han-aivideo'; env = 'HAN_AIVIDEO_IMAGE' }
-    ui      = @{ image = 'han-ui'; env = 'HAN_UI_IMAGE' }
+    ui      = @{ image = 'han-aivideo-ui'; env = 'HAN_UI_IMAGE' }
     tenant  = @{ image = 'han-tenant'; env = 'HAN_TENANT_IMAGE' }
 }
 
@@ -100,7 +100,7 @@ image_name_for() {
     file) echo "han-file" ;;
     ai) echo "han-ai" ;;
     aivideo) echo "han-aivideo" ;;
-    ui) echo "han-ui" ;;
+    ui) echo "han-aivideo-ui" ;;
     tenant) echo "han-tenant" ;;
     *) echo "Unsupported service: $1" >&2; return 1 ;;
   esac
