@@ -16,7 +16,7 @@ public interface SysDeptMapper extends BaseMapper<SysDeptPo> {
      */
     @Select("""
             <script>
-            SELECT d.*, u.nickname AS leader_name
+            SELECT d.*, d.post_sort AS sort, u.nickname AS leader_name
             FROM sys_dept d
             LEFT JOIN sys_user u ON d.leader_id = u.id AND u.del_flag = 0
             WHERE d.del_flag = 0

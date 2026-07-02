@@ -29,7 +29,8 @@ public interface SysDeptConverter {
     @Mapping(target = "createName", ignore = true)
     @Mapping(target = "updateName", ignore = true)
     @Mapping(target = "createDept", ignore = true)
-    @Mapping(target = "orderNum", ignore = true)
+    // sys_dept 排序列为 post_sort, 持久化走 orderNum(@TableField post_sort); sort 为非表字段仅回显
+    @Mapping(source = "sort", target = "orderNum")
     @Mapping(source = "sort", target = "sort")
     SysDeptPo toPo(SysDeptDto dto);
 
@@ -46,6 +47,6 @@ public interface SysDeptConverter {
     @Mapping(target = "createBy", ignore = true)
     @Mapping(target = "createName", ignore = true)
     @Mapping(target = "createDept", ignore = true)
-    @Mapping(target = "orderNum", ignore = true)
+    @Mapping(source = "sort", target = "orderNum")
     void updatePo(SysDeptDto dto, @MappingTarget SysDeptPo po);
 }
