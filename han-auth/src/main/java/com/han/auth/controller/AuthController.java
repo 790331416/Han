@@ -6,6 +6,7 @@ import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
+import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.IAuthService;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
@@ -35,6 +36,7 @@ public class AuthController {
     private final IAuthService authService;
     private final StringRedisTemplate redisTemplate;
     private final SecurityProperties securityProperties;
+    private final CaptchaSettingService captchaSettingService;
 
     /**
      * PC端登录
@@ -116,17 +118,25 @@ public class AuthController {
 
     /**
      * 获取验证码
+     * <p>
+     * 消费 sys_config 的 sys.account.captchaEnabled 开关：关闭时返回 enabled=false 且不生成图片，
+     * 前端据此隐藏验证码输入框。
      */
     @RateLimiter(key = "captcha", time = 60, count = 20, limitType = LimitType.IP)
     @GetMapping("/captcha")
     @PermissionExempt("登录前验证码入口，配合限流和一次性缓存校验")
     public R<Map<String, String>> captcha() {
+        Map<String, String> result = new LinkedHashMap<>();
+        boolean enabled = captchaSettingService.isCaptchaEnabled();
+        result.put("enabled", String.valueOf(enabled));
+        if (!enabled) {
+            return R.ok(result);
+        }
         LineCaptcha captcha = CaptchaUtil.createLineCaptcha(150, 40, 4, 30);
         String uuid = UUID.randomUUID().toString().replace("-", "");
         String code = captcha.getCode();
         String captchaKey = CacheConstants.CAPTCHA_KEY + uuid;
         redisTemplate.opsForValue().set(captchaKey, code, Duration.ofMinutes(5));
-        Map<String, String> result = new LinkedHashMap<>();
         result.put("uuid", uuid);
         result.put("img", captcha.getImageBase64());
         return R.ok(result);

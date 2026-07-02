@@ -1,5 +1,7 @@
 package com.han.job.handler;
 
+import com.han.job.annotation.JobHandler;
+import com.han.job.annotation.JobHandlerMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Component;
  * 3. 配置Cron表达式
  */
 @Slf4j
+@JobHandler("示例任务")
 @Component("sampleTask")
 public class SampleTaskHandler {
 
@@ -19,6 +22,7 @@ public class SampleTaskHandler {
      * 简单任务示例(无参)
      * 调用目标: sampleTask.execute
      */
+    @JobHandlerMethod("简单任务(无参)")
     public void execute() {
         log.info("执行简单任务...");
         // 业务逻辑
@@ -29,6 +33,7 @@ public class SampleTaskHandler {
      * 带参数任务示例
      * 调用目标: sampleTask.executeWithParam(参数值)
      */
+    @JobHandlerMethod("带参数任务")
     public void executeWithParam(String param) {
         log.info("执行带参数任务, 参数: {}", param);
         // 业务逻辑
@@ -40,6 +45,7 @@ public class SampleTaskHandler {
      * 调用目标: sampleTask.executeMultiParams(参数1,参数2)
      * 注意: 多参数用逗号分隔
      */
+    @JobHandlerMethod("多参数任务(逗号分隔)")
     public void executeMultiParams(String params) {
         String[] paramArr = params.split(",");
         log.info("执行多参数任务, 参数数量: {}", paramArr.length);
@@ -53,6 +59,7 @@ public class SampleTaskHandler {
      * 数据同步任务示例
      * 调用目标: sampleTask.syncData
      */
+    @JobHandlerMethod("数据同步")
     public void syncData() {
         log.info("开始数据同步任务...");
         try {
@@ -69,6 +76,7 @@ public class SampleTaskHandler {
      * 清理任务示例
      * 调用目标: sampleTask.cleanData
      */
+    @JobHandlerMethod("数据清理")
     public void cleanData() {
         log.info("开始执行数据清理任务...");
         // 清理过期数据、临时文件等
@@ -79,6 +87,7 @@ public class SampleTaskHandler {
      * 报表生成任务示例
      * 调用目标: sampleTask.generateReport(daily) 或 sampleTask.generateReport(weekly)
      */
+    @JobHandlerMethod("报表生成(daily/weekly)")
     public void generateReport(String reportType) {
         log.info("开始生成{}报表...", reportType);
         // 生成报表逻辑

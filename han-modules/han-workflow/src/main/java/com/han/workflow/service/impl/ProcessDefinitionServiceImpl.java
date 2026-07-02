@@ -135,9 +135,20 @@ public class ProcessDefinitionServiceImpl implements IProcessDefinitionService {
         Deployment deployment = repositoryService.createDeploymentQuery()
                 .deploymentId(definition.getDeploymentId())
                 .singleResult();
-        if (deployment != null && deployment.getDeploymentTime() != null) {
-            vo.setDeploymentTime(deployment.getDeploymentTime()
-                    .toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+        if (deployment != null) {
+            if (deployment.getDeploymentTime() != null) {
+                vo.setDeploymentTime(deployment.getDeploymentTime()
+                        .toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+            }
+            // BPMN <process> 未写 name 属性时回退部署时填写的流程名称
+            if (vo.getProcessName() == null || vo.getProcessName().isBlank()) {
+                vo.setProcessName(deployment.getName());
+            }
+            // definition.category 默认是 BPMN targetNamespace（http://flowable.org/processdef），
+            // 展示分类以部署时选择的分类为准
+            if (deployment.getCategory() != null && !deployment.getCategory().isBlank()) {
+                vo.setCategory(deployment.getCategory());
+            }
         }
         return vo;
     }

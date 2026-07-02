@@ -3,10 +3,11 @@ import type { PageResult, PageQuery } from '@/types'
 
 // ===================== 流程定义 =====================
 
+// 字段与后端 ProcessDefinitionVO 对齐（processDefinitionId/processKey/processName）
 export interface ProcessDefinition {
-  id: string
-  key: string
-  name: string
+  processDefinitionId: string
+  processKey: string
+  processName: string
   category: string
   version: number
   deploymentId: string

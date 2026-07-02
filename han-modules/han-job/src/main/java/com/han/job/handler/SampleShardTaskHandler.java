@@ -1,5 +1,7 @@
 package com.han.job.handler;
 
+import com.han.job.annotation.JobHandler;
+import com.han.job.annotation.JobHandlerMethod;
 import com.han.job.shard.AverageShardStrategy;
 import com.han.job.shard.ShardExecutor;
 import com.han.job.shard.ShardRange;
@@ -14,6 +16,7 @@ import java.util.List;
  * 展示如何使用 JobFlow 的分片能力
  */
 @Slf4j
+@JobHandler("示例分片任务")
 @Component("sampleShardTask")
 @RequiredArgsConstructor
 public class SampleShardTaskHandler {
@@ -26,6 +29,7 @@ public class SampleShardTaskHandler {
      * 调用目标: sampleShardTask.syncData(1000000,10)
      * 参数: 总数据量,分片数
      */
+    @JobHandlerMethod("分片数据同步(总量,分片数)")
     public void syncData(String params) {
         log.info("开始执行分片数据同步任务，参数: {}", params);
 
@@ -81,6 +85,7 @@ public class SampleShardTaskHandler {
      * 数据清理任务（分片执行）
      * 调用目标: sampleShardTask.cleanExpiredData(500000,5)
      */
+    @JobHandlerMethod("分片过期数据清理(总量,分片数)")
     public void cleanExpiredData(String params) {
         log.info("开始执行分片数据清理任务，参数: {}", params);
 

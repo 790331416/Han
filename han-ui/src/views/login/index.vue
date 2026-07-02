@@ -163,15 +163,31 @@ const loginForm = reactive({
 const loginRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入验证码', trigger: 'blur' }]
+  code: [{
+    validator: (_rule, value, callback) => {
+      if (captchaEnabled.value && !value) {
+        callback(new Error('请输入验证码'))
+      } else {
+        callback()
+      }
+    },
+    trigger: 'blur'
+  }]
 }
 
-// 获取验证码
+// 获取验证码（后台 sys.account.captchaEnabled=false 时隐藏验证码输入框）
 const getCaptchaImg = async () => {
   try {
     const res = await getCaptcha()
-    captchaImg.value = 'data:image/gif;base64,' + res.data.img
-    loginForm.uuid = res.data.uuid
+    if (res.data?.enabled === 'false') {
+      captchaEnabled.value = false
+      loginForm.code = ''
+      loginForm.uuid = ''
+      return
+    }
+    captchaEnabled.value = true
+    captchaImg.value = 'data:image/gif;base64,' + (res.data.img || '')
+    loginForm.uuid = res.data.uuid || ''
   } catch (e) {
     captchaEnabled.value = false
   }

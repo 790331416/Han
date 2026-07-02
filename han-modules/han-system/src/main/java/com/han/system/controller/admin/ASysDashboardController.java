@@ -71,6 +71,7 @@ public class ASysDashboardController {
                 .noticeCount(has(user, "system:notice:list") ? toInt(noticeMapper.selectCount(null)) : null)
                 .recentLogins(has(user, "system:loginlog:list") ? recentLogins() : null)
                 .recentOperLogs(has(user, "system:operlog:list") ? recentOperLogs() : null)
+                .springBootVersion(org.springframework.boot.SpringBootVersion.getVersion())
                 .build();
 
         return R.ok(vo);
