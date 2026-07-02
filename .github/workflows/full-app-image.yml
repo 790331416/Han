@@ -21,6 +21,7 @@ on:
     paths:
       - "han-gateway/**"
       - "han-ui/**"
+      - "han-auth/**"
       - "han-api/han-api-file/**"
       - "han-api/han-api-system/**"
       - "han-api/han-api-tenant/**"
@@ -30,6 +31,10 @@ on:
       - "han-modules/han-file/**"
       - "han-modules/han-system/**"
       - "han-modules/han-tenant/**"
+      - "han-modules/han-job/**"
+      - "han-modules/han-workflow/**"
+      - "han-modules/han-open/**"
+      - "han-modules/han-gen/**"
       - "han-starter/**"
       - "pom.xml"
       - "settings.workspace.xml"
@@ -47,6 +52,11 @@ env:
   SYSTEM_IMAGE_NAME: han-system
   TENANT_IMAGE_NAME: han-tenant
   UI_IMAGE_NAME: han-ui
+  AUTH_IMAGE_NAME: han-auth
+  JOB_IMAGE_NAME: han-job
+  WORKFLOW_IMAGE_NAME: han-workflow
+  OPEN_IMAGE_NAME: han-open
+  GEN_IMAGE_NAME: han-gen
 
 jobs:
   build-file:
@@ -451,6 +461,446 @@ jobs:
             -t "${image}:${short_sha}" \
             -t "${image}:latest" \
             han-ui
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-auth:
+    name: Build and push han-auth image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: "**/pom.xml"
+
+      - name: Package han-auth
+        run: mvn -B -gs settings.workspace.xml -pl han-auth -am -DskipTests package
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${AUTH_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "feature/aivideo-mvp1-text" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-auth
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-job:
+    name: Build and push han-job image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: "**/pom.xml"
+
+      - name: Package han-job
+        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-job -am -DskipTests package
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${JOB_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "feature/aivideo-mvp1-text" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-modules/han-job
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-workflow:
+    name: Build and push han-workflow image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: "**/pom.xml"
+
+      - name: Package han-workflow
+        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-workflow -am -DskipTests package
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${WORKFLOW_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "feature/aivideo-mvp1-text" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-modules/han-workflow
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-open:
+    name: Build and push han-open image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: "**/pom.xml"
+
+      - name: Package han-open
+        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-open -am -DskipTests package
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${OPEN_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "feature/aivideo-mvp1-text" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-modules/han-open
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-gen:
+    name: Build and push han-gen image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: "**/pom.xml"
+
+      - name: Package han-gen
+        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-gen -am -DskipTests package
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${GEN_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "feature/aivideo-mvp1-text" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-modules/han-gen
 
       - name: Push image tags
         shell: bash
