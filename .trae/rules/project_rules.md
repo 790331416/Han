@@ -40,9 +40,9 @@
 |---------|------|------|---------|
 | **JDK** | 21 | Java 运行环境 | **强制**，不得使用其他版本 |
 | **Maven** | 3.9+ | 构建工具 | 推荐版本，最低 3.8+ |
-| **Spring Boot** | 4.0.2 | 微服务框架 | **锁定版本** |
-| **Spring Cloud** | 2025.0.1 | 微服务治理 | **锁定版本** |
-| **Spring Cloud Alibaba** | 2025.0.0.0 | 服务注册/配置 | **锁定版本** |
+| **Spring Boot** | 4.1.0 | 微服务框架 | **锁定版本** |
+| **Spring Cloud** | 2025.1.2 | 微服务治理 | **锁定版本** |
+| **Spring Cloud Alibaba** | 2025.1.0.0 | 服务注册/配置 | **锁定版本** |
 | **PostgreSQL** | 18.1 | 主数据库 | **锁定版本** |
 | **Redis** | 7 | 缓存/分布式锁 | **锁定版本** |
 | **Nacos** | 3.1+ | 注册/配置中心 | **最低版本** |
@@ -656,8 +656,8 @@ mvn clean package
 ```xml
 <properties>
     <java.version>21</java.version>
-    <spring-boot.version>4.0.2</spring-boot.version>
-    <spring-cloud.version>2025.0.1</spring-cloud.version>
+    <spring-boot.version>4.1.0</spring-boot.version>
+    <spring-cloud.version>2025.1.2</spring-cloud.version>
     <mybatis-plus.version>3.5.9</mybatis-plus.version>
 </properties>
 ```

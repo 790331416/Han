@@ -6,10 +6,10 @@ trigger: always_on
 ## 强制版本约束
 
 ### 核心框架（禁止降级）
-- Spring Boot: 4.0.2
-- Spring Cloud: 2025.1.0
+- Spring Boot: 4.1.0
+- Spring Cloud: 2025.1.2
 - Spring Cloud Alibaba: 2025.1.0.0
-- Spring Framework: 7.0.3（由 Spring Boot 管理，勿手动指定）
+- Spring Framework: 7.0.8（由 Spring Boot 4.1 管理，勿手动指定）
 - Java: 21（必须，Virtual Threads 依赖）
 
 ### 数据访问层

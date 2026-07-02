@@ -1,10 +1,10 @@
 # han Cloud - 企业级微服务平台
 
-Spring Boot 4.0 | Spring Cloud 2025 | PostgreSQL | Java 21 | Vue 3
+Spring Boot 4.1 | Spring Cloud 2025 | PostgreSQL | Java 21 | Vue 3
 
 ## 项目简介
 
-han Cloud 是一个基于 Spring Boot 4.0 + Spring Cloud 2025 的企业级多租户微服务平台，采用前后端分离架构，融合 JobFlow 任务调度理念，提供从核心后台到 AI 增强能力的完整企业应用开发方案。
+han Cloud 是一个基于 Spring Boot 4.1 + Spring Cloud 2025 的企业级多租户微服务平台，采用前后端分离架构，融合 JobFlow 任务调度理念，提供从核心后台到 AI 增强能力的完整企业应用开发方案。
 
 平台按 `small / medium / full` 三档能力组织，覆盖：
 
@@ -35,8 +35,8 @@ han Cloud 是一个基于 Spring Boot 4.0 + Spring Cloud 2025 的企业级多租
 
 | 分类 | 技术 | 版本 | 说明 |
 | --- | --- | --- | --- |
-| 核心框架 | Spring Boot | 4.0.2 | Virtual Threads + ProblemDetail |
-| 微服务 | Spring Cloud | 2025.1.0 | 微服务基础框架 |
+| 核心框架 | Spring Boot | 4.1.0 | Virtual Threads + ProblemDetail |
+| 微服务 | Spring Cloud | 2025.1.2 | 微服务基础框架 |
 | 服务治理 | Spring Cloud Alibaba | 2025.1.0.0 | Nacos 3.x |
 | 追踪 | Micrometer Tracing | BOM 管理 | OpenTelemetry 集成 |
 | 数据库 | PostgreSQL | 18.1 | 主数据库 |
