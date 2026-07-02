@@ -314,7 +314,9 @@
                 v-for="item in knowledgeInsightItems"
                 :key="`${String(item.kbId)}-${item.paragraphTitle || 'base'}-${item.mode}`"
                 class="source-card"
+                :class="{ 'source-card-clickable': !!item.paragraphId }"
                 data-testid="ai-chat-source-insight-card"
+                @click="handleCitationClick(item)"
               >
                 <div class="source-card-header">
                   <strong>{{ item.kbName }}</strong>
@@ -327,12 +329,16 @@
                   <span>状态：{{ getKnowledgeStatusLabel(item.kbStatus) }}</span>
                   <span>文档：{{ item.documentCount ?? 0 }}</span>
                   <span>段落：{{ item.paragraphCount ?? 0 }}</span>
+                  <span v-if="item.score !== undefined && item.score !== null">
+                    相关度：{{ (item.score * 100).toFixed(0) }}%{{ item.retrievalType === 'vector' ? '（向量）' : item.retrievalType === 'keyword' ? '（关键词）' : '' }}
+                  </span>
                 </div>
                 <div v-if="item.paragraphTitle" class="source-card-detail">
                   命中段落：{{ item.paragraphTitle }}
                   <span v-if="item.hitCount">，命中次数 {{ item.hitCount }}</span>
                 </div>
                 <p v-if="item.excerpt" class="source-card-excerpt">{{ item.excerpt }}</p>
+                <div v-if="item.paragraphId" class="source-card-detail source-card-link">点击查看完整出处</div>
               </article>
               <div v-if="knowledgeInsightItems.length === 0" class="source-card source-card-empty" data-testid="ai-chat-source-insight-empty">
                 当前还没有结构化知识引用，等消息命中知识库后会展示在这里。
@@ -391,6 +397,28 @@
         </aside>
       </div>
     </div>
+
+    <!-- 引用出处抽屉（引用点击查看完整段落） -->
+    <el-drawer v-model="citationDrawerVisible" title="引用出处" size="480px" data-testid="ai-chat-citation-drawer">
+      <div v-loading="citationDetailLoading" class="citation-detail">
+        <template v-if="citationDetail">
+          <div class="citation-detail-meta">
+            <div><span class="citation-detail-label">知识库：</span>{{ citationDetail.kbName || '-' }}</div>
+            <div><span class="citation-detail-label">来源文档：</span>{{ citationDetail.docName || '-' }}</div>
+            <div><span class="citation-detail-label">段落：</span>{{ citationDetail.title || '-' }}</div>
+            <div>
+              <span class="citation-detail-label">字数：</span>{{ citationDetail.charCount ?? '-' }}
+              <span class="citation-detail-label" style="margin-left: 12px;">命中次数：</span>{{ citationDetail.hitCount ?? 0 }}
+              <el-tag size="small" effect="plain" :type="citationDetail.vectorized ? 'success' : 'info'" style="margin-left: 12px;">
+                {{ citationDetail.vectorized ? '已向量化' : '未向量化' }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="citation-detail-content">{{ citationDetail.content }}</div>
+        </template>
+        <el-empty v-else-if="!citationDetailLoading" description="出处内容不可用" />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -412,6 +440,7 @@ import {
   listAllModels,
   listAllKnowledgeBases,
   listAllMcpServers,
+  getKnowledgeParagraphDetail,
   kbTypeOptions,
   indexStatusOptions,
   transportTypeOptions,
@@ -423,6 +452,7 @@ import {
   type AiModel,
   type AiWorkflow,
   type KnowledgeBase,
+  type KnowledgeParagraphDetail,
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
@@ -496,9 +526,12 @@ interface KnowledgeInsightItem {
   documentCount?: number
   paragraphCount?: number
   charCount?: number
+  paragraphId?: string | number
   paragraphTitle?: string
   hitCount?: number
   excerpt?: string
+  score?: number
+  retrievalType?: string
   mode: 'structured' | 'fallback'
 }
 
@@ -639,9 +672,12 @@ const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
       documentCount: item.documentCount,
       paragraphCount: item.paragraphCount,
       charCount: item.charCount,
+      paragraphId: item.paragraphId,
       paragraphTitle: item.paragraphTitle,
       hitCount: item.hitCount,
       excerpt: item.excerpt,
+      score: item.score,
+      retrievalType: item.retrievalType,
       mode: 'structured'
     }))
   }
@@ -656,6 +692,24 @@ const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
     mode: 'fallback'
   }))
 })
+
+// ==================== 引用出处（点击查看） ====================
+const citationDrawerVisible = ref(false)
+const citationDetailLoading = ref(false)
+const citationDetail = ref<KnowledgeParagraphDetail | null>(null)
+
+const handleCitationClick = async (item: KnowledgeInsightItem) => {
+  if (!item.paragraphId) return
+  citationDrawerVisible.value = true
+  citationDetailLoading.value = true
+  citationDetail.value = null
+  try {
+    const res = await getKnowledgeParagraphDetail(item.paragraphId)
+    citationDetail.value = res.data || null
+  } catch { /* 出处不可用 */ } finally {
+    citationDetailLoading.value = false
+  }
+}
 
 const toolTraceItems = computed<ToolTraceInsightItem[]>(() => {
   if (latestToolExecutions.value.length > 0) {
@@ -1882,6 +1936,21 @@ function restoreSelectedModelId() {
     word-break: break-word;
   }
 
+  .source-card-clickable {
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+
+    &:hover {
+      border-color: #93c5fd;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+    }
+  }
+
+  .source-card-link {
+    color: #2563eb;
+    font-size: 12px;
+  }
+
   .trace-tool-list {
     display: flex;
     flex-wrap: wrap;
@@ -1994,5 +2063,36 @@ function restoreSelectedModelId() {
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+.citation-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 160px;
+}
+
+.citation-detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #303133;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  border: 1px solid #ecf1f7;
+}
+
+.citation-detail-label {
+  color: #909399;
+}
+
+.citation-detail-content {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

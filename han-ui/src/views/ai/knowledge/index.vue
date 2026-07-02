@@ -141,11 +141,15 @@
               <div class="hit-item-header">
                 <span class="hit-rank">#{{ idx + 1 }}</span>
                 <span class="hit-title">{{ item.title }}</span>
+                <el-tag v-if="item.retrievalType" size="small" :type="item.retrievalType === 'vector' ? 'success' : 'info'">
+                  {{ item.retrievalType === 'vector' ? '向量' : '关键词' }}
+                </el-tag>
                 <el-tag v-if="item.score" size="small" type="warning" class="hit-score">
                   相似度: {{ (item.score * 100).toFixed(1) }}%
                 </el-tag>
               </div>
             </template>
+            <div v-if="item.docName" class="hit-doc">来源文档：{{ item.docName }}</div>
             <div class="hit-content">{{ item.content }}</div>
           </el-collapse-item>
         </el-collapse>
@@ -366,5 +370,6 @@ onMounted(async () => {
 .hit-rank { font-weight: bold; color: #409eff; min-width: 28px; }
 .hit-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hit-score { margin-left: auto; }
+.hit-doc { font-size: 12px; color: #909399; margin-bottom: 8px; }
 .hit-content { white-space: pre-wrap; line-height: 1.6; color: #606266; font-size: 13px; background: #f5f7fa; padding: 12px; border-radius: 4px; }
 </style>

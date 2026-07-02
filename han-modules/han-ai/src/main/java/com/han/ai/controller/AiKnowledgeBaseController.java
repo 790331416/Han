@@ -181,4 +181,16 @@ public class AiKnowledgeBaseController {
     public R<List<Map<String, Object>>> hitTest(@PathVariable Long kbId, @RequestBody HitTestRequest request) {
         return R.ok(aiKnowledgeBaseService.hitTest(kbId, request != null ? request.getQuery() : null));
     }
+
+    /**
+     * Query paragraph detail (citation click-through).
+     *
+     * @param paragraphId paragraph id
+     * @return paragraph detail
+     */
+    @GetMapping("/paragraph/{paragraphId}")
+    @PreAuthorize("@ss.hasAuthority('ai:kb:list')")
+    public R<Map<String, Object>> paragraphDetail(@PathVariable Long paragraphId) {
+        return R.ok(aiKnowledgeBaseService.selectParagraphDetail(paragraphId));
+    }
 }

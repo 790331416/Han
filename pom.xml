@@ -63,6 +63,9 @@
         <!-- 工作流引擎 -->
         <flowable.version>7.2.0</flowable.version>
 
+        <!-- Spring AI（Embedding/RAG，随 Boot 4.1 使用 2.0.x） -->
+        <spring-ai.version>2.0.0</spring-ai.version>
+
         <!-- 开放平台(OAuth2授权服务器) -->
         <spring-authorization-server.version>1.5.2</spring-authorization-server.version>
 
@@ -95,6 +98,15 @@
                 <groupId>com.alibaba.cloud</groupId>
                 <artifactId>spring-cloud-alibaba-dependencies</artifactId>
                 <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring AI -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

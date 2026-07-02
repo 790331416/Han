@@ -336,6 +336,29 @@ export interface AiChatKnowledgeSource {
   paragraphTitle?: string
   hitCount?: number
   excerpt?: string
+  /** 相关度 0~1（向量=余弦相似度，关键词=启发式） */
+  score?: number
+  /** 检索方式：vector / keyword */
+  retrievalType?: string
+}
+
+// 引用出处详情（引用点击查看）
+export interface KnowledgeParagraphDetail {
+  paragraphId: string | number
+  title?: string
+  content: string
+  charCount?: number
+  hitCount?: number
+  kbId?: string | number
+  kbName?: string
+  docId?: string | number
+  docName?: string
+  vectorized?: boolean
+}
+
+// 查询段落出处详情
+export function getKnowledgeParagraphDetail(paragraphId: string | number) {
+  return get<KnowledgeParagraphDetail>(`/ai/kb/paragraph/${paragraphId}`)
 }
 
 export interface AiChatToolTrace {

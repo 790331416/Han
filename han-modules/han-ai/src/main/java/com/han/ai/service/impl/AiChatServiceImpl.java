@@ -22,9 +22,10 @@ import com.han.ai.mapper.AiConversationMapper;
 import com.han.ai.mapper.AiKnowledgeBaseMapper;
 import com.han.ai.mapper.AiMcpServerMapper;
 import com.han.ai.mapper.AiModelMapper;
-import com.han.ai.mapper.AiParagraphMapper;
 import com.han.ai.mapper.AiWorkflowMapper;
 import com.han.ai.service.IAiChatService;
+import com.han.ai.service.IAiKnowledgeRetrievalService;
+import com.han.ai.service.IAiKnowledgeRetrievalService.ScoredParagraph;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
@@ -41,10 +42,8 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -66,11 +65,11 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private final AiKnowledgeBaseMapper aiKnowledgeBaseMapper;
     private final AiMcpServerMapper aiMcpServerMapper;
     private final AiModelMapper aiModelMapper;
-    private final AiParagraphMapper aiParagraphMapper;
     private final AiAgentMapper aiAgentMapper;
     private final AiWorkflowMapper aiWorkflowMapper;
     private final AiModelCredentialResolver credentialResolver;
     private final AiOpenAiCompatibleClient openAiCompatibleClient;
+    private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
 
     @Override
     public PageResult<AiConversationPo> selectConversationPage(AiConversationQuery query) {
@@ -260,7 +259,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage) {
-        List<AiParagraphPo> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
+        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
         String assistantContent = buildAssistantReply(conversation, context, userMessage, hitParagraphs);
         AiChatMessagePo assistantMessage = new AiChatMessagePo();
         assistantMessage.setConversationId(conversation.getConversationId());
@@ -306,7 +305,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private String buildAssistantReply(AiConversationPo conversation, ChatContext context, String userMessage,
-                                       List<AiParagraphPo> hitParagraphs) {
+                                       List<ScoredParagraph> hitParagraphs) {
         AiModelPo model = resolveModel(context.modelId());
         String modelReply = tryBuildModelReply(conversation, context, model, hitParagraphs);
         if (StringUtils.hasText(modelReply)) {
@@ -316,7 +315,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private String tryBuildModelReply(AiConversationPo conversation, ChatContext context, AiModelPo model,
-                                      List<AiParagraphPo> hitParagraphs) {
+                                      List<ScoredParagraph> hitParagraphs) {
         if (model == null) {
             return null;
         }
@@ -336,7 +335,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private List<AiOpenAiCompatibleClient.ProviderMessage> buildProviderMessages(AiConversationPo conversation,
                                                                                  ChatContext context,
-                                                                                 List<AiParagraphPo> hitParagraphs) {
+                                                                                 List<ScoredParagraph> hitParagraphs) {
         List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
         String systemPrompt = buildSystemPrompt(context, hitParagraphs);
         if (StringUtils.hasText(systemPrompt)) {
@@ -362,7 +361,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return messages;
     }
 
-    private String buildSystemPrompt(ChatContext context, List<AiParagraphPo> hitParagraphs) {
+    private String buildSystemPrompt(ChatContext context, List<ScoredParagraph> hitParagraphs) {
         StringBuilder builder = new StringBuilder();
         if (StringUtils.hasText(context.systemPrompt())) {
             builder.append(context.systemPrompt().trim()).append("\n\n");
@@ -373,10 +372,10 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (!hitParagraphs.isEmpty()) {
             builder.append("以下是命中的知识库上下文，请优先引用并结合它们回答：\n");
             int index = 1;
-            for (AiParagraphPo paragraph : hitParagraphs) {
+            for (ScoredParagraph hit : hitParagraphs) {
                 builder.append(index++)
                         .append(". ")
-                        .append(excerpt(paragraph.getContent(), 200))
+                        .append(excerpt(hit.paragraph().getContent(), 200))
                         .append('\n');
             }
         }
@@ -384,7 +383,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private String buildFallbackAssistantReply(ChatContext context, AiModelPo model, String userMessage,
-                                               List<AiParagraphPo> hitParagraphs) {
+                                               List<ScoredParagraph> hitParagraphs) {
         StringBuilder builder = new StringBuilder();
         if (StringUtils.hasText(context.sourceName())) {
             builder.append("已按“").append(context.sourceName()).append("”的上下文处理你的问题。\n");
@@ -401,10 +400,10 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (!hitParagraphs.isEmpty()) {
             builder.append("知识库命中：\n");
             int index = 1;
-            for (AiParagraphPo paragraph : hitParagraphs) {
+            for (ScoredParagraph hit : hitParagraphs) {
                 builder.append(index++)
                         .append(". ")
-                        .append(excerpt(paragraph.getContent(), 120))
+                        .append(excerpt(hit.paragraph().getContent(), 120))
                         .append('\n');
             }
             builder.append("建议：优先结合上面的知识命中内容继续细化答案。若需要正式生成式输出，请配置可用的模型 API Key。");
@@ -426,59 +425,14 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 .last("LIMIT 1"));
     }
 
-    private List<AiParagraphPo> searchKnowledgeParagraphs(List<Long> knowledgeBaseIds, String userMessage) {
+    /**
+     * RAG 检索：向量优先（知识库绑定 EMBEDDING 模型），关键词回退，统一走公共检索服务。
+     */
+    private List<ScoredParagraph> searchKnowledgeParagraphs(List<Long> knowledgeBaseIds, String userMessage) {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || !StringUtils.hasText(userMessage)) {
             return List.of();
         }
-        Set<String> searchTerms = new LinkedHashSet<>();
-        String normalized = userMessage.trim();
-        String normalizedForSearch = normalized
-                .replaceAll("[\"“”'‘’《》「」【】（）()]", " ")
-                .trim();
-        addKnowledgeSearchTerm(searchTerms, normalized);
-        addKnowledgeSearchTerm(searchTerms, normalizedForSearch);
-        for (String term : normalizedForSearch.split("[\\s,，。；;、？！!？：:]+")) {
-            addKnowledgeSearchTerm(searchTerms, term);
-        }
-        if (normalizedForSearch.length() > 12) {
-            addKnowledgeSearchTerm(searchTerms, normalizedForSearch.substring(0, 12));
-        }
-
-        LambdaQueryWrapper<AiParagraphPo> wrapper = new LambdaQueryWrapper<AiParagraphPo>()
-                .in(AiParagraphPo::getKbId, knowledgeBaseIds)
-                .eq(AiParagraphPo::getStatus, STATUS_ENABLED)
-                .eq(AiParagraphPo::getDelFlag, 0)
-                .and(q -> {
-                    boolean first = true;
-                    for (String term : searchTerms) {
-                        if (!StringUtils.hasText(term)) {
-                            continue;
-                        }
-                        if (first) {
-                            q.like(AiParagraphPo::getContent, term);
-                            first = false;
-                        } else {
-                            q.or().like(AiParagraphPo::getContent, term);
-                        }
-                    }
-                })
-                .orderByDesc(AiParagraphPo::getHitCount)
-                .orderByDesc(AiParagraphPo::getCreateTime)
-                .last("LIMIT 5");
-        return aiParagraphMapper.selectList(wrapper);
-    }
-
-    private void addKnowledgeSearchTerm(Set<String> searchTerms, String rawTerm) {
-        if (!StringUtils.hasText(rawTerm)) {
-            return;
-        }
-        String cleaned = rawTerm.trim()
-                .replaceAll("^[\"“”'‘’《》「」【】（）()，。；;、？！!？：:]+", "")
-                .replaceAll("[\"“”'‘’《》「」【】（）()，。；;、？！!？：:]+$", "")
-                .trim();
-        if (cleaned.length() >= 2) {
-            searchTerms.add(cleaned);
-        }
+        return knowledgeRetrievalService.retrieve(knowledgeBaseIds, userMessage.trim(), 5);
     }
 
     private List<AiChatMessagePo> enrichConversationMessages(List<AiChatMessagePo> messages, ChatContext context) {
@@ -503,7 +457,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private void enrichAssistantMessage(AiChatMessagePo assistantMessage, ChatContext context, String userPrompt,
-                                        List<AiParagraphPo> hitParagraphs) {
+                                        List<ScoredParagraph> hitParagraphs) {
         if (assistantMessage == null || !ROLE_ASSISTANT.equals(assistantMessage.getRole())) {
             return;
         }
@@ -516,16 +470,17 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     private List<AiChatKnowledgeSourceVo> buildKnowledgeSources(List<Long> knowledgeBaseIds, String userPrompt,
-                                                                List<AiParagraphPo> precomputedHitParagraphs) {
-        List<AiParagraphPo> hitParagraphs = precomputedHitParagraphs != null
-                ? precomputedHitParagraphs
+                                                                List<ScoredParagraph> precomputedHits) {
+        List<ScoredParagraph> hits = precomputedHits != null
+                ? precomputedHits
                 : searchKnowledgeParagraphs(knowledgeBaseIds, userPrompt);
-        if (hitParagraphs.isEmpty()) {
+        if (hits.isEmpty()) {
             return List.of();
         }
         Map<Long, AiKnowledgeBasePo> knowledgeBaseMap = loadKnowledgeBaseMap(knowledgeBaseIds);
         List<AiChatKnowledgeSourceVo> results = new ArrayList<>();
-        for (AiParagraphPo paragraph : hitParagraphs) {
+        for (ScoredParagraph hit : hits) {
+            AiParagraphPo paragraph = hit.paragraph();
             AiKnowledgeBasePo knowledgeBase = knowledgeBaseMap.get(paragraph.getKbId());
             AiChatKnowledgeSourceVo source = new AiChatKnowledgeSourceVo();
             source.setKbId(paragraph.getKbId());
@@ -539,6 +494,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             source.setParagraphTitle(paragraph.getTitle());
             source.setHitCount(paragraph.getHitCount());
             source.setExcerpt(excerpt(paragraph.getContent(), 160));
+            source.setScore(hit.score());
+            source.setRetrievalType(hit.retrievalType());
             results.add(source);
         }
         return results;
