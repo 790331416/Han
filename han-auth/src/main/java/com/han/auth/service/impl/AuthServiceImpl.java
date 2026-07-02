@@ -9,6 +9,7 @@ import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
+import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.IAuthService;
 import com.han.auth.service.TotpService;
 import com.han.common.core.constant.CacheConstants;
@@ -49,6 +50,7 @@ public class AuthServiceImpl implements IAuthService {
     private final TenantServiceClient tenantServiceClient;
     private final SecurityProperties securityProperties;
     private final TotpService totpService;
+    private final CaptchaSettingService captchaSettingService;
 
     private static final Duration PC_TOKEN_EXPIRE = Duration.ofMinutes(30);
     private static final Duration APP_TOKEN_EXPIRE = Duration.ofDays(7);
@@ -66,8 +68,15 @@ public class AuthServiceImpl implements IAuthService {
 
     @Override
     public LoginVO login(LoginDTO dto) {
-        if (XuStrUtil.isNotBlank(dto.getCode())) {
-            validateCaptcha(dto.getCode(), dto.getUuid());
+        // 消费 sys.account.captchaEnabled：开启时 PC 登录验证码必填必校验，关闭时跳过（E3 修复，此前空 code 可绕过校验）。
+        // App / 微信登录无验证码控件，保持原「传了才校验」行为。
+        if (captchaSettingService.isCaptchaEnabled()) {
+            if (dto.getClientType() == ClientType.PC && XuStrUtil.isBlank(dto.getCode())) {
+                throw new BusinessException("验证码不能为空");
+            }
+            if (XuStrUtil.isNotBlank(dto.getCode())) {
+                validateCaptcha(dto.getCode(), dto.getUuid());
+            }
         }
 
         R<UserVO> userResult = dto.getTenantId() != null

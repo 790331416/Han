@@ -31,6 +31,8 @@
 - `20260610_aivideo_sound_design_prompt.sql`：AI 短剧剧本/资产/分镜 Prompt 增加角色声线、BGM 和音效规划，前置输出 `soundDesign`、`bgmCue` 和 `sfxCues`
 - `20260610_aivideo_shot_sound_cues.sql`：AI 短剧分镜表增加 `bgm_cue`、`sfx_cues`，让资产提取出的 BGM/音效计划可被后期语音和剪辑混音阶段读取
 - `20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 模板分类的系统字典，保证管理端下拉与列表筛选可从公共字典模块读取
+- `20260702_ai_prompt_template_audit_columns.sql`：为 `ai_prompt_template` 补齐 `create_by`/`update_by` 审计列，修复 95 旧库 Prompt 模板列表 500
+- `20260702_sys_oper_log_module_alignment.sql`：`sys_oper_log` 旧列名（title/business_type）对齐代码侧（module/oper_type），补 `oper_user_id`，修复操作日志写入失败导致的 0 条留痕
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 

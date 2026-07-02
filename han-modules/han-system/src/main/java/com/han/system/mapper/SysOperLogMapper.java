@@ -17,7 +17,7 @@ import java.util.Map;
 public interface SysOperLogMapper extends BaseMapper<SysOperLogPo> {
 
     @Select("""
-            SELECT title AS module,
+            SELECT module,
                    oper_name,
                    oper_ip,
                    status,
@@ -33,10 +33,10 @@ public interface SysOperLogMapper extends BaseMapper<SysOperLogPo> {
      * 按模块统计操作次数 Top10（仪表盘图表用）
      */
     @Select("""
-            SELECT title AS name, COUNT(*) AS value
+            SELECT module AS name, COUNT(*) AS value
               FROM sys_oper_log
-             WHERE oper_time >= #{start} AND title IS NOT NULL AND title != ''
-             GROUP BY title
+             WHERE oper_time >= #{start} AND module IS NOT NULL AND module != ''
+             GROUP BY module
              ORDER BY value DESC
              LIMIT 10
             """)

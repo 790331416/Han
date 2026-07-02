@@ -32,6 +32,8 @@ public record DashboardStatsVO(
         /** 最近5条登录日志（需 system:loginlog:list） */
         List<Map<String, Object>> recentLogins,
         /** 最近5条操作日志（需 system:operlog:list） */
-        List<Map<String, Object>> recentOperLogs
+        List<Map<String, Object>> recentOperLogs,
+        /** 运行时 Spring Boot 版本（首页系统信息展示，避免前端硬编码漂移） */
+        String springBootVersion
 ) {
 }

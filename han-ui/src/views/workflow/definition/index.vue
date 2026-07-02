@@ -33,8 +33,8 @@
       </template>
 
       <el-table v-loading="loading" :data="definitionList">
-        <el-table-column label="流程标识" prop="key" min-width="150" show-overflow-tooltip />
-        <el-table-column label="流程名称" prop="name" min-width="150" show-overflow-tooltip />
+        <el-table-column label="流程标识" prop="processKey" min-width="150" show-overflow-tooltip />
+        <el-table-column label="流程名称" prop="processName" min-width="150" show-overflow-tooltip />
         <el-table-column label="流程分类" prop="category" width="120" align="center">
           <template #default="{ row }">
             <el-tag>{{ getCategoryLabel(row.category) }}</el-tag>
@@ -230,35 +230,35 @@ const handleDeploySubmit = async () => {
 }
 
 const handleActivate = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定激活流程"${row.name}"吗?`, '提示', { type: 'warning' })
-  await activateProcessDefinition(row.id)
+  await ElMessageBox.confirm(`确定激活流程"${row.processName}"吗?`, '提示', { type: 'warning' })
+  await activateProcessDefinition(row.processDefinitionId)
   ElMessage.success('激活成功')
   getList()
 }
 
 const handleSuspend = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定挂起流程"${row.name}"吗?`, '提示', { type: 'warning' })
-  await suspendProcessDefinition(row.id)
+  await ElMessageBox.confirm(`确定挂起流程"${row.processName}"吗?`, '提示', { type: 'warning' })
+  await suspendProcessDefinition(row.processDefinitionId)
   ElMessage.success('挂起成功')
   getList()
 }
 
 const handleDelete = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定删除流程"${row.name}"吗? 此操作不可恢复!`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`确定删除流程"${row.processName}"吗? 此操作不可恢复!`, '提示', { type: 'warning' })
   await deleteProcessDefinition(row.deploymentId, true)
   ElMessage.success('删除成功')
   getList()
 }
 
 const handleViewXml = async (row: ProcessDefinition) => {
-  const res = await getProcessDefinitionXml(row.id)
+  const res = await getProcessDefinitionXml(row.processDefinitionId)
   xmlContent.value = res.data
   xmlVisible.value = true
 }
 
 const handleDiagram = (row: ProcessDefinition) => {
   const baseUrl = import.meta.env.VITE_APP_BASE_API
-  diagramUrl.value = `${baseUrl}/workflow/definition/diagram/${row.id}`
+  diagramUrl.value = `${baseUrl}/workflow/definition/diagram/${row.processDefinitionId}`
   diagramVisible.value = true
 }
 

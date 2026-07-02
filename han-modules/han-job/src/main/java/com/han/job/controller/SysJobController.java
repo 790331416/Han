@@ -4,8 +4,9 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.job.domain.dto.JobDTO;
 import com.han.job.domain.query.JobQuery;
-import com.han.job.domain.vo.JobVO;
+import com.han.job.domain.vo.JobHandlerVO;
 import com.han.job.service.ISysJobService;
+import com.han.job.service.impl.JobHandlerRegistry;
 import lombok.RequiredArgsConstructor;
 import org.quartz.SchedulerException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +29,7 @@ import java.util.List;
 public class SysJobController {
 
     private final ISysJobService jobService;
+    private final JobHandlerRegistry jobHandlerRegistry;
 
     /**
      * 分页查询任务列表。
@@ -54,14 +56,14 @@ public class SysJobController {
     }
 
     /**
-     * 查询全部可用处理器。
+     * 查询全部可用处理器（@JobHandler Bean 的 @JobHandlerMethod 方法）。
      *
      * @return 处理器列表
      */
     @GetMapping("/handlers")
     @PreAuthorize("@ss.hasAuthority('job:list')")
-    public R<List<JobVO>> handlers() {
-        return R.ok(jobService.listAllJob());
+    public R<List<JobHandlerVO>> handlers() {
+        return R.ok(jobHandlerRegistry.listHandlers());
     }
 
     /**

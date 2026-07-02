@@ -132,12 +132,13 @@ interface StatsData {
   jobCount: number | null
   recentLogins: any[] | null
   recentOperLogs: any[] | null
+  springBootVersion: string | null
 }
 
 const stats = reactive<StatsData>({
   userCount: null, roleCount: null, deptCount: null, postCount: null,
   onlineCount: null, dictCount: null, noticeCount: null, jobCount: null,
-  recentLogins: null, recentOperLogs: null
+  recentLogins: null, recentOperLogs: null, springBootVersion: null
 })
 
 const allStatItems = computed(() => [
@@ -240,14 +241,15 @@ onBeforeUnmount(() => {
   operChart?.dispose()
 })
 
-const sysInfo = [
+// Spring Boot 版本由后端运行时下发，避免硬编码漂移（历史：前端写死 4.0.2，实际 4.1.0）
+const sysInfo = computed(() => [
   { label: '系统名称', value: 'HAN Cloud' },
   { label: '系统版本', value: 'v1.0.0' },
-  { label: 'Spring Boot', value: '4.0.2' },
-  { label: 'Spring Cloud', value: '2025.1.0' },
+  { label: 'Spring Boot', value: stats.springBootVersion || '-' },
+  { label: 'Spring Cloud', value: '2025.1.2' },
   { label: 'Vue', value: '3.5.x' },
   { label: 'Element Plus', value: '2.9.x' },
-]
+])
 
 onMounted(async () => {
   try {

@@ -43,9 +43,9 @@ export function getRouters() {
   return get<RouteMenu[]>('/system/menu/routers')
 }
 
-// 获取验证码
+// 获取验证码（enabled 为 'false' 时表示后台已关闭验证码，uuid/img 不返回）
 export function getCaptcha() {
-  return get<{ uuid: string; img: string }>('/auth/captcha')
+  return get<{ enabled?: string; uuid?: string; img?: string }>('/auth/captcha')
 }
 
 // 获取 RSA 公钥（密码加密传输）

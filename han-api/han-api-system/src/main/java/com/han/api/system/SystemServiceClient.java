@@ -125,6 +125,12 @@ public interface SystemServiceClient {
     R<Long> getSocialBindUserId(@RequestParam("provider") String provider, @RequestParam("openId") String openId);
 
     /**
+     * 按 key 读取系统参数值（sys_config），不存在返回空字符串
+     */
+    @GetExchange("/config/value")
+    R<String> getConfigValue(@RequestParam("configKey") String configKey);
+
+    /**
      * 绑定社交账号
      */
     @PostExchange("/social/bind")
