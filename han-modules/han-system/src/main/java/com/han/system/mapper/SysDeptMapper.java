@@ -26,7 +26,7 @@ public interface SysDeptMapper extends BaseMapper<SysDeptPo> {
             <if test="status != null">
                 AND d.status = #{status}
             </if>
-            ORDER BY d.parent_id, d.sort
+            ORDER BY d.parent_id, d.post_sort
             </script>
             """)
     List<SysDeptPo> selectDeptListWithLeader(@Param("deptName") String deptName, @Param("status") Integer status);
