@@ -29,4 +29,10 @@ public class AiChatKnowledgeSourceVo {
     private Integer hitCount;
 
     private String excerpt;
+
+    /** 相关度（向量=余弦相似度，关键词=启发式），0~1 */
+    private Double score;
+
+    /** 检索方式：vector / keyword */
+    private String retrievalType;
 }

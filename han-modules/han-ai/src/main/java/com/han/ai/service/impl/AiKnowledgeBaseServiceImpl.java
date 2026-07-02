@@ -4,16 +4,21 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.ai.domain.po.AiDocumentPo;
 import com.han.ai.domain.po.AiKnowledgeBasePo;
+import com.han.ai.domain.po.AiModelPo;
 import com.han.ai.domain.po.AiParagraphPo;
 import com.han.ai.domain.query.AiDocumentQuery;
 import com.han.ai.domain.query.AiKnowledgeBaseQuery;
 import com.han.ai.mapper.AiDocumentMapper;
 import com.han.ai.mapper.AiKnowledgeBaseMapper;
+import com.han.ai.mapper.AiModelMapper;
 import com.han.ai.mapper.AiParagraphMapper;
 import com.han.ai.service.IAiKnowledgeBaseService;
+import com.han.ai.service.IAiKnowledgeRetrievalService;
+import com.han.ai.util.AiVectorUtil;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +45,7 @@ import java.util.stream.Stream;
 /**
  * Knowledge base service implementation.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiKnowledgeBaseService {
@@ -53,6 +59,10 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     private final AiKnowledgeBaseMapper aiKnowledgeBaseMapper;
     private final AiDocumentMapper aiDocumentMapper;
     private final AiParagraphMapper aiParagraphMapper;
+    private final AiModelMapper aiModelMapper;
+    private final AiModelCredentialResolver credentialResolver;
+    private final AiEmbeddingClient embeddingClient;
+    private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
 
     @Value("${han.ai.document-storage-path:./data/ai-documents}")
     private String documentStoragePath;
@@ -200,37 +210,62 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         if (!StringUtils.hasText(query)) {
             return List.of();
         }
-        String normalizedQuery = query.trim();
-        LambdaQueryWrapper<AiParagraphPo> wrapper = new LambdaQueryWrapper<AiParagraphPo>()
-                .eq(AiParagraphPo::getKbId, kbId)
-                .eq(AiParagraphPo::getStatus, STATUS_ENABLED)
-                .eq(AiParagraphPo::getDelFlag, 0)
-                .like(AiParagraphPo::getContent, normalizedQuery)
-                .orderByDesc(AiParagraphPo::getHitCount)
-                .orderByDesc(AiParagraphPo::getCreateTime)
-                .last("LIMIT 10");
-        List<AiParagraphPo> paragraphs = aiParagraphMapper.selectList(wrapper);
-        if (paragraphs.isEmpty()) {
+        List<IAiKnowledgeRetrievalService.ScoredParagraph> hits =
+                knowledgeRetrievalService.retrieve(List.of(kbId), query.trim(), 10);
+        if (hits.isEmpty()) {
             return List.of();
         }
 
-        Map<Long, String> documentNames = aiDocumentMapper.selectBatchIds(paragraphs.stream()
-                        .map(AiParagraphPo::getDocId)
+        Map<Long, String> documentNames = aiDocumentMapper.selectBatchIds(hits.stream()
+                        .map(hit -> hit.paragraph().getDocId())
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(AiDocumentPo::getDocId, AiDocumentPo::getDocName, (left, _right) -> left, LinkedHashMap::new));
 
-        return paragraphs.stream()
-                .map(paragraph -> {
+        return hits.stream()
+                .map(hit -> {
+                    AiParagraphPo paragraph = hit.paragraph();
                     Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("paragraphId", paragraph.getParagraphId());
                     item.put("title", StringUtils.hasText(paragraph.getTitle())
                             ? paragraph.getTitle()
                             : documentNames.getOrDefault(paragraph.getDocId(), "未命名文档"));
+                    item.put("docName", documentNames.getOrDefault(paragraph.getDocId(), ""));
                     item.put("content", paragraph.getContent());
-                    item.put("score", calculateScore(paragraph.getContent(), normalizedQuery));
+                    item.put("score", hit.score());
+                    item.put("retrievalType", hit.retrievalType());
                     return item;
                 })
                 .toList();
+    }
+
+    @Override
+    public Map<String, Object> selectParagraphDetail(Long paragraphId) {
+        if (paragraphId == null) {
+            throw new BusinessException("段落ID不能为空");
+        }
+        AiParagraphPo paragraph = aiParagraphMapper.selectById(paragraphId);
+        if (paragraph == null || (paragraph.getDelFlag() != null && paragraph.getDelFlag() != 0)) {
+            throw new BusinessException("段落不存在");
+        }
+        Long tenantId = currentTenantId();
+        if (tenantId != null && !tenantId.equals(paragraph.getTenantId())) {
+            throw new BusinessException("无权访问该段落");
+        }
+        AiKnowledgeBasePo knowledgeBase = aiKnowledgeBaseMapper.selectById(paragraph.getKbId());
+        AiDocumentPo document = aiDocumentMapper.selectById(paragraph.getDocId());
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("paragraphId", paragraph.getParagraphId());
+        detail.put("title", paragraph.getTitle());
+        detail.put("content", paragraph.getContent());
+        detail.put("charCount", paragraph.getCharCount());
+        detail.put("hitCount", paragraph.getHitCount());
+        detail.put("kbId", paragraph.getKbId());
+        detail.put("kbName", knowledgeBase != null ? knowledgeBase.getKbName() : null);
+        detail.put("docId", paragraph.getDocId());
+        detail.put("docName", document != null ? document.getDocName() : null);
+        detail.put("vectorized", StringUtils.hasText(paragraph.getEmbedding()));
+        return detail;
     }
 
     private LambdaQueryWrapper<AiKnowledgeBasePo> buildQueryWrapper(AiKnowledgeBaseQuery query) {
@@ -364,6 +399,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
 
         try {
             IndexOutcome outcome = buildIndexOutcome(knowledgeBase, document);
+            String embeddingWarning = outcome.failed() ? "" : embedParagraphs(knowledgeBase, outcome.paragraphs());
             aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, document.getDocId()));
             for (AiParagraphPo paragraph : outcome.paragraphs()) {
                 aiParagraphMapper.insert(paragraph);
@@ -371,7 +407,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
             document.setCharCount((long) outcome.charCount());
             document.setParagraphCount(outcome.paragraphs().size());
             document.setIndexStatus(outcome.failed() ? DOC_STATUS_FAILED : DOC_STATUS_COMPLETED);
-            document.setIndexError(outcome.errorMessage());
+            document.setIndexError(StringUtils.hasText(outcome.errorMessage()) ? outcome.errorMessage() : embeddingWarning);
             fillDocumentUpdateAudit(document);
             aiDocumentMapper.updateById(document);
         } catch (IOException ex) {
@@ -381,6 +417,34 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
             document.setCharCount(0L);
             fillDocumentUpdateAudit(document);
             aiDocumentMapper.updateById(document);
+        }
+    }
+
+    /**
+     * 段落向量化：知识库配置 EMBEDDING 模型时写入向量；失败仅降级（保留段落做关键词检索），返回告警信息。
+     */
+    private String embedParagraphs(AiKnowledgeBasePo knowledgeBase, List<AiParagraphPo> paragraphs) {
+        if (knowledgeBase.getEmbeddingModelId() == null || paragraphs.isEmpty()) {
+            return "";
+        }
+        try {
+            AiModelPo model = aiModelMapper.selectById(knowledgeBase.getEmbeddingModelId());
+            if (model == null || !STATUS_ENABLED.equals(model.getStatus())) {
+                return "向量化跳过: 绑定的向量模型不存在或已停用";
+            }
+            String apiKey = credentialResolver.resolveApiKey(model);
+            if (!StringUtils.hasText(apiKey)) {
+                return "向量化跳过: 向量模型未配置可用 API Key";
+            }
+            List<String> contents = paragraphs.stream().map(AiParagraphPo::getContent).toList();
+            List<float[]> vectors = embeddingClient.embedBatch(model, apiKey, contents);
+            for (int i = 0; i < paragraphs.size() && i < vectors.size(); i++) {
+                paragraphs.get(i).setEmbedding(AiVectorUtil.toJson(vectors.get(i)));
+            }
+            return "";
+        } catch (Exception e) {
+            log.warn("Paragraph embedding failed, kbId={}, docParagraphs={}", knowledgeBase.getKbId(), paragraphs.size(), e);
+            return "向量化失败(已降级关键词检索): " + e.getMessage();
         }
     }
 
@@ -548,21 +612,6 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
             return "html";
         }
         return "txt";
-    }
-
-    private double calculateScore(String content, String query) {
-        if (!StringUtils.hasText(content) || !StringUtils.hasText(query)) {
-            return 0D;
-        }
-        String lowerContent = content.toLowerCase(Locale.ROOT);
-        String lowerQuery = query.toLowerCase(Locale.ROOT);
-        int firstIndex = lowerContent.indexOf(lowerQuery);
-        if (firstIndex < 0) {
-            return 0.1D;
-        }
-        double lengthFactor = Math.min(0.5D, (double) lowerQuery.length() / Math.max(lowerContent.length(), 1) * 5D);
-        double positionFactor = Math.max(0D, 0.5D - (double) firstIndex / Math.max(lowerContent.length(), 1));
-        return Math.min(0.99D, 0.2D + lengthFactor + positionFactor);
     }
 
     private record IndexOutcome(List<AiParagraphPo> paragraphs, int charCount, boolean failed, String errorMessage) {

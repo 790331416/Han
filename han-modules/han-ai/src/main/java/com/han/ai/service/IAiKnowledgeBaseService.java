@@ -91,11 +91,19 @@ public interface IAiKnowledgeBaseService {
     void deleteDocument(Long docId);
 
     /**
-     * Run lexical hit test.
+     * Run hit test (vector first, keyword fallback).
      *
      * @param kbId knowledge base id
      * @param query query text
      * @return hit result list
      */
     List<Map<String, Object>> hitTest(Long kbId, String query);
+
+    /**
+     * Query paragraph detail (for citation click-through).
+     *
+     * @param paragraphId paragraph id
+     * @return paragraph detail with kb/doc info
+     */
+    Map<String, Object> selectParagraphDetail(Long paragraphId);
 }
