@@ -7,6 +7,7 @@ import com.han.api.tenant.domain.TenantVO;
 import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
+import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.TotpService;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
@@ -44,7 +45,8 @@ class AuthServiceImplTest {
             systemServiceClient,
             tenantServiceClient,
             new SecurityProperties(),
-            mock(TotpService.class)
+            mock(TotpService.class),
+            mock(CaptchaSettingService.class)
     );
 
     @AfterEach

@@ -16,6 +16,8 @@ ALLOWED_ROOT_FILES = {
     "06-牛马协作总规则.md",
     "07-仓库整理与重构执行计划.md",
     "08-AI短剧开发手册.md",
+    "09-代码注释规范.md",
+    "10-系统枚举治理与公共能力落位.md",
 }
 ALLOWED_ROOT_DIRS = {"archive", "aivideo"}
 
