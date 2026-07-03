@@ -109,7 +109,7 @@
             <el-input v-model="form.adminUsername" placeholder="请输入管理员用户名" />
           </el-form-item>
           <el-form-item label="管理员密码" prop="adminPassword">
-            <el-input v-model="form.adminPassword" placeholder="默认密码: admin123" show-password />
+            <el-input v-model="form.adminPassword" placeholder="8-20位，含大写/小写/数字/特殊字符至少3种" show-password />
           </el-form-item>
         </template>
         <el-form-item label="备注">
@@ -143,12 +143,33 @@ const packageList = ref<TenantPackage[]>([])
 
 const queryParams = reactive({ tenantName: '', contactName: '', status: '' as any, pageNum: 1, pageSize: 10 })
 
-const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '', adminUsername: 'admin', adminPassword: 'admin123' })
+const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '', adminUsername: 'admin', adminPassword: '' })
+
+// 与后端 PasswordUtil.validate 规则一致：8-20位，大写/小写/数字/特殊字符至少3种。
+// 后端校验失败会导致租户初始化整体回滚，这里提前拦截。
+function validateAdminPassword(_rule: any, value: string, callback: (error?: Error) => void) {
+  if (!value) { callback(); return }
+  if (value.length < 8 || value.length > 20) {
+    callback(new Error('密码长度8-20位')); return
+  }
+  let categories = 0
+  if (/[a-z]/.test(value)) categories++
+  if (/[A-Z]/.test(value)) categories++
+  if (/\d/.test(value)) categories++
+  if (/[^a-zA-Z0-9]/.test(value)) categories++
+  if (categories < 3) {
+    callback(new Error('须包含大写字母、小写字母、数字、特殊字符中的至少3种')); return
+  }
+  callback()
+}
 
 const rules: FormRules = {
   tenantName: [{ required: true, message: '请输入租户名称', trigger: 'blur' }],
   adminUsername: [{ required: true, message: '请输入管理员用户名', trigger: 'blur' }],
-  adminPassword: [{ required: true, message: '请输入管理员密码', trigger: 'blur' }]
+  adminPassword: [
+    { required: true, message: '请输入管理员密码', trigger: 'blur' },
+    { validator: validateAdminPassword, trigger: 'blur' }
+  ]
 }
 
 onMounted(() => {
@@ -266,7 +287,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.packageId = undefined; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''; form.adminUsername = 'admin'; form.adminPassword = 'admin123'
+  form.tenantId = undefined; form.tenantName = ''; form.contactName = ''; form.contactPhone = ''; form.contactEmail = ''; form.packageId = undefined; form.userLimit = -1; form.expireTime = ''; form.domain = ''; form.status = 0; form.remark = ''; form.adminUsername = 'admin'; form.adminPassword = ''
 }
 </script>
 

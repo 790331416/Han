@@ -58,11 +58,16 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         if (dto == null) {
             throw new BusinessException("Token 请求不能为空");
         }
-        return switch (dto.getGrantType()) {
+        String grantType = dto.getGrantType();
+        if (grantType == null || grantType.isBlank()) {
+            throw new BusinessException("grant_type 不能为空");
+        }
+        requireGrantTypeAllowed(dto.getClientId(), grantType);
+        return switch (grantType) {
             case "authorization_code" -> issueAuthorizationCodeToken(dto);
             case "refresh_token" -> refreshToken(dto.getRefreshToken(), dto.getClientId(), dto.getClientSecret());
             case "client_credentials" -> issueClientCredentialsToken(dto);
-            default -> throw new BusinessException("暂不支持的 grant_type: " + dto.getGrantType());
+            default -> throw new BusinessException("暂不支持的 grant_type: " + grantType);
         };
     }
 
@@ -191,6 +196,18 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             throw new BusinessException("客户端不存在或已停用");
         }
         return app;
+    }
+
+    /**
+     * 按应用配置校验 grant_type：应用配置了授权类型列表时，仅允许列表内的类型签发。
+     * 列表为空视为未收紧配置，保持放行以兼容存量应用。
+     */
+    private void requireGrantTypeAllowed(String clientId, String grantType) {
+        OpenAppVO app = requireEnabledApp(clientId);
+        List<String> grantTypes = app.getGrantTypes();
+        if (grantTypes != null && !grantTypes.isEmpty() && !grantTypes.contains(grantType)) {
+            throw new BusinessException("该应用未启用此授权类型: " + grantType);
+        }
     }
 
     private record AuthorizationCodeRecord(
