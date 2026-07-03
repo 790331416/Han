@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import service, { get, post } from '@/utils/request'
 import type { PageResult } from '@/types'
 
 export interface GenTable {
@@ -77,8 +77,19 @@ export function previewCode(id: string | number) {
   return get<Record<string, string>>(`/gen/preview/${id}`)
 }
 
-// 下载代码
-export function downloadCode(id: string | number) {
-  const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
-  window.open(`${baseUrl}/gen/download/${id}`, '_blank')
+// 下载代码（ZIP）
+// 必须走 axios 带 Authorization 头：window.open 的导航请求无 token，
+// 且 Accept:text/html 会被 nginx SPA 回退到 index.html 导致前端路由 404
+export async function downloadCode(id: string | number) {
+  const response = await service({
+    url: `/gen/download/${id}`,
+    method: 'GET',
+    responseType: 'blob'
+  })
+  const blob = new Blob([response.data], { type: 'application/zip' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = 'gen-code.zip'
+  link.click()
+  URL.revokeObjectURL(link.href)
 }

@@ -50,7 +50,7 @@
     </el-card>
 
     <!-- 导入表弹窗 -->
-    <el-dialog v-model="showImportDialog" title="导入表" width="600px" destroy-on-close>
+    <el-dialog v-model="showImportDialog" title="导入表" width="600px" destroy-on-close @open="loadDbTables">
       <el-form :inline="true" style="margin-bottom: 12px;">
         <el-form-item>
           <el-input v-model="dbSearchName" placeholder="表名搜索" clearable @keyup.enter="loadDbTables" />
@@ -258,8 +258,10 @@ const getTabLabel = (fileName: string) => {
 }
 
 // ==================== 下载 ====================
-const handleDownload = (row: GenTable) => {
-  downloadCode(row.id)
+const handleDownload = async (row: GenTable) => {
+  try {
+    await downloadCode(row.id)
+  } catch { /* error handled */ }
 }
 
 // ==================== 编辑 ====================

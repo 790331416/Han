@@ -114,11 +114,19 @@ public class TenantServiceImpl implements ITenantService {
                     .adminPassword(dto.getAdminPassword())
                     .build();
             initDTO.setMenuIds(parseMenuIds(pkg));
-            systemClient.initTenantData(initDTO);
-            log.info("租户[{}]基础数据初始化请求已发送", po.getId());
+            // R.fail 不抛异常，必须显式检查返回值，否则初始化失败时租户事务照常提交产生空壳租户
+            R<Void> initResult = systemClient.initTenantData(initDTO);
+            if (initResult == null || initResult.isFail()) {
+                String reason = initResult != null && initResult.getMsg() != null ? initResult.getMsg() : "初始化服务无响应";
+                throw new BusinessException(reason);
+            }
+            log.info("租户[{}]基础数据初始化完成", po.getId());
+        } catch (BusinessException e) {
+            log.error("租户[{}]基础数据初始化失败: {}", po.getId(), e.getMessage());
+            throw new BusinessException("租户初始化失败: " + e.getMessage());
         } catch (Exception e) {
             log.error("租户[{}]基础数据初始化失败", po.getId(), e);
-            throw new BusinessException("租户创建成功但初始化失败: " + e.getMessage());
+            throw new BusinessException("租户初始化失败: " + e.getMessage());
         }
 
         return 1;
