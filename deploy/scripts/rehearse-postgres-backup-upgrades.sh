@@ -49,6 +49,13 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql"
   "sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql"
   "sql/upgrades/postgres/20260527_aivideo_character_image_workflow.sql"
+  "sql/upgrades/postgres/20260612_ai_generic_dict_alignment.sql"
+  "sql/upgrades/postgres/20260702_ai_prompt_template_audit_columns.sql"
+  "sql/upgrades/postgres/20260702_sys_oper_log_module_alignment.sql"
+  "sql/upgrades/postgres/20260703_ai_agent_share_key.sql"
+  "sql/upgrades/postgres/20260703_ai_chat_multimodal.sql"
+  "sql/upgrades/postgres/20260703_ai_flow_meta.sql"
+  "sql/upgrades/postgres/20260703_file_manage_menu.sql"
 )
 
 BACKUP_INPUTS=()
