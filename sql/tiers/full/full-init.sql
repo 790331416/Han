@@ -424,7 +424,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (105, 1, '0,1', '字典管理', 'C', 'dict', 'system/dict/index', 'system:dict:list', 'dict', 6, 0, 0),
 (106, 1, '0,1', '参数设置', 'C', 'config', 'system/config/index', 'system:config:list', 'edit', 7, 0, 0),
 (107, 1, '0,1', '通知公告', 'C', 'notice', 'system/notice/index', 'system:notice:list', 'message', 8, 0, 0),
-(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0);
+(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0),
+(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (200, 2, '0,2', '在线用户', 'C', 'online', 'monitor/online/index', 'monitor:online:list', 'online', 1, 0, 0),
@@ -481,7 +482,9 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1071, 107, '0,1,107', '公告查询', 'F', '', NULL, 'system:notice:query', '#', 1, 0, 0),
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
-(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0);
+(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
+(1091, 109, '0,1,109', '文件查询', 'F', '', NULL, 'file:query', '#', 1, 0, 0),
+(1092, 109, '0,1,109', '文件删除', 'F', '', NULL, 'file:remove', '#', 2, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);
@@ -1589,6 +1592,7 @@ CREATE TABLE ai_model (
     api_key         VARCHAR(500)    DEFAULT '',
     max_tokens      INTEGER         DEFAULT 2048,
     temperature     NUMERIC(3,2)    DEFAULT 0.70,
+    supports_vision CHAR(1)         DEFAULT '0',
     status          CHAR(1)         DEFAULT '0',
     remark          VARCHAR(500)    DEFAULT '',
     tenant_id       BIGINT          DEFAULT 0,
@@ -1741,6 +1745,8 @@ CREATE TABLE ai_chat_message (
     content         TEXT            NOT NULL,
     token_count     INTEGER         DEFAULT 0,
     sort_order      INTEGER         DEFAULT 0,
+    images          TEXT,
+    meta            TEXT,
     tenant_id       BIGINT          DEFAULT 0,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
@@ -1764,6 +1770,7 @@ CREATE TABLE ai_agent (
     temperature    NUMERIC(3,2)    DEFAULT 0.7,
     max_tokens     INT             DEFAULT 2048,
     published      CHAR(1)         DEFAULT '0',
+    share_key      VARCHAR(64),
     status         CHAR(1)         DEFAULT '0',
     tenant_id      BIGINT,
     create_by      VARCHAR(64),
@@ -1773,6 +1780,7 @@ CREATE TABLE ai_agent (
     del_flag       INT             DEFAULT 0
 );
 COMMENT ON TABLE ai_agent IS 'AI智能体';
+COMMENT ON COLUMN ai_agent.share_key IS '公开分享链接 key（发布时生成，重置后旧链接失效）';
 
 -- =============================================
 -- 32. Prompt模板表

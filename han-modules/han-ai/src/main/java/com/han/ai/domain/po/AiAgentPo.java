@@ -44,6 +44,11 @@ public class AiAgentPo {
 
     private Integer maxTokens;
 
+    /**
+     * 公开分享链接 key（发布时生成，重置后旧链接失效）
+     */
+    private String shareKey;
+
     private String status;
 
     private Long tenantId;

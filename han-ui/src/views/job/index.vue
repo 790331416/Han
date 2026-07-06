@@ -1,5 +1,56 @@
 <template>
   <div class="app-container">
+    <!-- 调度监控（/actuator/jobflow 可观测卡片区） -->
+    <el-card shadow="never" class="monitor-card" data-testid="jobflow-monitor-panel">
+      <template #header>
+        <div class="card-header">
+          <span>
+            调度监控
+            <el-badge v-if="monitorError" is-dot type="danger" style="margin-left: 6px;" />
+          </span>
+          <el-button link :icon="Refresh" :loading="monitorLoading" data-testid="jobflow-monitor-refresh" @click="loadMonitor">刷新</el-button>
+        </div>
+      </template>
+      <div v-loading="monitorLoading" class="monitor-grid">
+        <div class="monitor-item" data-testid="jobflow-monitor-status">
+          <span class="monitor-label">调度器状态</span>
+          <el-tag :type="monitorHealth?.status === 'UP' ? 'success' : 'danger'" effect="dark">
+            {{ monitorError ? '获取失败' : monitorHealth?.status === 'UP' ? '运行中' : monitorHealth?.status || '--' }}
+          </el-tag>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">调度器实例</span>
+          <strong>{{ monitorHealth?.schedulerName || '--' }}</strong>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">已执行任务数</span>
+          <strong>{{ monitorMetrics?.totalJobsExecuted ?? monitorHealth?.numberOfJobsExecuted ?? '--' }}</strong>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">线程池大小</span>
+          <strong>{{ monitorMetrics?.threadPoolSize ?? monitorConfig?.threadPoolSize ?? '--' }}</strong>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">集群模式</span>
+          <strong>{{ monitorMetrics?.clustered === undefined ? '--' : monitorMetrics.clustered ? '是' : '否' }}</strong>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">失败补偿</span>
+          <el-tag :type="monitorConfig?.compensationEnabled ? 'success' : 'info'" effect="plain">
+            {{ monitorConfig?.compensationEnabled === undefined ? '--' : monitorConfig.compensationEnabled ? '已开启' : '已关闭' }}
+          </el-tag>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">补偿间隔(秒)</span>
+          <strong>{{ monitorConfig?.compensationInterval ?? '--' }}</strong>
+        </div>
+        <div class="monitor-item">
+          <span class="monitor-label">最大重试</span>
+          <strong>{{ monitorConfig?.maxRetry ?? '--' }}</strong>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
@@ -227,8 +278,10 @@ import { Search, Refresh, Plus, Edit, Delete, CaretRight, View, Document } from 
 import { 
   listJob, getJob, addJob, updateJob, deleteJob, deleteJobs, 
   changeJobStatus, runJob, listJobHandlers,
+  getJobFlowHealth, getJobFlowConfig, getJobFlowMetrics,
   jobGroupOptions, misfirePolicyOptions, concurrentOptions,
-  type Job, type JobQuery, type JobForm, type JobHandlerInfo 
+  type Job, type JobQuery, type JobForm, type JobHandlerInfo,
+  type JobFlowHealth, type JobFlowConfig, type JobFlowMetrics
 } from '@/api/job'
 import type { FormInstance, FormRules } from 'element-plus'
 import CronBuilder from './components/CronBuilder.vue'
@@ -248,6 +301,32 @@ const handlerList = ref<JobHandlerInfo[]>([])
 
 const queryFormRef = ref<FormInstance>()
 const formRef = ref<FormInstance>()
+
+// ==================== JobFlow 调度监控 ====================
+const monitorLoading = ref(false)
+const monitorError = ref(false)
+const monitorHealth = ref<JobFlowHealth | null>(null)
+const monitorConfig = ref<JobFlowConfig | null>(null)
+const monitorMetrics = ref<JobFlowMetrics | null>(null)
+
+const loadMonitor = async () => {
+  monitorLoading.value = true
+  try {
+    const [health, config, metrics] = await Promise.all([
+      getJobFlowHealth(),
+      getJobFlowConfig(),
+      getJobFlowMetrics()
+    ])
+    monitorHealth.value = health
+    monitorConfig.value = config
+    monitorMetrics.value = metrics
+    monitorError.value = false
+  } catch {
+    monitorError.value = true
+  } finally {
+    monitorLoading.value = false
+  }
+}
 
 const queryParams = reactive<JobQuery>({
   pageNum: 1,
@@ -440,12 +519,47 @@ const handleCronConfirm = () => {
 
 onMounted(() => {
   getList()
+  loadMonitor()
 })
 </script>
 
 <style lang="scss" scoped>
 .app-container {
   padding: 20px;
+}
+
+.monitor-card {
+  margin-bottom: 20px;
+
+  .monitor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .monitor-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    background: #f7f9fc;
+    border-radius: 8px;
+
+    .monitor-label {
+      font-size: 12px;
+      color: #909399;
+    }
+
+    strong {
+      font-size: 14px;
+      color: #303133;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .el-tag { align-self: flex-start; }
+  }
 }
 
 .card-header {

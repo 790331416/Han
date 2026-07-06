@@ -1,6 +1,7 @@
 package com.han.ai.service.impl;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -98,6 +99,146 @@ class AiOpenAiCompatibleClient {
         }
     }
 
+    /**
+     * 工具规格（OpenAI 兼容 tools=[{type:function,function:{...}}] 的 function 部分）。
+     */
+    record ToolSpec(String name, String description, Map<String, Object> parameters) {
+    }
+
+    /**
+     * 工具执行回调：由业务侧（MCP 客户端）实现真实调用。
+     */
+    interface ToolExecutor {
+        ToolExecution execute(String toolName, String argumentsJson);
+    }
+
+    /**
+     * 工具执行结果（success=false 时 result 为错误说明，回填给模型解释）。
+     */
+    record ToolExecution(String result, boolean success) {
+    }
+
+    /**
+     * 一次真实工具调用记录（轨迹展示用）。
+     */
+    record ExecutedToolCall(String toolName, String argumentsJson, String result, boolean success, long costMs) {
+    }
+
+    /**
+     * 工具循环最终结果。
+     */
+    record ToolLoopResult(String content, List<ExecutedToolCall> executedCalls) {
+    }
+
+    /**
+     * 带工具的对话补全：模型返回 tool_calls 时回调 executor 真实执行并把结果以 role=tool 回填，
+     * 循环直至模型给出文本回复；超过 maxRounds 轮后去掉工具做最后一次收敛请求（熔断）。
+     */
+    ToolLoopResult chatCompletionWithTools(AiModelPo model, String apiKey, List<ProviderMessage> messages,
+                                           Integer maxTokensOverride, List<ToolSpec> tools,
+                                           ToolExecutor executor, int maxRounds) {
+        validateArguments(model, apiKey, messages);
+        ChatCompletionRequest payload = buildRequest(model, messages, maxTokensOverride);
+        payload.tools = buildToolPayload(tools);
+        List<ExecutedToolCall> executedCalls = new ArrayList<>();
+
+        for (int round = 0; round < Math.max(maxRounds, 1); round++) {
+            ChatMessage assistantMessage = requestChatMessage(model, apiKey, payload);
+            if (assistantMessage.toolCalls == null || assistantMessage.toolCalls.isEmpty()) {
+                if (!StringUtils.hasText(assistantMessage.content)) {
+                    throw new BusinessException("模型未返回有效文本内容");
+                }
+                return new ToolLoopResult(assistantMessage.content.trim(), executedCalls);
+            }
+            appendAssistantToolCallMessage(payload, assistantMessage);
+            for (ResponseToolCall toolCall : assistantMessage.toolCalls) {
+                if (toolCall == null || toolCall.function == null || !StringUtils.hasText(toolCall.function.name)) {
+                    continue;
+                }
+                String argumentsJson = toolCall.function.arguments;
+                long startedAt = System.currentTimeMillis();
+                ToolExecution execution = executor.execute(toolCall.function.name, argumentsJson);
+                long costMs = System.currentTimeMillis() - startedAt;
+                executedCalls.add(new ExecutedToolCall(toolCall.function.name, argumentsJson,
+                        execution.result(), execution.success(), costMs));
+                ChatRequestMessage toolMessage = new ChatRequestMessage("tool",
+                        execution.success() ? execution.result() : "工具执行失败：" + execution.result());
+                toolMessage.toolCallId = toolCall.id;
+                payload.messages.add(toolMessage);
+            }
+        }
+
+        // 熔断：去掉工具做最后一次收敛请求，让模型基于已有工具结果直接作答
+        payload.tools = null;
+        ChatMessage finalMessage = requestChatMessage(model, apiKey, payload);
+        String content = StringUtils.hasText(finalMessage.content)
+                ? finalMessage.content.trim()
+                : "工具调用轮次超过上限（" + maxRounds + " 轮），已中止。";
+        return new ToolLoopResult(content, executedCalls);
+    }
+
+    private List<Map<String, Object>> buildToolPayload(List<ToolSpec> tools) {
+        if (tools == null || tools.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (ToolSpec tool : tools) {
+            Map<String, Object> function = new LinkedHashMap<>();
+            function.put("name", tool.name());
+            function.put("description", tool.description() == null ? "" : tool.description());
+            function.put("parameters", tool.parameters() == null || tool.parameters().isEmpty()
+                    ? Map.of("type", "object", "properties", Map.of())
+                    : tool.parameters());
+            payload.add(Map.of("type", "function", "function", function));
+        }
+        return payload;
+    }
+
+    private ChatMessage requestChatMessage(AiModelPo model, String apiKey, ChatCompletionRequest payload) {
+        URI requestUri = buildChatCompletionUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
+        try {
+            HttpResponsePayload response = executeRequest(requestUri, apiKey, requestBody);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new BusinessException(buildErrorMessage(response.body(), response.statusCode()));
+            }
+            ChatCompletionResponse completion = XuJsonUtil.parseObject(response.body(), ChatCompletionResponse.class);
+            if (completion == null || completion.choices == null || completion.choices.isEmpty()
+                    || completion.choices.get(0) == null || completion.choices.get(0).message == null) {
+                throw new BusinessException("模型未返回有效回复");
+            }
+            return completion.choices.get(0).message;
+        } catch (IOException e) {
+            log.warn("AI provider tool-call request IO error, provider={}, modelCode={}",
+                    model.getProvider(), model.getModelCode(), e);
+            throw new BusinessException("模型调用失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 把模型的 tool_calls 消息原样回填进请求消息序列（OpenAI 兼容协议要求）。
+     */
+    private void appendAssistantToolCallMessage(ChatCompletionRequest payload, ChatMessage assistantMessage) {
+        ChatRequestMessage message = new ChatRequestMessage("assistant",
+                StringUtils.hasText(assistantMessage.content) ? assistantMessage.content : "");
+        List<Map<String, Object>> toolCalls = new ArrayList<>();
+        for (ResponseToolCall toolCall : assistantMessage.toolCalls) {
+            if (toolCall == null || toolCall.function == null) {
+                continue;
+            }
+            Map<String, Object> function = new LinkedHashMap<>();
+            function.put("name", toolCall.function.name);
+            function.put("arguments", toolCall.function.arguments == null ? "{}" : toolCall.function.arguments);
+            Map<String, Object> call = new LinkedHashMap<>();
+            call.put("id", toolCall.id);
+            call.put("type", "function");
+            call.put("function", function);
+            toolCalls.add(call);
+        }
+        message.toolCalls = toolCalls;
+        payload.messages.add(message);
+    }
+
     String chatCompletionStream(AiModelPo model, String apiKey, List<ProviderMessage> messages,
                                 Integer maxTokensOverride, Consumer<String> deltaConsumer) {
         validateArguments(model, apiKey, messages);
@@ -123,8 +264,17 @@ class AiOpenAiCompatibleClient {
 
     ImageGenerationResult imageGeneration(AiModelPo model, String apiKey, String prompt,
                                           List<String> referenceImageUrls, Integer candidateCount, String size) {
+        return imageGeneration(model, apiKey, prompt, referenceImageUrls, candidateCount, size, null);
+    }
+
+    ImageGenerationResult imageGeneration(AiModelPo model, String apiKey, String prompt,
+                                          List<String> referenceImageUrls, Integer candidateCount, String size,
+                                          String responseFormat) {
         validateImageArguments(model, apiKey, prompt);
         ImageGenerationRequest payload = buildImageRequest(model, prompt, referenceImageUrls, candidateCount, size);
+        if (StringUtils.hasText(responseFormat)) {
+            payload.responseFormat = responseFormat.trim();
+        }
         URI requestUri = buildImageGenerationUri(model.getBaseUrl());
         String requestBody = XuJsonUtil.toJsonString(payload);
         try {
@@ -268,9 +418,30 @@ class AiOpenAiCompatibleClient {
         request.maxTokens = resolveMaxTokens(model.getMaxTokens(), maxTokensOverride);
         request.messages = new ArrayList<>();
         for (ProviderMessage message : messages) {
-            request.messages.add(new ChatMessage(message.role(), message.content()));
+            request.messages.add(new ChatRequestMessage(message.role(), buildMessageContent(message)));
         }
         return request;
+    }
+
+    /**
+     * 组装 OpenAI 兼容消息 content：纯文本用字符串（最大兼容），带图用 content 数组
+     * （[{type:text},{type:image_url,image_url:{url}}]，火山 Doubao-vision / OpenAI gpt-4o 同协议）。
+     */
+    private Object buildMessageContent(ProviderMessage message) {
+        if (message.imageUrls() == null || message.imageUrls().isEmpty()) {
+            return message.content();
+        }
+        List<Map<String, Object>> parts = new ArrayList<>();
+        if (StringUtils.hasText(message.content())) {
+            parts.add(Map.of("type", "text", "text", message.content()));
+        }
+        for (String imageUrl : message.imageUrls()) {
+            if (!StringUtils.hasText(imageUrl)) {
+                continue;
+            }
+            parts.add(Map.of("type", "image_url", "image_url", Map.of("url", imageUrl.trim())));
+        }
+        return parts;
     }
 
     private ImageGenerationRequest buildImageRequest(AiModelPo model, String prompt,
@@ -900,7 +1071,11 @@ class AiOpenAiCompatibleClient {
         return "模型调用失败(" + statusCode + "): " + excerpt;
     }
 
-    record ProviderMessage(String role, String content) {
+    record ProviderMessage(String role, String content, List<String> imageUrls) {
+
+        ProviderMessage(String role, String content) {
+            this(role, content, null);
+        }
 
         static ProviderMessage system(String content) {
             return new ProviderMessage("system", content);
@@ -908,6 +1083,10 @@ class AiOpenAiCompatibleClient {
 
         static ProviderMessage user(String content) {
             return new ProviderMessage("user", content);
+        }
+
+        static ProviderMessage user(String content, List<String> imageUrls) {
+            return new ProviderMessage("user", content, imageUrls);
         }
 
         static ProviderMessage assistant(String content) {
@@ -920,7 +1099,7 @@ class AiOpenAiCompatibleClient {
         public String model;
 
         @JsonProperty("messages")
-        public List<ChatMessage> messages;
+        public List<ChatRequestMessage> messages;
 
         @JsonProperty("temperature")
         public Double temperature;
@@ -930,6 +1109,35 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("stream")
         public Boolean stream;
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("tools")
+        public List<Map<String, Object>> tools;
+    }
+
+    /**
+     * 请求侧消息：content 支持字符串（纯文本）或数组（多模态 text/image_url part）；
+     * tool_call_id/tool_calls 仅工具调用循环时使用。
+     */
+    static class ChatRequestMessage {
+        @JsonProperty("role")
+        public String role;
+
+        @JsonProperty("content")
+        public Object content;
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("tool_call_id")
+        public String toolCallId;
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        @JsonProperty("tool_calls")
+        public List<Map<String, Object>> toolCalls;
+
+        ChatRequestMessage(String role, Object content) {
+            this.role = role;
+            this.content = content;
+        }
     }
 
     static class ImageGenerationRequest {
@@ -947,6 +1155,9 @@ class AiOpenAiCompatibleClient {
 
         @JsonProperty("size")
         public String size;
+
+        @JsonProperty("response_format")
+        public String responseFormat;
     }
 
     static class VideoGenerationRequest {
@@ -1033,6 +1244,9 @@ class AiOpenAiCompatibleClient {
         @JsonProperty("content")
         public String content;
 
+        @JsonProperty("tool_calls")
+        public List<ResponseToolCall> toolCalls;
+
         ChatMessage() {
         }
 
@@ -1046,6 +1260,27 @@ class AiOpenAiCompatibleClient {
     static class ChatCompletionResponse {
         @JsonProperty("choices")
         public List<Choice> choices;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ResponseToolCall {
+        @JsonProperty("id")
+        public String id;
+
+        @JsonProperty("type")
+        public String type;
+
+        @JsonProperty("function")
+        public ResponseToolFunction function;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class ResponseToolFunction {
+        @JsonProperty("name")
+        public String name;
+
+        @JsonProperty("arguments")
+        public String arguments;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

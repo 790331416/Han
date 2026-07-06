@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 
 /**
  * AI agent service implementation.
@@ -22,6 +23,10 @@ import java.math.BigDecimal;
 @Service
 @RequiredArgsConstructor
 public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentService {
+
+    private static final SecureRandom SHARE_KEY_RANDOM = new SecureRandom();
+    private static final String SHARE_KEY_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private static final int SHARE_KEY_LENGTH = 32;
 
     private final AiAgentMapper aiAgentMapper;
     private final IAiChatService aiChatService;
@@ -80,6 +85,10 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
     public void publish(Long agentId) {
         AiAgentPo agent = requireExisting(agentId);
         agent.setPublishedRaw("1");
+        // 发布补生成分享 key（已有则保留，重置走 resetShareKey）
+        if (!StringUtils.hasText(agent.getShareKey())) {
+            agent.setShareKey(generateShareKey());
+        }
         fillUpdateAudit(agent);
         aiAgentMapper.updateById(agent);
     }
@@ -94,8 +103,41 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public String resetShareKey(Long agentId) {
+        AiAgentPo agent = requireExisting(agentId);
+        agent.setShareKey(generateShareKey());
+        fillUpdateAudit(agent);
+        aiAgentMapper.updateById(agent);
+        return agent.getShareKey();
+    }
+
+    @Override
+    public AiAgentPo selectPublishedByShareKey(String shareKey) {
+        if (!StringUtils.hasText(shareKey)) {
+            return null;
+        }
+        AiAgentPo agent = aiAgentMapper.selectOne(new LambdaQueryWrapper<AiAgentPo>()
+                .eq(AiAgentPo::getShareKey, shareKey.trim())
+                .eq(AiAgentPo::getDelFlag, 0)
+                .last("LIMIT 1"));
+        if (agent == null || !"1".equals(agent.getPublishedRaw()) || !STATUS_ENABLED.equals(agent.getStatus())) {
+            return null;
+        }
+        return agent;
+    }
+
+    @Override
     public String chat(Long agentId, String message, Long conversationId) {
         return aiChatService.chatWithAgent(agentId, message, conversationId);
+    }
+
+    private String generateShareKey() {
+        StringBuilder builder = new StringBuilder(SHARE_KEY_LENGTH);
+        for (int i = 0; i < SHARE_KEY_LENGTH; i++) {
+            builder.append(SHARE_KEY_ALPHABET.charAt(SHARE_KEY_RANDOM.nextInt(SHARE_KEY_ALPHABET.length())));
+        }
+        return builder.toString();
     }
 
     private LambdaQueryWrapper<AiAgentPo> buildQueryWrapper(AiAgentQuery query) {

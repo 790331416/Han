@@ -19,6 +19,10 @@
         </dependency>
         <dependency>
             <groupId>com.han</groupId>
+            <artifactId>han-api-file</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.han</groupId>
             <artifactId>han-common-security</artifactId>
         </dependency>
         <dependency>

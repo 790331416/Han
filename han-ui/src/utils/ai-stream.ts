@@ -40,6 +40,7 @@ export interface AiStreamMetaPayload {
   tokenCount?: number
   knowledgeSources?: unknown
   toolExecutions?: unknown
+  nodeTraces?: unknown
   [key: string]: unknown
 }
 

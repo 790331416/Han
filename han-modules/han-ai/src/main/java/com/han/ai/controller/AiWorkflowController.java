@@ -3,6 +3,7 @@ package com.han.ai.controller;
 import com.han.ai.domain.dto.AiChatRequest;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiWorkflowQuery;
+import com.han.ai.domain.vo.AiFlowDebugVo;
 import com.han.ai.service.IAiWorkflowService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
@@ -88,5 +89,15 @@ public class AiWorkflowController {
         String message = request != null ? request.getMessage() : null;
         Long conversationId = request != null ? request.getConversationId() : null;
         return R.ok(aiWorkflowService.chat(workflowId, message, conversationId));
+    }
+
+    /**
+     * 编排调试运行（设计器右侧调试抽屉）：不要求已发布、不落会话消息。
+     */
+    @RepeatSubmit
+    @PostMapping("/debug/{workflowId}")
+    @PreAuthorize("@ss.hasAuthority('ai:workflow:edit')")
+    public R<AiFlowDebugVo> debug(@PathVariable Long workflowId, @RequestBody AiChatRequest request) {
+        return R.ok(aiWorkflowService.debug(workflowId, request != null ? request.getMessage() : null));
     }
 }

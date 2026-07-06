@@ -101,7 +101,7 @@
           <el-button type="primary" :icon="Upload" data-testid="ai-knowledge-upload-button">上传文档</el-button>
         </el-upload>
       </div>
-      <el-table v-loading="docLoading" :data="docList" style="margin-top: 16px;" data-testid="ai-knowledge-doc-table">
+      <el-table v-loading="docLoading" :data="docList" :row-class-name="docRowClassName" style="margin-top: 16px;" data-testid="ai-knowledge-doc-table">
         <el-table-column label="文档名称" prop="docName" min-width="200" show-overflow-tooltip />
         <el-table-column label="类型" prop="docType" width="80" align="center">
           <template #default="{ row }"><el-tag size="small">{{ row.docType }}</el-tag></template>
@@ -160,7 +160,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Upload, Document, Tickets, Collection, MoreFilled } from '@element-plus/icons-vue'
 import {
@@ -172,6 +173,7 @@ import {
 import { AI_KB_TYPE_DICT, AI_KNOWLEDGE_INDEX_STATUS_DICT, findDictLabel, loadDictOptionSet, type DictOption } from '@/utils/dict-options'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 
+const route = useRoute()
 const loading = ref(false)
 const kbList = ref<KnowledgeBase[]>([])
 const total = ref(0)
@@ -305,6 +307,27 @@ const handleDetail = async (kb: KnowledgeBase) => {
   } catch { /* 接口不可用 */ } finally { docLoading.value = false }
 }
 
+// ==================== 引用出处跳转定位（对话页「在知识库中查看」携带 kbId/docId） ====================
+const highlightDocId = ref('')
+
+const docRowClassName = ({ row }: { row: KbDocument }) => {
+  return highlightDocId.value && String(row.docId) === highlightDocId.value ? 'doc-row-highlight' : ''
+}
+
+const firstQueryValue = (value: unknown) => {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw === null || raw === undefined ? '' : String(raw)
+}
+
+async function consumeCitationQuery() {
+  const kbId = firstQueryValue(route.query.kbId)
+  if (!kbId) return
+  highlightDocId.value = firstQueryValue(route.query.docId)
+  const target = kbList.value.find((kb) => String(kb.kbId) === kbId)
+  // 目标知识库不在当前分页时，用最小对象兜底打开文档管理（文档列表按 kbId 加载，不依赖列表项）
+  await handleDetail(target ?? ({ kbId, kbName: `知识库 #${kbId}` } as unknown as KnowledgeBase))
+}
+
 const handleFileSelect = async (file: UploadFile) => {
   try {
     if (!currentKb.value || !file.raw) return
@@ -341,7 +364,18 @@ onMounted(async () => {
   kbTypeOptions.value = options.kbTypeOptions
   indexStatusOptions.value = options.indexStatusOptions
   await getList()
+  await consumeCitationQuery()
 })
+
+// keep-alive 缓存下再次带参跳转不会重新 onMounted，靠 watch 消费新的 kbId/docId
+watch(
+  () => [route.path, route.query.kbId, route.query.docId],
+  async ([path, kbId]) => {
+    if (path === '/ai/knowledge' && kbId) {
+      await consumeCitationQuery()
+    }
+  }
+)
 </script>
 
 <style lang="scss" scoped>
@@ -372,4 +406,6 @@ onMounted(async () => {
 .hit-score { margin-left: auto; }
 .hit-doc { font-size: 12px; color: #909399; margin-bottom: 8px; }
 .hit-content { white-space: pre-wrap; line-height: 1.6; color: #606266; font-size: 13px; background: #f5f7fa; padding: 12px; border-radius: 4px; }
+
+:deep(.doc-row-highlight) > td { background: #ecf5ff !important; }
 </style>

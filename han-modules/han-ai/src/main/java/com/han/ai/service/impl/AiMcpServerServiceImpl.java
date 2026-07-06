@@ -30,6 +30,7 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final AiMcpServerMapper aiMcpServerMapper;
+    private final AiMcpClientService aiMcpClientService;
 
     @Override
     public PageResult<AiMcpServerPo> selectPage(AiMcpServerQuery query) {
@@ -90,10 +91,24 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
     @Transactional(rollbackFor = Exception.class)
     public String refreshTools(Long mcpId) {
         AiMcpServerPo server = requireExisting(mcpId);
-        server.setTools(buildToolMetadata(server));
+        // 真连 MCP server 拉取 tools/list（name/description/inputSchema）入库，替换手填元数据
+        List<AiMcpClientService.McpTool> tools = aiMcpClientService.listTools(server);
+        List<Map<String, Object>> metadata = new ArrayList<>();
+        for (AiMcpClientService.McpTool tool : tools) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", tool.name());
+            item.put("description", tool.description());
+            item.put("inputSchema", tool.inputSchema());
+            metadata.add(item);
+        }
+        try {
+            server.setTools(OBJECT_MAPPER.writeValueAsString(metadata));
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("工具元数据序列化失败");
+        }
         fillUpdateAudit(server);
         aiMcpServerMapper.updateById(server);
-        return "工具元数据已刷新";
+        return "已从 MCP 服务拉取 " + tools.size() + " 个工具";
     }
 
     private LambdaQueryWrapper<AiMcpServerPo> buildQueryWrapper(AiMcpServerQuery query) {
@@ -199,39 +214,6 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         server.setUrl(trimToNull(server.getUrl()));
         server.setStatus(StringUtils.hasText(server.getStatus()) ? server.getStatus().trim() : STATUS_ENABLED);
         server.setTools(StringUtils.hasText(server.getTools()) ? server.getTools().trim() : "[]");
-    }
-
-    private String buildToolMetadata(AiMcpServerPo server) {
-        List<Map<String, String>> tools = new ArrayList<>();
-        tools.add(new LinkedHashMap<>(Map.of(
-                "name", "health_check",
-                "description", "检查 MCP 服务连接状态"
-        )));
-        if ("stdio".equals(server.getTransportType())) {
-            tools.add(new LinkedHashMap<>(Map.of(
-                    "name", "stdio_exec",
-                    "description", "通过 stdio 方式执行工具调用"
-            )));
-        } else if ("streamable_http".equals(server.getTransportType())) {
-            tools.add(new LinkedHashMap<>(Map.of(
-                    "name", "http_stream_call",
-                    "description", "通过 streamable HTTP 调用工具"
-            )));
-        } else {
-            tools.add(new LinkedHashMap<>(Map.of(
-                    "name", "sse_subscribe",
-                    "description", "通过 SSE 订阅工具事件"
-            )));
-        }
-        tools.add(new LinkedHashMap<>(Map.of(
-                "name", "list_tools",
-                "description", "读取当前服务登记的工具列表"
-        )));
-        try {
-            return OBJECT_MAPPER.writeValueAsString(tools);
-        } catch (JsonProcessingException ex) {
-            throw new BusinessException("生成工具元数据失败");
-        }
     }
 
     private void fillCreateAudit(AiMcpServerPo server) {

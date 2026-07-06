@@ -23,5 +23,15 @@ public interface IAiAgentService {
 
     void unpublish(Long agentId);
 
+    /**
+     * 重置分享 key：旧分享链接立即失效，返回新 key。
+     */
+    String resetShareKey(Long agentId);
+
+    /**
+     * 按分享 key 查已发布且启用的智能体；无效/未发布/停用返回 null（公开链路专用，不做租户上下文校验）。
+     */
+    AiAgentPo selectPublishedByShareKey(String shareKey);
+
     String chat(Long agentId, String message, Long conversationId);
 }

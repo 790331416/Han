@@ -11,6 +11,7 @@ import com.han.starter.storage.config.StorageRuntimeConfig;
 import com.han.starter.storage.impl.RustFSStorageProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,12 +25,15 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 文件存储访问服务。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileStorageAccessService {
@@ -59,6 +63,128 @@ public class FileStorageAccessService {
                 .toUriString();
         Long fileId = insertFileRecord(file, record, name, url);
         return new FileAccessResult(fileId, name, url);
+    }
+
+    /**
+     * 按文件ID读取文件字节并编码为 Base64（服务间调用，多模态图片注入等场景）。
+     *
+     * @param fileId 文件ID
+     * @return Base64 结果
+     */
+    public FileBase64Result loadBase64(Long fileId) {
+        Map<String, Object> row;
+        try {
+            row = jdbcTemplate.queryForMap("""
+                            select tenant_id, file_name, file_path, file_url, mime_type, bucket
+                            from sys_file
+                            where id = ? and del_flag = 0
+                            """, fileId);
+        } catch (org.springframework.dao.EmptyResultDataAccessException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File record not found", ex);
+        }
+        String locator = (String) row.get("bucket");
+        String filePath = (String) row.get("file_path");
+        DownloadFileResult download = download(locator, filePath);
+        try (InputStream stream = download.getStream()) {
+            byte[] bytes = stream.readAllBytes();
+            String mimeType = (String) row.get("mime_type");
+            Number tenantId = (Number) row.get("tenant_id");
+            return new FileBase64Result(
+                    fileId,
+                    tenantId == null ? 0L : tenantId.longValue(),
+                    (String) row.get("file_name"),
+                    mimeType == null || mimeType.isBlank() ? FileUploadUtils.getContentType(filePath) : mimeType,
+                    (String) row.get("file_url"),
+                    java.util.Base64.getEncoder().encodeToString(bytes));
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "File read failed", ex);
+        }
+    }
+
+    /**
+     * 文件管理分页查询（E-filemanage）：按文件名/类型/时间过滤，非管理员限定本租户。
+     */
+    public PageQueryResult page(String fileName, String fileType, String beginTime, String endTime,
+                                int pageNum, int pageSize, Long tenantId, boolean admin) {
+        StringBuilder where = new StringBuilder(" where del_flag = 0");
+        List<Object> args = new ArrayList<>();
+        if (fileName != null && !fileName.isBlank()) {
+            where.append(" and file_name like ?");
+            args.add("%" + fileName.trim() + "%");
+        }
+        if (fileType != null && !fileType.isBlank()) {
+            where.append(" and file_type = ?");
+            args.add(fileType.trim());
+        }
+        if (beginTime != null && !beginTime.isBlank()) {
+            where.append(" and create_time >= ?::timestamp");
+            args.add(beginTime.trim());
+        }
+        if (endTime != null && !endTime.isBlank()) {
+            where.append(" and create_time <= ?::timestamp");
+            args.add(endTime.trim());
+        }
+        if (!admin) {
+            if (tenantId != null && tenantId > 0) {
+                where.append(" and tenant_id = ?");
+                args.add(tenantId);
+            } else {
+                where.append(" and 1 = 0");
+            }
+        }
+        Long total = jdbcTemplate.queryForObject("select count(*) from sys_file" + where, Long.class, args.toArray());
+        int safePageNum = Math.max(pageNum, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        List<Object> pagedArgs = new ArrayList<>(args);
+        pagedArgs.add(safePageSize);
+        pagedArgs.add((long) (safePageNum - 1) * safePageSize);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                        select id, tenant_id as "tenantId", file_name as "fileName", file_url as "fileUrl",
+                               file_size as "fileSize", file_type as "fileType", mime_type as "mimeType",
+                               storage_type as "storageType", bucket, create_by as "createBy", create_time as "createTime"
+                        from sys_file
+                        """ + where + " order by create_time desc, id desc limit ? offset ?",
+                pagedArgs.toArray());
+        return new PageQueryResult(rows, total == null ? 0L : total);
+    }
+
+    /**
+     * 批量删除：软删 sys_file，尽力物理删除对象存储；物理删除失败仅告警不回滚业务
+     * （残留对象可由后续对账任务兜底清理）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int removeByIds(List<Long> ids, Long tenantId, boolean admin) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        int removed = 0;
+        for (Long id : ids) {
+            if (id == null) {
+                continue;
+            }
+            Map<String, Object> row;
+            try {
+                row = jdbcTemplate.queryForMap(
+                        "select tenant_id, file_path, bucket from sys_file where id = ? and del_flag = 0", id);
+            } catch (org.springframework.dao.EmptyResultDataAccessException ex) {
+                continue;
+            }
+            Number rowTenantId = (Number) row.get("tenant_id");
+            if (!admin) {
+                long ownerTenantId = rowTenantId == null ? 0L : rowTenantId.longValue();
+                if (tenantId == null || tenantId <= 0 || ownerTenantId != tenantId) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No permission to delete file " + id);
+                }
+            }
+            removed += jdbcTemplate.update("update sys_file set del_flag = 1 where id = ?", id);
+            try {
+                StorageConfigRecord record = resolveRecord((String) row.get("bucket"));
+                getProvider(record.getRuntimeConfig()).delete((String) row.get("file_path"));
+            } catch (RuntimeException ex) {
+                log.warn("Physical file delete failed, id={}, path={}", id, row.get("file_path"), ex);
+            }
+        }
+        return removed;
     }
 
     /**
@@ -184,6 +310,18 @@ public class FileStorageAccessService {
         public String getUrl() {
             return url;
         }
+    }
+
+    /**
+     * Base64 读取结果。
+     */
+    public record FileBase64Result(Long id, Long tenantId, String name, String mimeType, String url, String base64) {
+    }
+
+    /**
+     * 文件管理分页结果。
+     */
+    public record PageQueryResult(List<Map<String, Object>> rows, long total) {
     }
 
     /**

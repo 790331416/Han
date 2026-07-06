@@ -1,0 +1,429 @@
+package com.han.ai.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.han.ai.domain.po.AiMcpServerPo;
+import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.domain.vo.AiFlowNodeTraceVo;
+import com.han.ai.mapper.AiMcpServerMapper;
+import com.han.ai.mapper.AiModelMapper;
+import com.han.ai.service.IAiKnowledgeRetrievalService;
+import com.han.ai.service.IAiKnowledgeRetrievalService.ScoredParagraph;
+import com.han.common.core.exception.BusinessException;
+import com.han.common.core.util.XuJsonUtil;
+import com.han.common.security.context.SecurityContextHolder;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * advanced 编排执行引擎：按画布拓扑逐节点执行（start/llm/knowledge/condition/tool/output/end），
+ * 产出最终回复与全链节点轨迹。单节点失败 fail-fast，未到达分支节点标记 skipped。
+ * <p>
+ * 边界：节点数上限见 {@link AiFlowGraph#MAX_NODES}，全流执行超时 {@link #MAX_FLOW_MILLIS}。
+ * tool 节点通过 MCP 客户端真实调用，调用结果写入 result 供后续节点消费。
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+class AiFlowEngine {
+
+    private static final long MAX_FLOW_MILLIS = 5 * 60_000L;
+    private static final int TRACE_TEXT_LIMIT = 800;
+
+    private final AiModelMapper aiModelMapper;
+    private final AiMcpServerMapper aiMcpServerMapper;
+    private final AiModelCredentialResolver credentialResolver;
+    private final AiOpenAiCompatibleClient openAiCompatibleClient;
+    private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
+    private final AiMcpClientService aiMcpClientService;
+
+    /**
+     * 执行结果：失败时 finalText 为 null，errorMessage 给出原因；traces 始终保留已产生的轨迹。
+     */
+    record FlowResult(boolean success, String finalText, List<AiFlowNodeTraceVo> traces, String errorMessage) {
+    }
+
+    /**
+     * 执行编排；本方法不抛业务异常，解析/执行失败均折叠进 FlowResult。
+     */
+    FlowResult execute(String flowConfig, String userMessage) {
+        AiFlowGraph graph;
+        try {
+            graph = AiFlowGraph.parse(flowConfig);
+        } catch (BusinessException ex) {
+            return new FlowResult(false, null, List.of(), ex.getMessage());
+        }
+
+        long startedAt = System.currentTimeMillis();
+        Map<String, String> vars = new HashMap<>();
+        vars.put("message", userMessage == null ? "" : userMessage);
+        vars.put("result", "");
+        vars.put("knowledge", "");
+
+        List<AiFlowNodeTraceVo> traces = new ArrayList<>();
+        Set<String> reachable = new HashSet<>();
+        reachable.add(graph.startNode().id());
+        String lastOutputText = null;
+        String lastLlmText = null;
+        String failure = null;
+
+        for (AiFlowGraph.FlowNode node : graph.topologicalOrder()) {
+            if (!reachable.contains(node.id())) {
+                traces.add(buildTrace(node, "skipped", null, "未命中执行分支", 0L, null));
+                continue;
+            }
+            if (failure != null) {
+                traces.add(buildTrace(node, "skipped", null, "前序节点失败，已中断", 0L, null));
+                continue;
+            }
+            if (System.currentTimeMillis() - startedAt > MAX_FLOW_MILLIS) {
+                failure = "编排执行超时（超过 5 分钟）";
+                traces.add(buildTrace(node, "failed", null, null, 0L, failure));
+                continue;
+            }
+            long nodeStart = System.currentTimeMillis();
+            try {
+                NodeOutcome outcome = executeNode(node, vars);
+                long cost = System.currentTimeMillis() - nodeStart;
+                traces.add(buildTrace(node, outcome.status(), outcome.input(), outcome.output(), cost, null));
+                if (StringUtils.hasText(outcome.varValue())) {
+                    vars.put(node.id(), outcome.varValue());
+                }
+                switch (node.type()) {
+                    case "llm" -> {
+                        vars.put("result", outcome.varValue());
+                        lastLlmText = outcome.varValue();
+                    }
+                    case "tool" -> vars.put("result", outcome.varValue());
+                    case "knowledge" -> vars.put("knowledge", outcome.varValue());
+                    case "output" -> lastOutputText = outcome.varValue();
+                    default -> { }
+                }
+                expandReachable(graph, node, outcome, reachable);
+            } catch (BusinessException ex) {
+                long cost = System.currentTimeMillis() - nodeStart;
+                failure = "节点「" + node.label() + "」执行失败：" + ex.getMessage();
+                traces.add(buildTrace(node, "failed", null, null, cost, ex.getMessage()));
+            } catch (RuntimeException ex) {
+                long cost = System.currentTimeMillis() - nodeStart;
+                log.warn("Flow node execution error, nodeId={}, type={}", node.id(), node.type(), ex);
+                failure = "节点「" + node.label() + "」执行异常";
+                traces.add(buildTrace(node, "failed", null, null, cost, "执行异常：" + ex.getClass().getSimpleName()));
+            }
+        }
+
+        if (failure != null) {
+            return new FlowResult(false, null, traces, failure);
+        }
+        String finalText = StringUtils.hasText(lastOutputText) ? lastOutputText
+                : StringUtils.hasText(lastLlmText) ? lastLlmText
+                : "编排执行完成，但未产生文本输出（请为流程添加 LLM 或输出节点）";
+        return new FlowResult(true, finalText, traces, null);
+    }
+
+    /**
+     * 节点产出：status 恒为 succeeded/skipped（失败走异常）；varValue 是写入变量表的完整文本。
+     */
+    private record NodeOutcome(String status, String input, String output, String varValue, Boolean conditionResult) {
+
+        static NodeOutcome succeeded(String input, String output, String varValue) {
+            return new NodeOutcome("succeeded", input, output, varValue, null);
+        }
+
+        static NodeOutcome condition(String input, boolean result) {
+            return new NodeOutcome("succeeded", input, result ? "true（走「是」分支）" : "false（走「否」分支）",
+                    String.valueOf(result), result);
+        }
+
+        static NodeOutcome skipped(String reason) {
+            return new NodeOutcome("skipped", null, reason, "", null);
+        }
+    }
+
+    private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        return switch (node.type()) {
+            case "start" -> NodeOutcome.succeeded(null, vars.get("message"), vars.get("message"));
+            case "knowledge" -> executeKnowledge(node, vars);
+            case "llm" -> executeLlm(node, vars);
+            case "condition" -> executeCondition(node, vars);
+            case "tool" -> executeTool(node, vars);
+            case "output" -> executeOutput(node, vars);
+            case "end" -> NodeOutcome.succeeded(null, "流程结束", "");
+            default -> throw new BusinessException("不支持的节点类型：" + node.type());
+        };
+    }
+
+    private NodeOutcome executeKnowledge(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        Long kbId = node.dataLong("kbId");
+        if (kbId == null) {
+            throw new BusinessException("知识库节点未选择知识库");
+        }
+        Integer topK = node.dataInt("topK");
+        String query = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
+        List<ScoredParagraph> hits = knowledgeRetrievalService.retrieve(List.of(kbId), query,
+                topK != null && topK > 0 ? Math.min(topK, 20) : 5);
+        StringBuilder builder = new StringBuilder();
+        int index = 1;
+        for (ScoredParagraph hit : hits) {
+            builder.append(index++).append(". ").append(hit.paragraph().getContent()).append('\n');
+        }
+        String knowledgeText = builder.toString().trim();
+        return NodeOutcome.succeeded("查询：" + truncate(query),
+                hits.isEmpty() ? "未命中知识段落" : "命中 " + hits.size() + " 条：" + truncate(knowledgeText),
+                knowledgeText);
+    }
+
+    private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        AiModelPo model = resolveLlmModel(node.dataLong("modelId"));
+        String apiKey = credentialResolver.resolveApiKey(model);
+        if (!StringUtils.hasText(apiKey)) {
+            throw new BusinessException("模型「" + model.getModelName() + "」API Key 未配置");
+        }
+        AiModelPo effectiveModel = applyNodeTemperature(model, node.dataText("temperature"));
+
+        List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
+        StringBuilder systemPrompt = new StringBuilder();
+        String nodePrompt = node.dataText("systemPrompt");
+        if (StringUtils.hasText(nodePrompt)) {
+            systemPrompt.append(nodePrompt.trim());
+        }
+        String knowledge = vars.get("knowledge");
+        if (StringUtils.hasText(knowledge)) {
+            if (!systemPrompt.isEmpty()) {
+                systemPrompt.append("\n\n");
+            }
+            systemPrompt.append("以下是命中的知识库上下文，请优先引用并结合它们回答：\n").append(knowledge);
+        }
+        if (!systemPrompt.isEmpty()) {
+            messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt.toString()));
+        }
+        String userInput = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
+        messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(userInput));
+
+        String reply = openAiCompatibleClient.chatCompletion(effectiveModel, apiKey, messages, effectiveModel.getMaxTokens());
+        return NodeOutcome.succeeded("模型：" + model.getModelName() + "；输入：" + truncate(userInput),
+                truncate(reply), reply);
+    }
+    private NodeOutcome executeTool(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        Long mcpId = node.dataLong("mcpId");
+        String toolName = node.dataText("toolName");
+        if (mcpId == null) {
+            throw new BusinessException("工具节点未选择 MCP 服务");
+        }
+        if (!StringUtils.hasText(toolName)) {
+            throw new BusinessException("工具节点未填写工具名称");
+        }
+        AiMcpServerPo server = resolveMcpServer(mcpId);
+        Map<String, Object> arguments = parseToolArguments(node.dataText("arguments"), vars);
+        String result = aiMcpClientService.callTool(server, toolName.trim(), arguments);
+        String input = "MCP：" + server.getServerName() + "；工具：" + toolName.trim()
+                + (arguments.isEmpty() ? "；入参：{}" : "；入参：" + truncate(XuJsonUtil.toJsonString(arguments)));
+        return NodeOutcome.succeeded(input, truncate(result), result);
+    }
+
+    private AiMcpServerPo resolveMcpServer(Long mcpId) {
+        LambdaQueryWrapper<AiMcpServerPo> wrapper = new LambdaQueryWrapper<AiMcpServerPo>()
+                .eq(AiMcpServerPo::getMcpId, mcpId)
+                .eq(AiMcpServerPo::getStatus, "0");
+        Long tenantId = SecurityContextHolder.getTenantId();
+        if (tenantId != null) {
+            wrapper.eq(AiMcpServerPo::getTenantId, tenantId);
+        }
+        AiMcpServerPo server = aiMcpServerMapper.selectOne(wrapper.last("LIMIT 1"));
+        if (server == null) {
+            throw new BusinessException("工具节点配置的 MCP 服务不存在或未启用");
+        }
+        return server;
+    }
+
+    private Map<String, Object> parseToolArguments(String rawArguments, Map<String, String> vars) {
+        if (!StringUtils.hasText(rawArguments)) {
+            return Map.of();
+        }
+        String rendered = renderTemplate(rawArguments, vars);
+        try {
+            Map<String, Object> parsed = XuJsonUtil.parseObject(rendered, new TypeReference<Map<String, Object>>() {});
+            return parsed != null ? parsed : Map.of();
+        } catch (RuntimeException ex) {
+            throw new BusinessException("工具节点入参不是合法 JSON");
+        }
+    }
+
+    /**
+     * 节点温度以副本覆盖模型默认值，不回写共享的模型对象。
+     */
+    private AiModelPo applyNodeTemperature(AiModelPo model, String rawTemperature) {
+        if (!StringUtils.hasText(rawTemperature)) {
+            return model;
+        }
+        BigDecimal temperature;
+        try {
+            temperature = new BigDecimal(rawTemperature.trim());
+        } catch (NumberFormatException ignored) {
+            return model;
+        }
+        if (temperature.compareTo(BigDecimal.ZERO) < 0 || temperature.compareTo(BigDecimal.valueOf(2)) > 0) {
+            return model;
+        }
+        AiModelPo copy = new AiModelPo();
+        copy.setModelId(model.getModelId());
+        copy.setModelName(model.getModelName());
+        copy.setModelType(model.getModelType());
+        copy.setProvider(model.getProvider());
+        copy.setModelCode(model.getModelCode());
+        copy.setBaseUrl(model.getBaseUrl());
+        copy.setApiKey(model.getApiKey());
+        copy.setMaxTokens(model.getMaxTokens());
+        copy.setTemperature(temperature);
+        copy.setSupportsVision(model.getSupportsVision());
+        copy.setStatus(model.getStatus());
+        copy.setTenantId(model.getTenantId());
+        return copy;
+    }
+
+    private AiModelPo resolveLlmModel(Long modelId) {
+        AiModelPo model;
+        if (modelId != null) {
+            model = aiModelMapper.selectById(modelId);
+            if (model == null) {
+                throw new BusinessException("LLM 节点配置的模型不存在");
+            }
+        } else {
+            model = aiModelMapper.selectOne(new LambdaQueryWrapper<AiModelPo>()
+                    .eq(AiModelPo::getStatus, "0")
+                    .eq(AiModelPo::getModelType, "LLM")
+                    .orderByAsc(AiModelPo::getModelId)
+                    .last("LIMIT 1"));
+            if (model == null) {
+                throw new BusinessException("LLM 节点未选择模型且系统无可用 LLM 模型");
+            }
+        }
+        if (!"LLM".equalsIgnoreCase(model.getModelType())) {
+            throw new BusinessException("LLM 节点配置的模型不是 LLM 类型");
+        }
+        if (!"0".equals(model.getStatus())) {
+            throw new BusinessException("LLM 节点配置的模型未启用");
+        }
+        return model;
+    }
+
+    /**
+     * 条件表达式为受限语法（防注入，不引入 SpEL）：
+     * {@code {{var}} contains 'x'} / {@code {{var}} == 'x'} / {@code {{var}} != 'x'}
+     * / {@code {{var}} not_empty} / {@code {{var}} is_empty}。
+     * var 支持 message / result / knowledge / 节点ID。
+     */
+    private NodeOutcome executeCondition(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        String expression = node.dataText("expression");
+        if (!StringUtils.hasText(expression)) {
+            throw new BusinessException("条件节点未配置表达式");
+        }
+        boolean result = evaluateCondition(expression.trim(), vars);
+        return NodeOutcome.condition("表达式：" + expression.trim(), result);
+    }
+
+    private boolean evaluateCondition(String expression, Map<String, String> vars) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("^\\{\\{\\s*([\\w-]+)\\s*}}\\s*(contains|==|!=|not_empty|is_empty)\\s*(?:'([^']*)')?$")
+                .matcher(expression);
+        if (!matcher.matches()) {
+            throw new BusinessException("条件表达式不合法，支持：{{变量}} contains '值' / == '值' / != '值' / not_empty / is_empty");
+        }
+        String varName = matcher.group(1);
+        String operator = matcher.group(2);
+        String operand = matcher.group(3);
+        String value = vars.getOrDefault(varName, "");
+        return switch (operator) {
+            case "contains" -> {
+                requireOperand(operator, operand);
+                yield value.contains(operand);
+            }
+            case "==" -> {
+                requireOperand(operator, operand);
+                yield value.equals(operand);
+            }
+            case "!=" -> {
+                requireOperand(operator, operand);
+                yield !value.equals(operand);
+            }
+            case "not_empty" -> StringUtils.hasText(value);
+            case "is_empty" -> !StringUtils.hasText(value);
+            default -> throw new BusinessException("不支持的条件运算符：" + operator);
+        };
+    }
+
+    private void requireOperand(String operator, String operand) {
+        if (operand == null) {
+            throw new BusinessException("条件运算符 " + operator + " 需要一个 '值' 操作数");
+        }
+    }
+
+    /**
+     * 输出节点：模板变量替换，支持 {{message}}/{{result}}/{{knowledge}}/{{节点ID}}。
+     */
+    private NodeOutcome executeOutput(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        String template = node.dataText("template");
+        String rendered;
+        if (StringUtils.hasText(template)) {
+            rendered = renderTemplate(template, vars);
+        } else {
+            rendered = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
+        }
+        return NodeOutcome.succeeded(StringUtils.hasText(template) ? "模板：" + truncate(template) : "透传最近结果",
+                truncate(rendered), rendered);
+    }
+
+    private String renderTemplate(String template, Map<String, String> vars) {
+        return java.util.regex.Pattern.compile("\\{\\{\\s*([\\w-]+)\\s*}}").matcher(template)
+                .replaceAll(match -> java.util.regex.Matcher.quoteReplacement(
+                        vars.getOrDefault(match.group(1), "")));
+    }
+
+    /**
+     * 扩展可达集合：condition 节点仅沿命中分支（sourceHandle 匹配或未指定）扩展，其余节点全量扩展。
+     */
+    private void expandReachable(AiFlowGraph graph, AiFlowGraph.FlowNode node, NodeOutcome outcome,
+                                 Set<String> reachable) {
+        String chosenHandle = null;
+        if ("condition".equals(node.type()) && outcome.conditionResult() != null) {
+            chosenHandle = outcome.conditionResult() ? "yes" : "no";
+        }
+        for (AiFlowGraph.FlowEdge edge : graph.outgoing(node.id())) {
+            if (chosenHandle == null || edge.sourceHandle() == null || chosenHandle.equals(edge.sourceHandle())) {
+                reachable.add(edge.target());
+            }
+        }
+    }
+
+    private AiFlowNodeTraceVo buildTrace(AiFlowGraph.FlowNode node, String status, String input, String output,
+                                         Long costMs, String error) {
+        AiFlowNodeTraceVo trace = new AiFlowNodeTraceVo();
+        trace.setNodeId(node.id());
+        trace.setNodeType(node.type());
+        trace.setNodeName(node.label());
+        trace.setStatus(status);
+        trace.setInput(truncate(input));
+        trace.setOutput(truncate(output));
+        trace.setCostMs(costMs);
+        trace.setError(error);
+        return trace;
+    }
+
+    private String truncate(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        String normalized = text.trim();
+        return normalized.length() > TRACE_TEXT_LIMIT ? normalized.substring(0, TRACE_TEXT_LIMIT) + "..." : normalized;
+    }
+}

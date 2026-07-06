@@ -1,4 +1,4 @@
-﻿---
+---
 trigger: always_on
 ---
 # Han Cloud 项目规则与开发规范

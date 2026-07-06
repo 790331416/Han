@@ -15,6 +15,8 @@ export interface AiModel {
   credentialSource?: string
   maxTokens: number
   temperature: number
+  /** 是否支持视觉输入（图片理解）：'1'支持 '0'不支持 */
+  supportsVision?: string
   status: string
   remark?: string
   createTime?: string
@@ -201,6 +203,8 @@ export interface AiAgent {
   welcomeMessage?: string
   prologue?: string
   published: boolean
+  /** 公开分享链接 key（发布时生成） */
+  shareKey?: string
   status: string
   createTime?: string
 }
@@ -241,6 +245,33 @@ export function unpublishAiAgent(agentId: string | number) {
 
 export function chatWithAgent(agentId: string | number, message: string, conversationId?: string) {
   return post<string>(`/ai/agent/chat/${agentId}`, { message, conversationId })
+}
+
+// 重置分享链接（旧 shareKey 立即失效，返回新 key）
+export function resetAgentShareKey(agentId: string | number) {
+  return post<string>(`/ai/agent/reset-share-key/${agentId}`)
+}
+
+// ===================== 公开分享（免登录，/ai/share 网关白名单） =====================
+
+export interface ShareProfile {
+  agentName?: string
+  avatar?: string
+  prologue?: string
+  description?: string
+}
+
+export interface ShareChatHistoryItem {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export function getShareProfile(shareKey: string) {
+  return get<ShareProfile>(`/ai/share/${shareKey}/profile`, undefined, { silentError: true })
+}
+
+export function shareChat(shareKey: string, message: string, history: ShareChatHistoryItem[]) {
+  return post<{ reply: string }>(`/ai/share/${shareKey}/chat`, { message, history })
 }
 
 // ===================== AI工作流 =====================
@@ -299,6 +330,30 @@ export function chatWithWorkflow(workflowId: string | number, message: string, c
   return post<string>(`/ai/workflow/chat/${workflowId}`, { message, conversationId })
 }
 
+// 编排节点执行轨迹（advanced 工作流执行时间线）
+export interface AiFlowNodeTrace {
+  nodeId: string
+  nodeType: string
+  nodeName?: string
+  /** succeeded / failed / skipped */
+  status: string
+  input?: string
+  output?: string
+  costMs?: number
+  error?: string
+}
+
+export interface AiFlowDebugResult {
+  success: boolean
+  reply: string
+  nodeTraces: AiFlowNodeTrace[]
+}
+
+// 编排调试运行（设计器调试抽屉）：不要求已发布、不落会话消息
+export function debugAiWorkflow(workflowId: string | number, message: string) {
+  return post<AiFlowDebugResult>(`/ai/workflow/debug/${workflowId}`, { message })
+}
+
 // ===================== AI对话 =====================
 
 export interface AiConversation {
@@ -320,8 +375,18 @@ export interface AiChatMessage {
   tokenCount?: number
   sortOrder: number
   createTime?: string
+  /** 图片附件（多模态输入图 / 对话内生成图） */
+  imageList?: AiChatImage[]
   knowledgeSources?: AiChatKnowledgeSource[]
   toolExecutions?: AiChatToolTrace[]
+  /** 编排节点执行时间线（advanced 工作流消息专有） */
+  nodeTraces?: AiFlowNodeTrace[]
+}
+
+export interface AiChatImage {
+  fileId?: string | number
+  url: string
+  name?: string
 }
 
 export interface AiChatKnowledgeSource {
@@ -369,6 +434,13 @@ export interface AiChatToolTrace {
   toolCount?: number
   toolNames?: string[]
   summary?: string
+  /** 以下字段非空时为一次真实 tools/call 调用记录 */
+  toolName?: string
+  callArgs?: string
+  callResult?: string
+  costMs?: number
+  /** succeeded / failed */
+  callStatus?: string
 }
 
 export interface ChatRequest {
@@ -376,10 +448,33 @@ export interface ChatRequest {
   workflowId?: string | number
   modelId?: string | number
   message: string
+  /** 图片附件文件ID（多模态输入，须模型支持视觉） */
+  imageFileIds?: (string | number)[]
 }
 
 export function sendChatMessage(data: ChatRequest) {
   return post<AiChatMessage>('/ai/chat/send', data)
+}
+
+// 上传对话图片附件（走文件服务，返回 fileId + 公开访问地址）
+export function uploadChatImage(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post<{ id: string | number; name: string; url: string }>('/file/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export interface ChatImageRequest {
+  conversationId?: string | number
+  modelId?: string | number
+  prompt: string
+  size?: string
+}
+
+// 对话内文生图（IMAGE 模型），返回带图片附件的 assistant 消息
+export function generateChatImage(data: ChatImageRequest) {
+  return post<AiChatMessage>('/ai/chat/image', data)
 }
 
 export interface AiConversationQuery extends PageQuery {
