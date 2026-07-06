@@ -42,13 +42,6 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260415_totp_2fa_migration.sql"
   "sql/upgrades/postgres/20260415_system_login_log_message_alignment.sql"
   "sql/upgrades/postgres/20260415_system_post_sort_alignment.sql"
-  "sql/upgrades/postgres/20260521_aivideo_mvp0.sql"
-  "sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql"
-  "sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql"
-  "sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql"
-  "sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql"
-  "sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql"
-  "sql/upgrades/postgres/20260527_aivideo_character_image_workflow.sql"
   "sql/upgrades/postgres/20260612_ai_generic_dict_alignment.sql"
   "sql/upgrades/postgres/20260702_ai_prompt_template_audit_columns.sql"
   "sql/upgrades/postgres/20260702_sys_oper_log_module_alignment.sql"
@@ -57,7 +50,6 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260703_ai_flow_meta.sql"
   "sql/upgrades/postgres/20260703_file_manage_menu.sql"
 )
-
 BACKUP_INPUTS=()
 COMPOSE_TIER=""
 

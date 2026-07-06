@@ -43,6 +43,13 @@ REQUIRED_SYS_USER_COLUMNS = [
     "totp_enabled",
 ]
 
+UPGRADE_REHEARSAL_SCRIPTS = [
+    ROOT / "deploy" / "scripts" / "rehearse-postgres-upgrades.sh",
+    ROOT / "deploy" / "scripts" / "rehearse-postgres-backup-upgrades.sh",
+]
+
+UPGRADE_FILE_RE = re.compile(r'"(sql/upgrades/postgres/[^"]+\.sql)"')
+
 
 def tracked_sql_paths() -> list[Path]:
     result = subprocess.run(
@@ -107,7 +114,13 @@ def main() -> int:
             if "INSERT INTO nacos.config_info" not in text:
                 violations.append(f"Nacos 导入 SQL 缺少 config_info 导入语句: {nacos_file}")
 
-    for upgrade_file in sorted((SQL / "upgrades" / "postgres").glob("*.sql")):
+    upgrade_files = sorted((SQL / "upgrades" / "postgres").glob("*.sql"))
+    tracked_upgrade_paths = {
+        upgrade_file.relative_to(ROOT).as_posix()
+        for upgrade_file in upgrade_files
+    }
+
+    for upgrade_file in upgrade_files:
         text = read_sql(upgrade_file)
         if FORBIDDEN_DELETED_COLUMN_RE.search(text):
             violations.append(f"PostgreSQL upgrade SQL 不能创建 deleted 列，必须使用 del_flag: {upgrade_file}")
@@ -119,6 +132,17 @@ def main() -> int:
             for prefix in FORBIDDEN_POSTGRES_LINE_PREFIXES:
                 if stripped.startswith(prefix):
                     violations.append(f"PostgreSQL upgrade SQL contains forbidden statement at {upgrade_file}:{lineno}: {line.strip()}")
+
+    for script in UPGRADE_REHEARSAL_SCRIPTS:
+        if not script.exists():
+            violations.append(f"缺少 PostgreSQL 升级演练脚本: {script}")
+            continue
+        listed_paths = set(UPGRADE_FILE_RE.findall(script.read_text(encoding="utf-8", errors="replace")))
+        for listed_path in sorted(listed_paths):
+            if listed_path not in tracked_upgrade_paths:
+                violations.append(f"升级演练脚本引用不存在的 SQL: {script}: {listed_path}")
+        for missing_path in sorted(tracked_upgrade_paths - listed_paths):
+            violations.append(f"升级演练脚本未覆盖 PostgreSQL upgrade SQL: {script}: {missing_path}")
 
     if violations:
         print("\n".join(violations))
