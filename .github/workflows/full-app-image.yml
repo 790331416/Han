@@ -77,7 +77,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-file
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-file -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-file
 
       - name: Resolve image metadata
         id: meta
@@ -165,7 +165,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-gateway
-        run: mvn -B -gs settings.workspace.xml -pl han-gateway -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-gateway
 
       - name: Resolve image metadata
         id: meta
@@ -253,7 +253,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-system
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-system -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-system
 
       - name: Resolve image metadata
         id: meta
@@ -341,7 +341,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-tenant
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-tenant -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-tenant
 
       - name: Resolve image metadata
         id: meta
@@ -506,7 +506,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-auth
-        run: mvn -B -gs settings.workspace.xml -pl han-auth -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-auth
 
       - name: Resolve image metadata
         id: meta
@@ -594,7 +594,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-job
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-job -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-job
 
       - name: Resolve image metadata
         id: meta
@@ -682,7 +682,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-workflow
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-workflow -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-workflow
 
       - name: Resolve image metadata
         id: meta
@@ -770,7 +770,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-open
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-open -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-open
 
       - name: Resolve image metadata
         id: meta
@@ -858,7 +858,7 @@ jobs:
           cache-dependency-path: "**/pom.xml"
 
       - name: Package han-gen
-        run: mvn -B -gs settings.workspace.xml -pl han-modules/han-gen -am -DskipTests package
+        run: bash scripts/helpers/maven-package-with-retry.sh han-modules/han-gen
 
       - name: Resolve image metadata
         id: meta
