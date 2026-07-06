@@ -30,8 +30,28 @@ CREATE TABLE IF NOT EXISTS sys_oper_log (
 COMMENT ON TABLE sys_oper_log IS '操作日志表';
 COMMENT ON COLUMN sys_oper_log.id IS '日志ID';
 COMMENT ON COLUMN sys_oper_log.tenant_id IS '租户ID';
-COMMENT ON COLUMN sys_oper_log.title IS '模块标题';
-COMMENT ON COLUMN sys_oper_log.business_type IS '业务类型(0其它 1新增 2修改 3删除 4查询 5导出 6导入 7授权 8强退 9清空)';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_oper_log'
+          AND column_name = 'title'
+    ) THEN
+        COMMENT ON COLUMN sys_oper_log.title IS '模块标题';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_oper_log'
+          AND column_name = 'business_type'
+    ) THEN
+        COMMENT ON COLUMN sys_oper_log.business_type IS '业务类型(0其它 1新增 2修改 3删除 4查询 5导出 6导入 7授权 8强退 9清空)';
+    END IF;
+END $$;
 COMMENT ON COLUMN sys_oper_log.method IS '方法名称';
 COMMENT ON COLUMN sys_oper_log.request_method IS '请求方式';
 COMMENT ON COLUMN sys_oper_log.operator_type IS '操作类别(0其它 1后台 2手机)';
@@ -49,7 +69,18 @@ COMMENT ON COLUMN sys_oper_log.cost_time IS '消耗时间(毫秒)';
 
 CREATE INDEX IF NOT EXISTS idx_oper_log_tenant_id ON sys_oper_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_oper_log_oper_time ON sys_oper_log(oper_time);
-CREATE INDEX IF NOT EXISTS idx_oper_log_business_type ON sys_oper_log(business_type);
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_oper_log'
+          AND column_name = 'business_type'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_oper_log_business_type ON sys_oper_log(business_type);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_oper_log_status ON sys_oper_log(status);
 
 -- ----------------------------
