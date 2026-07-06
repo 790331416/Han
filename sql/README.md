@@ -33,6 +33,10 @@
 - `20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 模板分类的系统字典，保证管理端下拉与列表筛选可从公共字典模块读取
 - `20260702_ai_prompt_template_audit_columns.sql`：为 `ai_prompt_template` 补齐 `create_by`/`update_by` 审计列，修复 95 旧库 Prompt 模板列表 500
 - `20260702_sys_oper_log_module_alignment.sql`：`sys_oper_log` 旧列名（title/business_type）对齐代码侧（module/oper_type），补 `oper_user_id`，修复操作日志写入失败导致的 0 条留痕
+- `20260703_ai_chat_multimodal.sql`：AI 对话多模态升级，`ai_model` 增 `supports_vision` 视觉能力标记、`ai_chat_message` 增 `images` 图片附件列
+- `20260703_ai_flow_meta.sql`：AI 编排执行引擎升级，`ai_chat_message` 增 `meta` 扩展元数据列（承载 advanced 工作流节点执行时间线）
+- `20260703_file_manage_menu.sql`：系统管理新增「文件管理」菜单与 `file:query`/`file:remove` 按钮权限，配套 han-file `/file/list`、`/file/remove` 管理接口
+- `20260703_ai_agent_share_key.sql`：`ai_agent` 增 `share_key` 分享链接 key，配套应用发布公开对话接口与免登录分享页
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 

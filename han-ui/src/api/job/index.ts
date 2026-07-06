@@ -142,6 +142,48 @@ export function checkCron(cronExpression: string) {
   return get<boolean>('/job/checkCron', { cronExpression })
 }
 
+// ===================== JobFlow 调度监控（/actuator/jobflow，裸 JSON 无 R 包装） =====================
+
+export interface JobFlowHealth {
+  status: string
+  schedulerName?: string
+  schedulerInstanceId?: string
+  inStandbyMode?: boolean
+  numberOfJobsExecuted?: number
+  runningSince?: string
+}
+
+export interface JobFlowConfig {
+  threadPoolSize?: number
+  timeout?: number
+  maxRetry?: number
+  connectTimeout?: number
+  readTimeout?: number
+  lockTimeout?: number
+  compensationEnabled?: boolean
+  compensationInterval?: number
+  stuckThreshold?: number
+}
+
+export interface JobFlowMetrics {
+  totalJobsExecuted?: number
+  threadPoolSize?: number
+  version?: string
+  clustered?: boolean
+}
+
+export function getJobFlowHealth() {
+  return get<never>('/actuator/jobflow/health', undefined, { silentError: true }) as unknown as Promise<JobFlowHealth>
+}
+
+export function getJobFlowConfig() {
+  return get<never>('/actuator/jobflow/config', undefined, { silentError: true }) as unknown as Promise<JobFlowConfig>
+}
+
+export function getJobFlowMetrics() {
+  return get<never>('/actuator/jobflow/metrics', undefined, { silentError: true }) as unknown as Promise<JobFlowMetrics>
+}
+
 // ===================== 任务日志接口 =====================
 
 // 获取日志列表

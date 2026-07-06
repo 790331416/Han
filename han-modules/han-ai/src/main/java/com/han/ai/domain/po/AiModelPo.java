@@ -44,6 +44,11 @@ public class AiModelPo {
 
     private BigDecimal temperature;
 
+    /**
+     * 是否支持视觉输入（图片理解）：'1'支持 '0'不支持
+     */
+    private String supportsVision;
+
     private String status;
 
     private String remark;

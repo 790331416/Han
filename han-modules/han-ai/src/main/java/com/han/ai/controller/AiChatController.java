@@ -1,5 +1,6 @@
 package com.han.ai.controller;
 
+import com.han.ai.domain.dto.AiChatImageRequest;
 import com.han.ai.domain.dto.AiChatRequest;
 import com.han.ai.domain.dto.AiConversationRenameRequest;
 import com.han.ai.domain.dto.AiMessageEditRequest;
@@ -59,6 +60,16 @@ public class AiChatController {
     @PreAuthorize("@ss.hasAuthority('ai:chat:list')")
     public SseEmitter stream(@RequestBody AiChatRequest request) {
         return aiChatService.stream(request);
+    }
+
+    /**
+     * 对话内文生图（IMAGE 模型），生成图转存文件服务后随 assistant 消息返回。
+     */
+    @RepeatSubmit
+    @PostMapping("/image")
+    @PreAuthorize("@ss.hasAuthority('ai:chat:list')")
+    public R<AiChatMessagePo> generateImage(@RequestBody AiChatImageRequest request) {
+        return R.ok(aiChatService.generateImage(request));
     }
 
     @RepeatSubmit

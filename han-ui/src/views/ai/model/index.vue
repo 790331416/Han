@@ -279,6 +279,17 @@
           </el-col>
         </el-row>
 
+        <el-form-item v-if="form.modelType === 'LLM'" label="视觉能力" prop="supportsVision">
+          <el-switch
+            v-model="form.supportsVision"
+            data-testid="ai-model-supports-vision-switch"
+            active-value="1"
+            inactive-value="0"
+            active-text="支持图片理解"
+          />
+          <div class="field-tip">开启后 AI 对话可上传图片交给该模型理解（如 Doubao-vision、GPT-4o 等多模态模型）</div>
+        </el-form-item>
+
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status" data-testid="ai-model-status-group">
             <el-radio value="0">正常</el-radio>
@@ -394,6 +405,34 @@ const providerPresets: Record<string, ProviderPreset> = {
     defaultModelCode: 'deepseek-ai/DeepSeek-V3',
     suggestions: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
     credentialEnv: 'SILICONFLOW_API_KEY'
+  },
+  baidu: {
+    baseUrl: 'https://qianfan.baidubce.com/v2',
+    defaultModelCode: 'ernie-4.0-8k',
+    suggestions: ['ernie-4.0-8k', 'ernie-speed-8k'],
+    credentialEnv: 'QIANFAN_API_KEY',
+    apiKeyTip: '请使用千帆 ModelBuilder v2 的 OpenAI 兼容端点与 API Key；旧版 AK/SK 签名协议本期不支持。'
+  },
+  coze: {
+    baseUrl: '',
+    defaultModelCode: '',
+    suggestions: [],
+    credentialEnv: 'COZE_API_KEY',
+    apiKeyTip: 'Coze 开放 API 非 OpenAI 兼容协议，本期请通过 OpenAI 兼容代理端点接入（baseUrl 填代理地址）。'
+  },
+  dify: {
+    baseUrl: '',
+    defaultModelCode: '',
+    suggestions: [],
+    credentialEnv: 'DIFY_API_KEY',
+    apiKeyTip: 'Dify 应用 API 非纯 OpenAI 兼容协议，本期请通过 OpenAI 兼容代理端点接入（baseUrl 填代理地址）。'
+  },
+  fastgpt: {
+    baseUrl: 'https://api.fastgpt.in/api/v1',
+    defaultModelCode: '',
+    suggestions: [],
+    credentialEnv: 'FASTGPT_API_KEY',
+    apiKeyTip: 'FastGPT 请使用其 OpenAI 兼容端点（自部署填 https://你的域名/api/v1）与应用 API Key。'
   }
 }
 
@@ -451,6 +490,7 @@ const defaultForm = (): Partial<AiModel> => ({
   apiKey: '',
   maxTokens: 4096,
   temperature: 0.7,
+  supportsVision: '0',
   status: '0',
   remark: ''
 })
@@ -487,7 +527,7 @@ const apiKeyPlaceholder = computed(() => {
   return currentIntegrationPreset.value?.apiKeyPlaceholder || '请输入 API Key，留空表示保留原值'
 })
 const apiKeyFieldTip = computed(() => {
-  return currentIntegrationPreset.value?.apiKeyTip
+  return currentEffectivePreset.value?.apiKeyTip
     || `当前供应商建议优先使用环境变量 ${currentCredentialEnv.value}，数据库值仅作为回退；编辑已有模型时留空会保留原值。`
 })
 const volcengineModelCodeTip = computed(() => {

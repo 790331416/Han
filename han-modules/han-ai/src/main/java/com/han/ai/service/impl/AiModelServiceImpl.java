@@ -234,6 +234,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         }
         target.setMaxTokens(source.getMaxTokens());
         target.setTemperature(source.getTemperature());
+        target.setSupportsVision(source.getSupportsVision());
         target.setStatus(source.getStatus());
         target.setRemark(source.getRemark());
     }
@@ -247,6 +248,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         model.setApiKey(trimToEmpty(model.getApiKey()));
         model.setRemark(trimToNull(model.getRemark()));
         model.setStatus(StringUtils.hasText(model.getStatus()) ? model.getStatus().trim() : STATUS_ENABLED);
+        model.setSupportsVision("1".equals(model.getSupportsVision()) ? "1" : "0");
     }
 
     private void fillCreateAudit(AiModelPo model) {

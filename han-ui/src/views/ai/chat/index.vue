@@ -49,7 +49,12 @@
           <span v-else>AI 智能助手</span>
         </div>
         <div class="chat-header-actions">
+          <el-radio-group v-model="chatMode" size="small" data-testid="ai-chat-mode-switch">
+            <el-radio-button value="chat">对话</el-radio-button>
+            <el-radio-button value="image">生成图片</el-radio-button>
+          </el-radio-group>
           <el-select
+            v-if="chatMode === 'chat'"
             v-model="selectedModelId"
             data-testid="ai-chat-model-select"
             placeholder="选择模型"
@@ -57,7 +62,20 @@
             style="width: 180px"
             @change="handleModelChange"
           >
-            <el-option v-for="m in modelList" :key="m.modelId" :label="m.modelName" :value="m.modelId" />
+            <el-option v-for="m in modelList" :key="m.modelId" :label="m.modelName" :value="m.modelId">
+              <span>{{ m.modelName }}</span>
+              <el-tag v-if="m.supportsVision === '1'" size="small" effect="plain" type="success" style="margin-left: 6px;">视觉</el-tag>
+            </el-option>
+          </el-select>
+          <el-select
+            v-else
+            v-model="selectedImageModelId"
+            data-testid="ai-chat-image-model-select"
+            placeholder="选择图片模型"
+            size="small"
+            style="width: 180px"
+          >
+            <el-option v-for="m in imageModelList" :key="m.modelId" :label="m.modelName" :value="m.modelId" />
           </el-select>
         </div>
       </div>
@@ -65,7 +83,7 @@
       <div class="chat-workspace">
         <div class="chat-thread">
           <!-- 消息列表 -->
-          <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list">
+          <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list" @click="onMessageAreaClick">
             <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen">
               <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
               <h2>欢迎使用 HAN AI 助手</h2>
@@ -102,12 +120,63 @@
                   </div>
                 </template>
                 <template v-else>
-                  <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
+                  <div
+                    v-if="msg.imageList && msg.imageList.length > 0"
+                    class="message-images"
+                    data-testid="ai-chat-message-images"
+                  >
+                    <div
+                      v-for="(img, imgIdx) in msg.imageList"
+                      :key="img.fileId ?? imgIdx"
+                      class="message-image-card"
+                    >
+                      <el-image
+                        :src="img.url"
+                        :alt="img.name || '图片'"
+                        :preview-src-list="msg.imageList.map((item) => item.url)"
+                        :initial-index="imgIdx"
+                        fit="cover"
+                        class="message-image"
+                        preview-teleported
+                      />
+                      <el-button
+                        class="message-image-download"
+                        :icon="Download"
+                        circle
+                        size="small"
+                        data-testid="ai-chat-image-download-btn"
+                        title="下载图片"
+                        @click.stop="downloadMessageImage(img)"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    class="message-text"
+                    v-html="msg.role === 'assistant' ? renderAssistantMarkdown(msg) : renderMarkdown(msg.content)"
+                  ></div>
                   <div class="message-actions" v-if="!streaming">
                     <el-button v-if="msg.role === 'user'" type="info" link size="small" data-testid="ai-chat-edit-button" @click="startEditMessage(msg)">
                       <el-icon><Edit /></el-icon>编辑
                     </el-button>
-                    <el-button v-if="msg.role === 'assistant' && idx === messages.length - 1" type="info" link size="small" data-testid="ai-chat-regenerate-button" @click="handleRegenerate">
+                    <el-button
+                      v-if="msg.role === 'assistant' && msg.imageList && msg.imageList.length > 0"
+                      type="info"
+                      link
+                      size="small"
+                      data-testid="ai-chat-image-regenerate-button"
+                      :disabled="generatingImage || sending"
+                      @click="handleRegenerateImage(msg)"
+                    >
+                      <el-icon><RefreshRight /></el-icon>再次生成
+                    </el-button>
+                    <el-button
+                      v-else-if="msg.role === 'assistant' && idx === messages.length - 1"
+                      type="info"
+                      link
+                      size="small"
+                      data-testid="ai-chat-regenerate-button"
+                      @click="handleRegenerate"
+                    >
                       <el-icon><RefreshRight /></el-icon>重新生成
                     </el-button>
                   </div>
@@ -128,6 +197,24 @@
                 </div>
               </div>
             </div>
+            <div v-if="generatingImage" class="message-item assistant" data-testid="ai-chat-image-generating">
+              <div class="message-avatar">
+                <el-avatar :size="36" style="background: #67c23a">
+                  <el-icon><Picture /></el-icon>
+                </el-avatar>
+              </div>
+              <div class="message-content">
+                <div class="message-role">AI 助手</div>
+                <div class="image-generating-card">
+                  <el-skeleton animated>
+                    <template #template>
+                      <el-skeleton-item variant="image" style="width: 240px; height: 240px; border-radius: 8px;" />
+                    </template>
+                  </el-skeleton>
+                  <div class="image-generating-tip">图片生成中，通常需要 10～30 秒…</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- 输入区域 -->
@@ -137,15 +224,54 @@
                 <el-icon><VideoPause /></el-icon>停止生成
               </el-button>
             </div>
+            <div
+              v-if="pendingImages.length > 0 || uploadingImageCount > 0"
+              class="pending-images"
+              data-testid="ai-chat-pending-images"
+            >
+              <div v-for="(img, idx) in pendingImages" :key="img.fileId ?? idx" class="pending-image-item">
+                <el-image :src="img.url" fit="cover" class="pending-image-thumb" :preview-src-list="[img.url]" preview-teleported />
+                <el-icon class="pending-image-remove" data-testid="ai-chat-pending-image-remove" @click="removePendingImage(idx)"><Close /></el-icon>
+              </div>
+              <div v-if="uploadingImageCount > 0" class="pending-image-item pending-image-uploading" v-loading="true" />
+            </div>
+            <div class="input-toolbar" v-if="chatMode === 'chat'">
+              <el-tooltip
+                :content="canAttachImage ? '发送图片（PNG/JPEG/WebP，单张≤10MB，最多4张）' : '当前模型不支持图片理解，请切换支持视觉的模型'"
+                placement="top"
+              >
+                <span>
+                  <el-button
+                    link
+                    :icon="Picture"
+                    data-testid="ai-chat-image-upload-btn"
+                    :disabled="!canAttachImage || sending"
+                    @click="triggerImagePick"
+                  >
+                    图片
+                  </el-button>
+                </span>
+              </el-tooltip>
+              <input
+                ref="imageFileInputRef"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                style="display: none"
+                data-testid="ai-chat-image-file-input"
+                @change="onImageFilesPicked"
+              />
+            </div>
             <div class="input-wrapper">
               <el-input
                 data-testid="ai-chat-input"
                 v-model="inputMessage"
                 type="textarea"
                 :autosize="{ minRows: 1, maxRows: 5 }"
-                placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
+                :placeholder="chatMode === 'image' ? '描述你想生成的画面，按 Enter 生成' : '输入消息，按 Enter 发送，Shift+Enter 换行；输入 /image 描述 可快捷生图'"
                 resize="none"
                 @keydown.enter.exact.prevent="handleSend"
+                @paste="handleInputPaste"
                 :disabled="sending"
               />
               <el-button
@@ -155,7 +281,7 @@
                 class="send-btn"
                 data-testid="ai-chat-send-button"
                 :loading="sending"
-                :disabled="!inputMessage.trim() || !selectedModelId"
+                :disabled="!inputMessage.trim() || (chatMode === 'chat' ? !selectedModelId : !selectedImageModelId)"
                 @click="handleSend"
               />
             </div>
@@ -285,6 +411,40 @@
                 </el-tag>
               </article>
             </div>
+            <div
+              v-if="latestNodeTraces.length > 0"
+              class="node-trace-list"
+              data-testid="ai-chat-node-trace-list"
+            >
+              <div class="node-trace-title">节点执行时间线</div>
+              <el-collapse>
+                <el-collapse-item
+                  v-for="trace in latestNodeTraces"
+                  :key="trace.nodeId"
+                  :name="trace.nodeId"
+                  data-testid="ai-chat-node-trace"
+                >
+                  <template #title>
+                    <div class="node-trace-header">
+                      <el-tag
+                        size="small"
+                        :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : 'info'"
+                        effect="plain"
+                      >
+                        {{ trace.status === 'succeeded' ? '成功' : trace.status === 'failed' ? '失败' : '跳过' }}
+                      </el-tag>
+                      <span class="node-trace-name">{{ trace.nodeName || trace.nodeId }}</span>
+                      <span v-if="trace.costMs !== undefined && trace.costMs !== null" class="node-trace-cost">{{ trace.costMs }}ms</span>
+                    </div>
+                  </template>
+                  <div class="node-trace-detail">
+                    <div v-if="trace.input"><span class="node-trace-label">入参：</span>{{ trace.input }}</div>
+                    <div v-if="trace.output"><span class="node-trace-label">出参：</span>{{ trace.output }}</div>
+                    <div v-if="trace.error" class="node-trace-error"><span class="node-trace-label">错误：</span>{{ trace.error }}</div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
             <div class="inspector-preview">
               <div class="inspector-preview-block">
                 <span class="inspector-preview-label">最近问题</span>
@@ -361,33 +521,53 @@
             </p>
             <div class="source-card-list" data-testid="ai-chat-tool-trace-list">
               <article
-                v-for="item in toolTraceItems"
-                :key="`${String(item.mcpId)}-${item.mode}`"
+                v-for="(item, traceIdx) in toolTraceItems"
+                :key="`${String(item.mcpId)}-${item.mode}-${traceIdx}`"
                 class="source-card"
                 data-testid="ai-chat-tool-trace-card"
               >
-                <div class="source-card-header">
-                  <strong>{{ item.serverName }}</strong>
-                  <el-tag size="small" effect="plain" :type="item.mode === 'structured' ? 'success' : 'info'">
-                    {{ getTransportTypeLabel(item.transportType) }}
-                  </el-tag>
-                </div>
-                <div class="source-card-meta">
-                  <span>状态：{{ getEnableStatusLabel(item.status) }}</span>
-                  <span>工具数：{{ item.toolCount }}</span>
-                </div>
-                <p class="source-card-excerpt">{{ item.summary }}</p>
-                <div v-if="item.toolNames.length > 0" class="trace-tool-list">
-                  <el-tag
-                    v-for="toolName in item.toolNames"
-                    :key="toolName"
-                    size="small"
-                    effect="plain"
-                    type="primary"
-                  >
-                    {{ toolName }}
-                  </el-tag>
-                </div>
+                <!-- 真实调用记录形态 -->
+                <template v-if="item.mode === 'call'">
+                  <div class="source-card-header">
+                    <strong>{{ item.serverName }} · {{ item.toolName }}</strong>
+                    <el-tag size="small" :type="item.callStatus === 'succeeded' ? 'success' : 'danger'">
+                      {{ item.callStatus === 'succeeded' ? '调用成功' : '调用失败' }}
+                    </el-tag>
+                  </div>
+                  <div class="source-card-meta">
+                    <span v-if="item.costMs !== undefined && item.costMs !== null">耗时：{{ item.costMs }}ms</span>
+                    <span>{{ getTransportTypeLabel(item.transportType) }}</span>
+                  </div>
+                  <div class="trace-call-detail" data-testid="ai-chat-tool-call-detail">
+                    <div v-if="item.callArgs"><span class="trace-call-label">入参：</span>{{ item.callArgs }}</div>
+                    <div v-if="item.callResult"><span class="trace-call-label">出参：</span>{{ item.callResult }}</div>
+                  </div>
+                </template>
+                <!-- 配置摘要形态 -->
+                <template v-else>
+                  <div class="source-card-header">
+                    <strong>{{ item.serverName }}</strong>
+                    <el-tag size="small" effect="plain" :type="item.mode === 'structured' ? 'success' : 'info'">
+                      {{ getTransportTypeLabel(item.transportType) }}
+                    </el-tag>
+                  </div>
+                  <div class="source-card-meta">
+                    <span>状态：{{ getEnableStatusLabel(item.status) }}</span>
+                    <span>工具数：{{ item.toolCount }}</span>
+                  </div>
+                  <p class="source-card-excerpt">{{ item.summary }}</p>
+                  <div v-if="item.toolNames.length > 0" class="trace-tool-list">
+                    <el-tag
+                      v-for="toolName in item.toolNames"
+                      :key="toolName"
+                      size="small"
+                      effect="plain"
+                      type="primary"
+                    >
+                      {{ toolName }}
+                    </el-tag>
+                  </div>
+                </template>
               </article>
               <div v-if="toolTraceItems.length === 0" class="source-card source-card-empty" data-testid="ai-chat-tool-trace-empty">
                 当前还没有工具轨迹，等绑定 MCP 服务并回传结构化摘要后会展示在这里。
@@ -415,6 +595,18 @@
             </div>
           </div>
           <div class="citation-detail-content">{{ citationDetail.content }}</div>
+          <div class="citation-detail-actions">
+            <el-button
+              type="primary"
+              plain
+              size="small"
+              data-testid="ai-chat-citation-open-kb"
+              :disabled="!citationDetail.kbId"
+              @click="openCitationInKnowledgeBase"
+            >
+              在知识库中查看
+            </el-button>
+          </div>
         </template>
         <el-empty v-else-if="!citationDetailLoading" description="出处内容不可用" />
       </div>
@@ -424,7 +616,7 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, watch } from 'vue'
-import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause } from '@element-plus/icons-vue'
+import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause, Picture, Close, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
@@ -441,14 +633,18 @@ import {
   listAllKnowledgeBases,
   listAllMcpServers,
   getKnowledgeParagraphDetail,
+  uploadChatImage,
+  generateChatImage,
   kbTypeOptions,
   indexStatusOptions,
   transportTypeOptions,
   type AiAgent,
   type AiConversation,
+  type AiChatImage,
   type AiChatKnowledgeSource,
   type AiChatMessage,
   type AiChatToolTrace,
+  type AiFlowNodeTrace,
   type AiModel,
   type AiWorkflow,
   type KnowledgeBase,
@@ -492,6 +688,24 @@ const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
 const route = useRoute()
 const router = useRouter()
+
+// ==================== 多模态（图片上传 / 文生图） ====================
+const MAX_CHAT_IMAGES = 4
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024
+const IMAGE_ACCEPT_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+
+/** 对话模式：chat=文本对话 image=生成图片 */
+const chatMode = ref<'chat' | 'image'>('chat')
+const imageModelList = ref<AiModel[]>([])
+const selectedImageModelId = ref<string | number>()
+const pendingImages = ref<AiChatImage[]>([])
+const uploadingImageCount = ref(0)
+const generatingImage = ref(false)
+const imageFileInputRef = ref<HTMLInputElement>()
+
+const selectedChatModel = computed(() =>
+  modelList.value.find((item) => String(item.modelId) === String(selectedModelId.value ?? '')))
+const canAttachImage = computed(() => chatMode.value === 'chat' && selectedChatModel.value?.supportsVision === '1')
 
 const CHAT_STORAGE_KEYS = {
   conversationId: 'HAN-ai-chat-conversation-id',
@@ -542,8 +756,13 @@ interface ToolTraceInsightItem {
   status?: string
   toolCount: number
   toolNames: string[]
+  toolName?: string
+  callArgs?: string
+  callResult?: string
+  costMs?: number
+  callStatus?: string
   summary: string
-  mode: 'structured' | 'fallback'
+  mode: 'structured' | 'fallback' | 'call'
 }
 
 const knowledgeBaseList = ref<KnowledgeBase[]>([])
@@ -662,6 +881,16 @@ const latestToolExecutions = computed<AiChatToolTrace[]>(() => {
   return assistantTraces || streamTraces || []
 })
 
+/** 编排节点执行时间线（advanced 工作流消息专有）：流式 meta 优先，历史消息回显兜底。 */
+const latestNodeTraces = computed<AiFlowNodeTrace[]>(() => {
+  const streamTraces = streamMeta.value?.nodeTraces as AiFlowNodeTrace[] | undefined
+  if (Array.isArray(streamTraces) && streamTraces.length > 0) {
+    return streamTraces
+  }
+  const assistantTraces = latestAssistantMessage.value?.nodeTraces
+  return Array.isArray(assistantTraces) ? assistantTraces : []
+})
+
 const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
   if (latestKnowledgeSources.value.length > 0) {
     return latestKnowledgeSources.value.map((item) => ({
@@ -711,6 +940,20 @@ const handleCitationClick = async (item: KnowledgeInsightItem) => {
   }
 }
 
+/** 引用出处 → 知识库页定位（携带 kbId/docId，由知识库页消费）。 */
+function openCitationInKnowledgeBase() {
+  const detail = citationDetail.value
+  if (!detail?.kbId) return
+  citationDrawerVisible.value = false
+  router.push({
+    path: '/ai/knowledge',
+    query: {
+      kbId: String(detail.kbId),
+      ...(detail.docId ? { docId: String(detail.docId) } : {})
+    }
+  })
+}
+
 const toolTraceItems = computed<ToolTraceInsightItem[]>(() => {
   if (latestToolExecutions.value.length > 0) {
     return latestToolExecutions.value.map((item) => ({
@@ -720,8 +963,14 @@ const toolTraceItems = computed<ToolTraceInsightItem[]>(() => {
       status: item.status,
       toolCount: item.toolCount || 0,
       toolNames: item.toolNames || [],
+      toolName: item.toolName,
+      callArgs: item.callArgs,
+      callResult: item.callResult,
+      costMs: item.costMs,
+      callStatus: item.callStatus,
       summary: item.summary || '当前会话已挂载工具服务。',
-      mode: 'structured'
+      // toolName 非空 = 一次真实 tools/call 调用记录
+      mode: item.toolName ? ('call' as const) : ('structured' as const)
     }))
   }
   return selectedMcpServers.value.map((item) => {
@@ -826,6 +1075,7 @@ const executionStageItems = computed<InspectorStageItem[]>(() => {
 onMounted(async () => {
   await Promise.all([
     loadModels(),
+    loadImageModels(),
     loadKnowledgeBaseCatalog(),
     loadMcpServerCatalog(),
     loadConversations()
@@ -876,6 +1126,18 @@ watch(
     await loadContextApplication()
   }
 )
+
+async function loadImageModels() {
+  try {
+    const res = await listAllModels('IMAGE')
+    imageModelList.value = (res as any).data || []
+    if (!selectedImageModelId.value && imageModelList.value.length > 0) {
+      selectedImageModelId.value = imageModelList.value[0].modelId
+    }
+  } catch (e) {
+    console.error('加载图片模型失败', e)
+  }
+}
 
 async function loadModels() {
   try {
@@ -1070,11 +1332,33 @@ async function handleDeleteConversation(id: string | number) {
 }
 
 async function handleSend() {
+  if (chatMode.value === 'image') {
+    await sendImageGeneration()
+    return
+  }
   const msg = inputMessage.value.trim()
-  if (!msg || !selectedModelId.value || sending.value) return
+  if (!msg || sending.value) return
+  // 斜杠命令：/image 描述 —— 对话模式内快捷触发一次文生图，不切换模式
+  if (/^\/image(\s|$)/i.test(msg)) {
+    const prompt = msg.replace(/^\/image\s*/i, '').trim()
+    if (!prompt) {
+      ElMessage.warning('用法：/image 空格 + 画面描述')
+      return
+    }
+    inputMessage.value = prompt
+    await sendImageGeneration()
+    return
+  }
+  if (!selectedModelId.value) return
+  if (uploadingImageCount.value > 0) {
+    ElMessage.warning('图片上传中，请稍候')
+    return
+  }
 
+  const attachedImages = pendingImages.value.slice()
   sending.value = true
   inputMessage.value = ''
+  pendingImages.value = []
 
   const userMsg: AiChatMessage = {
     messageId: Date.now(),
@@ -1082,6 +1366,9 @@ async function handleSend() {
     role: 'user',
     content: msg,
     sortOrder: messages.value.length + 1,
+  }
+  if (attachedImages.length > 0) {
+    userMsg.imageList = attachedImages
   }
   messages.value.push(userMsg)
   scrollToBottom()
@@ -1097,7 +1384,8 @@ async function handleSend() {
         conversationId: currentConversationId.value || null,
         workflowId: routeWorkflowId.value || currentConversation.value?.workflowId || null,
         modelId: selectedModelId.value,
-        message: msg
+        message: msg,
+        imageFileIds: attachedImages.length > 0 ? attachedImages.map((item) => item.fileId) : undefined
       }
     })
   } catch (e: any) {
@@ -1107,6 +1395,154 @@ async function handleSend() {
     sending.value = false
     scrollToBottom()
   }
+}
+
+// ==================== 文生图（生成图片模式 / 斜杠命令 / 再次生成） ====================
+async function sendImageGeneration() {
+  const prompt = inputMessage.value.trim()
+  if (!prompt || sending.value || generatingImage.value) return
+  if (!selectedImageModelId.value) {
+    ElMessage.warning('请先在模型管理配置图片生成模型')
+    return
+  }
+  inputMessage.value = ''
+  await runImageGeneration(prompt)
+}
+
+/** 按提示词执行一次文生图。 */
+async function runImageGeneration(prompt: string) {
+  if (sending.value || generatingImage.value) return
+  if (!selectedImageModelId.value) {
+    ElMessage.warning('请先在模型管理配置图片生成模型')
+    return
+  }
+  sending.value = true
+  generatingImage.value = true
+
+  messages.value.push({
+    messageId: Date.now(),
+    conversationId: currentConversationId.value || 0,
+    role: 'user',
+    content: prompt,
+    sortOrder: messages.value.length + 1,
+  })
+  scrollToBottom()
+
+  try {
+    const res = await generateChatImage({
+      conversationId: currentConversationId.value || undefined,
+      modelId: selectedImageModelId.value,
+      prompt
+    })
+    const assistantMessage = (res as any).data as AiChatMessage
+    if (assistantMessage) {
+      messages.value.push(assistantMessage)
+    }
+    await syncCurrentConversationState()
+  } catch (e: any) {
+    ElMessage.error('图片生成失败: ' + (e.message || '未知错误'))
+  } finally {
+    generatingImage.value = false
+    sending.value = false
+    scrollToBottom()
+  }
+}
+
+/** 再次生成：取该图片消息之前最近一条用户消息作为提示词重发。 */
+async function handleRegenerateImage(msg: AiChatMessage) {
+  const idx = messages.value.findIndex((item) => String(item.messageId) === String(msg.messageId))
+  let prompt = ''
+  for (let i = (idx >= 0 ? idx : messages.value.length) - 1; i >= 0; i--) {
+    const candidate = messages.value[i]
+    if (candidate.role === 'user' && candidate.content?.trim()) {
+      prompt = candidate.content.trim()
+      break
+    }
+  }
+  if (!prompt) {
+    ElMessage.warning('未找到原始提示词，无法再次生成')
+    return
+  }
+  await runImageGeneration(prompt)
+}
+
+/** 下载图片：blob 另存，避免 window.open 导航丢失文件名/被 SPA 回退。 */
+async function downloadMessageImage(img: AiChatImage) {
+  try {
+    const response = await fetch(img.url)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const blob = await response.blob()
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = img.name || `ai-image-${Date.now()}.png`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (e: any) {
+    ElMessage.error('图片下载失败: ' + (e.message || '未知错误'))
+  }
+}
+
+// ==================== 图片附件（上传 / 粘贴） ====================
+function triggerImagePick() {
+  imageFileInputRef.value?.click()
+}
+
+function onImageFilesPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    void addImageFiles(Array.from(input.files))
+  }
+  input.value = ''
+}
+
+function handleInputPaste(event: ClipboardEvent) {
+  if (!canAttachImage.value) return
+  const files: File[] = []
+  for (const item of Array.from(event.clipboardData?.items ?? [])) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) files.push(file)
+    }
+  }
+  if (files.length > 0) {
+    event.preventDefault()
+    void addImageFiles(files)
+  }
+}
+
+async function addImageFiles(files: File[]) {
+  for (const file of files) {
+    if (pendingImages.value.length + uploadingImageCount.value >= MAX_CHAT_IMAGES) {
+      ElMessage.warning(`单次最多发送 ${MAX_CHAT_IMAGES} 张图片`)
+      return
+    }
+    if (!IMAGE_ACCEPT_TYPES.includes(file.type)) {
+      ElMessage.warning('仅支持 PNG/JPEG/WebP 图片')
+      continue
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      ElMessage.warning('单张图片不能超过 10MB')
+      continue
+    }
+    uploadingImageCount.value += 1
+    try {
+      const res = await uploadChatImage(file)
+      const uploaded = (res as any).data
+      if (uploaded?.id && uploaded?.url) {
+        pendingImages.value.push({ fileId: uploaded.id, url: uploaded.url, name: uploaded.name || file.name })
+      } else {
+        ElMessage.error('图片上传失败')
+      }
+    } catch (e: any) {
+      ElMessage.error('图片上传失败: ' + (e.message || '未知错误'))
+    } finally {
+      uploadingImageCount.value -= 1
+    }
+  }
+}
+
+function removePendingImage(index: number) {
+  pendingImages.value.splice(index, 1)
 }
 
 // ==================== 停止生成 ====================
@@ -1289,6 +1725,9 @@ function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload 
   if (meta?.toolExecutions) {
     assistantMessage.toolExecutions = meta.toolExecutions as AiChatToolTrace[]
   }
+  if (meta?.images) {
+    assistantMessage.imageList = meta.images as AiChatImage[]
+  }
   return assistantMessage
 }
 
@@ -1438,6 +1877,40 @@ function renderMarkdown(content: string): string {
     return marked.parse(content) as string
   } catch {
     return content
+  }
+}
+
+/**
+ * 渲染 assistant 消息：markdown 后把 [n] 引用角标替换为可点击元素，
+ * 点击经消息区事件委托打开引用出处抽屉（F3 行内引用）。
+ */
+function renderAssistantMarkdown(msg: AiChatMessage): string {
+  const html = renderMarkdown(msg.content)
+  const sourceCount = msg.knowledgeSources?.length ?? 0
+  if (sourceCount === 0) return html
+  return html.replace(/\[(\d{1,2})\]/g, (raw, num: string) => {
+    const index = Number(num)
+    if (index < 1 || index > sourceCount) return raw
+    return `<sup class="citation-badge" data-citation-index="${index}" title="查看引用出处">[${index}]</sup>`
+  })
+}
+
+/** 消息区点击委托：命中引用角标时定位对应消息的知识来源并打开出处抽屉 */
+function onMessageAreaClick(event: MouseEvent) {
+  const badge = (event.target as HTMLElement | null)?.closest?.('.citation-badge') as HTMLElement | null
+  if (!badge) return
+  const index = Number(badge.dataset.citationIndex)
+  const messageEl = badge.closest('[data-message-id]') as HTMLElement | null
+  if (!messageEl || !Number.isFinite(index)) return
+  const messageId = messageEl.dataset.messageId
+  const message = messages.value.find((item) => String(item.messageId ?? '') === messageId)
+  const source = message?.knowledgeSources?.[index - 1]
+  if (source?.paragraphId) {
+    void handleCitationClick({
+      kbName: source.kbName || '',
+      paragraphId: source.paragraphId,
+      mode: 'structured'
+    } as KnowledgeInsightItem)
   }
 }
 
@@ -1603,6 +2076,12 @@ function restoreSelectedModelId() {
       font-weight: 600;
       color: #303133;
     }
+
+    .chat-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
   }
 
   .chat-workspace {
@@ -1752,6 +2231,65 @@ function restoreSelectedModelId() {
           }
         }
 
+        .message-images {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 6px;
+
+          .message-image-card {
+            position: relative;
+
+            .message-image-download {
+              position: absolute;
+              right: 8px;
+              bottom: 8px;
+              opacity: 0;
+              transition: opacity 0.2s;
+            }
+
+            &:hover .message-image-download {
+              opacity: 1;
+            }
+          }
+
+          .message-image {
+            display: block;
+            width: 160px;
+            height: 160px;
+            border-radius: 8px;
+            border: 1px solid #e4e7ed;
+            cursor: zoom-in;
+          }
+        }
+
+        .image-generating-card {
+          display: inline-block;
+          padding: 12px;
+          border: 1px solid #e4e7ed;
+          border-radius: 8px;
+          background: #fff;
+
+          .image-generating-tip {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #909399;
+          }
+        }
+
+        .message-text {
+          :deep(.citation-badge) {
+            color: #409eff;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 0 2px;
+
+            &:hover {
+              text-decoration: underline;
+            }
+          }
+        }
+
         .message-actions {
           margin-top: 6px;
           opacity: 0;
@@ -1780,6 +2318,54 @@ function restoreSelectedModelId() {
       display: flex;
       justify-content: center;
       margin-bottom: 12px;
+    }
+
+    .pending-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+
+      .pending-image-item {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #e4e7ed;
+
+        .pending-image-thumb {
+          width: 100%;
+          height: 100%;
+        }
+
+        .pending-image-remove {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          padding: 2px;
+          border-radius: 50%;
+          background: rgba(0, 0, 0, 0.55);
+          color: #fff;
+          cursor: pointer;
+          font-size: 12px;
+
+          &:hover {
+            background: rgba(0, 0, 0, 0.8);
+          }
+        }
+
+        &.pending-image-uploading {
+          background: #f5f7fa;
+        }
+      }
+    }
+
+    .input-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
     }
 
     .input-wrapper {
@@ -1957,6 +2543,20 @@ function restoreSelectedModelId() {
     gap: 8px;
   }
 
+  .trace-call-detail {
+    font-size: 12px;
+    color: #606266;
+    line-height: 1.7;
+    word-break: break-word;
+
+    > div {
+      max-height: 72px;
+      overflow-y: auto;
+    }
+
+    .trace-call-label { color: #909399; }
+  }
+
   .inspector-stage-item {
     border-radius: 14px;
     border: 1px solid #ecf1f7;
@@ -1996,6 +2596,48 @@ function restoreSelectedModelId() {
     font-size: 13px;
     font-weight: 600;
     color: #1f2a37;
+  }
+
+  .node-trace-list {
+    margin-bottom: 12px;
+
+    .node-trace-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 8px;
+    }
+
+    .node-trace-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+
+      .node-trace-name {
+        font-size: 13px;
+        color: #303133;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .node-trace-cost {
+        margin-left: auto;
+        font-size: 12px;
+        color: #909399;
+      }
+    }
+
+    .node-trace-detail {
+      font-size: 12px;
+      color: #606266;
+      line-height: 1.7;
+      word-break: break-word;
+
+      .node-trace-label { color: #909399; }
+      .node-trace-error { color: #f56c6c; }
+    }
   }
 
   .inspector-preview {
@@ -2094,5 +2736,11 @@ function restoreSelectedModelId() {
   color: #303133;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.citation-detail-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

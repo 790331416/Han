@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiWorkflowQuery;
+import com.han.ai.domain.vo.AiFlowDebugVo;
 import com.han.ai.mapper.AiWorkflowMapper;
 import com.han.ai.service.IAiChatService;
 import com.han.ai.service.IAiWorkflowService;
@@ -23,6 +24,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
 
     private final AiWorkflowMapper aiWorkflowMapper;
     private final IAiChatService aiChatService;
+    private final AiFlowEngine aiFlowEngine;
 
     @Override
     public PageResult<AiWorkflowPo> selectPage(AiWorkflowQuery query) {
@@ -93,6 +95,23 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         return aiChatService.chatWithWorkflow(workflowId, message, conversationId);
     }
 
+    @Override
+    public AiFlowDebugVo debug(Long workflowId, String message) {
+        AiWorkflowPo workflow = requireExisting(workflowId);
+        if (!"advanced".equals(workflow.getWorkflowType())) {
+            throw new BusinessException("仅 advanced 编排工作流支持调试运行");
+        }
+        if (!StringUtils.hasText(message)) {
+            throw new BusinessException("调试输入不能为空");
+        }
+        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), message.trim());
+        AiFlowDebugVo vo = new AiFlowDebugVo();
+        vo.setSuccess(result.success());
+        vo.setReply(result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage());
+        vo.setNodeTraces(result.traces());
+        return vo;
+    }
+
     private LambdaQueryWrapper<AiWorkflowPo> buildQueryWrapper(AiWorkflowQuery query) {
         LambdaQueryWrapper<AiWorkflowPo> wrapper = new LambdaQueryWrapper<AiWorkflowPo>()
                 .like(StringUtils.hasText(query.getWorkflowName()), AiWorkflowPo::getWorkflowName, query.getWorkflowName())
@@ -145,6 +164,22 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         if (!STATUS_ENABLED.equals(workflow.getStatus()) && !STATUS_DISABLED.equals(workflow.getStatus())) {
             throw new BusinessException("工作流状态不合法");
         }
+        validateFlowConfig(workflow);
+    }
+
+    /**
+     * advanced 工作流保存时后端复核画布 DAG（前端校验只是体验层）：
+     * 唯一 start、无环、无孤岛、节点数上限。画布为空允许保存（视为尚未编排）。
+     */
+    private void validateFlowConfig(AiWorkflowPo workflow) {
+        if (!"advanced".equals(workflow.getWorkflowType())) {
+            return;
+        }
+        String flowConfig = workflow.getFlowConfig();
+        if (!StringUtils.hasText(flowConfig) || "{}".equals(flowConfig.trim())) {
+            return;
+        }
+        AiFlowGraph.parse(flowConfig);
     }
 
     private void ensureWorkflowNameUnique(String workflowName, Long excludeId) {

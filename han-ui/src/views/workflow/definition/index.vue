@@ -53,8 +53,18 @@
           </template>
         </el-table-column>
         <el-table-column label="部署时间" prop="deploymentTime" min-width="180" />
-        <el-table-column label="操作" min-width="280">
+        <el-table-column label="操作" min-width="330">
           <template #default="{ row }">
+            <el-button
+              type="success"
+              link
+              :icon="Promotion"
+              :disabled="row.suspended"
+              data-testid="workflow-start-button"
+              @click="handleStart(row)"
+            >
+              发起
+            </el-button>
             <el-button type="primary" link :icon="View" @click="handleViewXml(row)">查看</el-button>
             <el-button v-if="row.suspended" type="success" link :icon="VideoPlay" @click="handleActivate(row)">激活</el-button>
             <el-button v-else type="warning" link :icon="VideoPause" @click="handleSuspend(row)">挂起</el-button>
@@ -109,6 +119,54 @@
       </template>
     </el-dialog>
 
+    <!-- 发起流程对话框 -->
+    <el-dialog v-model="startVisible" :title="`发起流程 - ${startTarget?.processName || ''}`" width="55%" class="dialog-md" destroy-on-close>
+      <el-form ref="startFormRef" :model="startForm" label-width="110px" data-testid="workflow-start-form">
+        <el-form-item label="流程标识">
+          <el-input :model-value="startTarget?.processKey" disabled />
+        </el-form-item>
+        <el-form-item label="业务标识" prop="businessKey">
+          <el-input v-model="startForm.businessKey" placeholder="业务单据号（可选）" />
+        </el-form-item>
+        <el-form-item label="流程标题" prop="title">
+          <el-input v-model="startForm.title" placeholder="本次流程标题（可选）" />
+        </el-form-item>
+        <el-form-item label="指派审批人" prop="assignee">
+          <el-select
+            v-model="startForm.assignee"
+            placeholder="按用户搜索（流程含审批节点时必选）"
+            filterable
+            remote
+            clearable
+            :remote-method="searchAssignee"
+            :loading="assigneeLoading"
+            data-testid="workflow-start-assignee"
+          >
+            <el-option
+              v-for="user in assigneeOptions"
+              :key="user.userId"
+              :label="`${user.nickname || user.username}（${user.username}）`"
+              :value="String(user.userId)"
+            />
+          </el-select>
+          <div class="form-tip">审批节点按用户ID指派（assignee），请从搜索结果中选择用户。</div>
+        </el-form-item>
+        <el-form-item label="流程变量" prop="variablesJson">
+          <el-input
+            v-model="startForm.variablesJson"
+            type="textarea"
+            :rows="4"
+            placeholder='附加变量 JSON（可选），如 {"amount": 1000}'
+            data-testid="workflow-start-variables"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="startVisible = false">取消</el-button>
+        <el-button type="primary" :loading="startLoading" data-testid="workflow-start-submit" @click="handleStartSubmit">发起</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 查看XML对话框 -->
     <el-dialog v-model="xmlVisible" title="流程定义XML" width="75%" class="dialog-xl">
       <div class="xml-content">
@@ -128,14 +186,16 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Upload, View, Delete, VideoPlay, VideoPause, Picture } from '@element-plus/icons-vue'
+import { Search, Refresh, Upload, View, Delete, VideoPlay, VideoPause, Picture, Promotion } from '@element-plus/icons-vue'
 import {
   listProcessDefinition, deployProcessDefinition, activateProcessDefinition,
   suspendProcessDefinition, deleteProcessDefinition, getProcessDefinitionXml,
-  categoryOptions,
+  startProcessInstance, categoryOptions,
   type ProcessDefinition, type ProcessDefinitionQuery
 } from '@/api/workflow'
+import { listUser, type User } from '@/api/system/user'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 
 const loading = ref(false)
@@ -262,6 +322,86 @@ const handleDiagram = (row: ProcessDefinition) => {
   diagramVisible.value = true
 }
 
+// ==================== 发起流程（E-flowstart：UI 化流程发起入口） ====================
+const router = useRouter()
+const startVisible = ref(false)
+const startLoading = ref(false)
+const startTarget = ref<ProcessDefinition | null>(null)
+const startFormRef = ref<FormInstance>()
+const assigneeOptions = ref<User[]>([])
+const assigneeLoading = ref(false)
+
+const startForm = reactive({
+  businessKey: '',
+  title: '',
+  assignee: '',
+  variablesJson: ''
+})
+
+const handleStart = (row: ProcessDefinition) => {
+  startTarget.value = row
+  startForm.businessKey = ''
+  startForm.title = ''
+  startForm.assignee = ''
+  startForm.variablesJson = ''
+  assigneeOptions.value = []
+  startVisible.value = true
+}
+
+/** 审批人远程搜索：按用户名/昵称模糊查，选项值为 userId（审批节点 assignee 必须 userId）。 */
+const searchAssignee = async (keyword: string) => {
+  if (!keyword?.trim()) {
+    assigneeOptions.value = []
+    return
+  }
+  assigneeLoading.value = true
+  try {
+    const res = await listUser({ pageNum: 1, pageSize: 20, username: keyword.trim() })
+    assigneeOptions.value = (res as any).data?.rows || []
+  } catch { assigneeOptions.value = [] } finally {
+    assigneeLoading.value = false
+  }
+}
+
+const handleStartSubmit = async () => {
+  if (!startTarget.value) return
+  let extraVariables: Record<string, any> = {}
+  if (startForm.variablesJson.trim()) {
+    try {
+      extraVariables = JSON.parse(startForm.variablesJson.trim())
+      if (typeof extraVariables !== 'object' || Array.isArray(extraVariables) || extraVariables === null) {
+        ElMessage.warning('流程变量必须是 JSON 对象')
+        return
+      }
+    } catch {
+      ElMessage.warning('流程变量不是合法 JSON')
+      return
+    }
+  }
+  const variables: Record<string, any> = { ...extraVariables }
+  if (startForm.title.trim()) {
+    variables.title = startForm.title.trim()
+  }
+  if (startForm.assignee) {
+    variables.assignee = startForm.assignee
+  }
+
+  startLoading.value = true
+  try {
+    await startProcessInstance({
+      processDefinitionKey: startTarget.value.processKey,
+      businessKey: startForm.businessKey.trim() || undefined,
+      variables
+    })
+    ElMessage.success('流程发起成功')
+    startVisible.value = false
+    // 发起后跳待办：指派他人时自己待办可能为空，仍以待办页为流转入口
+    router.push('/workflow/todo')
+  } catch { /* 接口不可用或校验失败，由拦截器提示 */ } finally {
+    startLoading.value = false
+  }
+}
+
 onMounted(() => {
   getList()
 })
@@ -306,5 +446,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin-top: 4px;
 }
 </style>

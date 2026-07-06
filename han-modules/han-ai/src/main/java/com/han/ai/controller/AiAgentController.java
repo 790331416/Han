@@ -81,6 +81,16 @@ public class AiAgentController {
         return R.ok();
     }
 
+    /**
+     * 重置分享链接：旧 shareKey 立即失效，返回新 key。
+     */
+    @RepeatSubmit
+    @PostMapping("/reset-share-key/{agentId}")
+    @PreAuthorize("@ss.hasAuthority('ai:agent:edit')")
+    public R<String> resetShareKey(@PathVariable Long agentId) {
+        return R.ok(aiAgentService.resetShareKey(agentId));
+    }
+
     @RepeatSubmit
     @PostMapping("/chat/{agentId}")
     @PreAuthorize("@ss.hasAuthority('ai:agent:list')")

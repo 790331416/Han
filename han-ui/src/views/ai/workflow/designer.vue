@@ -15,6 +15,8 @@
         </el-button-group>
       </div>
       <div class="toolbar-right">
+        <el-button :icon="CircleCheck" data-testid="ai-flow-validate-btn" @click="handleValidate">校验</el-button>
+        <el-button :icon="VideoPlay" data-testid="ai-flow-debug-btn" @click="openDebugDrawer">调试运行</el-button>
         <el-button type="primary" :icon="Check" :loading="saving" @click="handleSave">保存</el-button>
       </div>
     </div>
@@ -118,6 +120,60 @@
         </VueFlow>
       </div>
 
+      <!-- 调试运行抽屉 -->
+      <el-drawer v-model="debugVisible" title="调试运行" size="440px" data-testid="ai-flow-debug-drawer">
+        <div class="debug-drawer">
+          <el-input
+            v-model="debugMessage"
+            type="textarea"
+            :rows="3"
+            placeholder="输入调试消息，如：帮我总结一下产品优势"
+            data-testid="ai-flow-debug-input"
+          />
+          <el-button
+            type="primary"
+            style="margin-top: 12px; width: 100%;"
+            :loading="debugRunning"
+            data-testid="ai-flow-debug-run"
+            @click="runDebug"
+          >
+            执行
+          </el-button>
+
+          <template v-if="debugResult">
+            <el-alert
+              :type="debugResult.success ? 'success' : 'error'"
+              :title="debugResult.success ? '执行成功' : '执行失败'"
+              :closable="false"
+              style="margin-top: 16px;"
+            />
+            <div class="debug-reply" data-testid="ai-flow-debug-reply">{{ debugResult.reply }}</div>
+            <div class="debug-timeline-title">节点执行时间线</div>
+            <el-timeline style="padding-left: 4px;">
+              <el-timeline-item
+                v-for="trace in debugResult.nodeTraces"
+                :key="trace.nodeId"
+                :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : 'info'"
+                :hollow="trace.status === 'skipped'"
+              >
+                <div class="trace-item" data-testid="ai-flow-debug-trace">
+                  <div class="trace-header">
+                    <strong>{{ trace.nodeName || trace.nodeId }}</strong>
+                    <el-tag size="small" :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : 'info'">
+                      {{ trace.status === 'succeeded' ? '成功' : trace.status === 'failed' ? '失败' : '跳过' }}
+                    </el-tag>
+                    <span v-if="trace.costMs !== undefined && trace.costMs !== null" class="trace-cost">{{ trace.costMs }}ms</span>
+                  </div>
+                  <div v-if="trace.input" class="trace-detail">入参：{{ trace.input }}</div>
+                  <div v-if="trace.output" class="trace-detail">出参：{{ trace.output }}</div>
+                  <div v-if="trace.error" class="trace-detail trace-error">错误：{{ trace.error }}</div>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+          </template>
+        </div>
+      </el-drawer>
+
       <!-- 右侧属性面板 -->
       <div class="prop-panel" v-if="selectedNode">
         <div class="panel-title">
@@ -163,6 +219,15 @@
             <el-form-item label="工具名称">
               <el-input v-model="selectedNode.data.toolName" placeholder="工具名称" @change="updateNode" />
             </el-form-item>
+            <el-form-item label="入参JSON">
+              <el-input
+                v-model="selectedNode.data.arguments"
+                type="textarea"
+                :rows="4"
+                placeholder='如 {"query":"{{result}}"}，支持 {{message}}/{{result}}/{{knowledge}}'
+                @change="updateNode"
+              />
+            </el-form-item>
           </template>
 
           <template v-if="selectedNode.type === 'condition'">
@@ -186,7 +251,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, ZoomIn, ZoomOut, FullScreen, Check } from '@element-plus/icons-vue'
+import { ArrowLeft, ZoomIn, ZoomOut, FullScreen, Check, CircleCheck, VideoPlay } from '@element-plus/icons-vue'
 import { VueFlow, useVueFlow, Position, Handle } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -195,8 +260,8 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
-import { getAiWorkflow, updateAiWorkflow, listAllModels, listAllKnowledgeBases, listAllMcpServers } from '@/api/ai'
-import type { AiModel, KnowledgeBase, McpServer } from '@/api/ai'
+import { getAiWorkflow, updateAiWorkflow, debugAiWorkflow, listAllModels, listAllKnowledgeBases, listAllMcpServers } from '@/api/ai'
+import type { AiModel, KnowledgeBase, McpServer, AiFlowDebugResult } from '@/api/ai'
 import type { Node, Edge, Connection } from '@vue-flow/core'
 
 const route = useRoute()
@@ -262,7 +327,7 @@ const getDefaultData = (type: string) => {
   switch (type) {
     case 'llm': return { modelId: null, systemPrompt: '', temperature: 0.7 }
     case 'knowledge': return { kbId: null, topK: 5 }
-    case 'tool': return { mcpId: null, toolName: '' }
+    case 'tool': return { mcpId: null, toolName: '', arguments: '' }
     case 'condition': return { expression: '' }
     case 'output': return { template: '' }
     default: return {}
@@ -301,11 +366,135 @@ const deleteNode = () => {
   selectedNode.value = null
 }
 
+// ==================== 画布校验（前端体验层，后端保存时二次复核） ====================
+const invalidNodeIds = ref<Set<string>>(new Set())
+
+/** DAG 校验：唯一 start、无环、无孤岛；失败节点红框标注。返回错误列表。 */
+const validateFlow = (): string[] => {
+  const errors: string[] = []
+  const invalid = new Set<string>()
+  const nodeList = nodes.value
+  const edgeList = edges.value
+
+  const startNodes = nodeList.filter(n => n.type === 'start')
+  if (startNodes.length === 0) {
+    errors.push('缺少开始节点')
+  } else if (startNodes.length > 1) {
+    errors.push('只能有一个开始节点')
+    startNodes.forEach(n => invalid.add(n.id))
+  }
+
+  if (nodeList.length > 30) {
+    errors.push('节点数超过上限 30')
+  }
+
+  // Kahn 拓扑检环
+  const inDegree = new Map<string, number>()
+  nodeList.forEach(n => inDegree.set(n.id, 0))
+  edgeList.forEach(e => inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1))
+  const queue = nodeList.filter(n => (inDegree.get(n.id) ?? 0) === 0).map(n => n.id)
+  let visitedCount = 0
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    visitedCount++
+    edgeList.filter(e => e.source === current).forEach(e => {
+      const next = (inDegree.get(e.target) ?? 0) - 1
+      inDegree.set(e.target, next)
+      if (next === 0) queue.push(e.target)
+    })
+  }
+  if (visitedCount !== nodeList.length) {
+    errors.push('存在环路，请检查连线方向')
+    nodeList.forEach(n => {
+      if ((inDegree.get(n.id) ?? 0) > 0) invalid.add(n.id)
+    })
+  }
+
+  // 无向连通性检查孤岛
+  if (startNodes.length === 1 && nodeList.length > 1) {
+    const visited = new Set<string>([startNodes[0].id])
+    const bfs = [startNodes[0].id]
+    while (bfs.length > 0) {
+      const current = bfs.shift()!
+      edgeList.forEach(e => {
+        const next = e.source === current ? e.target : e.target === current ? e.source : null
+        if (next && !visited.has(next)) {
+          visited.add(next)
+          bfs.push(next)
+        }
+      })
+    }
+    const orphans = nodeList.filter(n => !visited.has(n.id))
+    if (orphans.length > 0) {
+      errors.push(`存在孤岛节点：${orphans.map(n => n.data?.label || n.id).join('、')}`)
+      orphans.forEach(n => invalid.add(n.id))
+    }
+  }
+
+  invalidNodeIds.value = invalid
+  // 红框标注失败节点
+  nodes.value = nodeList.map(n => ({
+    ...n,
+    class: invalid.has(n.id) ? 'node-invalid' : ''
+  }))
+  return errors
+}
+
+const handleValidate = () => {
+  const errors = validateFlow()
+  if (errors.length === 0) {
+    ElMessage.success('校验通过：画布结构合法')
+  } else {
+    ElMessage.error('校验失败：' + errors.join('；'))
+  }
+}
+
+// ==================== 调试运行 ====================
+const debugVisible = ref(false)
+const debugMessage = ref('')
+const debugRunning = ref(false)
+const debugResult = ref<AiFlowDebugResult | null>(null)
+
+const openDebugDrawer = () => {
+  debugVisible.value = true
+}
+
+const runDebug = async () => {
+  const message = debugMessage.value.trim()
+  if (!message) {
+    ElMessage.warning('请输入调试消息')
+    return
+  }
+  const errors = validateFlow()
+  if (errors.length > 0) {
+    ElMessage.error('画布校验失败：' + errors.join('；'))
+    return
+  }
+  debugRunning.value = true
+  debugResult.value = null
+  try {
+    // 先保存再调试，保证后端执行的是当前画布
+    const flowConfig = JSON.stringify({ version: 1, nodes: nodes.value, edges: edges.value })
+    await updateAiWorkflow({ workflowId, flowConfig } as any)
+    const res = await debugAiWorkflow(workflowId, message)
+    debugResult.value = (res as any).data || null
+  } catch (e: any) {
+    ElMessage.error('调试运行失败: ' + (e.message || '未知错误'))
+  } finally {
+    debugRunning.value = false
+  }
+}
+
 // 保存流程
 const handleSave = async () => {
+  const errors = validateFlow()
+  if (errors.length > 0) {
+    ElMessage.error('画布校验失败：' + errors.join('；'))
+    return
+  }
   saving.value = true
   try {
-    const flowConfig = JSON.stringify({ nodes: nodes.value, edges: edges.value })
+    const flowConfig = JSON.stringify({ version: 1, nodes: nodes.value, edges: edges.value })
     await updateAiWorkflow({ workflowId, flowConfig } as any)
     ElMessage.success('流程保存成功')
   } catch (e: any) {
@@ -470,4 +659,54 @@ onMounted(() => {
 .node-condition .node-header { background: #f56c6c; }
 .node-output .node-header { background: #0ea5e9; }
 .node-end .node-header { background: #6366f1; }
+
+// 校验失败节点红框
+:deep(.vue-flow__node.node-invalid) .custom-node {
+  outline: 2px solid #f56c6c;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+// 调试运行抽屉
+.debug-drawer {
+  display: flex;
+  flex-direction: column;
+}
+.debug-reply {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.debug-timeline-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin: 4px 0 10px;
+}
+.trace-item {
+  .trace-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .trace-cost { font-size: 12px; color: #909399; }
+  .trace-detail {
+    font-size: 12px;
+    color: #606266;
+    line-height: 1.6;
+    word-break: break-word;
+    max-height: 88px;
+    overflow-y: auto;
+  }
+  .trace-error { color: #f56c6c; }
+}
 </style>

@@ -226,6 +226,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         name: 'OssConfig',
         component: () => import('@/views/system/oss-config/index.vue'),
         meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium', feature: 'ossConfig' }
+      },
+      {
+        path: 'file',
+        name: 'FileManage',
+        component: () => import('@/views/system/file/index.vue'),
+        meta: { title: '文件管理', icon: 'FolderOpened', permission: 'file:list', tier: 'medium' }
       }
     ]
   },
@@ -340,12 +346,12 @@ export const constantRoutes: RouteRecordRaw[] = [
       }
     ]
   },
-  // {
-  //   path: '/embed/chat/:agentId',
-  //   name: 'EmbedChat',
-  //   component: () => import('@/views/ai/embed/chat.vue'),
-  //   meta: { title: 'AI对话' }
-  // },
+  {
+    path: '/chat/share/:shareKey',
+    name: 'ShareChat',
+    component: () => import('@/views/share/chat.vue'),
+    meta: { title: 'AI对话', hidden: true }
+  },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/404',
@@ -362,8 +368,8 @@ const router = createRouter({
 // 白名单
 const whiteList = ['/login', '/404']
 
-// 嵌入式对话路径前缀（免登录）
-const isEmbedPath = (path: string) => path.startsWith('/embed/')
+// 嵌入式/公开分享对话路径前缀（免登录）
+const isEmbedPath = (path: string) => path.startsWith('/embed/') || path.startsWith('/chat/share/')
 
 // 路由守卫
 router.beforeEach(async (to, _from, next) => {

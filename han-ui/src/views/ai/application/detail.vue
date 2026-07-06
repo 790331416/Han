@@ -261,6 +261,44 @@
                       复制详情入口
                     </el-button>
                   </div>
+
+                  <!-- 公开访问三件套（agent 发布后可用：链接 / iframe / JS 浮窗脚本） -->
+                  <div
+                    v-if="applicationDetail.type === 'agent' && applicationDetail.published && shareUrl"
+                    class="share-embed-block"
+                    data-testid="ai-application-share-panel"
+                  >
+                    <div class="share-embed-item">
+                      <div class="share-embed-head">
+                        <span class="share-embed-label">公开访问链接</span>
+                        <div>
+                          <el-button size="small" data-testid="ai-application-copy-share-link" @click="copyShareText(shareUrl, '访问链接')">复制</el-button>
+                          <el-button size="small" type="danger" plain data-testid="ai-application-reset-share-key" @click="handleResetShareKey">重置链接</el-button>
+                        </div>
+                      </div>
+                      <el-input :model-value="shareUrl" readonly size="small" data-testid="ai-application-share-url" />
+                    </div>
+                    <div class="share-embed-item">
+                      <div class="share-embed-head">
+                        <span class="share-embed-label">iframe 嵌入代码</span>
+                        <el-button size="small" data-testid="ai-application-copy-iframe" @click="copyShareText(iframeCode, 'iframe 代码')">复制</el-button>
+                      </div>
+                      <el-input :model-value="iframeCode" readonly type="textarea" :rows="3" size="small" />
+                    </div>
+                    <div class="share-embed-item">
+                      <div class="share-embed-head">
+                        <span class="share-embed-label">JS 浮窗脚本</span>
+                        <el-button size="small" data-testid="ai-application-copy-sdk" @click="copyShareText(sdkCode, 'JS 脚本')">复制</el-button>
+                      </div>
+                      <el-input :model-value="sdkCode" readonly type="textarea" :rows="4" size="small" />
+                    </div>
+                  </div>
+                  <div
+                    v-else-if="applicationDetail.type === 'agent' && applicationDetail.published && !shareUrl"
+                    class="share-embed-tip"
+                  >
+                    分享链接尚未生成，请重新发布一次或点击「立即发布」补生成。
+                  </div>
                 </div>
               </section>
 
@@ -582,7 +620,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import {
   getAiAgent,
@@ -596,6 +634,7 @@ import {
   indexStatusOptions,
   publishAiAgent,
   publishAiWorkflow,
+  resetAgentShareKey,
   type AiAgent,
   type AiChatMessage,
   type AiConversation,
@@ -617,6 +656,8 @@ interface ApplicationDetail {
   name: string
   description?: string
   published: boolean
+  /** 公开分享链接 key（agent 发布时生成） */
+  shareKey?: string
   status?: string
   modelId?: string | number
   modelName?: string
@@ -988,6 +1029,8 @@ async function togglePublish() {
         await publishAiAgent(applicationDetail.value.id)
         applicationDetail.value.published = true
         ElMessage.success('已发布')
+        // 发布会补生成分享 key，重载详情拿最新 shareKey
+        await loadDetail()
       }
     } else if (applicationDetail.value.published) {
       await unpublishAiWorkflow(applicationDetail.value.id)
@@ -1017,6 +1060,71 @@ async function copyAccessLink(path: string, label: string) {
     return
   }
   ElMessage.info(absolutePath)
+}
+
+// ==================== 公开访问三件套（链接 / iframe / JS 浮窗脚本） ====================
+const shareUrl = computed(() => {
+  const shareKey = applicationDetail.value?.shareKey
+  if (!shareKey || typeof window === 'undefined') {
+    return ''
+  }
+  return `${window.location.origin}/chat/share/${shareKey}`
+})
+
+const iframeCode = computed(() => {
+  if (!shareUrl.value) {
+    return ''
+  }
+  return `<iframe src="${shareUrl.value}" style="width: 420px; height: 640px; border: none; border-radius: 12px;" allow="clipboard-write"></iframe>`
+})
+
+const sdkCode = computed(() => {
+  if (!shareUrl.value) {
+    return ''
+  }
+  return [
+    '<script>',
+    '(function () {',
+    `  var btn = document.createElement('div');`,
+    `  btn.innerHTML = '💬';`,
+    `  btn.style.cssText = 'position:fixed;right:24px;bottom:24px;width:52px;height:52px;border-radius:50%;background:#409eff;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:99998;';`,
+    `  var frame = document.createElement('iframe');`,
+    `  frame.src = '${shareUrl.value}';`,
+    `  frame.style.cssText = 'position:fixed;right:24px;bottom:88px;width:400px;height:600px;border:none;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.2);display:none;z-index:99999;';`,
+    `  btn.onclick = function () { frame.style.display = frame.style.display === 'none' ? 'block' : 'none'; };`,
+    '  document.body.appendChild(btn);',
+    '  document.body.appendChild(frame);',
+    '})();',
+    '<\/script>'
+  ].join('\n')
+})
+
+async function copyShareText(text: string, label: string) {
+  if (!text) {
+    ElMessage.warning(`${label}当前不可用`)
+    return
+  }
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(`${label}已复制`)
+    return
+  }
+  ElMessage.info(text)
+}
+
+async function handleResetShareKey() {
+  if (!applicationDetail.value) return
+  try {
+    await ElMessageBox.confirm('重置后旧分享链接立即失效，已嵌入第三方页面的地址需要同步更新。确定重置吗?', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  const res = await resetAgentShareKey(applicationDetail.value.id)
+  const newKey = (res as any).data as string
+  if (newKey && applicationDetail.value) {
+    applicationDetail.value.shareKey = newKey
+  }
+  ElMessage.success('分享链接已重置')
 }
 
 function openAccessPath(path: string) {
@@ -1118,6 +1226,7 @@ async function loadDetail() {
         name: detail.agentName,
         description: detail.description,
         published: Boolean(detail.published),
+        shareKey: detail.shareKey,
         status: detail.status,
         modelId: detail.modelId,
         modelName: detail.modelId ? modelMap.get(String(detail.modelId)) : undefined,
@@ -1396,6 +1505,45 @@ watch(
 
 .access-actions {
   margin-top: 14px;
+}
+
+.share-embed-block {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  background: #f7f9fc;
+  border-radius: 12px;
+
+  .share-embed-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .share-embed-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .share-embed-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #606266;
+  }
+
+  :deep(textarea) {
+    font-family: monospace;
+    font-size: 12px;
+  }
+}
+
+.share-embed-tip {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #909399;
 }
 
 .publish-checklist {

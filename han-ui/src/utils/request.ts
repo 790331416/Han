@@ -165,6 +165,11 @@ service.interceptors.response.use(
       return response
     }
 
+    // 非 R 包装的裸 JSON（如 /actuator/jobflow/* 监控端点）直接透传，避免被误判为业务失败
+    if (res === null || typeof res !== 'object' || typeof (res as any).code !== 'number') {
+      return response.data
+    }
+
     if (res.code !== 200) {
       if (res.code === 401) {
         return resolveUnauthorizedRequest(response.config, res.msg || '登录状态已过期，请重新登录')
