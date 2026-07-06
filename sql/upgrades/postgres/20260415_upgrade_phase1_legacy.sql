@@ -28,44 +28,46 @@ CREATE TABLE IF NOT EXISTS sys_oper_log (
 );
 
 COMMENT ON TABLE sys_oper_log IS '操作日志表';
-COMMENT ON COLUMN sys_oper_log.id IS '日志ID';
-COMMENT ON COLUMN sys_oper_log.tenant_id IS '租户ID';
 DO $$
+DECLARE
+    v_column RECORD;
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'sys_oper_log'
-          AND column_name = 'title'
-    ) THEN
-        COMMENT ON COLUMN sys_oper_log.title IS '模块标题';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'sys_oper_log'
-          AND column_name = 'business_type'
-    ) THEN
-        COMMENT ON COLUMN sys_oper_log.business_type IS '业务类型(0其它 1新增 2修改 3删除 4查询 5导出 6导入 7授权 8强退 9清空)';
-    END IF;
+    FOR v_column IN
+        SELECT * FROM (VALUES
+            ('id', '日志ID'),
+            ('tenant_id', '租户ID'),
+            ('title', '模块标题'),
+            ('module', '模块标题'),
+            ('business_type', '业务类型(0其它 1新增 2修改 3删除 4查询 5导出 6导入 7授权 8强退 9清空)'),
+            ('oper_type', '业务类型(0其它 1新增 2修改 3删除 4查询 5导出 6导入 7授权 8强退 9清空)'),
+            ('method', '方法名称'),
+            ('request_method', '请求方式'),
+            ('operator_type', '操作类别(0其它 1后台 2手机)'),
+            ('oper_name', '操作人员'),
+            ('oper_user_id', '操作用户ID'),
+            ('dept_name', '部门名称'),
+            ('oper_url', '请求URL'),
+            ('oper_ip', '操作IP'),
+            ('oper_location', '操作地点'),
+            ('oper_param', '请求参数'),
+            ('json_result', '返回参数'),
+            ('status', '操作状态(0正常 1异常)'),
+            ('error_msg', '错误消息'),
+            ('oper_time', '操作时间'),
+            ('cost_time', '消耗时间(毫秒)')
+        ) AS t(column_name, comment_text)
+    LOOP
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'sys_oper_log'
+              AND column_name = v_column.column_name
+        ) THEN
+            EXECUTE format('COMMENT ON COLUMN sys_oper_log.%I IS %L', v_column.column_name, v_column.comment_text);
+        END IF;
+    END LOOP;
 END $$;
-COMMENT ON COLUMN sys_oper_log.method IS '方法名称';
-COMMENT ON COLUMN sys_oper_log.request_method IS '请求方式';
-COMMENT ON COLUMN sys_oper_log.operator_type IS '操作类别(0其它 1后台 2手机)';
-COMMENT ON COLUMN sys_oper_log.oper_name IS '操作人员';
-COMMENT ON COLUMN sys_oper_log.dept_name IS '部门名称';
-COMMENT ON COLUMN sys_oper_log.oper_url IS '请求URL';
-COMMENT ON COLUMN sys_oper_log.oper_ip IS '操作IP';
-COMMENT ON COLUMN sys_oper_log.oper_location IS '操作地点';
-COMMENT ON COLUMN sys_oper_log.oper_param IS '请求参数';
-COMMENT ON COLUMN sys_oper_log.json_result IS '返回参数';
-COMMENT ON COLUMN sys_oper_log.status IS '操作状态(0正常 1异常)';
-COMMENT ON COLUMN sys_oper_log.error_msg IS '错误消息';
-COMMENT ON COLUMN sys_oper_log.oper_time IS '操作时间';
-COMMENT ON COLUMN sys_oper_log.cost_time IS '消耗时间(毫秒)';
 
 CREATE INDEX IF NOT EXISTS idx_oper_log_tenant_id ON sys_oper_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_oper_log_oper_time ON sys_oper_log(oper_time);
