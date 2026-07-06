@@ -8,8 +8,15 @@
 --   ALTER TABLE ai_chat_message DROP COLUMN IF EXISTS images;
 -- =============================================
 
-ALTER TABLE ai_model ADD COLUMN IF NOT EXISTS supports_vision CHAR(1) DEFAULT '0';
-COMMENT ON COLUMN ai_model.supports_vision IS '是否支持视觉输入(图片理解) 1支持 0不支持';
+DO $$
+BEGIN
+    IF to_regclass('public.ai_model') IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE ai_model ADD COLUMN IF NOT EXISTS supports_vision CHAR(1) DEFAULT ''0''';
+        EXECUTE 'COMMENT ON COLUMN ai_model.supports_vision IS ''是否支持视觉输入(图片理解) 1支持 0不支持''';
+    END IF;
 
-ALTER TABLE ai_chat_message ADD COLUMN IF NOT EXISTS images TEXT;
-COMMENT ON COLUMN ai_chat_message.images IS '图片附件JSON [{fileId,url,name}]';
+    IF to_regclass('public.ai_chat_message') IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE ai_chat_message ADD COLUMN IF NOT EXISTS images TEXT';
+        EXECUTE 'COMMENT ON COLUMN ai_chat_message.images IS ''图片附件JSON [{fileId,url,name}]''';
+    END IF;
+END $$;
