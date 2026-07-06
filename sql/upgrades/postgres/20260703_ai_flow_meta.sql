@@ -6,5 +6,12 @@
 --   ALTER TABLE ai_chat_message DROP COLUMN IF EXISTS meta;
 -- =============================================
 
-ALTER TABLE ai_chat_message ADD COLUMN IF NOT EXISTS meta TEXT;
-COMMENT ON COLUMN ai_chat_message.meta IS '扩展元数据JSON {nodeTraces:[...]}';
+DO $$
+BEGIN
+    IF to_regclass('public.ai_chat_message') IS NULL THEN
+        RETURN;
+    END IF;
+
+    EXECUTE 'ALTER TABLE ai_chat_message ADD COLUMN IF NOT EXISTS meta TEXT';
+    EXECUTE 'COMMENT ON COLUMN ai_chat_message.meta IS ''扩展元数据JSON {nodeTraces:[...]}''';
+END $$;
