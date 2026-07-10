@@ -108,7 +108,10 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
   - 上一轮按模块拆分的 tier SQL
 - `sql/archive/shared-legacy/`
   - 旧共享模板与共享基础脚本
+
 ## AI 短剧 SQL 变更记录
+
+当前 master 同步候选共恢复 28 个关联升级脚本：26 个 `*aivideo*.sql`，以及 2 个公共 AI 字典对齐脚本 `20260611_ai_builtin_dict_alignment.sql`、`20260611_ai_dict_options.sql`。正式执行顺序由升级演练脚本按文件名固定，新增、删除或改名时必须同步本节和两套演练清单。
 
 - `sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子，和 `sql/tiers/full/full-init.sql` 保持同步。
 - `sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt 入库、项目/全局 Prompt 模板 ID 补齐，并配合润色流式生成链路。
@@ -126,3 +129,15 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/upgrades/postgres/20260607_aivideo_audio_track_prompt.sql`：更新 AI 短剧剧本生成、分镜提取和分镜视频生成内置 Prompt，把声音规则拆成“对白可口型、旁白/画外音可发声但不口型、心声/心理活动默认不朗读”，并要求低声报数/耳语/读出等写入 `dialogue`。
 - `sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql`：更新 AI 短剧剧本生成、资产提取、分镜提取和分镜视频生成内置 Prompt，要求前置输出角色声线、旁白声线、BGM、音效/环境声规划，并为后期语音、音乐音效和混音成片提供结构化依据。
 - `sql/upgrades/postgres/20260610_aivideo_shot_sound_cues.sql`：为 `ai_video_shot` 增加 `bgm_cue` 和 `sfx_cues` 两列，用于保存每个分镜的背景音乐与音效触发计划，供剪辑预检、后期语音和后续混音流程使用。
+- `sql/upgrades/postgres/20260521_aivideo_mvp0.sql`：创建 AI 短剧项目、版本、角色、场景、分镜、媒体、任务和审核等 MVP 0 基础表。
+- `sql/upgrades/postgres/20260527_aivideo_character_image_workflow.sql`：增加角色图 Prompt 模板位并对齐角色、场景、润色和图像生成模板。
+- `sql/upgrades/postgres/20260527_aivideo_shot_video_workflow.sql`：增加分镜视频模板位、候选数量默认值和单分镜视频生成模板。
+- `sql/upgrades/postgres/20260609_aivideo_prompt_template_alignment.sql`：对齐 Prompt 审计列、变量类型以及连续性、道具和声音策略模板。
+- `sql/upgrades/postgres/20260610_aivideo_model_config_alignment.sql`：增加默认禁用的火山 TTS 与 VOD 剪辑模型配置占位，凭据继续由模型管理受控录入。
+- `sql/upgrades/postgres/20260610_aivideo_tts_voice_assets.sql`：增加分镜 TTS 时间、说话人、音色字段和角色稳定声线资产。
+- `sql/upgrades/postgres/20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 分类公共字典。
+- `sql/upgrades/postgres/20260611_ai_dict_options.sql`：把 AI 模型类型和 Prompt 分类选择项统一到 `sys_dict_*`。
+- `sql/upgrades/postgres/20260611_aivideo_prop_assets.sql`：增加结构化道具资产和道具锚点提取规则。
+- `sql/upgrades/postgres/20260615_aivideo_action_budget_prop_link.sql`：增加动作预算、复杂动作拆镜、道具交接和场景连续性硬规则。
+- `sql/upgrades/postgres/20260615_aivideo_tts_prompt_alignment.sql`：对齐数据库、full 初始化和 Java 内置后期语音模板语义。
+- `sql/upgrades/postgres/20260623_aivideo_short_script_shot_split.sql`：短祝福、口播和单场景内容默认拆为至少 3 个镜头或画面段落。

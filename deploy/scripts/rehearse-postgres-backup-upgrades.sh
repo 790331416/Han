@@ -42,7 +42,35 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260415_totp_2fa_migration.sql"
   "sql/upgrades/postgres/20260415_system_login_log_message_alignment.sql"
   "sql/upgrades/postgres/20260415_system_post_sort_alignment.sql"
+  "sql/upgrades/postgres/20260521_aivideo_mvp0.sql"
+  "sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql"
+  "sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql"
+  "sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql"
+  "sql/upgrades/postgres/20260527_aivideo_character_image_workflow.sql"
+  "sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql"
+  "sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql"
+  "sql/upgrades/postgres/20260527_aivideo_shot_video_workflow.sql"
+  "sql/upgrades/postgres/20260529_aivideo_shot_video_continuity.sql"
+  "sql/upgrades/postgres/20260601_aivideo_shot_action_budget.sql"
+  "sql/upgrades/postgres/20260601_aivideo_shot_video_av_character_scene_continuity.sql"
+  "sql/upgrades/postgres/20260602_aivideo_character_turnaround_prompt.sql"
+  "sql/upgrades/postgres/20260602_aivideo_character_turnaround_prompt_sanitize.sql"
+  "sql/upgrades/postgres/20260602_aivideo_video_ready_reference_prompts.sql"
+  "sql/upgrades/postgres/20260603_aivideo_shot_spatial_continuity.sql"
+  "sql/upgrades/postgres/20260605_aivideo_shot_transition_plan.sql"
+  "sql/upgrades/postgres/20260607_aivideo_audio_track_prompt.sql"
+  "sql/upgrades/postgres/20260609_aivideo_prompt_template_alignment.sql"
+  "sql/upgrades/postgres/20260610_aivideo_model_config_alignment.sql"
+  "sql/upgrades/postgres/20260610_aivideo_shot_sound_cues.sql"
+  "sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql"
+  "sql/upgrades/postgres/20260610_aivideo_tts_voice_assets.sql"
+  "sql/upgrades/postgres/20260611_ai_builtin_dict_alignment.sql"
+  "sql/upgrades/postgres/20260611_ai_dict_options.sql"
+  "sql/upgrades/postgres/20260611_aivideo_prop_assets.sql"
   "sql/upgrades/postgres/20260612_ai_generic_dict_alignment.sql"
+  "sql/upgrades/postgres/20260615_aivideo_action_budget_prop_link.sql"
+  "sql/upgrades/postgres/20260615_aivideo_tts_prompt_alignment.sql"
+  "sql/upgrades/postgres/20260623_aivideo_short_script_shot_split.sql"
   "sql/upgrades/postgres/20260702_ai_prompt_template_audit_columns.sql"
   "sql/upgrades/postgres/20260702_sys_oper_log_module_alignment.sql"
   "sql/upgrades/postgres/20260703_ai_agent_share_key.sql"
@@ -164,6 +192,39 @@ END $$;
 SQL
 }
 
+assert_no_duplicate_dictionary_rows() {
+  psql_db -At <<'SQL'
+DO $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_count
+    FROM (
+        SELECT tenant_id, dict_type
+        FROM sys_dict_type
+        WHERE COALESCE(del_flag, 0) = 0
+        GROUP BY tenant_id, dict_type
+        HAVING COUNT(*) > 1
+    ) duplicates;
+    IF v_count > 0 THEN
+        RAISE EXCEPTION 'duplicate active dictionary types remain: %', v_count;
+    END IF;
+
+    SELECT COUNT(*) INTO v_count
+    FROM (
+        SELECT tenant_id, dict_type, dict_value
+        FROM sys_dict_data
+        WHERE COALESCE(del_flag, 0) = 0
+        GROUP BY tenant_id, dict_type, dict_value
+        HAVING COUNT(*) > 1
+    ) duplicates;
+    IF v_count > 0 THEN
+        RAISE EXCEPTION 'duplicate active dictionary values remain: %', v_count;
+    END IF;
+END $$;
+SQL
+}
+
 assert_required_columns() {
   psql_db -At <<'SQL'
 DO $$
@@ -192,30 +253,29 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'sys_menu.sort missing';
     END IF;
-    IF EXISTS (
+    IF NOT EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'ai_video_project'
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'ai_video_project_setting' AND column_name = 'character_image_prompt_template_id'
-        ) THEN
-            RAISE EXCEPTION 'ai_video_project_setting.character_image_prompt_template_id missing';
-        END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM ai_prompt_template
-            WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
-        ) THEN
-            RAISE EXCEPTION 'AI short-drama prompt templates missing';
-        END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM ai_prompt_template
-            WHERE category = 'aivideo_image' AND template_name = 'AI短剧角色图生成'
-        ) THEN
-            RAISE EXCEPTION 'AI short-drama character image prompt template missing';
-        END IF;
-    ELSE
-        RAISE NOTICE 'ai_video_project absent; skipping AIVideo-specific assertions';
+        RAISE EXCEPTION 'ai_video_project missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'ai_video_project_setting' AND column_name = 'character_image_prompt_template_id'
+    ) THEN
+        RAISE EXCEPTION 'ai_video_project_setting.character_image_prompt_template_id missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM ai_prompt_template
+        WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
+    ) THEN
+        RAISE EXCEPTION 'AI short-drama prompt templates missing';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM ai_prompt_template
+        WHERE category = 'aivideo_image' AND template_name = 'AI短剧角色图生成'
+    ) THEN
+        RAISE EXCEPTION 'AI short-drama character image prompt template missing';
     END IF;
 END $$;
 SQL
@@ -341,6 +401,7 @@ done
 assert_has_tables
 run_upgrades
 assert_no_deleted_columns
+assert_no_duplicate_dictionary_rows
 assert_required_columns
 
 echo "[backup-rehearsal] backup upgrade rehearsal passed"

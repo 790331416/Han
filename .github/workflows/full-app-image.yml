@@ -17,10 +17,12 @@ on:
     branches:
       - master
       - main
-      - feature/aivideo-mvp1-text
+      - aivideo
+      - "feature/aivideo-*"
     paths:
       - "han-gateway/**"
       - "han-ui/**"
+      - "han-aivideo-ui/**"
       - "han-auth/**"
       - "han-api/han-api-file/**"
       - "han-api/han-api-system/**"
@@ -52,6 +54,7 @@ env:
   SYSTEM_IMAGE_NAME: han-system
   TENANT_IMAGE_NAME: han-tenant
   UI_IMAGE_NAME: han-ui
+  AIVIDEO_UI_IMAGE_NAME: han-aivideo-ui
   AUTH_IMAGE_NAME: han-auth
   JOB_IMAGE_NAME: han-job
   WORKFLOW_IMAGE_NAME: han-workflow
@@ -384,6 +387,83 @@ jobs:
             -t "${image}:${short_sha}" \
             -t "${image}:latest" \
             han-modules/han-tenant
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker push "${image}:${short_sha}"
+          if [[ "${push_latest}" == "true" ]]; then
+            docker push "${image}:latest"
+          fi
+
+      - name: Verify remote manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+          push_latest="${{ steps.meta.outputs.push_latest }}"
+
+          docker manifest inspect "${image}:${short_sha}" >/dev/null
+          if [[ "${push_latest}" == "true" ]]; then
+            docker manifest inspect "${image}:latest" >/dev/null
+          fi
+
+  build-aivideo-ui:
+    name: Build and push han-aivideo-ui image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest || 'false' }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="${ACR_REGISTRY}/${ACR_NAMESPACE}/${AIVIDEO_UI_IMAGE_NAME}"
+          push_latest="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            push_latest="${INPUT_PUSH_LATEST}"
+          elif [[ "${GITHUB_REF_NAME}" == "master" || "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "aivideo" ]]; then
+            push_latest="true"
+          fi
+
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "push_latest=${push_latest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          short_sha="${{ steps.meta.outputs.short_sha }}"
+
+          docker build \
+            --pull \
+            --network=host \
+            -t "${image}:${short_sha}" \
+            -t "${image}:latest" \
+            han-aivideo-ui
 
       - name: Push image tags
         shell: bash

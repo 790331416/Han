@@ -16,17 +16,17 @@
 - [02-开发手册](/D:/code/Han/docs/02-开发手册.md)
   - 技术栈约束、A/I/B 开发规范、对象分层、接口与对接、安全与测试要求
 - [03-部署手册](/D:/code/Han/docs/03-部署手册.md)
-  - 三档部署、本地开发部署、Kubernetes 说明、配置、回滚与排障
+  - 三档部署、AIVideo 独立 UI、GitHub Actions -> ACR -> 95 拉取发布、配置、回滚与排障
 - [04-测试与验收手册](/D:/code/Han/docs/04-测试与验收手册.md)
-  - 测试总账、Playwright 规则、95 真环境验证结果、发布前最小验收集
+  - 测试总账、通用/AIVideo Playwright、95 真环境验证结果、发布前最小验收集
 - [05-运维与95环境手册](/D:/code/Han/docs/05-运维与95环境手册.md)
-  - 95 正式目录、发布链路、备份清理、Nacos / PostgreSQL 运维与排障
+  - 95 正式目录、master/CI/ACR 拉取发布链路、备份清理、Nacos / PostgreSQL 运维与排障
 - [06-牛马协作总规则](/D:/code/Han/docs/06-牛马协作总规则.md)
   - 仓库、文档、SQL、部署、发布与验证规则
 - [07-仓库整理与重构执行计划](/D:/code/Han/docs/07-仓库整理与重构执行计划.md)
   - 当前正式整理目标与执行顺序
 - [08-AI短剧开发手册](/D:/code/Han/docs/08-AI短剧开发手册.md)
-  - AIVideo / AI 短剧开发入口、代码落位、模块边界、Han 反哺规则、开发门禁和验证要求
+  - AIVideo / AI 短剧开发入口、独立 UI、模块边界、Han 反哺、发布门禁和实时实施状态
 - [09-代码注释规范](/D:/code/Han/docs/09-代码注释规范.md)
   - 前后端中文注释、JavaDoc、公共模块注释优先级、SQL/脚本注释和检查清单
 - [10-系统枚举治理与公共能力落位](/D:/code/Han/docs/10-系统枚举治理与公共能力落位.md)

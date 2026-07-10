@@ -19,6 +19,13 @@ check_tier() {
   check_url "${tier} ui" "${ui_url}"
 }
 
+check_full_tier() {
+  check_tier "full" "http://127.0.0.1:9090/system/runtime/capabilities" "http://127.0.0.1:3000/"
+  check_url "full aivideo actuator" "http://127.0.0.1:9209/actuator/health"
+  check_url "full aivideo studio" "http://127.0.0.1:3000/studio/projects"
+  check_url "full aivideo task console" "http://127.0.0.1:3000/ai/aivideo/tasks"
+}
+
 case "${TARGET_TIER}" in
   small)
     check_tier "small" "http://127.0.0.1:19090/system/runtime/capabilities" "http://127.0.0.1:3100/"
@@ -27,12 +34,12 @@ case "${TARGET_TIER}" in
     check_tier "medium" "http://127.0.0.1:29090/system/runtime/capabilities" "http://127.0.0.1:3200/"
     ;;
   full)
-    check_tier "full" "http://127.0.0.1:9090/system/runtime/capabilities" "http://127.0.0.1:3000/"
+    check_full_tier
     ;;
   all)
     check_tier "small" "http://127.0.0.1:19090/system/runtime/capabilities" "http://127.0.0.1:3100/"
     check_tier "medium" "http://127.0.0.1:29090/system/runtime/capabilities" "http://127.0.0.1:3200/"
-    check_tier "full" "http://127.0.0.1:9090/system/runtime/capabilities" "http://127.0.0.1:3000/"
+    check_full_tier
     ;;
   *)
     echo "Usage: $0 [small|medium|full|all]" >&2

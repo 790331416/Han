@@ -1,0 +1,352 @@
+// ============================================================
+// HAN Cloud — Modern Minimal White Theme
+// Inspired by Notion / Linear / Vercel Dashboard
+// ============================================================
+
+// Element Plus CSS 变量覆盖
+:root {
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #60a5fa;
+  --el-color-primary-light-5: #93c5fd;
+  --el-color-primary-light-7: #bfdbfe;
+  --el-color-primary-light-8: #dbeafe;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: #1d4ed8;
+
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-color: #e5e7eb;
+  --el-border-color-light: #f3f4f6;
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f9fafb;
+  --el-text-color-primary: #111827;
+  --el-text-color-regular: #374151;
+  --el-text-color-secondary: #6b7280;
+  --el-text-color-placeholder: #9ca3af;
+  --el-font-size-base: 14px;
+  --el-box-shadow-light: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --el-box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+}
+
+// Dark Mode — Element Plus CSS 变量覆盖
+html.dark {
+  --el-color-primary: #3b82f6;
+  --el-color-primary-light-3: #2563eb;
+  --el-color-primary-light-5: #1d4ed8;
+  --el-color-primary-light-7: #1e3a8a;
+  --el-color-primary-light-8: #1e3a5c;
+  --el-color-primary-light-9: #172554;
+  --el-color-primary-dark-2: #60a5fa;
+
+  --el-border-color: #374151;
+  --el-border-color-light: #1f2937;
+  --el-bg-color: #111827;
+  --el-bg-color-page: #0f172a;
+  --el-bg-color-overlay: #1f2937;
+  --el-text-color-primary: #f9fafb;
+  --el-text-color-regular: #e5e7eb;
+  --el-text-color-secondary: #9ca3af;
+  --el-text-color-placeholder: #6b7280;
+  --el-fill-color-blank: #111827;
+  --el-fill-color: #1f2937;
+  --el-fill-color-light: #1f2937;
+  --el-fill-color-lighter: #374151;
+  --el-fill-color-dark: #4b5563;
+  --el-mask-color: rgba(0, 0, 0, 0.7);
+  --el-box-shadow-light: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --el-box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+
+  color-scheme: dark;
+  color: #f9fafb;
+  background: #0f172a;
+}
+
+// 全局 reset
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #111827;
+  background: #f9fafb;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+a {
+  color: #2563eb;
+  text-decoration: none;
+  &:hover { color: #1d4ed8; }
+}
+
+// 滚动条 — 极细隐藏风格
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+  &:hover { background: #9ca3af; }
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+// 表格操作按钮
+.table-operations {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// 搜索表单
+.search-form {
+  margin-bottom: 16px;
+  .el-form-item { margin-bottom: 12px; }
+  .el-select { width: auto; min-width: 80px; }
+  .el-form--inline {
+    flex-wrap: wrap;
+  }
+}
+
+// 页面容器
+.app-container {
+  padding: 20px;
+}
+
+// 卡片头部 — 左右布局
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+// 分页
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+// 分页 — 兼容类名
+.mt-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+// 对话框
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+// MessageBox / Dialog 居中
+.el-overlay.is-message-box {
+  .el-overlay-message-box {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+}
+.el-overlay-dialog {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+// 树形结构
+.tree-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+// ============================================================
+// Element Plus 组件微调
+// ============================================================
+
+// 按钮 — 更圆润
+.el-button {
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.el-button--primary {
+  --el-button-bg-color: #2563eb;
+  --el-button-border-color: #2563eb;
+  --el-button-hover-bg-color: #1d4ed8;
+  --el-button-hover-border-color: #1d4ed8;
+}
+
+// 卡片 — 精致阴影
+.el-card {
+  border-radius: 12px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
+  &:hover {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+  }
+  transition: box-shadow 0.2s ease;
+}
+
+// 表格 — 更宽松 + 响应式
+.el-table {
+  --el-table-border-color: #f3f4f6;
+  --el-table-header-bg-color: #f9fafb;
+  --el-table-row-hover-bg-color: #f0f7ff;
+  border-radius: 12px;
+  overflow: hidden;
+  // 全局单元格居中
+  th.el-table__cell,
+  td.el-table__cell {
+    text-align: center;
+  }
+  th.el-table__cell {
+    font-weight: 600;
+    color: #374151;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  // 操作列按钮—单行排列，不换行
+  td .cell:has(.el-button) {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  // 重置 Element Plus 按钮默认 margin
+  td .cell .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
+// 输入框 — 更柔和
+.el-input__wrapper {
+  border-radius: 8px !important;
+  box-shadow: 0 0 0 1px #e5e7eb inset !important;
+  &:hover { box-shadow: 0 0 0 1px #d1d5db inset !important; }
+  &.is-focus { box-shadow: 0 0 0 2px #2563eb inset !important; }
+}
+html.dark .el-input__wrapper {
+  box-shadow: 0 0 0 1px #374151 inset !important;
+  &:hover { box-shadow: 0 0 0 1px #4b5563 inset !important; }
+  &.is-focus { box-shadow: 0 0 0 2px #3b82f6 inset !important; }
+}
+
+// 对话框 — 更现代 + 全局响应式
+.el-dialog {
+  border-radius: 16px;
+  .el-dialog__header { padding: 20px 24px 12px; }
+  .el-dialog__body { padding: 12px 24px 20px; }
+  .el-dialog__title { font-weight: 600; font-size: 16px; }
+  // 全局响应式约束
+  &.dialog-sm { min-width: 360px; max-width: 500px; }
+  &.dialog-md { min-width: 400px; max-width: 650px; }
+  &.dialog-lg { min-width: 480px; max-width: 800px; }
+  &.dialog-xl { min-width: 560px; max-width: 950px; }
+}
+
+// 标签页
+.el-tabs__item {
+  font-weight: 500;
+  &.is-active { color: #2563eb; }
+}
+
+// 分页器
+.el-pagination {
+  flex-wrap: wrap;
+  .el-pager li {
+    border-radius: 6px;
+    &.is-active { background-color: #2563eb; color: #fff !important; }
+  }
+}
+
+// ============================================================
+// Dark Mode — Element Plus 组件微调
+// ============================================================
+html.dark {
+  .el-card {
+    background-color: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.2);
+    &:hover { box-shadow: 0 4px 12px rgb(0 0 0 / 0.3); }
+  }
+  .el-table {
+    --el-table-border-color: #374151;
+    --el-table-header-bg-color: #1f2937;
+    --el-table-row-hover-bg-color: #172554;
+    --el-table-bg-color: #111827;
+    --el-table-tr-bg-color: #111827;
+    th.el-table__cell { color: #e5e7eb; }
+  }
+  .el-button--primary {
+    --el-button-bg-color: #2563eb;
+    --el-button-border-color: #2563eb;
+    --el-button-hover-bg-color: #3b82f6;
+    --el-button-hover-border-color: #3b82f6;
+  }
+  .el-dialog {
+    background: #1f2937;
+    .el-dialog__title { color: #f9fafb; }
+  }
+  .el-pagination .el-pager li.is-active {
+    background-color: #2563eb;
+  }
+  .el-tabs__item {
+    &.is-active { color: #3b82f6; }
+  }
+  // 滚动条 — 暗色
+  ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    &:hover { background: #6b7280; }
+  }
+}
+
+// ============================================================
+// 响应式布局—小屏适配
+// ============================================================
+@media (max-width: 1280px) {
+  .app-container {
+    padding: 16px;
+  }
+  // 小屏操作按钮允许换行
+  .el-table td .cell:has(.el-button) {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 12px;
+  }
+  .search-form {
+    .el-form-item {
+      width: 100%;
+      .el-input, .el-select, .el-date-editor {
+        width: 100% !important;
+      }
+    }
+  }
+  .pagination-container,
+  .mt-pagination {
+    justify-content: center;
+  }
+}

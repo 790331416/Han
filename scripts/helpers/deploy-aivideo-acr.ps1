@@ -2,11 +2,12 @@ param(
     [string] $Tag = '',
     [string[]] $Services = @('ai', 'aivideo', 'ui'),
     [string] $Registry = 'registry.cn-hangzhou.aliyuncs.com/xzy0112',
-    [string] $SshTarget = 'ubuntu@124.223.116.125',
-    [string] $DeployDir = '/opt/han/deploy/full-app',
+    [string] $SshTarget = 'root@10.18.35.95',
+    [string] $DeployDir = '/opt/han/deploy/full',
     [int] $WaitSeconds = 0,
     [switch] $DryRun,
-    [switch] $NoHealthCheck
+    [switch] $NoHealthCheck,
+    [switch] $AllowNonMasterTag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,12 +27,22 @@ $serviceMap = @{
     file    = @{ image = 'han-file'; env = 'HAN_FILE_IMAGE' }
     ai      = @{ image = 'han-ai'; env = 'HAN_AI_IMAGE' }
     aivideo = @{ image = 'han-aivideo'; env = 'HAN_AIVIDEO_IMAGE' }
-    ui      = @{ image = 'han-ui'; env = 'HAN_UI_IMAGE' }
+    ui      = @{ image = 'han-aivideo-ui'; env = 'HAN_UI_IMAGE' }
     tenant  = @{ image = 'han-tenant'; env = 'HAN_TENANT_IMAGE' }
 }
 
 if (-not $Tag) {
     $Tag = (& git -C $repoRoot rev-parse --short=7 HEAD).Trim()
+}
+
+$masterCommit = (& git -C $repoRoot rev-parse origin/master).Trim()
+$masterTag = $masterCommit.Substring(0, [Math]::Min(7, $masterCommit.Length))
+$isMasterTag = $Tag -in @($masterTag, $masterCommit)
+if (-not $isMasterTag -and -not $AllowNonMasterTag) {
+    throw "Formal deploy tag '$Tag' does not match origin/master '$masterTag'. Merge and fetch master first, or use -AllowNonMasterTag only for an isolated non-production environment."
+}
+if (-not $isMasterTag -and $SshTarget -eq 'root@10.18.35.95') {
+    throw "A non-master tag cannot target formal server 95. Set an isolated non-production target or deploy the origin/master tag."
 }
 
 if ($Tag -notmatch '^[A-Za-z0-9._-]+$') {
@@ -74,11 +85,12 @@ $healthCheck = if ($NoHealthCheck) { '0' } else { '1' }
 Write-Host 'Han/AIVideo ACR deploy'
 Write-Host "Repo:      $repoRoot"
 Write-Host "Tag:       $Tag"
+Write-Host "Source:    origin/master ($masterTag)"
 Write-Host "Services:  $serviceCsv"
 Write-Host "Registry:  $Registry"
 Write-Host "Target:    $SshTarget"
 Write-Host "DeployDir: $DeployDir"
-Write-Host 'Build:     GitHub Actions only; this script never builds on Tencent Cloud.'
+Write-Host 'Build:     GitHub Actions only; this script never builds on the target server.'
 
 if ($DryRun) {
     foreach ($service in $normalizedServices) {
@@ -100,7 +112,7 @@ image_name_for() {
     file) echo "han-file" ;;
     ai) echo "han-ai" ;;
     aivideo) echo "han-aivideo" ;;
-    ui) echo "han-ui" ;;
+    ui) echo "han-aivideo-ui" ;;
     tenant) echo "han-tenant" ;;
     *) echo "Unsupported service: $1" >&2; return 1 ;;
   esac
@@ -138,7 +150,7 @@ echo "Remote host: $(hostname)"
 echo "Deploy dir: $(pwd)"
 echo "Tag: ${TAG}"
 echo "Services: ${SERVICES}"
-echo "Rule: no Maven package, no Docker build; pull ACR images only."
+echo "Rule: no Maven package, no pnpm build, no Docker build; pull ACR images only."
 
 deadline=$((SECONDS + WAIT_SECONDS))
 while true; do
@@ -217,9 +229,10 @@ if [ "$HEALTH_CHECK" = "1" ]; then
   done
 fi
 
-echo "Public route smoke check:"
-curl -fsS -o /dev/null -w 'https://han.scavengers.cn/ -> HTTP %{http_code}\n' https://han.scavengers.cn/ || true
-curl -fsS -o /dev/null -w 'https://han.scavengers.cn/studio/projects -> HTTP %{http_code}\n' https://han.scavengers.cn/studio/projects || true
+echo "Local route smoke check:"
+curl -fsS -o /dev/null -w 'http://127.0.0.1:3000/ -> HTTP %{http_code}\n' http://127.0.0.1:3000/
+curl -fsS -o /dev/null -w 'http://127.0.0.1:3000/studio/projects -> HTTP %{http_code}\n' http://127.0.0.1:3000/studio/projects
+curl -fsS -o /dev/null -w 'http://127.0.0.1:9209/actuator/health -> HTTP %{http_code}\n' http://127.0.0.1:9209/actuator/health
 
 echo "Deploy finished."
 '@

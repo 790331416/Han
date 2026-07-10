@@ -7,11 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FORBIDDEN_SUBSTRINGS = [
     "han-ui/dist/",
+    "han-aivideo-ui/dist/",
     ".m2/",
     ".codex-temp/",
     "output/playwright/",
 ]
-FORBIDDEN_SUFFIXES = [".log", ".tar.gz", ".zip"]
+FORBIDDEN_SUFFIXES = [".log", ".tar.gz", ".zip", ".tsbuildinfo"]
 
 
 def main() -> int:

@@ -31,6 +31,7 @@ ALLOWED_TOP_LEVEL = {
     "han-modules",
     "han-starter",
     "han-ui",
+    "han-aivideo-ui",
     "han-visual",
     "nacos",
     "pom.xml",

@@ -1,0 +1,278 @@
+<template>
+  <div class="app-container">
+    <el-card shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>短剧基础配置</span>
+          <el-button type="primary" :icon="Check" :loading="submitting" @click="handleSubmit">保存</el-button>
+        </div>
+      </template>
+
+      <el-form ref="formRef" v-loading="loading" :model="form" label-width="140px" class="setting-form">
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="默认文本模型">
+              <el-input v-model="form.textModelId" placeholder="模型ID" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认图片模型">
+              <el-input v-model="form.imageModelId" placeholder="模型ID" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认视频模型">
+              <el-input v-model="form.videoModelId" placeholder="模型ID" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="素材访问策略">
+              <el-select v-model="form.mediaAccessPolicy">
+                <el-option v-for="item in mediaAccessPolicyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="默认视觉风格">
+          <el-select
+            v-model="form.defaultStyle"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入默认风格"
+          >
+            <el-option v-for="item in visualStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="默认角色造型">
+          <el-select v-model="form.characterDesignType" placeholder="选择默认角色造型类型">
+            <el-option v-for="item in characterDesignTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="默认生成策略">
+              <el-select v-model="form.generationStrategy">
+                <el-option v-for="item in generationStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认声音模式">
+              <el-select v-model="form.audioMode">
+                <el-option v-for="item in audioModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认字幕模式">
+              <el-select v-model="form.subtitleMode">
+                <el-option v-for="item in subtitleModeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-form-item label="默认参考素材">
+              <el-select v-model="form.referenceStrategy">
+                <el-option v-for="item in referenceStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认动作强度">
+              <el-select v-model="form.actionIntensity">
+                <el-option v-for="item in actionIntensityOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认连续性">
+              <el-select v-model="form.continuityLevel">
+                <el-option v-for="item in continuityLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="默认多角色">
+              <el-select v-model="form.multiRoleStrategy">
+                <el-option v-for="item in multiRoleStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="默认画幅">
+              <el-select v-model="form.defaultRatio">
+                <el-option v-for="item in ratioOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="默认清晰度">
+              <el-select v-model="form.defaultResolution">
+                <el-option v-for="item in resolutionOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="镜头秒数">
+              <el-input-number v-model="form.defaultShotDuration" :min="5" :max="8" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="图片候选数">
+              <el-input-number v-model="form.imageCandidateCount" :min="1" :max="4" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="视频候选数">
+              <el-input-number v-model="form.videoCandidateCount" :min="1" :max="3" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="4">
+            <el-form-item label="预览模式">
+              <el-switch v-model="form.previewMode" active-value="1" inactive-value="0" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="4">
+            <el-form-item label="内容审核">
+              <el-switch v-model="form.contentAuditEnabled" active-value="1" inactive-value="0" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="角色图 Prompt">
+              <el-input v-model="form.characterImagePromptTemplateId" placeholder="Prompt模板ID" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="场景图 Prompt">
+              <el-input v-model="form.sceneImagePromptTemplateId" placeholder="Prompt模板ID" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="视频 Prompt">
+              <el-input v-model="form.videoPromptTemplateId" placeholder="Prompt模板ID" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="配置说明" />
+        </el-form-item>
+      </el-form>
+    </el-card>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import { Check } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  getAivideoSetting,
+  updateAivideoSetting,
+  type AivideoSetting
+} from '@/api/aivideo'
+import { createAivideoDictOptionState } from '@/utils/aivideo-dict-options'
+
+const loading = ref(false)
+const submitting = ref(false)
+
+/**
+ * 基础配置页是 AIVideo 公共参数的源头页，所有下拉统一从系统字典加载。
+ */
+const {
+  actionIntensityOptions,
+  audioModeOptions,
+  characterDesignTypeOptions,
+  continuityLevelOptions,
+  generationStrategyOptions,
+  loadSettingOptions,
+  mediaAccessPolicyOptions,
+  multiRoleStrategyOptions,
+  ratioOptions,
+  referenceStrategyOptions,
+  resolutionOptions,
+  subtitleModeOptions,
+  visualStyleOptions
+} = createAivideoDictOptionState()
+
+const form = reactive<AivideoSetting>({
+  defaultRatio: '9:16',
+  defaultResolution: '720p',
+  imageCandidateCount: 2,
+  videoCandidateCount: 1,
+  defaultShotDuration: 5,
+  previewMode: '1',
+  contentAuditEnabled: '1',
+  mediaAccessPolicy: 'PRIVATE',
+  defaultStyle: '写实电影感',
+  characterDesignType: 'AUTO',
+  generationStrategy: 'AUTO',
+  audioMode: 'SILENT',
+  subtitleMode: 'NONE',
+  referenceStrategy: 'CHARACTER_SCENE',
+  actionIntensity: 'NORMAL',
+  continuityLevel: 'STRICT',
+  multiRoleStrategy: 'SINGLE_FIRST',
+  remark: ''
+})
+
+async function loadSetting() {
+  loading.value = true
+  try {
+    const res = await getAivideoSetting()
+    Object.assign(form, res.data || {})
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleSubmit() {
+  submitting.value = true
+  try {
+    await updateAivideoSetting(form)
+    ElMessage.success('保存成功')
+    await loadSetting()
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadSettingOptions(), loadSetting()])
+})
+</script>
+
+<style lang="scss" scoped>
+.app-container {
+  padding: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.setting-form {
+  max-width: 1180px;
+}
+</style>
