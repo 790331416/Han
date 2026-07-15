@@ -151,6 +151,10 @@ class AivideoPromptTemplateSqlTest {
                 repoRoot.resolve("sql/upgrades/postgres/20260611_ai_builtin_dict_alignment.sql"),
                 StandardCharsets.UTF_8);
 
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS dict_name");
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS dict_label");
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS dict_value");
+        assertContains(upgrade, "ADD COLUMN IF NOT EXISTS dict_sort");
         assertContains(upgrade, "tmp_ai_builtin_target_tenants");
         assertContains(upgrade, "to_regclass('public.sys_tenant')");
         assertContains(upgrade, "column_name = 'id'");

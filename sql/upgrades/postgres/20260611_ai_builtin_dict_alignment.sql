@@ -1,7 +1,24 @@
 -- AI built-in dictionary alignment.
--- This script only inserts missing built-in dictionary rows and does not overwrite user-maintained dictionary data.
+-- Adds only missing compatibility columns and built-in rows; user-maintained dictionary data is not overwritten.
 
 BEGIN;
+
+ALTER TABLE sys_dict_type ADD COLUMN IF NOT EXISTS tenant_id BIGINT;
+ALTER TABLE sys_dict_type ADD COLUMN IF NOT EXISTS dict_name VARCHAR(100);
+ALTER TABLE sys_dict_type ADD COLUMN IF NOT EXISTS status SMALLINT DEFAULT 0;
+ALTER TABLE sys_dict_type ADD COLUMN IF NOT EXISTS remark VARCHAR(500);
+ALTER TABLE sys_dict_type ADD COLUMN IF NOT EXISTS del_flag SMALLINT DEFAULT 0;
+
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS tenant_id BIGINT;
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS dict_label VARCHAR(100);
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS dict_value VARCHAR(100);
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS dict_sort INT DEFAULT 0;
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS css_class VARCHAR(100);
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS list_class VARCHAR(100);
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS is_default SMALLINT DEFAULT 0;
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS status SMALLINT DEFAULT 0;
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS remark VARCHAR(500);
+ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS del_flag SMALLINT DEFAULT 0;
 
 CREATE TEMP TABLE IF NOT EXISTS tmp_ai_builtin_target_tenants (
     tenant_id BIGINT PRIMARY KEY
