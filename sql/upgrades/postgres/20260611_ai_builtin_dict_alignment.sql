@@ -3,15 +3,51 @@
 
 BEGIN;
 
+CREATE TEMP TABLE IF NOT EXISTS tmp_ai_builtin_target_tenants (
+    tenant_id BIGINT PRIMARY KEY
+) ON COMMIT DROP;
+TRUNCATE tmp_ai_builtin_target_tenants;
+INSERT INTO tmp_ai_builtin_target_tenants (tenant_id) VALUES (0) ON CONFLICT DO NOTHING;
+
+DO $$
+DECLARE
+    v_active_condition TEXT := '';
+BEGIN
+    IF to_regclass('public.sys_tenant') IS NULL THEN
+        RETURN;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_tenant' AND column_name = 'del_flag'
+    ) THEN
+        v_active_condition := ' AND COALESCE(del_flag, 0) = 0';
+    ELSIF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_tenant' AND column_name = 'deleted'
+    ) THEN
+        v_active_condition := ' AND COALESCE(deleted, 0) = 0';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_tenant' AND column_name = 'id'
+    ) THEN
+        EXECUTE 'INSERT INTO tmp_ai_builtin_target_tenants (tenant_id) SELECT id::BIGINT FROM sys_tenant WHERE id IS NOT NULL'
+            || v_active_condition || ' ON CONFLICT DO NOTHING';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_tenant' AND column_name = 'tenant_id'
+    ) THEN
+        EXECUTE 'INSERT INTO tmp_ai_builtin_target_tenants (tenant_id) SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL'
+            || v_active_condition || ' ON CONFLICT DO NOTHING';
+    END IF;
+END $$;
+
 WITH target_tenants AS (
-    SELECT DISTINCT tenant_id
-    FROM (
-        VALUES (0::BIGINT)
-        UNION ALL
-        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
-        UNION ALL
-        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
-    ) source(tenant_id)
+    SELECT tenant_id FROM tmp_ai_builtin_target_tenants
 ),
 type_items(dict_name, dict_type, remark, status) AS (
     VALUES
@@ -51,14 +87,7 @@ FROM missing_types
 CROSS JOIN type_base;
 
 WITH target_tenants AS (
-    SELECT DISTINCT tenant_id
-    FROM (
-        VALUES (0::BIGINT)
-        UNION ALL
-        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
-        UNION ALL
-        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
-    ) source(tenant_id)
+    SELECT tenant_id FROM tmp_ai_builtin_target_tenants
 ),
 data_items(dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) AS (
     VALUES
@@ -131,14 +160,7 @@ FROM missing_data
 CROSS JOIN data_base;
 
 WITH target_tenants AS (
-    SELECT DISTINCT tenant_id
-    FROM (
-        VALUES (0::BIGINT)
-        UNION ALL
-        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
-        UNION ALL
-        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
-    ) source(tenant_id)
+    SELECT tenant_id FROM tmp_ai_builtin_target_tenants
 ),
 type_items(dict_name, dict_type, remark, status) AS (
     VALUES
@@ -195,14 +217,7 @@ FROM missing_types
 CROSS JOIN type_base;
 
 WITH target_tenants AS (
-    SELECT DISTINCT tenant_id
-    FROM (
-        VALUES (0::BIGINT)
-        UNION ALL
-        SELECT id::BIGINT FROM sys_tenant WHERE COALESCE(del_flag, 0) = 0
-        UNION ALL
-        SELECT tenant_id::BIGINT FROM sys_tenant WHERE tenant_id IS NOT NULL AND COALESCE(del_flag, 0) = 0
-    ) source(tenant_id)
+    SELECT tenant_id FROM tmp_ai_builtin_target_tenants
 ),
 data_items(dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) AS (
     VALUES

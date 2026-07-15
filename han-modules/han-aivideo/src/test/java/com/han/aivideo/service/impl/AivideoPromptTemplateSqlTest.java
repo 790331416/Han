@@ -145,6 +145,24 @@ class AivideoPromptTemplateSqlTest {
     }
 
     @Test
+    void builtinDictionaryUpgradeSupportsLegacyTenantColumns() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String upgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260611_ai_builtin_dict_alignment.sql"),
+                StandardCharsets.UTF_8);
+
+        assertContains(upgrade, "tmp_ai_builtin_target_tenants");
+        assertContains(upgrade, "to_regclass('public.sys_tenant')");
+        assertContains(upgrade, "column_name = 'id'");
+        assertContains(upgrade, "column_name = 'tenant_id'");
+        assertContains(upgrade, "column_name = 'deleted'");
+        assertContains(upgrade, "column_name = 'del_flag'");
+        assertContains(upgrade, "EXECUTE 'INSERT INTO tmp_ai_builtin_target_tenants");
+        assertDoesNotContain(upgrade, "UNION ALL\n        SELECT id::BIGINT FROM sys_tenant");
+        assertDoesNotContain(upgrade, "UNION ALL\n        SELECT tenant_id::BIGINT FROM sys_tenant");
+    }
+
+    @Test
     void shotSoundCueColumnsExistInFullInitAndUpgrade() throws Exception {
         Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
         String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
