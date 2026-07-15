@@ -186,6 +186,8 @@ class AivideoPromptTemplateSqlTest {
             assertContains(sql, "sys_role_menu");
             assertContains(sql, "role.role_key IN ('admin', 'super_admin')");
         }
+        assertContains(upgrade, "column_name = 'status'");
+        assertContains(upgrade, "IF EXISTS");
     }
 
     @Test

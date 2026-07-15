@@ -149,22 +149,47 @@ BEGIN
         END IF;
     END LOOP;
 
-    INSERT INTO sys_role_menu (role_id, menu_id)
-    SELECT role.id, menu.id
-    FROM sys_role role
-    CROSS JOIN sys_menu menu
-    WHERE COALESCE(role.del_flag, 0) = 0
-      AND COALESCE(role.status, 0) = 0
-      AND (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
-      AND (
-          menu.id IN (v_ai_root_id, v_task_menu_id, v_setting_menu_id)
-          OR menu.perms IN (
-              'ai:aivideo:task:list',
-              'ai:aivideo:task:query',
-              'ai:aivideo:setting:query',
-              'ai:aivideo:setting:edit'
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sys_role'
+          AND column_name = 'status'
+    ) THEN
+        INSERT INTO sys_role_menu (role_id, menu_id)
+        SELECT role.id, menu.id
+        FROM sys_role role
+        CROSS JOIN sys_menu menu
+        WHERE COALESCE(role.del_flag, 0) = 0
+          AND COALESCE(role.status, 0) = 0
+          AND (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
+          AND (
+              menu.id IN (v_ai_root_id, v_task_menu_id, v_setting_menu_id)
+              OR menu.perms IN (
+                  'ai:aivideo:task:list',
+                  'ai:aivideo:task:query',
+                  'ai:aivideo:setting:query',
+                  'ai:aivideo:setting:edit'
+              )
           )
-      )
-    ON CONFLICT DO NOTHING;
+        ON CONFLICT DO NOTHING;
+    ELSE
+        INSERT INTO sys_role_menu (role_id, menu_id)
+        SELECT role.id, menu.id
+        FROM sys_role role
+        CROSS JOIN sys_menu menu
+        WHERE COALESCE(role.del_flag, 0) = 0
+          AND (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
+          AND (
+              menu.id IN (v_ai_root_id, v_task_menu_id, v_setting_menu_id)
+              OR menu.perms IN (
+                  'ai:aivideo:task:list',
+                  'ai:aivideo:task:query',
+                  'ai:aivideo:setting:query',
+                  'ai:aivideo:setting:edit'
+              )
+          )
+        ON CONFLICT DO NOTHING;
+    END IF;
 END $$;
 COMMIT;
