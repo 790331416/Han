@@ -140,6 +140,8 @@ class AivideoPromptTemplateSqlTest {
         assertContains(upgrade, "火山 VOD 视频剪辑合成");
         assertContains(upgrade, "VIDEO_EDIT");
         assertContains(upgrade, "vod-direct-edit");
+        assertContains(upgrade, "to_regclass('public.ai_model')");
+        assertContains(upgrade, "IS NOT NULL");
     }
 
     @Test
