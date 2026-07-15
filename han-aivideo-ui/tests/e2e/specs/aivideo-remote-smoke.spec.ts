@@ -57,6 +57,40 @@ function installHealthMonitor(page: Page, origins: Set<string>) {
   }
 }
 
+async function inspectIsolatedPage(
+  sourcePage: Page,
+  origins: Set<string>,
+  path: string,
+  expectedApiPath: string,
+  assertion: (isolatedPage: Page) => Promise<void>
+): Promise<Issue[]> {
+  const isolatedPage = await sourcePage.context().newPage()
+  const monitor = installHealthMonitor(isolatedPage, origins)
+  let issues: Issue[] = []
+  try {
+    const apiResponsePromise = isolatedPage.waitForResponse((response) => {
+      try {
+        return new URL(response.url()).pathname === expectedApiPath
+          && ['xhr', 'fetch'].includes(response.request().resourceType())
+      } catch {
+        return false
+      }
+    }, { timeout: 15_000 })
+
+    await isolatedPage.goto(path, { waitUntil: 'domcontentloaded' })
+    await expectPath(isolatedPage, path)
+    const apiResponse = await apiResponsePromise
+    expect(apiResponse.status(), `${expectedApiPath} HTTP status`).toBeLessThan(400)
+    await assertion(isolatedPage)
+    await isolatedPage.waitForTimeout(500)
+  } finally {
+    monitor.stop()
+    issues = [...monitor.issues.values()]
+    await isolatedPage.close()
+  }
+  return issues
+}
+
 async function injectSession(page: Page) {
   const payload = {
     accessToken: requireEnvironment('PW_ACCESS_TOKEN'),
@@ -121,12 +155,23 @@ test.describe('95 AIVideo 真实同会话回归', () => {
 
       await visitWorkbench(page, projectId)
       if (inspectAdminPages) {
-        await page.goto('/ai/aivideo/tasks', { waitUntil: 'domcontentloaded' })
-        await expectPath(page, '/ai/aivideo/tasks')
-        await expect(page.locator('.app-container').getByText('短剧生成任务')).toBeVisible()
-        await page.goto('/ai/aivideo/settings', { waitUntil: 'domcontentloaded' })
-        await expectPath(page, '/ai/aivideo/settings')
-        await expect(page.locator('.app-container .card-header').getByText('短剧基础配置')).toBeVisible()
+        const adminIssues = [
+          ...(await inspectIsolatedPage(
+            page, origins, '/ai/aivideo/tasks', '/aivideo/admin/task/list',
+            async (adminPage) => {
+              await expect(adminPage.locator('.app-container').getByText('短剧生成任务')).toBeVisible()
+            }
+          )),
+          ...(await inspectIsolatedPage(
+            page, origins, '/ai/aivideo/settings', '/aivideo/admin/setting',
+            async (adminPage) => {
+              await expect(adminPage.locator('.app-container .card-header').getByText('短剧基础配置')).toBeVisible()
+            }
+          ))
+        ]
+        for (const issue of adminIssues) {
+          monitor.issues.set(`${issue.kind}|${issue.url || ''}|${issue.message}`, issue)
+        }
       }
       await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
       await page.waitForTimeout(1_000)
