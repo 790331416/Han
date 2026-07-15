@@ -77,6 +77,7 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260703_ai_chat_multimodal.sql"
   "sql/upgrades/postgres/20260703_ai_flow_meta.sql"
   "sql/upgrades/postgres/20260703_file_manage_menu.sql"
+  "sql/upgrades/postgres/20260715_aivideo_admin_menu_alignment.sql"
   "sql/upgrades/postgres/20260715_sys_dict_type_exact_duplicate_alignment.sql"
 )
 BACKUP_INPUTS=()

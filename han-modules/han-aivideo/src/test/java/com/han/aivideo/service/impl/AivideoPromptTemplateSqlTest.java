@@ -167,6 +167,28 @@ class AivideoPromptTemplateSqlTest {
     }
 
     @Test
+    void aivideoAdminMenusExistInFullInitAndUpgrade() throws Exception {
+        Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
+        String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);
+        String upgrade = Files.readString(
+                repoRoot.resolve("sql/upgrades/postgres/20260715_aivideo_admin_menu_alignment.sql"),
+                StandardCharsets.UTF_8);
+
+        for (String sql : new String[]{fullInit, upgrade}) {
+            assertContains(sql, "aivideo/tasks");
+            assertContains(sql, "ai/aivideo/tasks/index");
+            assertContains(sql, "ai:aivideo:task:list");
+            assertContains(sql, "ai:aivideo:task:query");
+            assertContains(sql, "aivideo/settings");
+            assertContains(sql, "ai/aivideo/settings/index");
+            assertContains(sql, "ai:aivideo:setting:query");
+            assertContains(sql, "ai:aivideo:setting:edit");
+            assertContains(sql, "sys_role_menu");
+            assertContains(sql, "role.role_key IN ('admin', 'super_admin')");
+        }
+    }
+
+    @Test
     void shotSoundCueColumnsExistInFullInitAndUpgrade() throws Exception {
         Path repoRoot = findRepoRoot(Path.of("").toAbsolutePath());
         String fullInit = Files.readString(repoRoot.resolve("sql/tiers/full/full-init.sql"), StandardCharsets.UTF_8);

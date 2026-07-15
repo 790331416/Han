@@ -117,6 +117,7 @@ test.describe('95 AIVideo 真实同会话回归', () => {
       await page.getByRole('button', { name: '新建项目' }).click()
       await expectPath(page, '/studio/projects/create')
       await expect(page.getByRole('button', { name: '保存并进入工作台' })).toBeVisible()
+      await page.waitForLoadState('networkidle', { timeout: 10_000 })
 
       await visitWorkbench(page, projectId)
       if (inspectAdminPages) {
