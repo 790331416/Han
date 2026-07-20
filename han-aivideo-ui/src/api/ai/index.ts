@@ -351,9 +351,10 @@ export interface AiFlowDebugResult {
   nodeTraces: AiFlowNodeTrace[]
 }
 
-// 编排调试运行（设计器调试抽屉）：不要求已发布、不落会话消息
-export function debugAiWorkflow(workflowId: string | number, message: string) {
-  return post<AiFlowDebugResult>(`/ai/workflow/debug/${workflowId}`, { message })
+// 编排调试运行（设计器调试抽屉）：不要求已发布、不落会话消息；
+// params 为 start 节点自定义入参取值（flowConfig v2，可空）
+export function debugAiWorkflow(workflowId: string | number, message: string, params?: Record<string, string>) {
+  return post<AiFlowDebugResult>(`/ai/workflow/debug/${workflowId}`, { message, params })
 }
 
 // ===================== AI对话 =====================
