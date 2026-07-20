@@ -15,6 +15,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '登录', hidden: true }
   },
   {
+    path: '/social/callback',
+    name: 'SocialCallback',
+    component: () => import('@/views/login/social-callback.vue'),
+    meta: { title: '第三方登录', hidden: true }
+  },
+  {
     path: '/404',
     name: '404',
     component: () => import('@/views/error/404.vue'),
@@ -366,7 +372,7 @@ const router = createRouter({
 })
 
 // 白名单
-const whiteList = ['/login', '/404']
+const whiteList = ['/login', '/social/callback', '/404']
 
 // 嵌入式/公开分享对话路径前缀（免登录）
 const isEmbedPath = (path: string) => path.startsWith('/embed/') || path.startsWith('/chat/share/')

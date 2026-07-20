@@ -71,3 +71,51 @@ export function getMyTenants() {
 export function switchTenant(tenantId: string | number) {
   return post<LoginVO>(`/auth/switchTenant?tenantId=${tenantId}`)
 }
+
+// ==================== 社交登录（GitHub / 微信扫码） ====================
+
+// 多租户绑定场景下的可选租户
+export interface SocialTenantOption {
+  tenantId: string | number
+  tenantName: string
+}
+
+// 社交登录回调三态结果：
+// 1. 已绑定单账号：bound=true 且 login 为登录态
+// 2. 多租户绑定：bound=true 且 multiTenant=true，凭 ticket 选租户登录
+// 3. 未绑定：bound=false，凭 ticket 走账号密码绑定
+export interface SocialCallbackResult {
+  bound: boolean
+  login?: LoginVO
+  multiTenant?: boolean
+  ticket?: string
+  tenants?: SocialTenantOption[]
+  provider?: string
+  nickname?: string
+  avatar?: string
+}
+
+// 获取已启用的社交登录方式（键为 provider，如 github / wechat）
+export function getSocialProviders() {
+  return get<Record<string, boolean>>('/auth/social/providers', undefined, { silentError: true })
+}
+
+// 获取第三方授权跳转 URL（含一次性 state）
+export function getSocialAuthorizeUrl(provider: string, redirectUri: string) {
+  return get<{ authorizeUrl: string }>(`/auth/social/${provider}/authorize`, { redirectUri })
+}
+
+// OAuth 回调：按绑定情况返回登录态 / 租户列表 / 绑定 ticket
+export function socialCallback(provider: string, code: string, state: string) {
+  return post<SocialCallbackResult>(`/auth/social/${provider}/callback`, { code, state }, { silentError: true })
+}
+
+// 账号密码绑定社交身份并直接登录（密码按登录页同样方式 RSA 加密传输）
+export function socialBind(data: { ticket: string; username: string; password: string; tenantId?: string }) {
+  return post<LoginVO>('/auth/social/bind', data, { silentError: true })
+}
+
+// 多租户绑定场景：选择租户后凭 ticket 登录
+export function socialLoginByTicket(ticket: string, tenantId: string | number) {
+  return post<LoginVO>('/auth/social/loginByTicket', { ticket, tenantId: String(tenantId) }, { silentError: true })
+}
