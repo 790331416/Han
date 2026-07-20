@@ -52,6 +52,12 @@ mybatis-plus:
 han:
   ai:
     document-storage-path: ${AI_DOCUMENT_STORAGE_PATH:/app/data/ai-documents}
+    # SSRF 防护（G1-12）：默认拒绝内网/环回/链路本地/元数据地址；
+    # 需放行容器网络内 MCP 服务时配置 allowed-hosts（主机名/通配后缀/IP/CIDR，逗号分隔）
+    ssrf:
+      enabled: ${AI_SSRF_ENABLED:true}
+      allow-private-network: ${AI_SSRF_ALLOW_PRIVATE_NETWORK:false}
+      allowed-hosts: ${AI_SSRF_ALLOWED_HOSTS:}
 
 logging:
   level:

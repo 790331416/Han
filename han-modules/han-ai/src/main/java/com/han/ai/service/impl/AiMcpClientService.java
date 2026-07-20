@@ -2,8 +2,10 @@ package com.han.ai.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.han.ai.domain.po.AiMcpServerPo;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -30,10 +32,13 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 class AiMcpClientService {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final String PROTOCOL_VERSION = "2025-03-26";
+
+    private final AiUrlSecurityValidator urlSecurityValidator;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -156,6 +161,8 @@ class AiMcpClientService {
         if (!StringUtils.hasText(server.getUrl())) {
             throw new BusinessException("MCP 服务未配置 URL");
         }
+        // SSRF 防护（G1-12）：连接路径兜底校验，防止保存后 DNS 指向变化或存量脏数据绕过
+        urlSecurityValidator.validate(server.getUrl(), "MCP服务");
     }
 
     private String buildRpcBody(String method, Map<String, Object> params, long id) {

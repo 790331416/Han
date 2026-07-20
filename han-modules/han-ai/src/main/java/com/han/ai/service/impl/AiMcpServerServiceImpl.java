@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.ai.domain.po.AiMcpServerPo;
 import com.han.ai.domain.query.AiMcpServerQuery;
 import com.han.ai.mapper.AiMcpServerMapper;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.ai.service.IAiMcpServerService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
@@ -31,6 +32,7 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
 
     private final AiMcpServerMapper aiMcpServerMapper;
     private final AiMcpClientService aiMcpClientService;
+    private final AiUrlSecurityValidator urlSecurityValidator;
 
     @Override
     public PageResult<AiMcpServerPo> selectPage(AiMcpServerQuery query) {
@@ -157,8 +159,12 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         if ("stdio".equals(server.getTransportType()) && !StringUtils.hasText(server.getCommand())) {
             throw new BusinessException("stdio 模式下命令不能为空");
         }
-        if (!"stdio".equals(server.getTransportType()) && !StringUtils.hasText(server.getUrl())) {
-            throw new BusinessException("远程模式下服务URL不能为空");
+        if (!"stdio".equals(server.getTransportType())) {
+            if (!StringUtils.hasText(server.getUrl())) {
+                throw new BusinessException("远程模式下服务URL不能为空");
+            }
+            // SSRF 防护（G1-12）：保存路径即校验，内网/环回等地址默认拒绝，可配白名单放行
+            urlSecurityValidator.validate(server.getUrl(), "MCP服务");
         }
         validateJson(server.getArgs(), "参数");
         validateJson(server.getEnvVars(), "环境变量");
