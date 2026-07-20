@@ -142,6 +142,14 @@
 
           <template v-if="debugResult">
             <el-alert
+              v-if="debugRunning"
+              type="info"
+              title="执行中…（节点事件实时推送）"
+              :closable="false"
+              style="margin-top: 16px;"
+            />
+            <el-alert
+              v-else
               :type="debugResult.success ? 'success' : 'error'"
               :title="debugResult.success ? '执行成功' : '执行失败'"
               :closable="false"
@@ -153,14 +161,14 @@
               <el-timeline-item
                 v-for="trace in debugResult.nodeTraces"
                 :key="trace.nodeId"
-                :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : 'info'"
+                :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : trace.status === 'running' ? 'warning' : 'info'"
                 :hollow="trace.status === 'skipped'"
               >
                 <div class="trace-item" data-testid="ai-flow-debug-trace">
                   <div class="trace-header">
                     <strong>{{ trace.nodeName || trace.nodeId }}</strong>
-                    <el-tag size="small" :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : 'info'">
-                      {{ trace.status === 'succeeded' ? '成功' : trace.status === 'failed' ? '失败' : '跳过' }}
+                    <el-tag size="small" :type="trace.status === 'succeeded' ? 'success' : trace.status === 'failed' ? 'danger' : trace.status === 'running' ? 'warning' : 'info'">
+                      {{ trace.status === 'succeeded' ? '成功' : trace.status === 'failed' ? '失败' : trace.status === 'running' ? '执行中' : '跳过' }}
                     </el-tag>
                     <span v-if="trace.costMs !== undefined && trace.costMs !== null" class="trace-cost">{{ trace.costMs }}ms</span>
                   </div>
@@ -261,8 +269,10 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import { getAiWorkflow, updateAiWorkflow, debugAiWorkflow, listAllModels, listAllKnowledgeBases, listAllMcpServers } from '@/api/ai'
-import type { AiModel, KnowledgeBase, McpServer, AiFlowDebugResult } from '@/api/ai'
+import type { AiModel, KnowledgeBase, McpServer, AiFlowDebugResult, AiFlowNodeTrace } from '@/api/ai'
 import type { Node, Edge, Connection } from '@vue-flow/core'
+import { requestAiStream, type AiStreamNodeEvent } from '@/utils/ai-stream'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
@@ -476,13 +486,79 @@ const runDebug = async () => {
     // 先保存再调试，保证后端执行的是当前画布
     const flowConfig = JSON.stringify({ version: 1, nodes: nodes.value, edges: edges.value })
     await updateAiWorkflow({ workflowId, flowConfig } as any)
-    const res = await debugAiWorkflow(workflowId, message)
-    debugResult.value = (res as any).data || null
-  } catch (e: any) {
-    ElMessage.error('调试运行失败: ' + (e.message || '未知错误'))
+    await runDebugStream(message)
+  } catch (streamError: any) {
+    // 流式调试链路异常时降级为一次性调试接口
+    try {
+      const res = await debugAiWorkflow(workflowId, message)
+      debugResult.value = (res as any).data || null
+    } catch (e: any) {
+      ElMessage.error('调试运行失败: ' + (e.message || streamError.message || '未知错误'))
+    }
   } finally {
     debugRunning.value = false
   }
+}
+
+/**
+ * 流式调试：消费 node_start/node_delta/node_end 事件实时点亮时间线，
+ * llm 逐 token 先行展示，最终回复以后端 delta 事件为准。
+ */
+async function runDebugStream(message: string) {
+  const userStore = useUserStore()
+  const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
+  const live: AiFlowDebugResult = { success: true, reply: '', nodeTraces: [] }
+  debugResult.value = live
+  let sawFinalReply = false
+  const publish = () => {
+    debugResult.value = { ...live, nodeTraces: [...live.nodeTraces] }
+  }
+  await requestAiStream({
+    baseUrl,
+    path: `/ai/workflow/debug-stream/${workflowId}`,
+    token: userStore.token,
+    tenantId: userStore.tenantId,
+    body: { message },
+    onNodeEvent: (event: AiStreamNodeEvent) => {
+      if (event.type === 'node_start') {
+        live.nodeTraces.push({
+          nodeId: event.content.nodeId || '',
+          nodeType: event.content.nodeType || '',
+          nodeName: event.content.nodeName,
+          status: 'running'
+        })
+      } else if (event.type === 'node_delta') {
+        if (!sawFinalReply) {
+          live.reply += event.content.delta || ''
+        }
+      } else if (event.type === 'node_end') {
+        const trace = event.content as unknown as AiFlowNodeTrace
+        const runningIndex = live.nodeTraces.findIndex(
+          (item) => item.nodeId === trace.nodeId && item.status === 'running'
+        )
+        if (runningIndex >= 0) {
+          live.nodeTraces.splice(runningIndex, 1, trace)
+        } else {
+          live.nodeTraces.push(trace)
+        }
+      }
+      publish()
+    },
+    onDelta: ({ fullContent }) => {
+      sawFinalReply = true
+      live.reply = fullContent
+      publish()
+    },
+    onMeta: (meta) => {
+      if (typeof meta.success === 'boolean') {
+        live.success = meta.success
+      }
+      if (Array.isArray(meta.nodeTraces)) {
+        live.nodeTraces = meta.nodeTraces as AiFlowNodeTrace[]
+      }
+      publish()
+    }
+  })
 }
 
 // 保存流程

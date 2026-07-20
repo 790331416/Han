@@ -5,22 +5,34 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiWorkflowQuery;
 import com.han.ai.domain.vo.AiFlowDebugVo;
+import com.han.ai.domain.vo.AiFlowNodeTraceVo;
 import com.han.ai.mapper.AiWorkflowMapper;
 import com.han.ai.service.IAiChatService;
 import com.han.ai.service.IAiWorkflowService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * AI workflow service implementation.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkflowService {
+
+    /** 调试流式 SSE 超时：覆盖编排单流 5 分钟上限 + 收尾余量 */
+    private static final long DEBUG_STREAM_SSE_TIMEOUT = 330_000L;
 
     private final AiWorkflowMapper aiWorkflowMapper;
     private final IAiChatService aiChatService;
@@ -97,6 +109,64 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
 
     @Override
     public AiFlowDebugVo debug(Long workflowId, String message) {
+        AiWorkflowPo workflow = requireDebuggableWorkflow(workflowId, message);
+        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), message.trim());
+        AiFlowDebugVo vo = new AiFlowDebugVo();
+        vo.setSuccess(result.success());
+        vo.setReply(result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage());
+        vo.setNodeTraces(result.traces());
+        return vo;
+    }
+
+    @Override
+    public SseEmitter debugStream(Long workflowId, String message) {
+        AiWorkflowPo workflow = requireDebuggableWorkflow(workflowId, message);
+        String debugMessage = message.trim();
+        SseEmitter emitter = new SseEmitter(DEBUG_STREAM_SSE_TIMEOUT);
+        AiSseChannel channel = new AiSseChannel(emitter);
+        LoginUser loginUser = SecurityContextHolder.getLoginUser();
+        CompletableFuture.runAsync(() -> {
+            SecurityContextHolder.setLoginUser(loginUser);
+            try {
+                AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), debugMessage,
+                        new AiFlowEngine.FlowEventListener() {
+                            @Override
+                            public void onNodeStart(AiFlowGraph.FlowNode node) {
+                                channel.sendEvent("node_start", Map.of(
+                                        "nodeId", node.id(),
+                                        "nodeType", node.type() == null ? "" : node.type(),
+                                        "nodeName", node.label() == null ? "" : node.label()));
+                            }
+
+                            @Override
+                            public void onNodeDelta(String nodeId, String delta) {
+                                channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
+                            }
+
+                            @Override
+                            public void onNodeEnd(AiFlowNodeTraceVo trace) {
+                                channel.sendEvent("node_end", trace);
+                            }
+                        });
+                String reply = result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage();
+                channel.sendEvent("delta", reply);
+                channel.sendEvent("meta", Map.of(
+                        "success", result.success(),
+                        "nodeTraces", result.traces()));
+                channel.sendDone();
+                channel.complete();
+            } catch (Exception ex) {
+                log.warn("AI workflow debug stream failed, workflowId={}", workflowId, ex);
+                channel.sendEvent("error", ex.getMessage() == null ? "编排调试异常" : ex.getMessage());
+                channel.complete();
+            } finally {
+                SecurityContextHolder.clear();
+            }
+        });
+        return emitter;
+    }
+
+    private AiWorkflowPo requireDebuggableWorkflow(Long workflowId, String message) {
         AiWorkflowPo workflow = requireExisting(workflowId);
         if (!"advanced".equals(workflow.getWorkflowType())) {
             throw new BusinessException("仅 advanced 编排工作流支持调试运行");
@@ -104,12 +174,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         if (!StringUtils.hasText(message)) {
             throw new BusinessException("调试输入不能为空");
         }
-        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), message.trim());
-        AiFlowDebugVo vo = new AiFlowDebugVo();
-        vo.setSuccess(result.success());
-        vo.setReply(result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage());
-        vo.setNodeTraces(result.traces());
-        return vo;
+        return workflow;
     }
 
     private LambdaQueryWrapper<AiWorkflowPo> buildQueryWrapper(AiWorkflowQuery query) {
