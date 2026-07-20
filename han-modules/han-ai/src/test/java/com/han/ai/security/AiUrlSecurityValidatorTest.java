@@ -178,6 +178,8 @@ class AiUrlSecurityValidatorTest {
     void errorMessageMentionsAllowlistConfigKey() {
         assertThatThrownBy(() -> defaultValidator().validate("http://10.0.0.8/mcp", "MCP服务"))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(ex.getMessage()).contains("han.ai.ssrf.allowed-hosts"));
+                .satisfies(ex -> assertThat(ex.getMessage())
+                        .contains("han.ai.ssrf.allowed-hosts")
+                        .contains("AI_SSRF_ALLOWED_HOSTS"));
     }
 }

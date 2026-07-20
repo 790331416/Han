@@ -30,10 +30,10 @@
         <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ row.description || '-' }}</template>
         </el-table-column>
-        <el-table-column label="传输类型" width="140" align="center">
+        <el-table-column label="传输类型" width="160" align="center">
           <template #default="{ row }">
             <el-tag :type="row.transportType === 'stdio' ? 'warning' : 'primary'">
-              {{ getTransportLabel(row.transportType) }}
+              {{ getTransportLabel(row.transportType) }}{{ row.transportType === 'stdio' ? '（暂不可用）' : '' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -54,8 +54,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="280">
+        <el-table-column label="操作" min-width="340">
           <template #default="{ row }">
+            <el-button
+              type="warning"
+              link
+              data-testid="ai-mcp-test-button"
+              :loading="testingMcpId === row.mcpId"
+              @click="handleTestConnection(row)"
+            >
+              测试连接
+            </el-button>
             <el-button type="success" link data-testid="ai-mcp-refresh-button" @click="handleRefresh(row)">刷新工具</el-button>
             <el-button type="info" link data-testid="ai-mcp-view-tools-button" @click="handleViewTools(row)">查看工具</el-button>
             <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -79,12 +88,27 @@
         </el-form-item>
         <el-form-item label="传输类型" prop="transportType">
           <el-radio-group v-model="form.transportType">
-            <el-radio-button v-for="item in transportTypeOptions" :key="item.value" :value="item.value">
-              {{ item.label }}
+            <!-- stdio 处置（决策 D4）：选项保留但禁用标注，后端保存层同步拦截 -->
+            <el-radio-button
+              v-for="item in transportTypeOptions"
+              :key="item.value"
+              :value="item.value"
+              :disabled="item.value === 'stdio'"
+            >
+              {{ item.label }}{{ item.value === 'stdio' ? '（暂不可用）' : '' }}
             </el-radio-button>
           </el-radio-group>
         </el-form-item>
         <template v-if="form.transportType === 'stdio'">
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            title="stdio 传输暂不可用"
+            description="容器环境不支持本地进程管理，该记录无法真实调用；请切换为 SSE 或 Streamable HTTP 远程传输后保存。"
+            style="margin-bottom: 16px;"
+            data-testid="ai-mcp-stdio-alert"
+          />
           <el-form-item label="命令" prop="command">
             <el-input v-model="form.command" placeholder="如: npx, uvx, node" />
           </el-form-item>
@@ -135,7 +159,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import {
   listMcpServer, getMcpServer, addMcpServer, updateMcpServer, deleteMcpServer, refreshMcpTools,
-  transportTypeOptions, type McpServer, type McpServerQuery
+  testMcpConnection, transportTypeOptions, type McpServer, type McpServerQuery
 } from '@/api/ai'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -189,6 +213,11 @@ const handleEdit = async (row: McpServer) => {
 const handleSubmit = async () => {
   const valid = await formRef.value?.validate()
   if (!valid) return
+  // stdio 处置（决策 D4）：前端提交拦截，与后端保存校验双保险
+  if (form.transportType === 'stdio') {
+    ElMessage.warning('stdio 传输暂不可用，请切换为 SSE 或 Streamable HTTP 远程传输')
+    return
+  }
   submitLoading.value = true
   try {
     if (form.mcpId) { await updateMcpServer(form); ElMessage.success('修改成功') }
@@ -214,6 +243,19 @@ const handleRefresh = async (row: McpServer) => {
     ElMessage.success(res.data || '刷新完成')
     getList()
   } catch { /* 接口不可用 */ }
+}
+
+// 测试连接（真连 initialize + tools/list，不落库）；失败文案由后端透传（含 SSRF 拒绝原因与白名单提示）
+const testingMcpId = ref<string | number | null>(null)
+const handleTestConnection = async (row: McpServer) => {
+  if (testingMcpId.value !== null) return
+  testingMcpId.value = row.mcpId
+  try {
+    const res = await testMcpConnection(row.mcpId)
+    ElMessage.success(res.data || '连接成功')
+  } catch { /* 错误文案由全局拦截器弹出 */ } finally {
+    testingMcpId.value = null
+  }
 }
 
 const handleViewTools = (row: McpServer) => {

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * MCP server controller.
@@ -117,5 +118,29 @@ public class AiMcpController {
     @PreAuthorize("@ss.hasAuthority('ai:mcp:edit')")
     public R<String> refresh(@PathVariable Long mcpId) {
         return R.ok(aiMcpServerService.refreshTools(mcpId));
+    }
+
+    /**
+     * Test MCP connection (initialize + tools/list, no persistence).
+     *
+     * @param mcpId server id
+     * @return test message with tool count
+     */
+    @PostMapping("/test/{mcpId}")
+    @PreAuthorize("@ss.hasAuthority('ai:mcp:query')")
+    public R<String> testConnection(@PathVariable Long mcpId) {
+        return R.ok(aiMcpServerService.testConnection(mcpId));
+    }
+
+    /**
+     * Query stored tool metadata list (designer tool dropdown / param form).
+     *
+     * @param mcpId server id
+     * @return tool metadata list
+     */
+    @GetMapping("/tools/{mcpId}")
+    @PreAuthorize("@ss.hasAuthority('ai:mcp:query')")
+    public R<List<Map<String, Object>>> listTools(@PathVariable Long mcpId) {
+        return R.ok(aiMcpServerService.listToolMetadata(mcpId));
     }
 }

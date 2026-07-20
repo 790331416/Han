@@ -3,6 +3,7 @@ package com.han.ai.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.ai.domain.po.AiMcpServerPo;
 import com.han.ai.domain.query.AiMcpServerQuery;
@@ -113,6 +114,30 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         return "已从 MCP 服务拉取 " + tools.size() + " 个工具";
     }
 
+    @Override
+    public String testConnection(Long mcpId) {
+        AiMcpServerPo server = requireExisting(mcpId);
+        // 真连 initialize + tools/list 但不落库；失败时透传客户端/SSRF 校验的可诊断文案（G1-5）
+        List<AiMcpClientService.McpTool> tools = aiMcpClientService.listTools(server);
+        return "连接成功，检测到 " + tools.size() + " 个工具";
+    }
+
+    @Override
+    public List<Map<String, Object>> listToolMetadata(Long mcpId) {
+        AiMcpServerPo server = requireExisting(mcpId);
+        if (!StringUtils.hasText(server.getTools())) {
+            return List.of();
+        }
+        try {
+            List<Map<String, Object>> tools = OBJECT_MAPPER.readValue(server.getTools(),
+                    new TypeReference<List<Map<String, Object>>>() {});
+            return tools != null ? tools : List.of();
+        } catch (JsonProcessingException ex) {
+            // 库内元数据非法（历史手填脏数据）按空清单返回，引导前端提示先刷新工具
+            return List.of();
+        }
+    }
+
     private LambdaQueryWrapper<AiMcpServerPo> buildQueryWrapper(AiMcpServerQuery query) {
         LambdaQueryWrapper<AiMcpServerPo> wrapper = new LambdaQueryWrapper<AiMcpServerPo>()
                 .like(StringUtils.hasText(query.getServerName()), AiMcpServerPo::getServerName, query.getServerName())
@@ -156,16 +181,15 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         if (!StringUtils.hasText(server.getTransportType())) {
             throw new BusinessException("传输类型不能为空");
         }
-        if ("stdio".equals(server.getTransportType()) && !StringUtils.hasText(server.getCommand())) {
-            throw new BusinessException("stdio 模式下命令不能为空");
+        // stdio 处置（决策 D4）：连接层已拒绝执行，保存层同步拦截，消除「收了不能用」；字段保留不删
+        if ("stdio".equals(server.getTransportType())) {
+            throw new BusinessException("stdio 传输暂不可用：容器环境不支持本地进程管理，请选择 SSE 或 Streamable HTTP 远程传输");
         }
-        if (!"stdio".equals(server.getTransportType())) {
-            if (!StringUtils.hasText(server.getUrl())) {
-                throw new BusinessException("远程模式下服务URL不能为空");
-            }
-            // SSRF 防护（G1-12）：保存路径即校验，内网/环回等地址默认拒绝，可配白名单放行
-            urlSecurityValidator.validate(server.getUrl(), "MCP服务");
+        if (!StringUtils.hasText(server.getUrl())) {
+            throw new BusinessException("远程模式下服务URL不能为空");
         }
+        // SSRF 防护（G1-12）：保存路径即校验，内网/环回等地址默认拒绝，可配白名单放行
+        urlSecurityValidator.validate(server.getUrl(), "MCP服务");
         validateJson(server.getArgs(), "参数");
         validateJson(server.getEnvVars(), "环境变量");
         if (!STATUS_ENABLED.equals(server.getStatus()) && !STATUS_DISABLED.equals(server.getStatus())) {
