@@ -232,6 +232,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         if (!STATUS_ENABLED.equals(workflow.getStatus()) && !STATUS_DISABLED.equals(workflow.getStatus())) {
             throw new BusinessException("工作流状态不合法");
         }
+        validateSuggestedQuestions(workflow.getSuggestedQuestions());
         validateFlowConfig(workflow);
     }
 
@@ -275,6 +276,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         target.setSystemPrompt(source.getSystemPrompt());
         target.setFlowConfig(source.getFlowConfig());
         target.setPrologue(source.getPrologue());
+        target.setSuggestedQuestions(source.getSuggestedQuestions());
         target.setStatus(source.getStatus());
     }
 
@@ -287,6 +289,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         workflow.setSystemPrompt(trimToEmpty(workflow.getSystemPrompt()));
         workflow.setFlowConfig(StringUtils.hasText(workflow.getFlowConfig()) ? workflow.getFlowConfig().trim() : "{}");
         workflow.setPrologue(trimToEmpty(workflow.getPrologue()));
+        workflow.setSuggestedQuestions(StringUtils.hasText(workflow.getSuggestedQuestions()) ? workflow.getSuggestedQuestions().trim() : "[]");
         workflow.setPublished(StringUtils.hasText(workflow.getPublished()) ? workflow.getPublished().trim() : "0");
         workflow.setStatus(StringUtils.hasText(workflow.getStatus()) ? workflow.getStatus().trim() : STATUS_ENABLED);
     }

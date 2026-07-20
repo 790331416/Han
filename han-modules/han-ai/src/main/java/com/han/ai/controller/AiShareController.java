@@ -46,6 +46,8 @@ public class AiShareController {
         profile.put("agentName", agent.getAgentName());
         profile.put("avatar", agent.getAvatar());
         profile.put("prologue", agent.getPrologue());
+        // 开场推荐问题（G1-10）：JSON 字符串数组原样下发，前端解析渲染可点击提问
+        profile.put("suggestedQuestions", agent.getSuggestedQuestions());
         profile.put("description", agent.getDescription());
         return R.ok(profile);
     }

@@ -90,6 +90,20 @@
         <el-form-item label="开场白">
           <el-input v-model="form.prologue" type="textarea" :rows="2" placeholder="用户打开对话时的欢迎语" />
         </el-form-item>
+        <el-form-item label="推荐问题">
+          <div class="suggested-question-list" data-testid="ai-agent-suggested-questions">
+            <div v-for="(_, idx) in suggestedList" :key="idx" class="suggested-question-row">
+              <el-input v-model="suggestedList[idx]" placeholder="如：这个产品能做什么？" maxlength="200" />
+              <el-button link :disabled="idx === 0" @click="moveSuggested(idx, -1)">上移</el-button>
+              <el-button link :disabled="idx === suggestedList.length - 1" @click="moveSuggested(idx, 1)">下移</el-button>
+              <el-button type="danger" link @click="removeSuggested(idx)">删除</el-button>
+            </div>
+            <el-button size="small" :disabled="suggestedList.length >= MAX_SUGGESTED_QUESTIONS" @click="addSuggested">
+              + 添加推荐问题（最多 {{ MAX_SUGGESTED_QUESTIONS }} 条）
+            </el-button>
+            <div class="form-item-tip">对话页与分享页开场展示为可点击提问，点击即作为用户消息发送</div>
+          </div>
+        </el-form-item>
         <el-form-item label="关联知识库">
           <el-select v-model="selectedKbIds" multiple placeholder="选择知识库(可选)" filterable>
             <el-option v-for="kb in allKbs" :key="kb.kbId" :label="kb.kbName" :value="kb.kbId" />
@@ -206,11 +220,38 @@ const allMcps = ref<McpServer[]>([])
 const selectedKbIds = ref<(string | number)[]>([])
 const selectedMcpIds = ref<(string | number)[]>([])
 
+// ==================== 开场推荐问题（G1-10：增删排序，上限 5 条） ====================
+const MAX_SUGGESTED_QUESTIONS = 5
+const suggestedList = ref<string[]>([])
+
+const addSuggested = () => {
+  if (suggestedList.value.length < MAX_SUGGESTED_QUESTIONS) suggestedList.value.push('')
+}
+const removeSuggested = (idx: number) => { suggestedList.value.splice(idx, 1) }
+const moveSuggested = (idx: number, offset: number) => {
+  const target = idx + offset
+  if (target < 0 || target >= suggestedList.value.length) return
+  const [item] = suggestedList.value.splice(idx, 1)
+  suggestedList.value.splice(target, 0, item)
+}
+const parseSuggestedQuestions = (raw?: string): string[] => {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
+      : []
+  } catch { return [] }
+}
+const serializeSuggestedQuestions = () =>
+  JSON.stringify(suggestedList.value.map((item) => item.trim()).filter(Boolean).slice(0, MAX_SUGGESTED_QUESTIONS))
+
 const formRef = ref<FormInstance>()
 const queryParams = reactive<AiAgentQuery>({ pageNum: 1, pageSize: 8 })
 
 const defaultForm = () => ({
   agentId: undefined as any, agentName: '', description: '', systemPrompt: '', prologue: '',
+  suggestedQuestions: '[]',
   modelId: undefined as any, temperature: 0.7, maxTokens: 2048,
   historyLimit: undefined as number | undefined,
   retrievalTopK: undefined as number | undefined,
@@ -249,6 +290,7 @@ const handleAdd = async () => {
   Object.assign(form, defaultForm())
   selectedKbIds.value = []
   selectedMcpIds.value = []
+  suggestedList.value = []
   await loadOptions()
   dialogVisible.value = true
 }
@@ -266,6 +308,7 @@ const handleEdit = async (agent: AiAgent) => {
   Object.assign(form, res.data)
   try { selectedKbIds.value = res.data.knowledgeBaseIds ? JSON.parse(res.data.knowledgeBaseIds) : [] } catch { selectedKbIds.value = [] }
   try { selectedMcpIds.value = res.data.mcpServerIds ? JSON.parse(res.data.mcpServerIds) : [] } catch { selectedMcpIds.value = [] }
+  suggestedList.value = parseSuggestedQuestions(res.data.suggestedQuestions)
   await loadOptions()
   dialogVisible.value = true
 }
@@ -276,6 +319,7 @@ const handleSubmit = async () => {
   submitLoading.value = true
   form.knowledgeBaseIds = JSON.stringify(selectedKbIds.value)
   form.mcpServerIds = JSON.stringify(selectedMcpIds.value)
+  form.suggestedQuestions = serializeSuggestedQuestions()
   try {
     if (form.agentId) { await updateAiAgent(form); ElMessage.success('修改成功') }
     else { await addAiAgent(form); ElMessage.success('创建成功') }
@@ -404,4 +448,6 @@ onMounted(async () => {
 .chat-pre { margin: 0; white-space: pre-wrap; font-family: inherit; font-size: inherit; }
 .chat-input { flex-shrink: 0; }
 .form-item-tip { font-size: 12px; color: #909399; line-height: 1.5; }
+.suggested-question-list { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.suggested-question-row { display: flex; align-items: center; gap: 4px; .el-input { flex: 1; } }
 </style>

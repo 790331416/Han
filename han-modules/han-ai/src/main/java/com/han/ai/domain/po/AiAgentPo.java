@@ -35,6 +35,11 @@ public class AiAgentPo {
 
     private String prologue;
 
+    /**
+     * 开场推荐问题（JSON 字符串数组，最多 5 条；空数组=不展示）
+     */
+    private String suggestedQuestions;
+
     private Long modelId;
 
     private String knowledgeBaseIds;
