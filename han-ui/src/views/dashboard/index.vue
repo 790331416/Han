@@ -92,8 +92,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { computed, reactive, ref, onMounted, nextTick, onBeforeUnmount, version as vueVersion } from 'vue'
 import { useRouter } from 'vue-router'
+import { version as elementPlusVersion } from 'element-plus'
 import {
   User, OfficeBuilding, UserFilled, Document, Setting, Key,
   Connection, Notebook, Bell, Timer, Postcard, Menu as MenuIcon
@@ -247,8 +248,8 @@ const sysInfo = computed(() => [
   { label: '系统版本', value: 'v1.0.0' },
   { label: 'Spring Boot', value: stats.springBootVersion || '-' },
   { label: 'Spring Cloud', value: '2025.1.2' },
-  { label: 'Vue', value: '3.5.x' },
-  { label: 'Element Plus', value: '2.9.x' },
+  { label: 'Vue', value: vueVersion },
+  { label: 'Element Plus', value: elementPlusVersion },
 ])
 
 onMounted(async () => {
