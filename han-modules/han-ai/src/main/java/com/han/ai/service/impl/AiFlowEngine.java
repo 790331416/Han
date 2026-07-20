@@ -56,9 +56,11 @@ class AiFlowEngine {
     private final AiMcpClientService aiMcpClientService;
 
     /**
-     * 执行结果：失败时 finalText 为 null，errorMessage 给出原因；traces 始终保留已产生的轨迹。
+     * 执行结果：失败时 finalText 为 null，errorMessage 给出原因；traces 始终保留已产生的轨迹；
+     * knowledgeHits 为 knowledge 节点命中的段落（按执行顺序、跨节点按段落去重），供结构化引用回传。
      */
-    record FlowResult(boolean success, String finalText, List<AiFlowNodeTraceVo> traces, String errorMessage) {
+    record FlowResult(boolean success, String finalText, List<AiFlowNodeTraceVo> traces, String errorMessage,
+                      List<ScoredParagraph> knowledgeHits) {
     }
 
     /**
@@ -115,7 +117,7 @@ class AiFlowEngine {
         try {
             graph = AiFlowGraph.parse(flowConfig);
         } catch (BusinessException ex) {
-            return new FlowResult(false, null, List.of(), ex.getMessage());
+            return new FlowResult(false, null, List.of(), ex.getMessage(), List.of());
         }
         List<FlowChatTurn> safeHistory = history == null ? List.of() : history;
 
@@ -126,6 +128,7 @@ class AiFlowEngine {
         vars.put("knowledge", "");
         applyStartInputParams(graph.startNode(), inputParams, vars);
 
+        List<ScoredParagraph> knowledgeHits = new ArrayList<>();
         List<AiFlowNodeTraceVo> traces = new ArrayList<>();
         Set<String> reachable = new HashSet<>();
         reachable.add(graph.startNode().id());
@@ -150,7 +153,7 @@ class AiFlowEngine {
             notifyNodeStart(listener, node);
             long nodeStart = System.currentTimeMillis();
             try {
-                NodeOutcome outcome = executeNode(node, vars, safeHistory, listener);
+                NodeOutcome outcome = executeNode(node, vars, safeHistory, knowledgeHits, listener);
                 long cost = System.currentTimeMillis() - nodeStart;
                 recordTrace(traces, listener, buildTrace(node, outcome.status(), outcome.input(), outcome.output(), cost, null));
                 if (StringUtils.hasText(outcome.varValue())) {
@@ -180,12 +183,12 @@ class AiFlowEngine {
         }
 
         if (failure != null) {
-            return new FlowResult(false, null, traces, failure);
+            return new FlowResult(false, null, traces, failure, List.copyOf(knowledgeHits));
         }
         String finalText = StringUtils.hasText(lastOutputText) ? lastOutputText
                 : StringUtils.hasText(lastLlmText) ? lastLlmText
                 : "编排执行完成，但未产生文本输出（请为流程添加 LLM 或输出节点）";
-        return new FlowResult(true, finalText, traces, null);
+        return new FlowResult(true, finalText, traces, null, List.copyOf(knowledgeHits));
     }
 
     /**
@@ -213,10 +216,11 @@ class AiFlowEngine {
     }
 
     private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars,
-                                    List<FlowChatTurn> history, FlowEventListener listener) {
+                                    List<FlowChatTurn> history, List<ScoredParagraph> knowledgeHits,
+                                    FlowEventListener listener) {
         return switch (node.type()) {
             case "start" -> NodeOutcome.succeeded(null, vars.get("message"), vars.get("message"));
-            case "knowledge" -> executeKnowledge(node, vars);
+            case "knowledge" -> executeKnowledge(node, vars, knowledgeHits);
             case "llm" -> executeLlm(node, vars, history, listener);
             case "condition" -> executeCondition(node, vars);
             case "tool" -> executeTool(node, vars);
@@ -275,7 +279,8 @@ class AiFlowEngine {
         }
     }
 
-    private NodeOutcome executeKnowledge(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+    private NodeOutcome executeKnowledge(AiFlowGraph.FlowNode node, Map<String, String> vars,
+                                         List<ScoredParagraph> knowledgeHits) {
         Long kbId = node.dataLong("kbId");
         if (kbId == null) {
             throw new BusinessException("知识库节点未选择知识库");
@@ -284,6 +289,7 @@ class AiFlowEngine {
         String query = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
         List<ScoredParagraph> hits = knowledgeRetrievalService.retrieve(List.of(kbId), query,
                 topK != null && topK > 0 ? Math.min(topK, 20) : 5);
+        mergeKnowledgeHits(knowledgeHits, hits);
         StringBuilder builder = new StringBuilder();
         int index = 1;
         for (ScoredParagraph hit : hits) {
@@ -293,6 +299,22 @@ class AiFlowEngine {
         return NodeOutcome.succeeded("查询：" + truncate(query),
                 hits.isEmpty() ? "未命中知识段落" : "命中 " + hits.size() + " 条：" + truncate(knowledgeText),
                 knowledgeText);
+    }
+
+    /**
+     * 汇总编排全程知识命中（结构化引用回传用）：跨节点按段落 ID 去重，保留首个命中的评分。
+     */
+    private void mergeKnowledgeHits(List<ScoredParagraph> accumulated, List<ScoredParagraph> hits) {
+        for (ScoredParagraph hit : hits) {
+            if (hit == null || hit.paragraph() == null || hit.paragraph().getParagraphId() == null) {
+                continue;
+            }
+            boolean exists = accumulated.stream().anyMatch(item ->
+                    hit.paragraph().getParagraphId().equals(item.paragraph().getParagraphId()));
+            if (!exists) {
+                accumulated.add(hit);
+            }
+        }
     }
 
     private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars,
@@ -316,7 +338,9 @@ class AiFlowEngine {
             if (!systemPrompt.isEmpty()) {
                 systemPrompt.append("\n\n");
             }
-            systemPrompt.append("以下是命中的知识库上下文，请优先引用并结合它们回答：\n").append(knowledge);
+            systemPrompt.append("以下是命中的知识库上下文，请优先引用并结合它们回答：\n").append(knowledge)
+                    .append("\n回答中直接引用了上述某条知识时，请在对应句子末尾以 [n] 形式标注引用编号")
+                    .append("（n 为上面的条目序号，如 [1]），未引用的内容不要标注。");
         }
         if (!systemPrompt.isEmpty()) {
             messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt.toString()));

@@ -706,14 +706,39 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 ? result.finalText()
                 : "编排执行失败：" + result.errorMessage() + "\n可在右侧「执行信息」查看节点轨迹后重试。";
 
-        Map<String, Object> meta = result.traces().isEmpty()
-                ? null
-                : Map.of("nodeTraces", result.traces());
-        AiChatMessagePo assistantMessage = persistAssistantMessage(session.conversation(), content, meta);
+        // 结构化引用：knowledge 节点命中段落转 knowledgeSources，随 meta 落库（历史回显）并随流式 meta 下发
+        List<AiChatKnowledgeSourceVo> knowledgeSources = buildFlowKnowledgeSources(result.knowledgeHits());
+        Map<String, Object> meta = new HashMap<>();
+        if (!result.traces().isEmpty()) {
+            meta.put("nodeTraces", result.traces());
+        }
+        if (!knowledgeSources.isEmpty()) {
+            meta.put("knowledgeSources", knowledgeSources);
+        }
+        AiChatMessagePo assistantMessage = persistAssistantMessage(session.conversation(), content,
+                meta.isEmpty() ? null : meta);
         if (!result.traces().isEmpty()) {
             assistantMessage.setNodeTraces(result.traces());
         }
+        if (!knowledgeSources.isEmpty()) {
+            assistantMessage.setKnowledgeSources(knowledgeSources);
+        }
         return new GeneratedReply(session.conversation(), assistantMessage);
+    }
+
+    /**
+     * 编排命中段落 → 结构化引用（kb 元数据按命中段落归属批量补齐）。
+     */
+    private List<AiChatKnowledgeSourceVo> buildFlowKnowledgeSources(List<ScoredParagraph> knowledgeHits) {
+        if (knowledgeHits == null || knowledgeHits.isEmpty()) {
+            return List.of();
+        }
+        List<Long> kbIds = knowledgeHits.stream()
+                .map(hit -> hit.paragraph().getKbId())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        return buildKnowledgeSources(kbIds, null, knowledgeHits);
     }
 
     private AiConversationPo prepareConversation(ChatContext context, String firstMessage) {
@@ -1060,6 +1085,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             fillImageList(message);
             fillNodeTraces(message);
             fillToolCallTraces(message);
+            fillKnowledgeSources(message);
             if (ROLE_USER.equals(message.getRole())) {
                 latestUserPrompt = message.getContent();
                 continue;
@@ -1071,6 +1097,31 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return messages;
     }
 
+    /**
+     * 解析消息 meta JSON 中的结构化引用（编排消息历史回显用）。
+     */
+    private void fillKnowledgeSources(AiChatMessagePo message) {
+        if (message == null || !StringUtils.hasText(message.getMeta())
+                || (message.getKnowledgeSources() != null && !message.getKnowledgeSources().isEmpty())) {
+            return;
+        }
+        try {
+            Map<String, Object> meta = XuJsonUtil.parseObject(message.getMeta(),
+                    new TypeReference<Map<String, Object>>() {});
+            Object rawSources = meta != null ? meta.get("knowledgeSources") : null;
+            if (rawSources == null) {
+                return;
+            }
+            List<AiChatKnowledgeSourceVo> sources = XuJsonUtil.parseObject(XuJsonUtil.toJsonString(rawSources),
+                    new TypeReference<List<AiChatKnowledgeSourceVo>>() {});
+            if (sources != null && !sources.isEmpty()) {
+                message.setKnowledgeSources(sources);
+            }
+        } catch (RuntimeException ignored) {
+            // meta 解析失败时静默降级为按上下文重算
+        }
+    }
+
     private void enrichAssistantMessage(AiChatMessagePo assistantMessage, ChatContext context, String userPrompt) {
         enrichAssistantMessage(assistantMessage, context, userPrompt, null);
     }
@@ -1080,7 +1131,10 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (assistantMessage == null || !ROLE_ASSISTANT.equals(assistantMessage.getRole())) {
             return;
         }
-        assistantMessage.setKnowledgeSources(buildKnowledgeSources(context.knowledgeBaseIds(), userPrompt, hitParagraphs));
+        // 已带结构化引用（编排 meta 回显）时不覆盖，避免用应用级 kb 重算冲掉节点级命中
+        if (assistantMessage.getKnowledgeSources() == null || assistantMessage.getKnowledgeSources().isEmpty()) {
+            assistantMessage.setKnowledgeSources(buildKnowledgeSources(context.knowledgeBaseIds(), userPrompt, hitParagraphs));
+        }
         // 已带真实调用轨迹（本轮工具循环或 meta 回显）时不再用配置摘要覆盖
         if (assistantMessage.getToolExecutions() == null || assistantMessage.getToolExecutions().isEmpty()) {
             assistantMessage.setToolExecutions(buildToolTraceSummaries(context.mcpServerIds()));
