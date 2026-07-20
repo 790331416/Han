@@ -33,8 +33,11 @@ import java.util.Set;
 @RequestMapping("/system/user")
 public class ASysUserController extends BSysUserController {
 
-    public ASysUserController(ISysUserService service) {
+    private final com.han.system.service.SysUserSocialService socialService;
+
+    public ASysUserController(ISysUserService service, com.han.system.service.SysUserSocialService socialService) {
         super(service);
+        this.socialService = socialService;
     }
 
     @Override
@@ -194,6 +197,52 @@ public class ASysUserController extends BSysUserController {
 
         String result = baseService.importUsers(list, updateSupport);
         return R.ok(result);
+    }
+
+    // ==================== 社交绑定管理 ====================
+
+    /**
+     * 查看用户社交绑定列表（openId 脱敏返回）
+     */
+    @GetMapping("/{userId}/bindings")
+    @PreAuthorize("@ss.hasAuthority('system:user:query')")
+    public R<java.util.List<java.util.Map<String, Object>>> listBindings(@PathVariable Long userId) {
+        var bindings = socialService.listByUser(userId).stream()
+                .map(po -> {
+                    java.util.Map<String, Object> item = new java.util.LinkedHashMap<String, Object>();
+                    item.put("provider", po.getProvider());
+                    item.put("nickname", po.getNickname());
+                    item.put("maskedOpenId", maskOpenId(po.getOpenId()));
+                    item.put("createTime", po.getCreateTime());
+                    return item;
+                })
+                .toList();
+        return R.ok(bindings);
+    }
+
+    /**
+     * 强制解绑用户社交账号（管理员处置被盗号等场景，写审计日志）
+     */
+    @RepeatSubmit
+    @PostMapping("/{userId}/unbind")
+    @PreAuthorize("@ss.hasAuthority('system:user:unbind')")
+    @OperLog(module = "用户管理", type = OperLog.OperType.UPDATE)
+    public R<Void> forceUnbind(@PathVariable Long userId, @RequestParam String provider) {
+        boolean removed = socialService.unbind(userId, provider);
+        if (!removed) {
+            return R.fail("该用户未绑定此第三方账号");
+        }
+        return R.ok();
+    }
+
+    private String maskOpenId(String openId) {
+        if (openId == null || openId.isBlank()) {
+            return "";
+        }
+        if (openId.length() <= 8) {
+            return openId.charAt(0) + "***";
+        }
+        return openId.substring(0, 4) + "****" + openId.substring(openId.length() - 4);
     }
 
 }

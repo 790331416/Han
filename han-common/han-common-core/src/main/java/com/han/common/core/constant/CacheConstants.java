@@ -43,4 +43,10 @@ public interface CacheConstants {
 
     /** 用户权限缓存 */
     String USER_PERMISSION_KEY = CACHE_PREFIX + "user_permission:";
+
+    /** 社交登录 OAuth state（防 CSRF，一次性） */
+    String SOCIAL_STATE_KEY = CACHE_PREFIX + "social_state:";
+
+    /** 社交登录绑定/选租户临时凭证（一次性） */
+    String SOCIAL_TICKET_KEY = CACHE_PREFIX + "social_ticket:";
 }

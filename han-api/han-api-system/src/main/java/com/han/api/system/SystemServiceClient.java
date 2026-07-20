@@ -1,6 +1,7 @@
 package com.han.api.system;
 
 import com.han.api.system.domain.LoginLogDTO;
+import com.han.api.system.domain.SocialBindingVO;
 import com.han.api.system.domain.TenantInitDto;
 import com.han.api.system.domain.UserVO;
 import com.han.api.system.domain.RoleVO;
@@ -120,9 +121,30 @@ public interface SystemServiceClient {
 
     /**
      * 查询社交账号绑定的系统用户ID
+     *
+     * @deprecated 唯一键已按租户隔离，跨租户可能命中多条；请改用 {@link #listSocialBindings(String, String)}。
      */
+    @Deprecated
     @GetExchange("/social/bindUser")
     R<Long> getSocialBindUserId(@RequestParam("provider") String provider, @RequestParam("openId") String openId);
+
+    /**
+     * 查询社交账号在所有租户下的绑定列表（tenant_id+provider+open_id 唯一）
+     */
+    @GetExchange("/social/bindings")
+    R<List<SocialBindingVO>> listSocialBindings(@RequestParam("provider") String provider, @RequestParam("openId") String openId);
+
+    /**
+     * 查询用户在某 provider 下的绑定（一个账号同 provider 只绑一个）
+     */
+    @GetExchange("/social/binding")
+    R<SocialBindingVO> getUserSocialBinding(@RequestParam("userId") Long userId, @RequestParam("provider") String provider);
+
+    /**
+     * 查询用户全部社交绑定
+     */
+    @GetExchange("/social/userBindings")
+    R<List<SocialBindingVO>> listUserSocialBindings(@RequestParam("userId") Long userId);
 
     /**
      * 按 key 读取系统参数值（sys_config），不存在返回空字符串
@@ -131,10 +153,17 @@ public interface SystemServiceClient {
     R<String> getConfigValue(@RequestParam("configKey") String configKey);
 
     /**
-     * 绑定社交账号
+     * 绑定社交账号（tenantId 取被绑定用户所属租户）
      */
     @PostExchange("/social/bind")
-    R<Void> bindSocialUser(@RequestParam("userId") Long userId, @RequestParam("provider") String provider,
+    R<Void> bindSocialUser(@RequestParam("userId") Long userId, @RequestParam(value = "tenantId", required = false) Long tenantId,
+                            @RequestParam("provider") String provider,
                             @RequestParam("openId") String openId, @RequestParam(value = "accessToken", required = false) String accessToken,
                             @RequestParam(value = "nickname", required = false) String nickname, @RequestParam(value = "avatar", required = false) String avatar);
+
+    /**
+     * 解绑社交账号
+     */
+    @PostExchange("/social/unbind")
+    R<Void> unbindSocialUser(@RequestParam("userId") Long userId, @RequestParam("provider") String provider);
 }
