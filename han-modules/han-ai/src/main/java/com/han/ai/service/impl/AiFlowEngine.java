@@ -189,9 +189,10 @@ class AiFlowEngine {
     }
 
     /**
-     * 节点产出：status 恒为 succeeded/skipped（失败走异常）；varValue 是写入变量表的完整文本。
+     * 节点产出：status 恒为 succeeded/skipped（失败走异常）；varValue 是写入变量表的完整文本；
+     * chosenHandle 仅 condition 节点使用（yes/no 或多分支 handle/default）。
      */
-    private record NodeOutcome(String status, String input, String output, String varValue, Boolean conditionResult) {
+    private record NodeOutcome(String status, String input, String output, String varValue, String chosenHandle) {
 
         static NodeOutcome succeeded(String input, String output, String varValue) {
             return new NodeOutcome("succeeded", input, output, varValue, null);
@@ -199,7 +200,11 @@ class AiFlowEngine {
 
         static NodeOutcome condition(String input, boolean result) {
             return new NodeOutcome("succeeded", input, result ? "true（走「是」分支）" : "false（走「否」分支）",
-                    String.valueOf(result), result);
+                    String.valueOf(result), result ? "yes" : "no");
+        }
+
+        static NodeOutcome conditionBranch(String input, String chosenHandle, String description) {
+            return new NodeOutcome("succeeded", input, description, chosenHandle, chosenHandle);
         }
 
         static NodeOutcome skipped(String reason) {
@@ -509,12 +514,37 @@ class AiFlowEngine {
     }
 
     /**
-     * 条件表达式为受限语法（防注入，不引入 SpEL）：
-     * {@code {{var}} contains 'x'} / {@code {{var}} == 'x'} / {@code {{var}} != 'x'}
-     * / {@code {{var}} not_empty} / {@code {{var}} is_empty}。
-     * var 支持 message / result / knowledge / 节点ID。
+     * 条件节点：受限表达式语法（防注入，不引入 SpEL）。
+     * <p>
+     * 原子条件：{@code {{var}} contains 'x' / == / != / not_empty / is_empty}，
+     * 以及数值比较 {@code > / >= / < / <=}（操作数为数字字面量，变量值非数值时判 false）；
+     * 原子间支持 {@code and} / {@code or} 组合（and 优先，均需两侧空格，引号内不参与切分）。
+     * var 支持 message / result / knowledge / 入参名 / 节点ID / 节点ID.output。
+     * <p>
+     * 分支模式（flowConfig v2）：配置 branches=[{handle,expression}] 时按序求值，
+     * 首个命中分支的 handle 生效，全不命中走 default 出口；未配置 branches 保持 yes/no 双分支。
      */
     private NodeOutcome executeCondition(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        List<ConditionBranch> branches = parseConditionBranches(node);
+        if (!branches.isEmpty()) {
+            StringBuilder detail = new StringBuilder();
+            String chosen = null;
+            for (ConditionBranch branch : branches) {
+                boolean matched = evaluateCondition(branch.expression(), vars);
+                detail.append(branch.handle()).append(matched ? "=命中" : "=未命中").append("；");
+                if (matched) {
+                    chosen = branch.handle();
+                    break;
+                }
+            }
+            if (chosen == null) {
+                chosen = "default";
+                detail.append("走 default 分支");
+            } else {
+                detail.append("走「").append(chosen).append("」分支");
+            }
+            return NodeOutcome.conditionBranch("多分支：" + branches.size() + " 条", chosen, detail.toString());
+        }
         String expression = node.dataText("expression");
         if (!StringUtils.hasText(expression)) {
             throw new BusinessException("条件节点未配置表达式");
@@ -523,17 +553,107 @@ class AiFlowEngine {
         return NodeOutcome.condition("表达式：" + expression.trim(), result);
     }
 
+    /**
+     * 多分支定义：data.branches = [{handle, expression}]；handle 缺省按序补 b1/b2/...。
+     */
+    private record ConditionBranch(String handle, String expression) {
+    }
+
+    private List<ConditionBranch> parseConditionBranches(AiFlowGraph.FlowNode node) {
+        Object raw = node.data() != null ? node.data().get("branches") : null;
+        if (!(raw instanceof List<?> branchList) || branchList.isEmpty()) {
+            return List.of();
+        }
+        List<ConditionBranch> branches = new ArrayList<>();
+        int index = 1;
+        for (Object item : branchList) {
+            if (!(item instanceof Map<?, ?> branchMap)) {
+                continue;
+            }
+            Object rawExpression = branchMap.get("expression");
+            String expression = rawExpression != null ? String.valueOf(rawExpression).trim() : "";
+            if (!StringUtils.hasText(expression)) {
+                continue;
+            }
+            Object rawHandle = branchMap.get("handle");
+            String handle = rawHandle != null && StringUtils.hasText(String.valueOf(rawHandle))
+                    ? String.valueOf(rawHandle).trim()
+                    : "b" + index;
+            branches.add(new ConditionBranch(handle, expression));
+            index++;
+        }
+        return branches;
+    }
+
+    /**
+     * 组合表达式求值：or 优先级最低（任一 or 段为真即真），and 段内全部为真才为真；
+     * 切分仅发生在引号外（'值' 中的 and/or 字面量不受影响）。
+     */
     private boolean evaluateCondition(String expression, Map<String, String> vars) {
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("^\\{\\{\\s*([\\w-]+)\\s*}}\\s*(contains|==|!=|not_empty|is_empty)\\s*(?:'([^']*)')?$")
-                .matcher(expression);
+        for (String orPart : splitOutsideQuotes(expression, "or")) {
+            boolean andResult = true;
+            for (String andPart : splitOutsideQuotes(orPart, "and")) {
+                if (!evaluateAtomCondition(andPart.trim(), vars)) {
+                    andResult = false;
+                    break;
+                }
+            }
+            if (andResult) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 按逻辑关键字切分（要求两侧空格，如 {@code " and "}），单引号内内容不参与切分。
+     */
+    private List<String> splitOutsideQuotes(String expression, String keyword) {
+        String token = " " + keyword + " ";
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuote = false;
+        int index = 0;
+        while (index < expression.length()) {
+            char ch = expression.charAt(index);
+            if (ch == '\'') {
+                inQuote = !inQuote;
+                current.append(ch);
+                index++;
+                continue;
+            }
+            if (!inQuote && expression.regionMatches(index, token, 0, token.length())) {
+                parts.add(current.toString());
+                current.setLength(0);
+                index += token.length();
+                continue;
+            }
+            current.append(ch);
+            index++;
+        }
+        parts.add(current.toString());
+        return parts;
+    }
+
+    private static final java.util.regex.Pattern CONDITION_ATOM_PATTERN = java.util.regex.Pattern.compile(
+            "^\\{\\{\\s*([\\w-]+)(?:\\.([\\w-]+))?\\s*}}\\s*"
+                    + "(contains|==|!=|>=|<=|>|<|not_empty|is_empty)\\s*"
+                    + "(?:'([^']*)'|(-?\\d+(?:\\.\\d+)?))?$");
+
+    private boolean evaluateAtomCondition(String atom, Map<String, String> vars) {
+        java.util.regex.Matcher matcher = CONDITION_ATOM_PATTERN.matcher(atom);
         if (!matcher.matches()) {
-            throw new BusinessException("条件表达式不合法，支持：{{变量}} contains '值' / == '值' / != '值' / not_empty / is_empty");
+            throw new BusinessException("条件表达式不合法，支持：{{变量}} contains '值' / == '值' / != '值' "
+                    + "/ > 数字 / >= 数字 / < 数字 / <= 数字 / not_empty / is_empty，"
+                    + "多条件用 and / or 连接（两侧需空格）");
         }
         String varName = matcher.group(1);
-        String operator = matcher.group(2);
-        String operand = matcher.group(3);
-        String value = vars.getOrDefault(varName, "");
+        String varField = matcher.group(2);
+        String operator = matcher.group(3);
+        String quotedOperand = matcher.group(4);
+        String numberOperand = matcher.group(5);
+        String operand = quotedOperand != null ? quotedOperand : numberOperand;
+        String value = resolveVarRef(vars, varName, varField);
         return switch (operator) {
             case "contains" -> {
                 requireOperand(operator, operand);
@@ -547,15 +667,42 @@ class AiFlowEngine {
                 requireOperand(operator, operand);
                 yield !value.equals(operand);
             }
+            case ">", ">=", "<", "<=" -> {
+                requireOperand(operator, operand);
+                yield compareNumeric(value, operand, operator);
+            }
             case "not_empty" -> StringUtils.hasText(value);
             case "is_empty" -> !StringUtils.hasText(value);
             default -> throw new BusinessException("不支持的条件运算符：" + operator);
         };
     }
 
+    /**
+     * 数值比较：变量值非数值时判 false（运行时内容不可控，不让单条脏数据打断整个编排）。
+     */
+    private boolean compareNumeric(String value, String operand, String operator) {
+        BigDecimal left;
+        BigDecimal right;
+        try {
+            left = new BigDecimal(value.trim());
+            right = new BigDecimal(operand.trim());
+        } catch (NumberFormatException ignored) {
+            log.debug("Condition numeric compare skipped, non-numeric value={}, operand={}", value, operand);
+            return false;
+        }
+        int compared = left.compareTo(right);
+        return switch (operator) {
+            case ">" -> compared > 0;
+            case ">=" -> compared >= 0;
+            case "<" -> compared < 0;
+            case "<=" -> compared <= 0;
+            default -> false;
+        };
+    }
+
     private void requireOperand(String operator, String operand) {
         if (operand == null) {
-            throw new BusinessException("条件运算符 " + operator + " 需要一个 '值' 操作数");
+            throw new BusinessException("条件运算符 " + operator + " 需要一个操作数（'字符串' 或数字）");
         }
     }
 
@@ -600,13 +747,11 @@ class AiFlowEngine {
 
     /**
      * 扩展可达集合：condition 节点仅沿命中分支（sourceHandle 匹配或未指定）扩展，其余节点全量扩展。
+     * chosenHandle 为 yes/no（双分支）或分支 handle/default（多分支 switch）。
      */
     private void expandReachable(AiFlowGraph graph, AiFlowGraph.FlowNode node, NodeOutcome outcome,
                                  Set<String> reachable) {
-        String chosenHandle = null;
-        if ("condition".equals(node.type()) && outcome.conditionResult() != null) {
-            chosenHandle = outcome.conditionResult() ? "yes" : "no";
-        }
+        String chosenHandle = "condition".equals(node.type()) ? outcome.chosenHandle() : null;
         for (AiFlowGraph.FlowEdge edge : graph.outgoing(node.id())) {
             if (chosenHandle == null || edge.sourceHandle() == null || chosenHandle.equals(edge.sourceHandle())) {
                 reachable.add(edge.target());

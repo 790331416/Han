@@ -107,6 +107,74 @@ class AiFlowEngineTest {
         return (String) method.invoke(engine, template, vars);
     }
 
+    // ==================== G1-4 条件节点增强 ====================
+
+    @Test
+    void conditionSupportsNumericComparison() throws Exception {
+        AiFlowEngine engine = newEngine();
+        Map<String, String> vars = Map.of("score", "72.5", "count", "3", "text", "非数值");
+
+        org.junit.jupiter.api.Assertions.assertTrue(evaluateCondition(engine, "{{score}} > 60", vars));
+        org.junit.jupiter.api.Assertions.assertTrue(evaluateCondition(engine, "{{score}} >= 72.5", vars));
+        org.junit.jupiter.api.Assertions.assertTrue(evaluateCondition(engine, "{{count}} < 5", vars));
+        org.junit.jupiter.api.Assertions.assertFalse(evaluateCondition(engine, "{{count}} <= 2", vars));
+        // 非数值变量参与数值比较：判 false 而非中断编排
+        org.junit.jupiter.api.Assertions.assertFalse(evaluateCondition(engine, "{{text}} > 1", vars));
+    }
+
+    @Test
+    void conditionSupportsAndOrCombinationWithPrecedence() throws Exception {
+        AiFlowEngine engine = newEngine();
+        Map<String, String> vars = Map.of("a", "x", "b", "", "score", "80");
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                evaluateCondition(engine, "{{a}} == 'x' and {{score}} >= 60", vars));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                evaluateCondition(engine, "{{a}} == 'x' and {{b}} not_empty", vars));
+        // and 优先：false and true or true => true
+        org.junit.jupiter.api.Assertions.assertTrue(
+                evaluateCondition(engine, "{{b}} not_empty and {{a}} == 'x' or {{score}} > 70", vars));
+        // 引号内的 and 不参与切分
+        org.junit.jupiter.api.Assertions.assertFalse(
+                evaluateCondition(engine, "{{a}} == 'x and y'", vars));
+    }
+
+    @Test
+    void conditionSwitchBranchesPickFirstMatchOrDefault() throws Exception {
+        AiFlowEngine engine = newEngine();
+        Map<String, Object> data = new HashMap<>();
+        data.put("branches", List.of(
+                Map.of("handle", "b1", "expression", "{{score}} >= 90"),
+                Map.of("handle", "b2", "expression", "{{score}} >= 60")
+        ));
+        AiFlowGraph.FlowNode node = new AiFlowGraph.FlowNode("node_9", "condition", data);
+
+        assertEquals("b2", executeConditionHandle(engine, node, Map.of("score", "72")));
+        assertEquals("b1", executeConditionHandle(engine, node, Map.of("score", "95")));
+        assertEquals("default", executeConditionHandle(engine, node, Map.of("score", "10")));
+    }
+
+    private boolean evaluateCondition(AiFlowEngine engine, String expression, Map<String, String> vars) throws Exception {
+        Method method = AiFlowEngine.class.getDeclaredMethod("evaluateCondition", String.class, Map.class);
+        method.setAccessible(true);
+        try {
+            return (boolean) method.invoke(engine, expression, new HashMap<>(vars));
+        } catch (InvocationTargetException ex) {
+            throw (Exception) ex.getCause();
+        }
+    }
+
+    private String executeConditionHandle(AiFlowEngine engine, AiFlowGraph.FlowNode node,
+                                          Map<String, String> vars) throws Exception {
+        Method method = AiFlowEngine.class.getDeclaredMethod("executeCondition",
+                AiFlowGraph.FlowNode.class, Map.class);
+        method.setAccessible(true);
+        Object outcome = method.invoke(engine, node, new HashMap<>(vars));
+        Method chosenHandle = outcome.getClass().getDeclaredMethod("chosenHandle");
+        chosenHandle.setAccessible(true);
+        return (String) chosenHandle.invoke(outcome);
+    }
+
     private AiFlowEngine newEngine() throws Exception {
         Constructor<AiFlowEngine> constructor = AiFlowEngine.class.getDeclaredConstructor(
                 com.han.ai.mapper.AiModelMapper.class,
