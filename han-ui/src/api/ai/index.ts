@@ -204,6 +204,10 @@ export interface AiAgent {
   prologue?: string
   /** 对话历史注入条数（空=默认 12） */
   historyLimit?: number
+  /** 知识库检索返回条数（空=默认 5） */
+  retrievalTopK?: number
+  /** 向量检索相似度阈值（空=默认 0.30） */
+  similarityThreshold?: number
   published: boolean
   /** 公开分享链接 key（发布时生成） */
   shareKey?: string

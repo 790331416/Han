@@ -200,6 +200,14 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         if (agent.getHistoryLimit() != null && (agent.getHistoryLimit() < 1 || agent.getHistoryLimit() > 100)) {
             throw new BusinessException("对话历史条数必须在1到100之间");
         }
+        if (agent.getRetrievalTopK() != null && (agent.getRetrievalTopK() < 1 || agent.getRetrievalTopK() > 20)) {
+            throw new BusinessException("知识库检索条数必须在1到20之间");
+        }
+        if (agent.getSimilarityThreshold() != null
+                && (agent.getSimilarityThreshold().compareTo(BigDecimal.ZERO) < 0
+                || agent.getSimilarityThreshold().compareTo(BigDecimal.ONE) > 0)) {
+            throw new BusinessException("相似度阈值必须在0到1之间");
+        }
         if (!STATUS_ENABLED.equals(agent.getStatus()) && !STATUS_DISABLED.equals(agent.getStatus())) {
             throw new BusinessException("智能体状态不合法");
         }
@@ -233,6 +241,8 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         target.setTemperature(source.getTemperature());
         target.setMaxTokens(source.getMaxTokens());
         target.setHistoryLimit(source.getHistoryLimit());
+        target.setRetrievalTopK(source.getRetrievalTopK());
+        target.setSimilarityThreshold(source.getSimilarityThreshold());
         target.setStatus(source.getStatus());
     }
 

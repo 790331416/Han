@@ -42,7 +42,7 @@ public class AiKnowledgeRetrievalServiceImpl implements IAiKnowledgeRetrievalSer
     private static final String TYPE_KEYWORD = "keyword";
     /** 单知识库单次载入参与相似度计算的段落上限（超出建议接入 pgvector） */
     private static final int VECTOR_CANDIDATE_LIMIT = 2000;
-    /** 向量相似度最低门槛，低于此值视为不相关 */
+    /** 向量相似度默认门槛（应用级 similarity_threshold 未配置时生效），低于此值视为不相关 */
     private static final double VECTOR_SCORE_THRESHOLD = 0.30D;
 
     private final AiKnowledgeBaseMapper aiKnowledgeBaseMapper;
@@ -52,15 +52,17 @@ public class AiKnowledgeRetrievalServiceImpl implements IAiKnowledgeRetrievalSer
     private final AiEmbeddingClient embeddingClient;
 
     @Override
-    public List<ScoredParagraph> retrieve(List<Long> knowledgeBaseIds, String query, int topK) {
+    public List<ScoredParagraph> retrieve(List<Long> knowledgeBaseIds, String query, int topK,
+                                          Double similarityThreshold) {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || !StringUtils.hasText(query)) {
             return List.of();
         }
         int limit = topK < 1 ? 5 : topK;
+        double threshold = resolveThreshold(similarityThreshold);
         String normalizedQuery = query.trim();
 
         Map<Long, ScoredParagraph> merged = new LinkedHashMap<>();
-        for (ScoredParagraph hit : vectorRetrieve(knowledgeBaseIds, normalizedQuery, limit)) {
+        for (ScoredParagraph hit : vectorRetrieve(knowledgeBaseIds, normalizedQuery, limit, threshold)) {
             merged.put(hit.paragraph().getParagraphId(), hit);
         }
         if (merged.size() < limit) {
@@ -77,21 +79,33 @@ public class AiKnowledgeRetrievalServiceImpl implements IAiKnowledgeRetrievalSer
         return results;
     }
 
+    /**
+     * 相似度阈值：应用级配置（0~1）生效，未配置/非法值回落默认 {@value #VECTOR_SCORE_THRESHOLD}。
+     */
+    private double resolveThreshold(Double similarityThreshold) {
+        if (similarityThreshold == null || similarityThreshold < 0D || similarityThreshold > 1D) {
+            return VECTOR_SCORE_THRESHOLD;
+        }
+        return similarityThreshold;
+    }
+
     // ==================== 向量检索 ====================
 
-    private List<ScoredParagraph> vectorRetrieve(List<Long> knowledgeBaseIds, String query, int limit) {
+    private List<ScoredParagraph> vectorRetrieve(List<Long> knowledgeBaseIds, String query, int limit,
+                                                 double threshold) {
         Map<Long, List<Long>> kbIdsByModel = groupKnowledgeBasesByEmbeddingModel(knowledgeBaseIds);
         if (kbIdsByModel.isEmpty()) {
             return List.of();
         }
         List<ScoredParagraph> hits = new ArrayList<>();
         for (Map.Entry<Long, List<Long>> entry : kbIdsByModel.entrySet()) {
-            hits.addAll(vectorRetrieveForModel(entry.getKey(), entry.getValue(), query, limit));
+            hits.addAll(vectorRetrieveForModel(entry.getKey(), entry.getValue(), query, limit, threshold));
         }
         return hits;
     }
 
-    private List<ScoredParagraph> vectorRetrieveForModel(Long modelId, List<Long> kbIds, String query, int limit) {
+    private List<ScoredParagraph> vectorRetrieveForModel(Long modelId, List<Long> kbIds, String query, int limit,
+                                                         double threshold) {
         try {
             AiModelPo model = aiModelMapper.selectById(modelId);
             if (model == null || !STATUS_ENABLED.equals(model.getStatus())) {
@@ -116,7 +130,7 @@ public class AiKnowledgeRetrievalServiceImpl implements IAiKnowledgeRetrievalSer
             for (AiParagraphPo paragraph : candidates) {
                 float[] paragraphVector = AiVectorUtil.fromJson(paragraph.getEmbedding());
                 double similarity = AiVectorUtil.cosineSimilarity(queryVector, paragraphVector);
-                if (similarity >= VECTOR_SCORE_THRESHOLD) {
+                if (similarity >= threshold) {
                     scored.add(new ScoredParagraph(paragraph, Math.min(similarity, 0.9999D), TYPE_VECTOR));
                 }
             }

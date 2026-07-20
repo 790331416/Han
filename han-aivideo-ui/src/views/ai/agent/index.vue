@@ -119,6 +119,20 @@
               <div class="form-item-tip">注入模型的最近历史消息条数，留空按默认 12 条</div>
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="检索条数">
+              <el-input-number v-model="form.retrievalTopK" :min="1" :max="20" placeholder="默认 5" />
+              <div class="form-item-tip">知识库检索返回段落数，留空按默认 5 条</div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="相似度阈值">
+              <el-input-number v-model="form.similarityThreshold" :min="0" :max="1" :step="0.05" :precision="2" placeholder="默认 0.30" />
+              <div class="form-item-tip">向量检索最低相似度（0~1），留空按默认 0.30</div>
+            </el-form-item>
+          </el-col>
         </el-row>
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="智能体描述" />
@@ -198,7 +212,10 @@ const queryParams = reactive<AiAgentQuery>({ pageNum: 1, pageSize: 8 })
 const defaultForm = () => ({
   agentId: undefined as any, agentName: '', description: '', systemPrompt: '', prologue: '',
   modelId: undefined as any, temperature: 0.7, maxTokens: 2048,
-  historyLimit: undefined as number | undefined, status: '0'
+  historyLimit: undefined as number | undefined,
+  retrievalTopK: undefined as number | undefined,
+  similarityThreshold: undefined as number | undefined,
+  status: '0'
 })
 const form = reactive<any>(defaultForm())
 

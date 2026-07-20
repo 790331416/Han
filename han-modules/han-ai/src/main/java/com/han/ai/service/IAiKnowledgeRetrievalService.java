@@ -13,14 +13,27 @@ import java.util.List;
 public interface IAiKnowledgeRetrievalService {
 
     /**
-     * 跨知识库检索。
+     * 跨知识库检索（默认相似度阈值 0.30）。
      *
      * @param knowledgeBaseIds 知识库ID列表
      * @param query 查询文本
      * @param topK 返回条数上限
      * @return 命中段落（按相关度降序）
      */
-    List<ScoredParagraph> retrieve(List<Long> knowledgeBaseIds, String query, int topK);
+    default List<ScoredParagraph> retrieve(List<Long> knowledgeBaseIds, String query, int topK) {
+        return retrieve(knowledgeBaseIds, query, topK, null);
+    }
+
+    /**
+     * 跨知识库检索（应用级参数版）。
+     *
+     * @param knowledgeBaseIds 知识库ID列表
+     * @param query 查询文本
+     * @param topK 返回条数上限
+     * @param similarityThreshold 向量相似度阈值（0~1），null 时保持默认 0.30
+     * @return 命中段落（按相关度降序）
+     */
+    List<ScoredParagraph> retrieve(List<Long> knowledgeBaseIds, String query, int topK, Double similarityThreshold);
 
     /**
      * 命中段落 + 相关度得分 + 检索方式。
