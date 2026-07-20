@@ -186,7 +186,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             throw new BusinessException("智能体未发布，无法对话");
         }
         ChatContext context = ChatContext.agent(conversationId, agent.getModelId(), agent.getAgentName(),
-                agent.getSystemPrompt(), parseIdList(agent.getKnowledgeBaseIds()), parseIdList(agent.getMcpServerIds()));
+                agent.getSystemPrompt(), parseIdList(agent.getKnowledgeBaseIds()), parseIdList(agent.getMcpServerIds()),
+                agent.getHistoryLimit());
         return appendReply(context, message).assistantMessage().getContent();
     }
 
@@ -204,16 +205,19 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         List<Long> knowledgeBaseIds = parseIdList(agent.getKnowledgeBaseIds());
         List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(knowledgeBaseIds, normalizedMessage);
         ChatContext context = ChatContext.agent(null, agent.getModelId(), agent.getAgentName(),
-                agent.getSystemPrompt(), knowledgeBaseIds, List.of());
+                agent.getSystemPrompt(), knowledgeBaseIds, List.of(), agent.getHistoryLimit());
 
         List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
         String systemPrompt = buildSystemPrompt(context, hitParagraphs);
         if (StringUtils.hasText(systemPrompt)) {
             messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt));
         }
-        // 无状态：历史由前端携带（最多 10 轮），仅接受 user/assistant 角色
+        // 无状态：历史由前端携带，仅接受 user/assistant 角色；条数按应用 history_limit（未配置默认 20 条）
         if (history != null) {
-            int startIndex = Math.max(0, history.size() - 20);
+            int shareHistoryLimit = agent.getHistoryLimit() != null && agent.getHistoryLimit() > 0
+                    ? Math.min(agent.getHistoryLimit(), 100)
+                    : 20;
+            int startIndex = Math.max(0, history.size() - shareHistoryLimit);
             for (int index = startIndex; index < history.size(); index++) {
                 Map<String, String> item = history.get(index);
                 if (item == null) {
@@ -695,7 +699,9 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 callbacks.onNodeEnd(trace);
             }
         };
-        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), session.userMessage(), listener);
+        List<AiFlowEngine.FlowChatTurn> history = loadFlowHistory(session.conversation(), session.context());
+        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), session.userMessage(),
+                history, listener);
         String content = result.success()
                 ? result.finalText()
                 : "编排执行失败：" + result.errorMessage() + "\n可在右侧「执行信息」查看节点轨迹后重试。";
@@ -907,7 +913,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 break;
             }
         }
-        int startIndex = Math.max(0, history.size() - HISTORY_MESSAGE_LIMIT);
+        int startIndex = Math.max(0, history.size() - resolveHistoryLimit(context));
         for (int index = startIndex; index < history.size(); index++) {
             AiChatMessagePo historyMessage = history.get(index);
             if (!StringUtils.hasText(historyMessage.getContent())) {
@@ -928,6 +934,45 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             messages.add(AiOpenAiCompatibleClient.ProviderMessage.user("你好"));
         }
         return messages;
+    }
+
+    /**
+     * 历史注入条数：应用（agent）级 history_limit 可配，未配置时保持默认 {@value #HISTORY_MESSAGE_LIMIT} 条。
+     */
+    private int resolveHistoryLimit(ChatContext context) {
+        Integer configured = context != null ? context.historyLimit() : null;
+        if (configured == null || configured < 1) {
+            return HISTORY_MESSAGE_LIMIT;
+        }
+        return Math.min(configured, 100);
+    }
+
+    /**
+     * 编排会话历史：取当前用户消息之前的最近轮次（条数按 history_limit，默认 12），
+     * 供 llm 节点按记忆轮数注入，多轮追问不失忆。
+     */
+    private List<AiFlowEngine.FlowChatTurn> loadFlowHistory(AiConversationPo conversation, ChatContext context) {
+        List<AiChatMessagePo> messages = aiChatMessageMapper.selectList(new LambdaQueryWrapper<AiChatMessagePo>()
+                .eq(AiChatMessagePo::getConversationId, conversation.getConversationId())
+                .orderByAsc(AiChatMessagePo::getSortOrder)
+                .orderByAsc(AiChatMessagePo::getMessageId));
+        // prepareSession 已把本轮用户消息落库，历史注入需剔除末尾这条
+        int endExclusive = messages.size();
+        if (endExclusive > 0 && ROLE_USER.equals(messages.get(endExclusive - 1).getRole())) {
+            endExclusive--;
+        }
+        int startIndex = Math.max(0, endExclusive - resolveHistoryLimit(context));
+        List<AiFlowEngine.FlowChatTurn> turns = new ArrayList<>();
+        for (int index = startIndex; index < endExclusive; index++) {
+            AiChatMessagePo message = messages.get(index);
+            if (!StringUtils.hasText(message.getContent())) {
+                continue;
+            }
+            if (ROLE_USER.equals(message.getRole()) || ROLE_ASSISTANT.equals(message.getRole())) {
+                turns.add(new AiFlowEngine.FlowChatTurn(message.getRole(), message.getContent()));
+            }
+        }
+        return turns;
     }
 
     private String buildSystemPrompt(ChatContext context, List<ScoredParagraph> hitParagraphs) {
@@ -1494,22 +1539,23 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private record ChatContext(Long conversationId, Long workflowId, Long modelId, String titlePrefix,
                                String sourceName, String systemPrompt, List<Long> knowledgeBaseIds,
-                               List<Long> mcpServerIds) {
+                               List<Long> mcpServerIds, Integer historyLimit) {
 
         private static ChatContext general(Long conversationId, Long modelId) {
-            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of(), List.of());
+            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of(), List.of(), null);
         }
 
         private static ChatContext agent(Long conversationId, Long modelId, String agentName,
-                                         String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
+                                         String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds,
+                                         Integer historyLimit) {
             return new ChatContext(conversationId, null, modelId, "智能体对话", agentName, systemPrompt,
-                    knowledgeBaseIds, mcpServerIds);
+                    knowledgeBaseIds, mcpServerIds, historyLimit);
         }
 
         private static ChatContext workflow(Long conversationId, Long workflowId, Long modelId, String workflowName,
                                             String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
             return new ChatContext(conversationId, workflowId, modelId, "工作流对话", workflowName, systemPrompt,
-                    knowledgeBaseIds, mcpServerIds);
+                    knowledgeBaseIds, mcpServerIds, null);
         }
     }
 }

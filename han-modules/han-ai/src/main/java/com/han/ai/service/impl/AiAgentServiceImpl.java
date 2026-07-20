@@ -197,6 +197,9 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
                 || agent.getTemperature().compareTo(BigDecimal.valueOf(2D)) > 0) {
             throw new BusinessException("温度必须在0到2之间");
         }
+        if (agent.getHistoryLimit() != null && (agent.getHistoryLimit() < 1 || agent.getHistoryLimit() > 100)) {
+            throw new BusinessException("对话历史条数必须在1到100之间");
+        }
         if (!STATUS_ENABLED.equals(agent.getStatus()) && !STATUS_DISABLED.equals(agent.getStatus())) {
             throw new BusinessException("智能体状态不合法");
         }
@@ -229,6 +232,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         target.setMcpServerIds(source.getMcpServerIds());
         target.setTemperature(source.getTemperature());
         target.setMaxTokens(source.getMaxTokens());
+        target.setHistoryLimit(source.getHistoryLimit());
         target.setStatus(source.getStatus());
     }
 

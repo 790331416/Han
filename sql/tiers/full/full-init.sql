@@ -1769,6 +1769,9 @@ CREATE TABLE ai_agent (
     mcp_server_ids TEXT,
     temperature    NUMERIC(3,2)    DEFAULT 0.7,
     max_tokens     INT             DEFAULT 2048,
+    history_limit  INT,
+    retrieval_top_k INT,
+    similarity_threshold NUMERIC(4,3),
     published      CHAR(1)         DEFAULT '0',
     share_key      VARCHAR(64),
     status         CHAR(1)         DEFAULT '0',
@@ -1781,6 +1784,9 @@ CREATE TABLE ai_agent (
 );
 COMMENT ON TABLE ai_agent IS 'AI智能体';
 COMMENT ON COLUMN ai_agent.share_key IS '公开分享链接 key（发布时生成，重置后旧链接失效）';
+COMMENT ON COLUMN ai_agent.history_limit IS '对话历史注入条数（NULL=默认12）';
+COMMENT ON COLUMN ai_agent.retrieval_top_k IS '知识库检索返回条数（NULL=默认5）';
+COMMENT ON COLUMN ai_agent.similarity_threshold IS '向量检索相似度阈值（NULL=默认0.30）';
 
 -- =============================================
 -- 32. Prompt模板表

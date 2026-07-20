@@ -205,6 +205,10 @@
             <el-form-item label="温度">
               <el-slider v-model="selectedNode.data.temperature" :min="0" :max="2" :step="0.1" @change="updateNode" />
             </el-form-item>
+            <el-form-item label="记忆轮数">
+              <el-input-number v-model="selectedNode.data.memoryRounds" :min="0" :max="20" @change="updateNode" />
+              <div class="prop-tip">注入最近 N 轮对话历史（1 轮=一问一答），0 关闭记忆，默认 4</div>
+            </el-form-item>
           </template>
 
           <template v-if="selectedNode.type === 'knowledge'">
@@ -335,7 +339,7 @@ const onDrop = (event: DragEvent) => {
 
 const getDefaultData = (type: string) => {
   switch (type) {
-    case 'llm': return { modelId: null, systemPrompt: '', temperature: 0.7 }
+    case 'llm': return { modelId: null, systemPrompt: '', temperature: 0.7, memoryRounds: 4 }
     case 'knowledge': return { kbId: null, topK: 5 }
     case 'tool': return { mcpId: null, toolName: '', arguments: '' }
     case 'condition': return { expression: '' }
@@ -706,6 +710,11 @@ onMounted(() => {
   border-left: 1px solid #e4e7ed;
   padding: 16px;
   overflow-y: auto;
+}
+.prop-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 
 // 自定义节点样式

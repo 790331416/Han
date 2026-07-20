@@ -112,6 +112,14 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="对话历史条数">
+              <el-input-number v-model="form.historyLimit" :min="1" :max="100" placeholder="默认 12" />
+              <div class="form-item-tip">注入模型的最近历史消息条数，留空按默认 12 条</div>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="智能体描述" />
         </el-form-item>
@@ -189,7 +197,8 @@ const queryParams = reactive<AiAgentQuery>({ pageNum: 1, pageSize: 8 })
 
 const defaultForm = () => ({
   agentId: undefined as any, agentName: '', description: '', systemPrompt: '', prologue: '',
-  modelId: undefined as any, temperature: 0.7, maxTokens: 2048, status: '0'
+  modelId: undefined as any, temperature: 0.7, maxTokens: 2048,
+  historyLimit: undefined as number | undefined, status: '0'
 })
 const form = reactive<any>(defaultForm())
 
@@ -377,4 +386,5 @@ onMounted(async () => {
 }
 .chat-pre { margin: 0; white-space: pre-wrap; font-family: inherit; font-size: inherit; }
 .chat-input { flex-shrink: 0; }
+.form-item-tip { font-size: 12px; color: #909399; line-height: 1.5; }
 </style>

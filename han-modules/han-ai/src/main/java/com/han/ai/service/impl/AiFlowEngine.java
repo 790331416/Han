@@ -39,6 +39,9 @@ class AiFlowEngine {
 
     private static final long MAX_FLOW_MILLIS = 5 * 60_000L;
     private static final int TRACE_TEXT_LIMIT = 800;
+    /** llm 节点默认记忆轮数（1 轮 = 一问一答），节点属性 memoryRounds 可覆盖 */
+    private static final int DEFAULT_LLM_MEMORY_ROUNDS = 4;
+    private static final int MAX_LLM_MEMORY_ROUNDS = 20;
 
     private final AiModelMapper aiModelMapper;
     private final AiMcpServerMapper aiMcpServerMapper;
@@ -70,6 +73,12 @@ class AiFlowEngine {
     }
 
     /**
+     * 编排会话历史轮次（role=user/assistant），供 llm 节点按记忆轮数注入。
+     */
+    record FlowChatTurn(String role, String content) {
+    }
+
+    /**
      * 执行编排；本方法不抛业务异常，解析/执行失败均折叠进 FlowResult。
      */
     FlowResult execute(String flowConfig, String userMessage) {
@@ -80,12 +89,21 @@ class AiFlowEngine {
      * 执行编排（带事件监听）：节点开始/llm 逐 token/节点结束实时回调 listener。
      */
     FlowResult execute(String flowConfig, String userMessage, FlowEventListener listener) {
+        return execute(flowConfig, userMessage, List.of(), listener);
+    }
+
+    /**
+     * 执行编排（带会话历史）：history 为当前消息之前的对话轮次，
+     * llm 节点按节点级「记忆轮数」（默认 {@link #DEFAULT_LLM_MEMORY_ROUNDS}）截取注入，多轮追问不失忆。
+     */
+    FlowResult execute(String flowConfig, String userMessage, List<FlowChatTurn> history, FlowEventListener listener) {
         AiFlowGraph graph;
         try {
             graph = AiFlowGraph.parse(flowConfig);
         } catch (BusinessException ex) {
             return new FlowResult(false, null, List.of(), ex.getMessage());
         }
+        List<FlowChatTurn> safeHistory = history == null ? List.of() : history;
 
         long startedAt = System.currentTimeMillis();
         Map<String, String> vars = new HashMap<>();
@@ -117,7 +135,7 @@ class AiFlowEngine {
             notifyNodeStart(listener, node);
             long nodeStart = System.currentTimeMillis();
             try {
-                NodeOutcome outcome = executeNode(node, vars, listener);
+                NodeOutcome outcome = executeNode(node, vars, safeHistory, listener);
                 long cost = System.currentTimeMillis() - nodeStart;
                 recordTrace(traces, listener, buildTrace(node, outcome.status(), outcome.input(), outcome.output(), cost, null));
                 if (StringUtils.hasText(outcome.varValue())) {
@@ -174,11 +192,12 @@ class AiFlowEngine {
         }
     }
 
-    private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars, FlowEventListener listener) {
+    private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars,
+                                    List<FlowChatTurn> history, FlowEventListener listener) {
         return switch (node.type()) {
             case "start" -> NodeOutcome.succeeded(null, vars.get("message"), vars.get("message"));
             case "knowledge" -> executeKnowledge(node, vars);
-            case "llm" -> executeLlm(node, vars, listener);
+            case "llm" -> executeLlm(node, vars, history, listener);
             case "condition" -> executeCondition(node, vars);
             case "tool" -> executeTool(node, vars);
             case "output" -> executeOutput(node, vars);
@@ -230,7 +249,8 @@ class AiFlowEngine {
                 knowledgeText);
     }
 
-    private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars, FlowEventListener listener) {
+    private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars,
+                                   List<FlowChatTurn> history, FlowEventListener listener) {
         AiModelPo model = resolveLlmModel(node.dataLong("modelId"));
         String apiKey = credentialResolver.resolveApiKey(model);
         if (!StringUtils.hasText(apiKey)) {
@@ -254,12 +274,48 @@ class AiFlowEngine {
         if (!systemPrompt.isEmpty()) {
             messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt.toString()));
         }
+        appendMemoryTurns(messages, history, resolveMemoryRounds(node));
         String userInput = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
         messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(userInput));
 
         String reply = requestLlmReply(node, effectiveModel, apiKey, messages, listener);
         return NodeOutcome.succeeded("模型：" + model.getModelName() + "；输入：" + truncate(userInput),
                 truncate(reply), reply);
+    }
+
+    /**
+     * 节点记忆轮数：memoryRounds 属性可配（0 关闭记忆），缺省 {@value #DEFAULT_LLM_MEMORY_ROUNDS} 轮，
+     * 上限 {@value #MAX_LLM_MEMORY_ROUNDS} 轮。
+     */
+    private int resolveMemoryRounds(AiFlowGraph.FlowNode node) {
+        Integer configured = node.dataInt("memoryRounds");
+        if (configured == null) {
+            return DEFAULT_LLM_MEMORY_ROUNDS;
+        }
+        return Math.max(0, Math.min(configured, MAX_LLM_MEMORY_ROUNDS));
+    }
+
+    /**
+     * 按记忆轮数注入会话历史（1 轮 = user+assistant 两条），取最近 rounds*2 条。
+     */
+    private void appendMemoryTurns(List<AiOpenAiCompatibleClient.ProviderMessage> messages,
+                                   List<FlowChatTurn> history, int memoryRounds) {
+        if (memoryRounds <= 0 || history == null || history.isEmpty()) {
+            return;
+        }
+        int limit = memoryRounds * 2;
+        int startIndex = Math.max(0, history.size() - limit);
+        for (int index = startIndex; index < history.size(); index++) {
+            FlowChatTurn turn = history.get(index);
+            if (turn == null || !StringUtils.hasText(turn.content())) {
+                continue;
+            }
+            if ("user".equals(turn.role())) {
+                messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(turn.content()));
+            } else if ("assistant".equals(turn.role())) {
+                messages.add(AiOpenAiCompatibleClient.ProviderMessage.assistant(turn.content()));
+            }
+        }
     }
 
     /**
