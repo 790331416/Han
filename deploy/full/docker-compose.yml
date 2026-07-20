@@ -307,6 +307,11 @@ services:
       HAN_AI_PROVIDER_AZURE_OPENAI_API_KEY: ${HAN_AI_PROVIDER_AZURE_OPENAI_API_KEY:-}
       HAN_AI_PROVIDER_ANTHROPIC_API_KEY: ${HAN_AI_PROVIDER_ANTHROPIC_API_KEY:-}
       HAN_AI_PROVIDER_SILICONFLOW_API_KEY: ${HAN_AI_PROVIDER_SILICONFLOW_API_KEY:-}
+      # SSRF 防护（G1-12）：默认拒绝内网/环回/链路本地地址；
+      # e2e 回归环境在 .env 设 AI_SSRF_ALLOWED_HOSTS=127.0.0.1 放行占位地址，生产保持默认为空
+      AI_SSRF_ENABLED: ${AI_SSRF_ENABLED:-true}
+      AI_SSRF_ALLOW_PRIVATE_NETWORK: ${AI_SSRF_ALLOW_PRIVATE_NETWORK:-false}
+      AI_SSRF_ALLOWED_HOSTS: ${AI_SSRF_ALLOWED_HOSTS:-}
       JAVA_OPTS: -Xms256m -Xmx512m -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false -Dnetworkaddress.cache.ttl=60 -Dnetworkaddress.cache.negative.ttl=0
     ports:
       - "9208:9208"

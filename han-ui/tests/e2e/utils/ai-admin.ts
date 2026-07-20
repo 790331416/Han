@@ -310,25 +310,29 @@ export async function tryEditPromptTemplate(
   return (await response.json()) as ApiEnvelope<void>
 }
 
+function buildMcpServerPayload(payload: Partial<McpServerRecord>): Record<string, unknown> {
+  const transportType = payload.transportType || 'sse'
+  return {
+    serverName: payload.serverName,
+    description: '',
+    transportType,
+    command: transportType === 'stdio' ? (payload.command || 'npx') : '',
+    args: transportType === 'stdio' ? (payload.args || '[]') : '[]',
+    envVars: transportType === 'stdio' ? (payload.envVars || '{}') : '{}',
+    url: transportType === 'stdio' ? '' : (payload.url || 'http://127.0.0.1:65535/sse'),
+    status: payload.status || '0'
+  }
+}
+
 export async function createMcpServer(
   request: APIRequestContext,
   apiBaseUrl: string,
   accessToken: string,
   payload: Partial<McpServerRecord>
 ): Promise<McpServerRecord> {
-  const transportType = payload.transportType || 'sse'
   const response = await request.post(`${apiBaseUrl}/ai/mcp`, {
     headers: buildHeaders(accessToken),
-    data: {
-      serverName: payload.serverName,
-      description: '',
-      transportType,
-      command: transportType === 'stdio' ? (payload.command || 'npx') : '',
-      args: transportType === 'stdio' ? (payload.args || '[]') : '[]',
-      envVars: transportType === 'stdio' ? (payload.envVars || '{}') : '{}',
-      url: transportType === 'stdio' ? '' : (payload.url || 'http://127.0.0.1:65535/sse'),
-      status: payload.status || '0'
-    }
+    data: buildMcpServerPayload(payload)
   })
   await ensureSuccess<void>(response)
   const created = await findMcpServerByName(request, apiBaseUrl, accessToken, String(payload.serverName))
@@ -336,6 +340,23 @@ export async function createMcpServer(
     throw new Error(`未找到新建 MCP 服务: ${payload.serverName}`)
   }
   return created
+}
+
+/**
+ * 创建 MCP 服务但不断言成功，返回原始业务响应。
+ * 用于断言保存层的失败路径（G1-5 stdio 拦截、G1-12 SSRF 拒绝）。
+ */
+export async function tryCreateMcpServer(
+  request: APIRequestContext,
+  apiBaseUrl: string,
+  accessToken: string,
+  payload: Partial<McpServerRecord>
+): Promise<ApiEnvelope<void>> {
+  const response = await request.post(`${apiBaseUrl}/ai/mcp`, {
+    headers: buildHeaders(accessToken),
+    data: buildMcpServerPayload(payload)
+  })
+  return (await response.json()) as ApiEnvelope<void>
 }
 
 export async function findMcpServerByName(

@@ -12,7 +12,8 @@ import {
   fetchKnowledgeDocuments,
   findKnowledgeBaseByName,
   findMcpServerByName,
-  findPromptTemplateByName
+  findPromptTemplateByName,
+  tryCreateMcpServer
 } from '../utils/ai-admin'
 
 const KNOWLEDGE_FILE_PATH = path.resolve(process.cwd(), 'tests/e2e/fixtures/files/ai-knowledge-upload.txt')
@@ -164,19 +165,26 @@ test('ai prompt page should support edit and keep preview rendering correct', as
   }
 })
 
-test('ai mcp page should distinguish sse and stdio tool metadata after refresh', async ({ authenticatedPage, request, authSession }) => {
+test('ai mcp page should reject stdio transport and surface real refresh failure', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
   const sseServerName = buildUniqueName('流式工具服务')
   const stdioServerName = buildUniqueName('命令工具服务')
-  const createdSseServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
-    serverName: sseServerName,
-    transportType: 'sse'
-  })
-  const createdStdioServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
+
+  // G1-5 stdio 处置（决策 D4）：保存层前后端双拦截，创建 stdio 记录应被明确拒绝
+  const stdioRejected = await tryCreateMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName: stdioServerName,
     transportType: 'stdio',
     command: 'npx',
     args: '["-y","@modelcontextprotocol/server-filesystem"]'
+  })
+  expect(stdioRejected.code).not.toBe(200)
+  expect(stdioRejected.msg || '').toContain('stdio 传输暂不可用')
+  const stdioServer = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, stdioServerName)
+  expect(stdioServer).toBeNull()
+
+  const createdSseServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
+    serverName: sseServerName,
+    transportType: 'sse'
   })
 
   try {
@@ -189,40 +197,29 @@ test('ai mcp page should distinguish sse and stdio tool metadata after refresh',
     await expect(sseRow).toBeVisible()
     await expect(sseRow).toContainText('SSE')
 
+    // 创建表单中 stdio 选项应处于禁用状态（G1-5 前端拦截）
+    await page.getByTestId('ai-mcp-create-button').click()
+    const mcpForm = page.getByTestId('ai-mcp-form')
+    await expect(mcpForm).toBeVisible()
+    const stdioOption = mcpForm.locator('.el-radio-button', { hasText: 'Stdio' }).first()
+    await expect(stdioOption).toHaveClass(/is-disabled/)
+    await page.keyboard.press('Escape')
+
+    // G1-5 后刷新工具为真连 MCP server：占位地址不可达应返回可诊断失败，工具列表保持为空
     const sseRefreshResponse = waitForPostResponse(page, `/ai/mcp/refresh/${createdSseServer.mcpId}`)
     await sseRow.getByTestId('ai-mcp-refresh-button').click()
-    await sseRefreshResponse
+    const refreshBody = (await (await sseRefreshResponse).json()) as { code: number; msg?: string }
+    expect(refreshBody.code).not.toBe(200)
+    expect(refreshBody.msg || '').toContain('MCP 服务连接失败')
 
-    await expect.poll(async () => {
-      const server = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, sseServerName)
-      return server?.tools || ''
-    }, { timeout: 15000 }).toContain('sse_subscribe')
+    const latestSseServer = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, sseServerName)
+    expect(JSON.parse(latestSseServer?.tools || '[]')).toEqual([])
 
     const sseRefreshedRow = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: sseServerName }).first()
     await sseRefreshedRow.getByTestId('ai-mcp-view-tools-button').click()
-    await expect(page.getByTestId('ai-mcp-tools-table')).toContainText('sse_subscribe')
-    await page.keyboard.press('Escape')
-
-    const stdioRow = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: stdioServerName }).first()
-    await expect(stdioRow).toBeVisible()
-    await expect(stdioRow).toContainText(/Stdio/i)
-    await expect(stdioRow).toContainText('npx')
-
-    const stdioRefreshResponse = waitForPostResponse(page, `/ai/mcp/refresh/${createdStdioServer.mcpId}`)
-    await stdioRow.getByTestId('ai-mcp-refresh-button').click()
-    await stdioRefreshResponse
-
-    await expect.poll(async () => {
-      const server = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, stdioServerName)
-      return server?.tools || ''
-    }, { timeout: 15000 }).toContain('stdio_exec')
-
-    const stdioRefreshedRow = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: stdioServerName }).first()
-    await stdioRefreshedRow.getByTestId('ai-mcp-view-tools-button').click()
-    await expect(page.getByTestId('ai-mcp-tools-table')).toContainText('stdio_exec')
-    await expect(page.getByTestId('ai-mcp-tools-table')).not.toContainText('sse_subscribe')
+    await expect(page.getByTestId('ai-mcp-tools-dialog')).toBeVisible()
+    await expect(page.getByTestId('ai-mcp-tools-dialog')).toContainText('暂无工具，请先刷新')
   } finally {
     await deleteMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdSseServer.mcpId).catch(() => undefined)
-    await deleteMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdStdioServer.mcpId).catch(() => undefined)
   }
 })

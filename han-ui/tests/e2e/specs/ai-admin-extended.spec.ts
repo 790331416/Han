@@ -109,9 +109,10 @@ test('ai prompt page should keep built-in templates protected from editing', asy
   expect(editResult.code).not.toBe(200)
 })
 
-test('ai mcp page should support streamable_http tool metadata regression', async ({ authenticatedPage, request, authSession }) => {
+test('ai mcp page should keep streamable_http metadata and surface real refresh failure', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
   const serverName = buildUniqueName('流式HTTP工具服务')
+  // G1-12 SSRF：127.0.0.1 占位地址需 e2e 环境配置 AI_SSRF_ALLOWED_HOSTS=127.0.0.1 放行后才能保存
   const createdServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName,
     transportType: 'streamable_http',
@@ -129,20 +130,20 @@ test('ai mcp page should support streamable_http tool metadata regression', asyn
     await expect(row).toContainText('Streamable HTTP')
     await expect(row).toContainText('http://127.0.0.1:65535/mcp')
 
+    // G1-5 后刷新工具为真连 MCP server：占位地址不可达应返回可诊断失败，而不是 mock 工具清单
     const refreshResponse = waitForPostResponse(page, `/ai/mcp/refresh/${createdServer.mcpId}`)
     await row.getByTestId('ai-mcp-refresh-button').click()
-    await refreshResponse
+    const refreshBody = (await (await refreshResponse).json()) as { code: number; msg?: string }
+    expect(refreshBody.code).not.toBe(200)
+    expect(refreshBody.msg || '').toContain('MCP 服务连接失败')
 
-    await expect.poll(async () => {
-      const server = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, serverName)
-      return server?.tools || ''
-    }, { timeout: 15000 }).toContain('http_stream_call')
+    const latestServer = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, serverName)
+    expect(JSON.parse(latestServer?.tools || '[]')).toEqual([])
 
     const refreshedRow = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: serverName }).first()
     await refreshedRow.getByTestId('ai-mcp-view-tools-button').click()
-    await expect(page.getByTestId('ai-mcp-tools-table')).toContainText('http_stream_call')
-    await expect(page.getByTestId('ai-mcp-tools-table')).not.toContainText('sse_subscribe')
-    await expect(page.getByTestId('ai-mcp-tools-table')).not.toContainText('stdio_exec')
+    await expect(page.getByTestId('ai-mcp-tools-dialog')).toBeVisible()
+    await expect(page.getByTestId('ai-mcp-tools-dialog')).toContainText('暂无工具，请先刷新')
   } finally {
     await deleteMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdServer.mcpId).catch(() => undefined)
   }
