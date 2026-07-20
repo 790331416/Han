@@ -26,7 +26,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -36,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -63,6 +61,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     private final AiModelCredentialResolver credentialResolver;
     private final AiEmbeddingClient embeddingClient;
     private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
+    private final AiDocumentTextExtractor textExtractor;
 
     @Value("${han.ai.document-storage-path:./data/ai-documents}")
     private String documentStoragePath;
@@ -163,7 +162,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         }
         String originalFilename = file.getOriginalFilename();
         String docName = StringUtils.hasText(originalFilename) ? originalFilename.trim() : "unnamed.txt";
-        String docType = resolveDocumentType(docName);
+        String docType = textExtractor.resolveDocumentType(docName);
         Path storedPath = storeFile(kbId, docName, file);
 
         AiDocumentPo document = new AiDocumentPo();
@@ -453,11 +452,11 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         if (!Files.exists(path)) {
             return new IndexOutcome(List.of(), 0, true, "文档文件不存在，无法重建索引");
         }
-        String docType = resolveDocumentType(document.getDocName());
-        String content = extractTextContent(path, docType);
+        String docType = textExtractor.resolveDocumentType(document.getDocName());
+        String content = textExtractor.extract(path, docType);
         if (!StringUtils.hasText(content)) {
             String message = switch (docType) {
-                case "pdf", "docx" -> "当前版本暂仅支持 txt、md、html 自动解析";
+                case "pdf", "docx", "xlsx" -> "未能从文档中提取到文本内容（可能为扫描件、图片型或空文档）";
                 default -> "文档内容为空，未生成索引";
             };
             return new IndexOutcome(List.of(), 0, true, message);
@@ -490,15 +489,6 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         return new IndexOutcome(paragraphs, normalizedContent.length(), false, "");
     }
 
-    private String extractTextContent(Path path, String docType) throws IOException {
-        return switch (docType) {
-            case "txt", "md" -> Files.readString(path, StandardCharsets.UTF_8);
-            case "html" -> Files.readString(path, StandardCharsets.UTF_8).replaceAll("<[^>]+>", " ");
-            case "pdf", "docx" -> "";
-            default -> Files.readString(path, StandardCharsets.UTF_8);
-        };
-    }
-
     private String normalizeContent(String content) {
         return content.replace("\r\n", "\n")
                 .replace('\r', '\n')
@@ -507,7 +497,10 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
                 .trim();
     }
 
-    private List<String> splitParagraphs(String content) {
+    /**
+     * 空行分段 + 超长硬切（包内可见便于单测直接断言分段结果）。
+     */
+    static List<String> splitParagraphs(String content) {
         if (!StringUtils.hasText(content)) {
             return List.of();
         }
@@ -595,23 +588,6 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         } catch (IOException ignored) {
             // Ignore cleanup failure.
         }
-    }
-
-    private String resolveDocumentType(String docName) {
-        String lowerName = docName.toLowerCase(Locale.ROOT);
-        if (lowerName.endsWith(".pdf")) {
-            return "pdf";
-        }
-        if (lowerName.endsWith(".docx")) {
-            return "docx";
-        }
-        if (lowerName.endsWith(".md")) {
-            return "md";
-        }
-        if (lowerName.endsWith(".html") || lowerName.endsWith(".htm")) {
-            return "html";
-        }
-        return "txt";
     }
 
     private record IndexOutcome(List<AiParagraphPo> paragraphs, int charCount, boolean failed, String errorMessage) {

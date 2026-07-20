@@ -97,7 +97,7 @@
     <el-dialog v-model="docVisible" :title="`文档管理 - ${currentKb?.kbName || ''}`" width="80%" class="dialog-xl" destroy-on-close>
       <div data-testid="ai-knowledge-doc-dialog">
       <div class="doc-header">
-        <el-upload data-testid="ai-knowledge-upload" :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html" :on-change="handleFileSelect">
+        <el-upload data-testid="ai-knowledge-upload" :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html,.xlsx,.csv" :on-change="handleFileSelect">
           <el-button type="primary" :icon="Upload" data-testid="ai-knowledge-upload-button">上传文档</el-button>
         </el-upload>
       </div>
