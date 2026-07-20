@@ -151,7 +151,7 @@
                   <span v-if="polishStreamMeta.taskId">任务 {{ polishStreamMeta.taskId }}</span>
                   <span v-if="polishStreamMeta.modelCode">{{ polishStreamMeta.modelCode }}</span>
                 </div>
-                <pre>{{ polishStreamText }}</pre>
+                <MarkdownViewer :content="polishStreamText" />
               </article>
               <article v-for="item in polishVersions" :key="item.versionId" class="text-block">
                 <div class="content-action-bar">
@@ -183,7 +183,11 @@
                     </el-button>
                   </div>
                 </div>
-                <pre>{{ item.contentText }}</pre>
+                <MarkdownViewer :content="item.contentText" />
+                <details class="raw-output">
+                  <summary>查看原始 Markdown</summary>
+                  <pre>{{ item.contentText }}</pre>
+                </details>
               </article>
             </div>
           </div>
@@ -213,7 +217,7 @@
                 <span>{{ selectedPolish.contentText?.length || 0 }} 字</span>
                 <span>{{ selectedPolish.createTime || '-' }}</span>
               </div>
-              <pre v-if="selectedPolish?.contentText" class="source-preview-text">{{ selectedPolish.contentText }}</pre>
+              <MarkdownViewer v-if="selectedPolish?.contentText" class="source-preview-text" :content="selectedPolish.contentText" />
               <el-empty v-else description="请先确认润色稿" />
             </aside>
 
@@ -7589,6 +7593,11 @@ onBeforeUnmount(() => {
   color: #374151;
   line-height: 1.7;
   font-family: inherit;
+}
+
+/* Markdown 渲染结果是 HTML，不能继承 pre-wrap，否则标签间换行会变成空行 */
+.source-preview-text.markdown-viewer {
+  white-space: normal;
 }
 
 .meta-line {

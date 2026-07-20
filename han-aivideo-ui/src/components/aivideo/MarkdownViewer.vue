@@ -17,8 +17,22 @@ const safeHtml = computed(() => {
     breaks: true,
     gfm: true
   }) as string
-  return sanitizeHtml(html)
+  return wrapTables(sanitizeHtml(html))
 })
+
+// 宽表格放进可横向滚动的容器，避免撑破外层栅格布局
+function wrapTables(html: string): string {
+  if (typeof document === 'undefined' || !html.includes('<table')) return html
+  const template = document.createElement('template')
+  template.innerHTML = html
+  for (const table of Array.from(template.content.querySelectorAll('table'))) {
+    const wrap = document.createElement('div')
+    wrap.className = 'table-scroll'
+    table.replaceWith(wrap)
+    wrap.appendChild(table)
+  }
+  return template.innerHTML
+}
 </script>
 
 <style lang="scss" scoped>
@@ -95,9 +109,17 @@ const safeHtml = computed(() => {
     background: transparent;
   }
 
+  :deep(.table-scroll) {
+    margin: 10px 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
   :deep(table) {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
+    margin: 0;
   }
 
   :deep(th),
@@ -105,6 +127,8 @@ const safeHtml = computed(() => {
     padding: 8px;
     border: 1px solid #e5e7eb;
     text-align: left;
+    min-width: 64px;
+    max-width: 340px;
   }
 }
 </style>
