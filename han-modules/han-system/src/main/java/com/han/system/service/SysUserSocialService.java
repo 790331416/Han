@@ -58,6 +58,18 @@ public class SysUserSocialService {
     }
 
     /**
+     * 更新已绑定身份的非敏感扩展快照。
+     */
+    public void updateExtra(Long userId, String provider, String extra) {
+        SysUserSocialPo binding = getByUserAndProvider(userId, provider);
+        if (binding == null) {
+            throw new BusinessException("第三方身份绑定不存在");
+        }
+        binding.setExtra(extra);
+        socialMapper.updateById(binding);
+    }
+
+    /**
      * 绑定社交账号（幂等：同用户同身份重复绑定只刷新昵称头像）
      *
      * @throws BusinessException 违反唯一性规则时

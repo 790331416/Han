@@ -6,6 +6,7 @@ import com.han.api.system.domain.TenantInitDto;
 import com.han.api.system.domain.UserVO;
 import com.han.api.system.domain.RoleVO;
 import com.han.api.system.domain.DeptVO;
+import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.common.core.domain.R;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -166,4 +167,10 @@ public interface SystemServiceClient {
      */
     @PostExchange("/social/unbind")
     R<Void> unbindSocialUser(@RequestParam("userId") Long userId, @RequestParam("provider") String provider);
+
+    /**
+     * 幂等同步数字校园当前用户并返回可签发登录态的 Han 用户。
+     */
+    @PostExchange("/external/digital-campus/user/sync")
+    R<UserVO> syncDigitalCampusUser(@RequestBody DigitalCampusUserSyncDTO dto);
 }

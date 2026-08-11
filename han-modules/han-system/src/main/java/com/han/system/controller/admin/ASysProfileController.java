@@ -9,6 +9,7 @@ import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.domain.dto.ProfileDto;
 import com.han.system.domain.dto.SysUserDto;
 import com.han.system.service.ISysUserService;
+import com.han.system.sdfz.digitalcampus.DigitalCampusIdentityService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -23,12 +24,19 @@ import org.springframework.web.bind.annotation.*;
 public class ASysProfileController {
 
     private final ISysUserService userService;
+    private final DigitalCampusIdentityService digitalCampusIdentityService;
 
     @GetMapping
     @PermissionExempt("登录用户获取自身个人信息，无需特定权限")
     public R<SysUserDto> getProfile() {
         Long userId = SecurityContextHolder.getUserId();
         return R.ok(userService.selectById(userId));
+    }
+
+    @GetMapping("/external")
+    @PermissionExempt("登录用户获取自身外部身份快照，无需特定权限")
+    public R<java.util.Map<String, Object>> getExternalProfile() {
+        return R.ok(digitalCampusIdentityService.getExternalProfile(SecurityContextHolder.getUserId()));
     }
 
     @RepeatSubmit
