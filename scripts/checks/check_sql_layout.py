@@ -11,6 +11,7 @@ SQL = ROOT / "sql"
 ALLOWED_SQL_TOP_LEVEL = {
     "README.md",
     "archive",
+    "sdfz",
     "tiers",
     "upgrades",
 }
@@ -168,6 +169,26 @@ def main() -> int:
             for prefix in FORBIDDEN_POSTGRES_LINE_PREFIXES:
                 if stripped.startswith(prefix):
                     violations.append(f"PostgreSQL upgrade SQL contains forbidden statement at {upgrade_file}:{lineno}: {line.strip()}")
+
+    sdfz_mysql = SQL / "sdfz" / "mysql" / "20260811_education_master.sql"
+    if sdfz_mysql.exists():
+        sdfz_text = read_sql(sdfz_mysql).lower()
+        for table in (
+            "edu_school",
+            "edu_class",
+            "edu_person",
+            "edu_person_class",
+            "edu_subject",
+            "edu_person_subject",
+            "edu_room",
+            "edu_device",
+            "edu_semester",
+        ):
+            if f"create table if not exists {table}" not in sdfz_text:
+                violations.append(f"SDFZ MySQL SQL missing table: {table}")
+        for forbidden in ("online_status", "heartbeat", "stream_url", "record_url"):
+            if forbidden in sdfz_text:
+                violations.append(f"SDFZ management schema must not own runtime video/device field: {forbidden}")
 
     for script in UPGRADE_REHEARSAL_SCRIPTS:
         if not script.exists():

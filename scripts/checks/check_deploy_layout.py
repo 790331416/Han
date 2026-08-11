@@ -43,13 +43,21 @@ def main() -> int:
         if tier == "small":
             mysql_compose = tier_dir / "docker-compose-mysql.yml"
             mysql_init_sql = SQL / "tiers" / tier / "small-init-mysql.sql"
+            sdfz_education_sql = SQL / "sdfz" / "mysql" / "20260811_education_master.sql"
             if not mysql_compose.exists():
                 violations.append(f"missing MySQL small compose entry: {mysql_compose}")
             if not mysql_init_sql.exists():
                 violations.append(f"missing MySQL small init SQL: {mysql_init_sql}")
+            if not sdfz_education_sql.exists():
+                violations.append(f"missing SDFZ education SQL: {sdfz_education_sql}")
             if mysql_compose.exists():
                 mysql_text = mysql_compose.read_text(encoding="utf-8")
-                for token in ("mysql:8.4.10", "/tiers/small/small-init-mysql.sql:", "jdbc:mysql://"):
+                for token in (
+                    "mysql:8.4.10",
+                    "/tiers/small/small-init-mysql.sql:",
+                    "/sdfz/mysql/20260811_education_master.sql:",
+                    "jdbc:mysql://",
+                ):
                     if token not in mysql_text:
                         violations.append(f"{mysql_compose} missing MySQL token: {token}")
 
