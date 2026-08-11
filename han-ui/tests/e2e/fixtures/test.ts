@@ -5,7 +5,9 @@ export const e2eRuntime = {
   apiBaseUrl: process.env.PW_API_URL || 'http://10.18.35.95:9090',
   username: process.env.PW_USERNAME || 'admin',
   password: process.env.PW_PASSWORD || 'admin123',
-  tenantId: process.env.PW_TENANT_ID || ''
+  tenantId: process.env.PW_TENANT_ID || '',
+  captchaCode: process.env.PW_CAPTCHA_CODE || '',
+  captchaUuid: process.env.PW_CAPTCHA_UUID || ''
 }
 
 interface E2EFixtures {
@@ -22,7 +24,9 @@ async function createAuthSession(): Promise<AuthSession> {
       apiBaseUrl: e2eRuntime.apiBaseUrl,
       username: e2eRuntime.username,
       password: e2eRuntime.password,
-      tenantId: e2eRuntime.tenantId || undefined
+      tenantId: e2eRuntime.tenantId || undefined,
+      captchaCode: e2eRuntime.captchaCode || undefined,
+      captchaUuid: e2eRuntime.captchaUuid || undefined
     })
   } finally {
     await apiRequest.dispose()

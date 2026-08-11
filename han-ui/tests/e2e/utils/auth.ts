@@ -19,6 +19,8 @@ export interface LoginByApiOptions {
   username: string
   password: string
   tenantId?: string | number
+  captchaCode?: string
+  captchaUuid?: string
 }
 
 /**
@@ -36,6 +38,13 @@ export async function loginByApi(request: APIRequestContext, options: LoginByApi
 
   if (options.tenantId !== undefined && options.tenantId !== '') {
     payload.tenantId = normalizeTenantId(options.tenantId)
+  }
+  if (Boolean(options.captchaCode) !== Boolean(options.captchaUuid)) {
+    throw new Error('Captcha code and uuid must be provided together')
+  }
+  if (options.captchaCode && options.captchaUuid) {
+    payload.code = options.captchaCode
+    payload.uuid = options.captchaUuid
   }
 
   let lastError: Error | undefined
