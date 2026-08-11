@@ -26,6 +26,15 @@ FORBIDDEN_POSTGRES_LINE_PREFIXES = [
     "USE ",
 ]
 
+FORBIDDEN_MYSQL_TOKENS = [
+    "BIGSERIAL",
+    "COMMENT ON ",
+    "ON CONFLICT",
+    " CASCADE;",
+    "DO $$",
+    "::BIGINT",
+]
+
 FORBIDDEN_SYSTEM_TOKENS = [
     " deleted ",
     "\tdeleted\t",
@@ -113,6 +122,21 @@ def main() -> int:
             text = read_sql(nacos_file)
             if "INSERT INTO nacos.config_info" not in text:
                 violations.append(f"Nacos 导入 SQL 缺少 config_info 导入语句: {nacos_file}")
+
+        if tier == "small":
+            mysql_init_file = tier_dir / "small-init-mysql.sql"
+            if not mysql_init_file.exists():
+                violations.append(f"缺少 MySQL small 初始化 SQL: {mysql_init_file}")
+            else:
+                mysql_text = read_sql(mysql_init_file)
+                mysql_upper = mysql_text.upper()
+                for token in FORBIDDEN_MYSQL_TOKENS:
+                    if token in mysql_upper:
+                        violations.append(f"MySQL small SQL 包含 PostgreSQL 语法 {token!r}: {mysql_init_file}")
+                mysql_lower = mysql_text.lower()
+                for column in REQUIRED_SYS_USER_COLUMNS:
+                    if column not in mysql_lower:
+                        violations.append(f"MySQL small init SQL missing sys_user.{column}: {mysql_init_file}")
 
     upgrade_files = sorted((SQL / "upgrades" / "postgres").glob("*.sql"))
     tracked_upgrade_paths = {

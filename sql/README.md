@@ -6,6 +6,7 @@
 
 - `tiers/`
   - `small/small-init.sql`
+  - `small/small-init-mysql.sql`
   - `small/small-nacos-derby-import.sql`
   - `medium/medium-init.sql`
   - `medium/medium-nacos-derby-import.sql`
@@ -18,9 +19,10 @@
 
 ## 使用规则
 
-- 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- PostgreSQL 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- MySQL 初始化当前只认 `sql/tiers/small/small-init-mysql.sql`
 - Nacos 导入只认 `sql/tiers/<tier>/<tier>-nacos-derby-import.sql`
-- 增量升级只认 `sql/upgrades/postgres/`
+- PostgreSQL 增量升级只认 `sql/upgrades/postgres/`；MySQL 当前仅支持 clean small 初始化，暂无存量升级入口
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 - PostgreSQL 脚本禁止继续使用 MySQL 写法，例如列内 `COMMENT`、`AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`AFTER`、`USE <db>`
 - `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time`、`pwd_reset_flag`、`totp_secret` 与 `totp_enabled`
@@ -147,11 +149,14 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 
 ## 三档说明
 
-| 档位 | 初始化 SQL | Nacos 导入 SQL | 覆盖模块 |
-| --- | --- | --- | --- |
-| `small` | `sql/tiers/small/small-init.sql` | `sql/tiers/small/small-nacos-derby-import.sql` | gateway、auth、system、job |
-| `medium` | `sql/tiers/medium/medium-init.sql` | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
-| `full` | `sql/tiers/full/full-init.sql` | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
+| 档位 | PostgreSQL 初始化 SQL | MySQL 8.4 初始化 SQL | Nacos 导入 SQL | 覆盖模块 |
+| --- | --- | --- | --- | --- |
+| `small` | `sql/tiers/small/small-init.sql` | `sql/tiers/small/small-init-mysql.sql` | `sql/tiers/small/small-nacos-derby-import.sql` | gateway、auth、system、job |
+| `medium` | `sql/tiers/medium/medium-init.sql` | 暂未提供 | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
+| `full` | `sql/tiers/full/full-init.sql` | 暂未提供 | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
+
+PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库但仅开放 small 档全新初始化，
+口径与边界以 [PostgreSQL/MySQL 兼容与切换手册](../docs/11-PostgreSQL-MySQL兼容与切换手册.md) 为准。
 
 菜单与权限点按档位裁剪：small 只播系统、监控与任务调度；medium 追加 OSS 配置、工作流、开放平台与租户配额；
 AI 相关菜单与权限点只进 full。

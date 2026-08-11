@@ -116,6 +116,20 @@ def main() -> int:
 
         check_required_env_coverage(violations, compose, tier_dir / ".env.example")
 
+        # small 档已开放 MySQL 入口，medium/full 的 MySQL 尚未落地，这里只校验 small
+        if tier == "small":
+            mysql_compose = tier_dir / "docker-compose-mysql.yml"
+            mysql_init_sql = SQL / "tiers" / tier / "small-init-mysql.sql"
+            if not mysql_compose.exists():
+                violations.append(f"missing MySQL small compose entry: {mysql_compose}")
+            if not mysql_init_sql.exists():
+                violations.append(f"missing MySQL small init SQL: {mysql_init_sql}")
+            if mysql_compose.exists():
+                mysql_text = mysql_compose.read_text(encoding="utf-8")
+                for token in ("mysql:8.4.10", "/tiers/small/small-init-mysql.sql:", "jdbc:mysql://"):
+                    if token not in mysql_text:
+                        violations.append(f"{mysql_compose} missing MySQL token: {token}")
+
     for name in (
         "deploy-95.sh",
         "cleanup-95.sh",
