@@ -68,6 +68,32 @@ CREATE TABLE sys_user (
 );
 
 -- =============================================
+-- 4.1 社交及外部身份绑定表
+-- =============================================
+CREATE TABLE sys_user_social (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    user_id         BIGINT          NOT NULL,
+    tenant_id       BIGINT,
+    provider        VARCHAR(32)     NOT NULL,
+    open_id         VARCHAR(128)    NOT NULL,
+    access_token    VARCHAR(512),
+    nickname        VARCHAR(100),
+    avatar          VARCHAR(500),
+    extra           TEXT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_social_user_id
+    ON sys_user_social (user_id);
+
+CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
+    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
+
+CREATE UNIQUE INDEX uq_user_social_user_provider
+    ON sys_user_social (user_id, provider);
+
+
+-- =============================================
 -- 5. 岗位表
 -- =============================================
 CREATE TABLE sys_post (
@@ -659,5 +685,4 @@ DROP TABLE IF EXISTS qrtz_calendars CASCADE;
 SELECT column_name, data_type, character_maximum_length
 FROM information_schema.columns
 WHERE table_name = 'sys_job' AND column_name IN ('service_name', 'handler');
-
 

@@ -70,6 +70,27 @@ CREATE TABLE sys_user (
 );
 
 -- =============================================
+-- 4.1 社交及外部身份绑定表
+-- =============================================
+CREATE TABLE sys_user_social (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    user_id         BIGINT          NOT NULL,
+    tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
+    provider        VARCHAR(32)     NOT NULL,
+    open_id         VARCHAR(128)    NOT NULL,
+    access_token    VARCHAR(512),
+    nickname        VARCHAR(100),
+    avatar          VARCHAR(500),
+    extra           TEXT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_social_user_id (user_id),
+    UNIQUE KEY uq_user_social_tenant_provider_openid (tenant_scope, provider, open_id),
+    UNIQUE KEY uq_user_social_user_provider (user_id, provider)
+);
+
+
+-- =============================================
 -- 5. 岗位表
 -- =============================================
 CREATE TABLE sys_post (
