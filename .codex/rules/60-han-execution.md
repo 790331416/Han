@@ -21,7 +21,7 @@
 
 - 后端主工程使用 Java 21、Spring Boot、Spring Cloud、Maven。
 - 前端主工程使用 Vue 3、TypeScript、Vite。
-- 主数据库使用 PostgreSQL。
+- PostgreSQL 是默认数据库，MySQL 8.4 是正式可选数据库；当前一键部署只在 small 档开放 MySQL。
 - 服务治理和配置中心使用 Nacos。
 - 三档部署使用 `small / medium / full`。
 
@@ -46,7 +46,7 @@
 - 运行时能力接口。
 - 三档部署。
 - Nacos 配置。
-- PostgreSQL 初始化与升级。
+- PostgreSQL/MySQL 兼容入口与 PostgreSQL 升级。
 - 页面级健康回归。
 - 95 发布链路。
 
@@ -65,11 +65,13 @@
 ## 6. SQL 结构锁定
 
 - `sql/tiers/small/small-init.sql`
+- `sql/tiers/small/small-init-mysql.sql`
 - `sql/tiers/medium/medium-init.sql`
 - `sql/tiers/full/full-init.sql`
 - `sql/upgrades/postgres/`
 
 禁止把散装 SQL 放回根目录，禁止绕开 tier 结构新增长期 SQL 入口。
+禁止把只有驱动或只有编译结果的改动描述为数据库已支持；必须以对应 tier 的干净实例导入和最小业务回归为准。
 
 ## 7. 部署结构锁定
 

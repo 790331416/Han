@@ -16,7 +16,7 @@
 
 - 后端以 Java 21、Spring Boot、Spring Cloud、Maven 为主。
 - 前端以 Vue 3、TypeScript、Vite 为主。
-- 数据库以 PostgreSQL 为正式主库。
+- PostgreSQL 是默认数据库，MySQL 8.4 是正式可选数据库；具体可部署范围以支持矩阵为准。
 - 服务治理和配置以 Nacos 正式口径为准。
 - 未经确认，不新增替代主技术栈或平行架构。
 
@@ -51,8 +51,10 @@
 ## 7. SQL 与配置实现要求
 
 - SQL 初始化只认 `sql/tiers/{small,medium,full}`。
+- `small` 的 MySQL 正式入口固定为 `sql/tiers/small/small-init-mysql.sql`；medium/full 未完成实库门禁前仍只支持 PostgreSQL。
 - PostgreSQL 升级脚本只进入 `sql/upgrades/postgres/`。
 - Nacos 导入脚本与 tier 初始化脚本保持同档同步。
+- 数据库连接通过 `DB_URL` 切换，公共分页方言按 JDBC URL 自动识别，禁止新增硬编码 `DbType`。
 - secrets 不写入 Git。
 - 修改配置时必须说明环境、配置项、默认值、兼容影响和回滚方式。
 

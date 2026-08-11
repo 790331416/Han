@@ -30,9 +30,11 @@
 - 正式规则文档只有一份：`docs/06-牛马协作总规则.md`。
 - SQL 只能使用当前正式结构：
   - `sql/tiers/small/small-init.sql`
+  - `sql/tiers/small/small-init-mysql.sql`
   - `sql/tiers/medium/medium-init.sql`
   - `sql/tiers/full/full-init.sql`
   - `sql/upgrades/postgres/`
+- PostgreSQL 是兼容默认值；MySQL 8.4 是正式可选数据库。当前一键部署支持矩阵为 `small=PostgreSQL/MySQL`、`medium/full=PostgreSQL`，不得把尚未实库验证的 medium/full MySQL 表述为已支持。
 - 三档正式部署入口固定为：
   - `deploy/small`
   - `deploy/medium`
