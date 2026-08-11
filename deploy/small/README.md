@@ -29,3 +29,13 @@
 - System `19201`
 - Job `19204`
 - UI `3100`
+
+上述端口是默认值，可通过 `.env` 中的 `HAN_*_HOST_PORT` 变量覆盖。需要在同一台服务器并行验证多套 small 环境时，必须同时使用独立 Compose project name 和独立宿主机端口；这样容器、网络、数据卷和端口都不会覆盖既有环境。例如：
+
+```bash
+docker compose -p hansdfz \
+  --env-file /opt/han/config/sdfz-small.env \
+  -f /opt/han/deploy/small/docker-compose-mysql.yml config
+```
+
+先执行 `config` 检查最终配置和端口，确认无冲突后再分阶段启动。测试环境的数据库、Redis 和 Nacos 使用该 project 自己的数据卷，不与正式 small/medium/full 共享；镜像应固定到已验证的提交标签，不使用 `latest` 作为验收证据。

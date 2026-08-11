@@ -53,6 +53,24 @@ def main() -> int:
                     if token not in mysql_text:
                         violations.append(f"{mysql_compose} missing MySQL token: {token}")
 
+                for token in (
+                    "HAN_MYSQL_HOST_PORT",
+                    "HAN_REDIS_HOST_PORT",
+                    "HAN_NACOS_HTTP_HOST_PORT",
+                    "HAN_NACOS_GRPC_HOST_PORT",
+                    "HAN_GATEWAY_HOST_PORT",
+                    "HAN_AUTH_HOST_PORT",
+                    "HAN_SYSTEM_HOST_PORT",
+                    "HAN_JOB_HOST_PORT",
+                    "HAN_UI_HOST_PORT",
+                ):
+                    if token not in mysql_text:
+                        violations.append(f"{mysql_compose} missing configurable host port: {token}")
+
+            postgres_text = compose.read_text(encoding="utf-8") if compose.exists() else ""
+            if "HAN_POSTGRES_HOST_PORT" not in postgres_text:
+                violations.append(f"{compose} missing configurable PostgreSQL host port")
+
     aivideo_nginx = ROOT / "han-aivideo-ui" / "nginx.conf"
     if not aivideo_nginx.exists():
         violations.append("missing han-aivideo-ui/nginx.conf")
