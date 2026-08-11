@@ -1,6 +1,6 @@
 # small 初始化顺序
 
-1. PostgreSQL
+1. PostgreSQL 或 MySQL（二选一）
 2. Redis
 3. Nacos
 4. Gateway
@@ -12,6 +12,7 @@
 对外端口：
 
 - PostgreSQL `15432`
+- MySQL `13306`
 - Redis `16379`
 - Nacos `18848`
 - Gateway `19090`

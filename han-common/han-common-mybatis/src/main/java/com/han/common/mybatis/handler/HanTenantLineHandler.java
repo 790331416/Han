@@ -55,8 +55,8 @@ public class HanTenantLineHandler implements TenantLineHandler {
         }
 
         String normalized = tableName == null ? "" : tableName.toLowerCase(Locale.ROOT);
-        // PostgreSQL 系统目录和 information_schema 不参与业务租户隔离，
-        // 否则会污染代码生成等元数据查询。
+        // 数据库系统目录和 information_schema 不参与业务租户隔离，
+        // 否则会污染 PostgreSQL/MySQL 代码生成等元数据查询。
         if (normalized.startsWith("pg_") || normalized.startsWith("information_schema")) {
             return true;
         }

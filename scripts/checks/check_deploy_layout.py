@@ -40,6 +40,19 @@ def main() -> int:
                         f"{tier_dir / '.env.example'} must default full UI to han-aivideo-ui"
                     )
 
+        if tier == "small":
+            mysql_compose = tier_dir / "docker-compose-mysql.yml"
+            mysql_init_sql = SQL / "tiers" / tier / "small-init-mysql.sql"
+            if not mysql_compose.exists():
+                violations.append(f"missing MySQL small compose entry: {mysql_compose}")
+            if not mysql_init_sql.exists():
+                violations.append(f"missing MySQL small init SQL: {mysql_init_sql}")
+            if mysql_compose.exists():
+                mysql_text = mysql_compose.read_text(encoding="utf-8")
+                for token in ("mysql:8.4.10", "/tiers/small/small-init-mysql.sql:", "jdbc:mysql://"):
+                    if token not in mysql_text:
+                        violations.append(f"{mysql_compose} missing MySQL token: {token}")
+
     aivideo_nginx = ROOT / "han-aivideo-ui" / "nginx.conf"
     if not aivideo_nginx.exists():
         violations.append("missing han-aivideo-ui/nginx.conf")

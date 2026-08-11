@@ -6,6 +6,7 @@
 
 - `tiers/`
   - `small/small-init.sql`
+  - `small/small-init-mysql.sql`
   - `small/small-nacos-derby-import.sql`
   - `medium/medium-init.sql`
   - `medium/medium-nacos-derby-import.sql`
@@ -44,9 +45,10 @@
 
 ## 使用规则
 
-- 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- PostgreSQL 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- MySQL 初始化当前只认 `sql/tiers/small/small-init-mysql.sql`
 - Nacos 导入只认 `sql/tiers/<tier>/<tier>-nacos-derby-import.sql`
-- 增量升级只认 `sql/upgrades/postgres/`
+- PostgreSQL 增量升级只认 `sql/upgrades/postgres/`；MySQL 当前仅支持 clean small 初始化，暂无存量升级入口
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 - PostgreSQL 脚本禁止继续使用 MySQL 写法，例如列内 `COMMENT`、`AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`AFTER`、`USE <db>`
 - `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time`、`pwd_reset_flag`、`totp_secret` 与 `totp_enabled`
@@ -89,6 +91,7 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 
 - `small`
   - PostgreSQL：`sql/tiers/small/small-init.sql`
+  - MySQL 8.4：`sql/tiers/small/small-init-mysql.sql`
   - Nacos：`sql/tiers/small/small-nacos-derby-import.sql`
 - `medium`
   - PostgreSQL：`sql/tiers/medium/medium-init.sql`
