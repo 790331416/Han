@@ -96,6 +96,10 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: small
       HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
+      SDFZ_CLASSROOM_GATEWAY_ENABLED: ${SDFZ_CLASSROOM_GATEWAY_ENABLED:-false}
+      SDFZ_CLASSROOM_TOKEN_SECRET: ${SDFZ_CLASSROOM_TOKEN_SECRET:-}
+      SDFZ_CLASSROOM_TOKEN_EXCHANGE_URI: ${SDFZ_CLASSROOM_TOKEN_EXCHANGE_URI:-http://han-auth/auth/external/digital-campus/classroom-token}
+      SDFZ_THREE_CLASSROOM_GATEWAY_URI: ${SDFZ_THREE_CLASSROOM_GATEWAY_URI:-lb://three-classroom-gateway}
       JAVA_OPTS: -Xms128m -Xmx256m -Dio.netty.transport.noNative=true
       TZ: ${TZ:-Asia/Shanghai}
     ports:
@@ -115,6 +119,13 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: small
       HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:-han-cloud-inner-auth}
+      SDFZ_DIGITAL_CAMPUS_ENABLED: ${SDFZ_DIGITAL_CAMPUS_ENABLED:-false}
+      SDFZ_DIGITAL_CAMPUS_API_BASE_URL: ${SDFZ_DIGITAL_CAMPUS_API_BASE_URL:-}
+      SDFZ_DIGITAL_CAMPUS_ALLOWED_ROLE_TYPES: ${SDFZ_DIGITAL_CAMPUS_ALLOWED_ROLE_TYPES:-2,5}
+      SDFZ_DIGITAL_CAMPUS_TENANT_ID: ${SDFZ_DIGITAL_CAMPUS_TENANT_ID:-1}
+      SDFZ_CLASSROOM_GATEWAY_ENABLED: ${SDFZ_CLASSROOM_GATEWAY_ENABLED:-false}
+      SDFZ_CLASSROOM_TOKEN_SECRET: ${SDFZ_CLASSROOM_TOKEN_SECRET:-}
+      SDFZ_CLASSROOM_TOKEN_TTL_SECONDS: ${SDFZ_CLASSROOM_TOKEN_TTL_SECONDS:-900}
       SPRING_AUTOCONFIGURE_EXCLUDE: >-
         org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration

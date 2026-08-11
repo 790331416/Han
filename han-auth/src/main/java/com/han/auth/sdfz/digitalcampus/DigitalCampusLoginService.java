@@ -35,6 +35,16 @@ public class DigitalCampusLoginService {
     }
 
     public DigitalCampusLoginVO login(String token, String identityId) {
+        SynchronizedIdentity synchronizedIdentity = synchronize(token, identityId);
+        DigitalCampusProfile.Identity identity = synchronizedIdentity.identity();
+        LoginVO login = authService.issueLoginForUser(synchronizedIdentity.user(), ClientType.PC, false);
+        return new DigitalCampusLoginVO(login, new DigitalCampusLoginVO.ExternalIdentity(
+                identity.userId(), identity.identityId(), identity.userName(), identity.identityName(),
+                identity.roleType(), identity.schoolId(), identity.schoolName(), identity.branchId(),
+                identity.branchName(), identity.areaCode()));
+    }
+
+    public SynchronizedIdentity synchronize(String token, String identityId) {
         DigitalCampusProfile profile = digitalCampusClient.fetchCurrentUser(token);
         DigitalCampusProfile.Identity identity = profile.selectIdentity(identityId);
         if (identity.userId() == null || identity.userId().isBlank()) {
@@ -48,11 +58,7 @@ public class DigitalCampusLoginService {
                     ? message : "数字校园用户映射失败");
         }
 
-        LoginVO login = authService.issueLoginForUser(syncResult.getData(), ClientType.PC, false);
-        return new DigitalCampusLoginVO(login, new DigitalCampusLoginVO.ExternalIdentity(
-                identity.userId(), identity.identityId(), identity.userName(), identity.identityName(),
-                identity.roleType(), identity.schoolId(), identity.schoolName(), identity.branchId(),
-                identity.branchName(), identity.areaCode()));
+        return new SynchronizedIdentity(syncResult.getData(), identity);
     }
 
     private DigitalCampusUserSyncDTO toSyncDto(DigitalCampusProfile profile,
@@ -105,5 +111,8 @@ public class DigitalCampusLoginService {
                 .townEduDepartId(item.townEduDepartId())
                 .townEduDepartName(item.townEduDepartName())
                 .build();
+    }
+
+    public record SynchronizedIdentity(UserVO user, DigitalCampusProfile.Identity identity) {
     }
 }

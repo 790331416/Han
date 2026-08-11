@@ -43,6 +43,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/auth/captcha",
             "/auth/publicKey",
             "/auth/social/",
+            "/auth/external/digital-campus",
             "/tenant/all",
             "/tenant/listAllValid",
             "/tenant/domain/",
@@ -72,7 +73,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/file/public/",
             "/doc.html",
             "/swagger-resources",
-            "/v3/api-docs"
+            "/v3/api-docs",
+            "/tcapi/",
+            "/ysfz-tcapi/"
     );
 
     private final ReactiveStringRedisTemplate redisTemplate;

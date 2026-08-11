@@ -57,6 +57,10 @@ spring:
               uri: lb://han-aivideo
               predicates:
                 - Path=/aivideo/**
+            - id: three-classroom-legacy-relay
+              uri: ${SDFZ_THREE_CLASSROOM_GATEWAY_URI:lb://three-classroom-gateway}
+              predicates:
+                - Path=/tcapi/**,/ysfz-tcapi/**
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -75,6 +79,12 @@ logging:
   level:
     root: INFO
     com.han: INFO
+
+sdfz:
+  classroom-gateway:
+    enabled: ${SDFZ_CLASSROOM_GATEWAY_ENABLED:false}
+    token-secret: ${SDFZ_CLASSROOM_TOKEN_SECRET:}
+    exchange-uri: ${SDFZ_CLASSROOM_TOKEN_EXCHANGE_URI:http://han-auth/auth/external/digital-campus/classroom-token}
 
 management:
   endpoints:

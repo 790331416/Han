@@ -38,4 +38,11 @@ docker compose -p hansdfz \
   -f /opt/han/deploy/small/docker-compose-mysql.yml config
 ```
 
+师大附中接入时，复制 `.env.example` 后必须补齐数字校园地址，并为
+`SDFZ_CLASSROOM_TOKEN_SECRET` 生成至少 32 字节的随机密钥；确认 Auth 与 Gateway
+使用同一个值后，再把 `SDFZ_DIGITAL_CAMPUS_ENABLED` 和
+`SDFZ_CLASSROOM_GATEWAY_ENABLED` 设为 `true`。密钥不得提交到仓库。
+过渡期旧课堂网关若不与 Han 共用 Nacos namespace，必须把
+`SDFZ_THREE_CLASSROOM_GATEWAY_URI` 改成其内网 HTTP 地址。
+
 先执行 `config` 检查最终配置和端口，确认无冲突后再分阶段启动。测试环境的数据库、Redis 和 Nacos 使用该 project 自己的数据卷，不与正式 small/medium/full 共享；镜像应固定到已验证的提交标签，不使用 `latest` 作为验收证据。

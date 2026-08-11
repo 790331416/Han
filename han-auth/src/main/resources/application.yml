@@ -37,3 +37,7 @@ sdfz:
     api-base-url: ${SDFZ_DIGITAL_CAMPUS_API_BASE_URL:}
     allowed-role-types: ${SDFZ_DIGITAL_CAMPUS_ALLOWED_ROLE_TYPES:2,5}
     tenant-id: ${SDFZ_DIGITAL_CAMPUS_TENANT_ID:1}
+  classroom-gateway:
+    enabled: ${SDFZ_CLASSROOM_GATEWAY_ENABLED:false}
+    token-secret: ${SDFZ_CLASSROOM_TOKEN_SECRET:}
+    token-ttl-seconds: ${SDFZ_CLASSROOM_TOKEN_TTL_SECONDS:900}
