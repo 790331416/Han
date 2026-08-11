@@ -52,6 +52,12 @@ REQUIRED_SYS_USER_COLUMNS = [
     "totp_enabled",
 ]
 
+REQUIRED_IDENTITY_TOKENS = [
+    "create table sys_user_social",
+    "uq_user_social_tenant_provider_openid",
+    "uq_user_social_user_provider",
+]
+
 UPGRADE_REHEARSAL_SCRIPTS = [
     ROOT / "deploy" / "scripts" / "rehearse-postgres-upgrades.sh",
     ROOT / "deploy" / "scripts" / "rehearse-postgres-backup-upgrades.sh",
@@ -114,6 +120,9 @@ def main() -> int:
             for column in REQUIRED_SYS_USER_COLUMNS:
                 if column not in lowered:
                     violations.append(f"tier init SQL missing sys_user.{column}: {init_file}")
+            for token in REQUIRED_IDENTITY_TOKENS:
+                if token not in lowered:
+                    violations.append(f"tier init SQL missing identity schema token {token}: {init_file}")
             for token in FORBIDDEN_SYSTEM_TOKENS:
                 if token in lowered:
                     violations.append(f"tier init SQL 必须使用 del_flag，不能再写回 deleted: {init_file}")
@@ -137,6 +146,9 @@ def main() -> int:
                 for column in REQUIRED_SYS_USER_COLUMNS:
                     if column not in mysql_lower:
                         violations.append(f"MySQL small init SQL missing sys_user.{column}: {mysql_init_file}")
+                for token in REQUIRED_IDENTITY_TOKENS:
+                    if token not in mysql_lower:
+                        violations.append(f"MySQL small init SQL missing identity schema token {token}: {mysql_init_file}")
 
     upgrade_files = sorted((SQL / "upgrades" / "postgres").glob("*.sql"))
     tracked_upgrade_paths = {
