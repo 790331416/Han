@@ -167,6 +167,7 @@ public class EducationMasterDataService {
     public Long saveSubject(EducationForms.Subject form) {
         requireTenant();
         EduSubjectPo item = form.id() == null ? new EduSubjectPo() : requireSubject(form.id());
+        requireLocalSource(item, form.id(), "科目");
         item.setSubjectCode(form.subjectCode().trim());
         item.setSubjectName(form.subjectName().trim());
         item.setSort(form.sort());
@@ -201,6 +202,7 @@ public class EducationMasterDataService {
         requireTenant();
         requireSchool(form.schoolId());
         EduDevicePo item = form.id() == null ? new EduDevicePo() : requireDevice(form.id());
+        requireLocalSource(item, form.id(), "设备");
         item.setSchoolId(form.schoolId());
         item.setRoomId(form.roomId());
         item.setDeviceCode(form.deviceCode().trim());
@@ -259,7 +261,9 @@ public class EducationMasterDataService {
             case EduSchoolPo item -> item.getSourceSystem();
             case EduClassPo item -> item.getSourceSystem();
             case EduPersonPo item -> item.getSourceSystem();
-            default -> LOCAL_SOURCE;
+            case EduSubjectPo item -> item.getSourceSystem();
+            case EduDevicePo item -> item.getSourceSystem();
+            default -> throw new BusinessException("Unsupported education master-data type");
         };
         if (!LOCAL_SOURCE.equals(source)) {
             throw new BusinessException(name + "来自数字校园，请通过同步更新");

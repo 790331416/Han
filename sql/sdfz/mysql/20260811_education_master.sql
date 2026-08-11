@@ -181,3 +181,54 @@ CREATE TABLE IF NOT EXISTS edu_semester (
     KEY idx_edu_semester_current (tenant_id, current_flag, status, del_flag),
     CONSTRAINT chk_edu_semester_dates CHECK (end_date >= begin_date)
 );
+
+-- 教育管理菜单与按钮权限。使用独立高位 ID，重复执行时按权限标识跳过。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status)
+SELECT 202608110000, 0, '0', '教育管理', 'M', 'education', NULL, 'education:manage', 'school', 5, 0, 0
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE perms = 'education:manage');
+
+SET @edu_root_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:manage');
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status)
+SELECT source.id, @edu_root_id, CONCAT('0,', @edu_root_id), source.menu_name, 'C', source.path,
+       source.component, source.perms, source.icon, source.sort, 0, 0
+FROM (
+    SELECT 202608110001 AS id, '学校管理' AS menu_name, 'school' AS path, 'education/school/index' AS component, 'education:school:list' AS perms, 'office-building' AS icon, 1 AS sort
+    UNION ALL SELECT 202608110002, '班级管理', 'class', 'education/class/index', 'education:class:list', 'collection', 2
+    UNION ALL SELECT 202608110003, '人员管理', 'person', 'education/person/index', 'education:person:list', 'user', 3
+    UNION ALL SELECT 202608110004, '科目管理', 'subject', 'education/subject/index', 'education:subject:list', 'notebook', 4
+    UNION ALL SELECT 202608110005, '设备管理', 'device', 'education/device/index', 'education:device:list', 'monitor', 5
+) source
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu menu WHERE menu.perms = source.perms);
+
+SET @edu_school_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:school:list');
+SET @edu_class_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:class:list');
+SET @edu_person_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:person:list');
+SET @edu_subject_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:subject:list');
+SET @edu_device_id := (SELECT MIN(id) FROM sys_menu WHERE perms = 'education:device:list');
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status)
+SELECT source.id, source.parent_id, CONCAT('0,', @edu_root_id, ',', source.parent_id), source.menu_name,
+       'F', '', NULL, source.perms, '#', source.sort, 0, 0
+FROM (
+    SELECT 202608110011 AS id, @edu_school_id AS parent_id, '学校新增' AS menu_name, 'education:school:add' AS perms, 1 AS sort
+    UNION ALL SELECT 202608110012, @edu_school_id, '学校修改', 'education:school:edit', 2
+    UNION ALL SELECT 202608110021, @edu_class_id, '班级新增', 'education:class:add', 1
+    UNION ALL SELECT 202608110022, @edu_class_id, '班级修改', 'education:class:edit', 2
+    UNION ALL SELECT 202608110031, @edu_person_id, '人员新增', 'education:person:add', 1
+    UNION ALL SELECT 202608110032, @edu_person_id, '人员修改', 'education:person:edit', 2
+    UNION ALL SELECT 202608110041, @edu_subject_id, '科目新增', 'education:subject:add', 1
+    UNION ALL SELECT 202608110042, @edu_subject_id, '科目修改', 'education:subject:edit', 2
+    UNION ALL SELECT 202608110051, @edu_device_id, '设备新增', 'education:device:add', 1
+    UNION ALL SELECT 202608110052, @edu_device_id, '设备修改', 'education:device:edit', 2
+) source
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu menu WHERE menu.perms = source.perms);
+
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT 1, menu.id
+FROM sys_menu menu
+WHERE menu.perms LIKE 'education:%'
+  AND NOT EXISTS (
+      SELECT 1 FROM sys_role_menu role_menu
+      WHERE role_menu.role_id = 1 AND role_menu.menu_id = menu.id
+  );

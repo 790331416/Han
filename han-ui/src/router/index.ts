@@ -242,6 +242,45 @@ export const constantRoutes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/education',
+    name: 'Education',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/education/school',
+    meta: { title: '教育管理', icon: 'School' },
+    children: [
+      {
+        path: 'school',
+        name: 'EducationSchool',
+        component: () => import('@/views/education/school/index.vue'),
+        meta: { title: '学校管理', icon: 'OfficeBuilding', permission: 'education:school:list' }
+      },
+      {
+        path: 'class',
+        name: 'EducationClass',
+        component: () => import('@/views/education/class/index.vue'),
+        meta: { title: '班级管理', icon: 'Collection', permission: 'education:class:list' }
+      },
+      {
+        path: 'person',
+        name: 'EducationPerson',
+        component: () => import('@/views/education/person/index.vue'),
+        meta: { title: '人员管理', icon: 'User', permission: 'education:person:list' }
+      },
+      {
+        path: 'subject',
+        name: 'EducationSubject',
+        component: () => import('@/views/education/subject/index.vue'),
+        meta: { title: '科目管理', icon: 'Notebook', permission: 'education:subject:list' }
+      },
+      {
+        path: 'device',
+        name: 'EducationDevice',
+        component: () => import('@/views/education/device/index.vue'),
+        meta: { title: '设备管理', icon: 'Monitor', permission: 'education:device:list' }
+      }
+    ]
+  },
+  {
     path: '/ai',
     name: 'AI',
     component: () => import('@/layout/index.vue'),
