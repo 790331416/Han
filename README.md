@@ -1,6 +1,6 @@
 # han Cloud - 企业级微服务平台
 
-Spring Boot 4.1 | Spring Cloud 2025 | PostgreSQL | Java 21 | Vue 3
+Spring Boot 4.1 | Spring Cloud 2025 | PostgreSQL / MySQL | Java 21 | Vue 3
 
 ## 项目简介
 
@@ -39,7 +39,7 @@ han Cloud 是一个基于 Spring Boot 4.1 + Spring Cloud 2025 的企业级多租
 | 微服务 | Spring Cloud | 2025.1.2 | 微服务基础框架 |
 | 服务治理 | Spring Cloud Alibaba | 2025.1.0.0 | Nacos 3.x |
 | 追踪 | Micrometer Tracing | BOM 管理 | OpenTelemetry 集成 |
-| 数据库 | PostgreSQL | 18.1 | 主数据库 |
+| 数据库 | PostgreSQL / MySQL | 18.1 / 8.4 | PostgreSQL 默认；仅 small 档可切换 MySQL |
 | 缓存 | Redis | 8.6.0 | 缓存与分布式锁 |
 | 对象存储 | RustFS | 1.0.0-alpha.81 | S3 兼容对象存储，上游仍为 alpha 版本 |
 | 消息队列 | RabbitMQ | 3.x | 中型部署默认使用 |
@@ -99,7 +99,7 @@ Han/
 
 | 档位 | 适用场景 | 默认能力 | 正式部署入口 |
 | --- | --- | --- | --- |
-| `small` | 本地开发 / 功能验证 / 演示 | 核心后台、通知、任务调度、基础监控 | `deploy/small/docker-compose.yml` |
+| `small` | 本地开发 / 功能验证 / 演示 | 核心后台、通知、任务调度、基础监控 | PostgreSQL：`deploy/small/docker-compose.yml`；MySQL：`deploy/small/docker-compose-mysql.yml` |
 | `medium` | 小团队联调 / 标准测试环境 | `small` + 租户、工作流、开放平台、文件服务 | `deploy/medium/docker-compose.yml` |
 | `full` | 完整业务联调 / AI 联调 / 发布预演 | `medium` + AI 与代码生成 | `deploy/full/docker-compose.yml` |
 
@@ -117,9 +117,19 @@ Han/
 
 ### small
 
+PostgreSQL（默认）：
+
 ```bash
 docker compose -f deploy/small/docker-compose.yml up -d
 ```
+
+MySQL 8.4：
+
+```bash
+docker compose -f deploy/small/docker-compose-mysql.yml up -d
+```
+
+公共代码根据 `DB_URL` 自动识别分页方言；当前一键部署支持矩阵为 `small=PostgreSQL/MySQL`、`medium/full=PostgreSQL`。完整切换规则见 [11-PostgreSQL-MySQL兼容与切换手册](docs/11-PostgreSQL-MySQL兼容与切换手册.md)。
 
 访问：
 
