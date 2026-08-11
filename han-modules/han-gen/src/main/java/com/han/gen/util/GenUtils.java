@@ -11,22 +11,24 @@ public final class GenUtils {
     private GenUtils() {}
 
     /**
-     * PostgreSQL 列类型 → Java 类型
+     * PostgreSQL/MySQL 列类型 → Java 类型
      */
     public static String dbTypeToJavaType(String columnType) {
         if (columnType == null) return "String";
         String type = columnType.toLowerCase().trim();
 
         if (type.startsWith("bigint") || type.startsWith("int8")) return "Long";
-        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2") || type.startsWith("smallint")) return "Integer";
+        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2")
+                || type.startsWith("smallint") || type.startsWith("mediumint")
+                || type.startsWith("tinyint") || type.startsWith("int")) return "Integer";
         if (type.startsWith("numeric") || type.startsWith("decimal")) return "BigDecimal";
         if (type.startsWith("real") || type.startsWith("float4")) return "Float";
         if (type.startsWith("double") || type.startsWith("float8")) return "Double";
         if (type.startsWith("boolean") || type.startsWith("bool")) return "Boolean";
-        if (type.startsWith("timestamp")) return "LocalDateTime";
+        if (type.startsWith("timestamp") || type.startsWith("datetime")) return "LocalDateTime";
         if (type.startsWith("date")) return "LocalDate";
         if (type.startsWith("time")) return "LocalTime";
-        if (type.startsWith("bytea")) return "byte[]";
+        if (type.startsWith("bytea") || type.contains("blob") || type.contains("binary")) return "byte[]";
         if (type.startsWith("json") || type.startsWith("jsonb")) return "String";
         return "String";
     }

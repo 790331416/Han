@@ -68,6 +68,10 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
 
         <!-- Spring AI OpenAI 兼容客户端（Embedding，火山方舟等 OpenAI 兼容端点） -->
         <dependency>
