@@ -11,11 +11,14 @@ public final class GenUtils {
     private GenUtils() {}
 
     /**
-     * PostgreSQL 列类型 → Java 类型。
+     * PostgreSQL / MySQL 列类型 → Java 类型。
      *
-     * <p>入参是 {@code format_type(atttypid, atttypmod)} 的结果，形如
-     * {@code character varying(64)}、{@code timestamp with time zone}、{@code integer[]}。
-     * 带时区的类型必须先于不带时区的判断，否则时区语义会被 {@code LocalDateTime} 静默吃掉。
+     * <p>PostgreSQL 侧入参是 {@code format_type(atttypid, atttypmod)} 的结果，形如
+     * {@code character varying(64)}、{@code timestamp with time zone}、{@code integer[]}；
+     * MySQL 侧入参是 {@code information_schema.columns.column_type}，形如
+     * {@code datetime}、{@code longblob}、{@code tinyint(1)}。两种来源都走这一份映射。
+     *
+     * <p>带时区的类型必须先于不带时区的判断，否则时区语义会被 {@code LocalDateTime} 静默吃掉。
      */
     public static String dbTypeToJavaType(String columnType) {
         if (columnType == null) return "String";
@@ -25,18 +28,22 @@ public final class GenUtils {
         if (isArrayType(type)) return "String";
 
         if (type.startsWith("bigint") || type.startsWith("int8")) return "Long";
-        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2") || type.startsWith("smallint")) return "Integer";
+        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2")
+                || type.startsWith("smallint") || type.startsWith("mediumint")
+                || type.startsWith("tinyint") || type.startsWith("int")) return "Integer";
         if (type.startsWith("numeric") || type.startsWith("decimal")) return "BigDecimal";
         if (type.startsWith("real") || type.startsWith("float4")) return "Float";
         if (type.startsWith("double") || type.startsWith("float8")) return "Double";
         if (type.startsWith("boolean") || type.startsWith("bool")) return "Boolean";
         if (type.startsWith("timestamp with time zone") || type.startsWith("timestamptz")) return "OffsetDateTime";
-        if (type.startsWith("timestamp")) return "LocalDateTime";
+        // MySQL 的 datetime 无时区，与 PostgreSQL 不带时区的 timestamp 同语义
+        if (type.startsWith("timestamp") || type.startsWith("datetime")) return "LocalDateTime";
         if (type.startsWith("date")) return "LocalDate";
         if (type.startsWith("time with time zone") || type.startsWith("timetz")) return "OffsetTime";
         if (type.startsWith("time")) return "LocalTime";
-        if (type.startsWith("bytea")) return "byte[]";
-        // uuid / json / jsonb / inet / interval 等按文本落地，PostgreSQL 驱动可直接读写字符串
+        // bytea 是 PostgreSQL 口径，blob / binary 系列是 MySQL 口径
+        if (type.startsWith("bytea") || type.contains("blob") || type.contains("binary")) return "byte[]";
+        // uuid / json / jsonb / inet / interval 等按文本落地，两种驱动都可直接读写字符串
         return "String";
     }
 

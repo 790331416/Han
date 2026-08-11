@@ -1,6 +1,5 @@
 package com.han.common.mybatis.config;
 
-import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.DataPermissionInterceptor;
@@ -16,12 +15,16 @@ import com.han.common.mybatis.interceptor.HanTenantLineInnerInterceptor;
 import com.han.common.tenant.observe.MissingTenantContextRecorder;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.apache.ibatis.mapping.DatabaseIdProvider;
+import org.apache.ibatis.mapping.VendorDatabaseIdProvider;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import java.util.Properties;
 
 /**
  * MyBatis-Plus 配置
@@ -122,15 +125,28 @@ public class MybatisPlusConfig {
     }
 
     /**
-     * 分页插件（PostgreSQL）
+     * 分页插件。数据库方言由 MyBatis-Plus 根据 JDBC URL 自动识别。
      */
     private PaginationInnerInterceptor paginationInnerInterceptor() {
-        PaginationInnerInterceptor interceptor = new PaginationInnerInterceptor(DbType.POSTGRE_SQL);
+        PaginationInnerInterceptor interceptor = new PaginationInnerInterceptor();
         // 溢出总页数后是否处理（默认回到第一页）
         interceptor.setOverflow(true);
         // 单页分页条数限制（默认无限制，-1 不限制）
         interceptor.setMaxLimit(500L);
         return interceptor;
+    }
+
+    /**
+     * 为少量数据库元数据 SQL 提供稳定的 PostgreSQL/MySQL 标识。
+     */
+    @Bean
+    public DatabaseIdProvider databaseIdProvider() {
+        VendorDatabaseIdProvider provider = new VendorDatabaseIdProvider();
+        Properties properties = new Properties();
+        properties.setProperty("PostgreSQL", "postgresql");
+        properties.setProperty("MySQL", "mysql");
+        provider.setProperties(properties);
+        return provider;
     }
 
     /**
