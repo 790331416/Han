@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.han.system.domain.po.SysNoticePo;
 import com.han.system.domain.vo.NoticeLatestVo;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Result;
+import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -19,6 +21,10 @@ public interface SysNoticeMapper extends BaseMapper<SysNoticePo> {
      * @param limit 返回条数
      * @return 通知列表
      */
+    @Results({
+            @Result(column = "read_flag", property = "read"),
+            @Result(column = "read_time", property = "readTime")
+    })
     @Select("""
             <script>
             SELECT
@@ -37,7 +43,7 @@ public interface SysNoticeMapper extends BaseMapper<SysNoticePo> {
                 n.update_time,
                 n.del_flag,
                 n.remark,
-                CASE WHEN r.id IS NULL THEN FALSE ELSE TRUE END AS read,
+                CASE WHEN r.id IS NULL THEN FALSE ELSE TRUE END AS read_flag,
                 r.read_time AS read_time
             FROM sys_notice n
             LEFT JOIN sys_notice_read r
