@@ -37,12 +37,15 @@ class DigitalCampusIdentityServiceTest {
     private SysUserSocialService socialService;
     @Mock
     private SysUserApiConverter userConverter;
+    @Mock
+    private DigitalCampusEducationSyncService educationSyncService;
 
     private DigitalCampusIdentityService service;
 
     @BeforeEach
     void setUp() {
-        service = new DigitalCampusIdentityService(userMapper, socialService, userConverter, new ObjectMapper());
+        service = new DigitalCampusIdentityService(
+                userMapper, socialService, userConverter, new ObjectMapper(), educationSyncService);
     }
 
     @Test
@@ -81,6 +84,7 @@ class DigitalCampusIdentityServiceTest {
                 isNull(), eq("测试教师"), isNull());
         ArgumentCaptor<String> snapshotCaptor = ArgumentCaptor.forClass(String.class);
         verify(socialService).updateExtra(eq(100L), eq("digital-campus"), snapshotCaptor.capture());
+        verify(educationSyncService).sync(dto, 100L);
         assertThat(snapshotCaptor.getValue())
                 .contains("\"externalIdentityId\":\"identity-1\"")
                 .contains("\"schoolId\":\"school-1\"")

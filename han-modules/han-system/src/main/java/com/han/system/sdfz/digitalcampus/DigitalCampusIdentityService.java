@@ -45,6 +45,7 @@ public class DigitalCampusIdentityService {
     private final SysUserSocialService socialService;
     private final SysUserApiConverter userConverter;
     private final ObjectMapper objectMapper;
+    private final DigitalCampusEducationSyncService educationSyncService;
 
     @Transactional(rollbackFor = Exception.class)
     public UserVO syncCurrentUser(DigitalCampusUserSyncDTO dto) {
@@ -73,6 +74,7 @@ public class DigitalCampusIdentityService {
         }
 
         socialService.updateExtra(user.getId(), PROVIDER, snapshot(dto));
+        educationSyncService.sync(dto, user.getId());
         return userConverter.toApiUserVO(user);
     }
 
