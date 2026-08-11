@@ -22,7 +22,7 @@ public final class PasswordUtil {
      * BCrypt校验密码
      */
     public static boolean matches(String rawPassword, String encodedPassword) {
-        if (rawPassword == null || encodedPassword == null) {
+        if (rawPassword == null || encodedPassword == null || encodedPassword.isBlank()) {
             return false;
         }
         return BCrypt.verifyer().verify(rawPassword.toCharArray(), encodedPassword).verified;
