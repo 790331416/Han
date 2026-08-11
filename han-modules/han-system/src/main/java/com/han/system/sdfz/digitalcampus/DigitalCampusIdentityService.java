@@ -1,8 +1,6 @@
 package com.han.system.sdfz.digitalcampus;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.common.core.exception.BusinessException;
@@ -28,6 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 数字校园身份到 Han 用户的幂等映射服务。
@@ -93,7 +93,7 @@ public class DigitalCampusIdentityService {
             result.put("externalUserId", binding.getOpenId());
             result.putAll(stored);
             return result;
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new BusinessException("数字校园身份快照格式无效");
         }
     }
@@ -156,7 +156,7 @@ public class DigitalCampusIdentityService {
         snapshot.put("lastSyncAt", OffsetDateTime.now().toString());
         try {
             return objectMapper.writeValueAsString(snapshot);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new BusinessException("数字校园身份快照生成失败");
         }
     }

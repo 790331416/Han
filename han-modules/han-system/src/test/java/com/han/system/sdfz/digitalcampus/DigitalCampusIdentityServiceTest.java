@@ -1,6 +1,5 @@
 package com.han.system.sdfz.digitalcampus;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.common.core.exception.BusinessException;
@@ -15,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
