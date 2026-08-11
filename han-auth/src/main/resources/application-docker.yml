@@ -39,3 +39,9 @@ management:
   endpoint:
     health:
       show-details: always
+
+sdfz:
+  digital-campus:
+    enabled: ${SDFZ_DIGITAL_CAMPUS_ENABLED:false}
+    api-base-url: ${SDFZ_DIGITAL_CAMPUS_API_BASE_URL:}
+    allowed-role-types: ${SDFZ_DIGITAL_CAMPUS_ALLOWED_ROLE_TYPES:2,5}
