@@ -17,5 +17,7 @@ BEGIN
       AND job.job_group = log.job_group
       AND log.tenant_id IS NULL;
 
-    UPDATE sys_job_log SET tenant_id = COALESCE(tenant_id, 1);
+    -- 必须带 WHERE：sys_job_log 随运行时间线性增长，无条件 UPDATE 每次重放都会
+    -- 全表 rewrite，在 95 这种长期运行的库上会造成长时间行锁与表膨胀。
+    UPDATE sys_job_log SET tenant_id = 1 WHERE tenant_id IS NULL;
 END $$;

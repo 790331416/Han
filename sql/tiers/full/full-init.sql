@@ -63,8 +63,7 @@ CREATE TABLE sys_user (
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
     del_flag       SMALLINT        DEFAULT 0,
-    remark          VARCHAR(500),
-    UNIQUE (username, tenant_id)
+    remark          VARCHAR(500)
 );
 
 -- =============================================
@@ -75,7 +74,7 @@ CREATE TABLE sys_post (
     tenant_id       BIGINT          NOT NULL,
     post_code       VARCHAR(50)     NOT NULL,
     post_name       VARCHAR(100)    NOT NULL,
-    sort            INT             DEFAULT 0,
+    post_sort       INT             DEFAULT 0,
     status          SMALLINT        DEFAULT 0,
     create_by       BIGINT,
     create_name     VARCHAR(50),
@@ -354,7 +353,7 @@ CREATE TABLE sys_user_online (
 -- =============================================
 CREATE TABLE sys_client (
     id              BIGINT          NOT NULL PRIMARY KEY,
-    client_key      VARCHAR(50)     NOT NULL UNIQUE,
+    client_key      VARCHAR(50)     NOT NULL,
     client_secret   VARCHAR(200)    NOT NULL,
     client_type     VARCHAR(20)     NOT NULL,
     token_expire    INT             DEFAULT 1800,
@@ -372,6 +371,67 @@ CREATE TABLE sys_client (
     del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
+
+-- =============================================
+-- 21. 社交登录绑定表
+-- =============================================
+-- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
+-- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
+-- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
+CREATE TABLE sys_user_social (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    user_id         BIGINT          NOT NULL,
+    tenant_id       BIGINT,
+    provider        VARCHAR(32)     NOT NULL,
+    open_id         VARCHAR(128)    NOT NULL,
+    access_token    VARCHAR(512),
+    nickname        VARCHAR(100),
+    avatar          VARCHAR(500),
+    extra           TEXT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_social_user_id ON sys_user_social (user_id);
+CREATE INDEX idx_user_social_provider_openid ON sys_user_social (provider, open_id);
+
+-- 租户内一个第三方身份只绑一个账号（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）
+CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
+    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
+
+-- 一个账号同 provider 只绑一个第三方身份
+CREATE UNIQUE INDEX uq_user_social_user_provider
+    ON sys_user_social (user_id, provider);
+
+-- =============================================
+-- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）
+-- =============================================
+-- del_flag 是逻辑删除标记，唯一约束若不带 WHERE del_flag = 0，
+-- 软删除一条记录后就再也建不出同名记录。索引名与列顺序必须与
+-- sql/upgrades/postgres/phase5_unique_constraint.sql 保持一致，
+-- 否则升级链会在同一张表上建出两个等价索引。
+CREATE UNIQUE INDEX sys_user_username_tenant_uniq
+    ON sys_user (username, tenant_id) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_role_key_tenant
+    ON sys_role (tenant_id, role_key) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_role_name_tenant
+    ON sys_role (tenant_id, role_name) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_post_code_tenant
+    ON sys_post (tenant_id, post_code) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_dict_type_tenant
+    ON sys_dict_type (COALESCE(tenant_id, 0), dict_type) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_dict_data_tenant
+    ON sys_dict_data (COALESCE(tenant_id, 0), dict_type, dict_value) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_config_key_tenant
+    ON sys_config (COALESCE(tenant_id, 0), config_key) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_client_key
+    ON sys_client (client_key) WHERE del_flag = 0;
 
 
 -- ============================================================
@@ -395,7 +455,7 @@ INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phon
 (2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- 5. 岗位
-INSERT INTO sys_post (id, tenant_id, post_code, post_name, sort, status) VALUES
+INSERT INTO sys_post (id, tenant_id, post_code, post_name, post_sort, status) VALUES
 (1, 1, 'ceo', '董事长', 1, 0),
 (2, 1, 'cto', '技术总监', 2, 0),
 (3, 1, 'manager', '项目经理', 3, 0),
@@ -709,7 +769,8 @@ SELECT v.id, 1, v.config_name, v.config_key, v.config_value, v.config_type, v.re
 (3, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
 (4, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
 (5, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
-(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）')
+(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）'),
+(7, '用户登录-微信扫码登录开关', 'sys.login.wechatEnabled', 'false', 'Y', '是否开启微信扫码登录（true开启，false关闭）；开启前需在服务端配置 WECHAT_OPEN_APP_ID/WECHAT_OPEN_APP_SECRET')
 ) AS v(id, config_name, config_key, config_value, config_type, remark);
 
 -- 14. 客户端配置

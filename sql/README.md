@@ -99,6 +99,7 @@
 - `20260720_ai_agent_chat_tuning.sql`：`ai_agent`/`ai_workflow` 对话调优列
 - `20260720_wechat_social_login.sql`：微信扫码登录唯一索引、`sys.login.wechatEnabled` 开关与社交解绑权限
 - `20260812_permission_seed_alignment.sql`：补齐 AI / job / tenant / OSS / 开放平台 / 日志与在线用户的权限点种子，并把日志与监控权限串统一到 `monitor:*` 口径
+- `20260812_unique_constraint_del_flag_alignment.sql`：`sys_user_social` 结构兜底；把角色、岗位、字典、参数、客户端上不带 `del_flag` 条件的唯一约束换成部分唯一索引；存在重复数据时只告警跳过，不中断升级链
 
 ## 升级演练
 
