@@ -60,6 +60,59 @@ class ClassroomAuthFilterTest {
     }
 
     @Test
+    void relaysHanIssuedTokenForLocalAccountsInsteadOfRejectingIt() {
+        long now = Instant.now().getEpochSecond();
+        String internalToken = ClassroomTokenCodec.issue(
+                Map.of("userId", "100", "username", "Teacher", "userType", "USER", "roleType", "2"),
+                SECRET, now, 3600, "jti-local");
+        ReactiveStringRedisTemplate redis = mock(ReactiveStringRedisTemplate.class);
+        when(redis.hasKey(ClassroomTokenCodec.SESSION_KEY_PREFIX + "jti-local")).thenReturn(Mono.just(true));
+        ClassroomAuthFilter filter = new ClassroomAuthFilter(
+                redis, WebClient.builder(), true, SECRET,
+                "http://127.0.0.1:1/auth/external/digital-campus/classroom-token");
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/ysfz-tcapi/course/list")
+                .header("access-token", internalToken)
+                .build());
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(exchange, next -> {
+            forwarded.set(next);
+            return Mono.empty();
+        }).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
+        assertThat(forwarded.get().getRequest().getHeaders().getFirst("access-token"))
+                .isEqualTo(internalToken);
+    }
+
+    @Test
+    void rejectsHanIssuedTokenWhoseSessionWasRevoked() {
+        long now = Instant.now().getEpochSecond();
+        String internalToken = ClassroomTokenCodec.issue(
+                Map.of("userId", "100"), SECRET, now, 3600, "jti-local-revoked");
+        ReactiveStringRedisTemplate redis = mock(ReactiveStringRedisTemplate.class);
+        when(redis.hasKey(ClassroomTokenCodec.SESSION_KEY_PREFIX + "jti-local-revoked"))
+                .thenReturn(Mono.just(false));
+        ClassroomAuthFilter filter = new ClassroomAuthFilter(
+                redis, WebClient.builder(), true, SECRET,
+                "http://127.0.0.1:1/auth/external/digital-campus/classroom-token");
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/ysfz-tcapi/course/list")
+                .header("access-token", internalToken)
+                .build());
+        AtomicBoolean forwarded = new AtomicBoolean();
+
+        filter.filter(exchange, ignored -> {
+            forwarded.set(true);
+            return Mono.empty();
+        }).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(forwarded).isFalse();
+    }
+
+    @Test
     void rejectsClassroomTrafficWhenIntegrationIsNotConfigured() {
         ClassroomAuthFilter filter = new ClassroomAuthFilter(
                 mock(ReactiveStringRedisTemplate.class), WebClient.builder(), false, "",

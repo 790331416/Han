@@ -22,7 +22,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 
-/** 三个课堂请求的数字校园换票和内部短时令牌校验。 */
+/**
+ * 三个课堂请求的入口鉴权，两条通路并存。
+ *
+ * <ul>
+ *   <li>本地账号：请求带的就是 Han 签发的兼容凭证，验签加会话有效性后原样透传；</li>
+ *   <li>数字校园：请求带的是外部 Token，换票拿到内部令牌做有效性判断，向下游仍透传外部 Token。</li>
+ * </ul>
+ *
+ * <p>旧 api 只解 JWT payload、不验签，所以签名校验必须在这里完成，旧 api 端口不能对外暴露。
+ */
 @Component
 public class ClassroomAuthFilter implements GlobalFilter, Ordered {
 
@@ -64,10 +73,24 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
         }
         String identityId = exchange.getRequest().getHeaders().getFirst(IDENTITY_HEADER);
         if (verify(incomingToken) != null) {
-            return error(exchange, HttpStatus.UNAUTHORIZED,
-                    "Internal classroom token is not accepted by the legacy relay");
+            return relayInternalToken(exchange, chain, incomingToken);
         }
         return exchangeExternalToken(exchange, chain, incomingToken, identityId);
+    }
+
+    /**
+     * 放行 Han 自己签发的兼容凭证。
+     *
+     * <p>本地账号线没有数字校园外部 Token，凭证由 Han 直接签发；签名已在 {@link #verify} 校验，
+     * 这里只再确认会话没有被主动失效，然后原样透传给旧网关——旧 api 不验签，
+     * 入口校验必须在这里完成。
+     */
+    private Mono<Void> relayInternalToken(ServerWebExchange exchange, GatewayFilterChain chain,
+                                          String internalToken) {
+        return isActiveInternalToken(internalToken)
+                .flatMap(active -> active
+                        ? forward(exchange, chain, internalToken)
+                        : error(exchange, HttpStatus.UNAUTHORIZED, "Classroom session is revoked or expired"));
     }
 
     private Mono<Boolean> isActiveInternalToken(String token) {
@@ -117,23 +140,30 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
                         throwable -> new TokenExchangeException("Token exchange request failed", throwable));
     }
 
+    /**
+     * 缓存换来的内部令牌，但继续向下游透传数字校园令牌。
+     *
+     * <p>内部令牌只用来判断这次换票是否仍然有效；数字校园通路的下游要拿原始外部令牌校验，
+     * 两者不能互换。本地账号通路走 {@link #relayInternalToken}，透传的才是 Han 自己的兼容凭证。
+     */
     private Mono<Void> cacheAndForward(ServerWebExchange exchange, GatewayFilterChain chain,
-                                       String cacheKey, String token, String externalToken) {
-        ClassroomTokenCodec.VerifiedToken verified = verify(token);
+                                       String cacheKey, String internalToken, String externalToken) {
+        ClassroomTokenCodec.VerifiedToken verified = verify(internalToken);
         if (verified == null) {
             return error(exchange, HttpStatus.UNAUTHORIZED, "Invalid exchanged classroom token");
         }
         long ttl = Math.max(1, verified.expiresAt() - Instant.now().getEpochSecond());
-        return redisTemplate.opsForValue().set(cacheKey, token, Duration.ofSeconds(ttl))
+        return redisTemplate.opsForValue().set(cacheKey, internalToken, Duration.ofSeconds(ttl))
                 .then(forward(exchange, chain, externalToken));
     }
 
-    private Mono<Void> forward(ServerWebExchange exchange, GatewayFilterChain chain, String internalToken) {
+    /** @param relayedToken 实际写进下游 {@code access-token} 头的令牌，由各通路自行决定 */
+    private Mono<Void> forward(ServerWebExchange exchange, GatewayFilterChain chain, String relayedToken) {
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .uri(UriComponentsBuilder.fromUri(exchange.getRequest().getURI())
                         .replaceQueryParam(TOKEN_HEADER).build(true).toUri())
                 .headers(headers -> {
-                    headers.set(TOKEN_HEADER, internalToken);
+                    headers.set(TOKEN_HEADER, relayedToken);
                     headers.remove(IDENTITY_HEADER);
                 })
                 .build();
