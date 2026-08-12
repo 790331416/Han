@@ -1,5 +1,6 @@
 package com.han.ai.domain.po;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -43,6 +44,24 @@ public class AiAgentPo {
     private BigDecimal temperature;
 
     private Integer maxTokens;
+
+    /**
+     * 对话历史注入条数（NULL=默认 12）；更新策略 ALWAYS：清空即恢复默认
+     */
+    @TableField(value = "history_limit", updateStrategy = FieldStrategy.ALWAYS)
+    private Integer historyLimit;
+
+    /**
+     * 知识库检索返回条数（NULL=默认 5）
+     */
+    @TableField(value = "retrieval_top_k", updateStrategy = FieldStrategy.ALWAYS)
+    private Integer retrievalTopK;
+
+    /**
+     * 向量检索相似度阈值（NULL=默认 0.30）
+     */
+    @TableField(value = "similarity_threshold", updateStrategy = FieldStrategy.ALWAYS)
+    private BigDecimal similarityThreshold;
 
     /**
      * 公开分享链接 key（发布时生成，重置后旧链接失效）

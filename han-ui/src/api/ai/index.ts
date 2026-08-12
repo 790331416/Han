@@ -202,6 +202,8 @@ export interface AiAgent {
   systemPrompt?: string
   welcomeMessage?: string
   prologue?: string
+  /** 对话历史注入条数（空=默认 12） */
+  historyLimit?: number
   published: boolean
   /** 公开分享链接 key（发布时生成） */
   shareKey?: string
