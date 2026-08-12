@@ -320,24 +320,14 @@ aux
 *.sys
 $RECYCLE.BIN/
 
-# Git attributes for line endings #
-*.bat text eol=crlf
-*.cmd text eol=crlf
-*.reg text eol=crlf
-*.sh text eol=lf
-*.txt text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.md text eol=lf
-*.js text eol=lf
-*.ts text eol=lf
-*.json text eol=lf
-*.xml text eol=lf
-*.html text eol=lf
-*.css text eol=lf
-*.env text eol=lf
-*.conf text eol=lf
-*.properties text eol=lf
+# 换行符规则属于 .gitattributes 语法，写在这里只会被当成「忽略名为
+# `*.bat text eol=crlf` 的文件」这种永远匹配不到的模式，是死配置。
+# 真正生效的规则在 .gitattributes:5-32，此处不再重复。
+
+# Python 缓存 #
+###############
+__pycache__/
+*.py[cod]
 
 # Temporary folders #
 #####################
@@ -394,10 +384,10 @@ docs/_build/
 # CI/CD #
 #########
 .circleci/config.yml
-.github/workflows/*
-!.github/workflows/repo-guard.yml
-!.github/workflows/aivideo-image.yml
-!.github/workflows/rabbitmq-image.yml
+# 不要忽略 .github/workflows：这里原本是 `.github/workflows/*` 加三条白名单，
+# 结果任何新增的 workflow 都不会被 git add 带上，CI 会莫名其妙少一个 job。
+# 现有的 ai-image.yml 与 full-app-image.yml 能在版本控制里，只是因为它们在
+# 忽略规则生效前就已被跟踪。workflow 本就该全量入库。
  Jenkinsfile
 
 # Docker #
@@ -448,4 +438,8 @@ pg-log.txt
 system-log.txt
 test-api.ps1
 MaxKB-2/
+# 本地 Nacos 运行目录。仓库里没有、也不打算维护 Nacos 配置资产：
+# 三档真正的 Nacos 配置在 sql/tiers/<tier>/<tier>-nacos-derby-import.sql，
+# 见 docs/05-运维与95环境手册.md。因此 nacos 已从 check_repo_layout.py
+# 的顶层白名单里移除，任何想把 Nacos YAML 正式入库的改动都需要先拍板。
 nacos/

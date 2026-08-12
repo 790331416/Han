@@ -28,6 +28,32 @@ AIVIDEO_SERVICE = re.compile(r"^  aivideo:\s*$", re.MULTILINE)
 AIVIDEO_PROFILE = re.compile(r"^  aivideo:\s*\n(?:\s*#.*\n)*    profiles:\s*\n\s+-\s*aivideo\s*$", re.MULTILINE)
 
 
+# compose 里 ${VAR:?...} 是「缺失即启动失败」的必填注入项，对应的 .env.example
+# 必须给出占位符，否则运维照抄样板也起不来。
+REQUIRED_ENV_VAR = re.compile(r"\$\{(\w+):\?")
+
+
+def env_example_keys(path: Path) -> set:
+    keys = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        keys.add(stripped.split("=", 1)[0].strip())
+    return keys
+
+
+def check_required_env_coverage(violations: List[str], compose: Path, env_example: Path) -> None:
+    if not compose.exists() or not env_example.exists():
+        return
+    defined = env_example_keys(env_example)
+    for name in sorted(set(REQUIRED_ENV_VAR.findall(compose.read_text(encoding="utf-8")))):
+        if name not in defined:
+            violations.append(
+                f"{compose} requires {name} but {env_example} does not define it"
+            )
+
+
 def check_generic_base_boundary(violations: List[str]) -> None:
     compose = DEPLOY / "full" / "docker-compose.yml"
     if compose.exists():
@@ -62,6 +88,8 @@ def check_legacy_root_compose(violations: List[str]) -> None:
             if not (ROOT / source[2:]).exists():
                 violations.append(f"{name} mounts a missing SQL path: {source}")
 
+        check_required_env_coverage(violations, compose, ROOT / ".env.example")
+
 
 def main() -> int:
     violations = []  # type: List[str]
@@ -85,6 +113,8 @@ def main() -> int:
                 violations.append(f"{compose} does not mount {tier}-init.sql")
             if f"/tiers/{tier}/postgres/" in text:
                 violations.append(f"{compose} references removed split postgres SQL layout")
+
+        check_required_env_coverage(violations, compose, tier_dir / ".env.example")
 
     for name in (
         "deploy-95.sh",

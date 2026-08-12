@@ -32,7 +32,6 @@ ALLOWED_TOP_LEVEL = {
     "han-starter",
     "han-ui",
     "han-visual",
-    "nacos",
     "pom.xml",
     "settings.xml",
     "settings.workspace.xml",
