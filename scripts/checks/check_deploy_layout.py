@@ -18,6 +18,34 @@ LEGACY_ROOT_COMPOSE = {
 
 BIND_MOUNT_SQL = re.compile(r"-\s+(\./sql/[^:\s]+):")
 
+# generic-v2 通用底座不含 han-modules/han-aivideo，CI 也不构建 han-aivideo 镜像。
+# 这条检查以前是反着写的：它强制 full compose 必须含 aivideo: 服务、强制
+# deploy/full/.env.example 的 HAN_UI_IMAGE 必须指向 han-aivideo-ui，
+# 于是每次把短剧业务从通用底座摘出去都会被 repo-guard 判违规再拉回来
+# （提交历史 a91824a 移除、8abcd60 恢复）。现在改为守住通用边界：
+# aivideo 服务可以留在文件里，但必须挂 profile，不得进入默认启动路径。
+AIVIDEO_SERVICE = re.compile(r"^  aivideo:\s*$", re.MULTILINE)
+AIVIDEO_PROFILE = re.compile(r"^  aivideo:\s*\n(?:\s*#.*\n)*    profiles:\s*\n\s+-\s*aivideo\s*$", re.MULTILINE)
+
+
+def check_generic_base_boundary(violations: List[str]) -> None:
+    compose = DEPLOY / "full" / "docker-compose.yml"
+    if compose.exists():
+        text = compose.read_text(encoding="utf-8")
+        if AIVIDEO_SERVICE.search(text) and not AIVIDEO_PROFILE.search(text):
+            violations.append(
+                f"{compose} defines an aivideo service outside the 'aivideo' compose profile"
+            )
+
+    env_example = DEPLOY / "full" / ".env.example"
+    if env_example.exists():
+        text = env_example.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if line.startswith("HAN_UI_IMAGE=") and "han-aivideo-ui" in line:
+                violations.append(
+                    f"{env_example} must not default the generic full UI to han-aivideo-ui"
+                )
+
 
 def check_legacy_root_compose(violations: List[str]) -> None:
     for name, tier in LEGACY_ROOT_COMPOSE.items():
@@ -73,6 +101,7 @@ def main() -> int:
             violations.append(f"missing deploy script: deploy/scripts/{name}")
 
     check_legacy_root_compose(violations)
+    check_generic_base_boundary(violations)
 
     release_manifests = DEPLOY / "release-manifests"
     if not release_manifests.exists():

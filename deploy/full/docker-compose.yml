@@ -113,7 +113,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: ${HAN_RABBITMQ_IMAGE:-rabbitmq:3.13-management}
+    image: ${HAN_RABBITMQ_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/rabbitmq:3.13-management}
     environment:
       RABBITMQ_DEFAULT_USER: han
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
@@ -325,7 +325,12 @@ services:
     networks:
       - han-network
 
+  # AI 短剧业务服务。generic-v2 通用底座不含 han-modules/han-aivideo，CI 也不构建
+  # han-aivideo 镜像，因此这里挂在 aivideo profile 下，默认不参与 full 档启动。
+  # 需要时用 `docker compose --profile aivideo up -d` 或 COMPOSE_PROFILES=aivideo 启用。
   aivideo:
+    profiles:
+      - aivideo
     image: ${HAN_AIVIDEO_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-aivideo:latest}
     environment:
       <<: *service-env
@@ -346,7 +351,7 @@ services:
       - han-network
 
   gen:
-    image: ${HAN_GEN_IMAGE:-han-gen:latest}
+    image: ${HAN_GEN_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-gen:latest}
     environment:
       <<: *service-env
     depends_on:

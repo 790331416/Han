@@ -127,7 +127,7 @@ services:
       - han-network
 
   rabbitmq:
-    image: rabbitmq:3.13-management
+    image: ${HAN_RABBITMQ_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/rabbitmq:3.13-management}
     container_name: han-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: han
