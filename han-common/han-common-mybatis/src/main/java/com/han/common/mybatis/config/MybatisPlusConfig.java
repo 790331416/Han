@@ -3,10 +3,12 @@ package com.han.common.mybatis.config;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.DataPermissionInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
 import com.han.common.core.context.SecurityContext;
+import com.han.common.mybatis.handler.HanDataPermissionHandler;
 import com.han.common.mybatis.handler.HanMetaObjectHandler;
 import com.han.common.mybatis.handler.HanTenantLineHandler;
 import com.han.common.mybatis.helper.TenantHelper;
@@ -24,7 +26,11 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 /**
  * MyBatis-Plus 配置
  * <p>
- * 配置分页插件、多租户拦截器、乐观锁插件、审计字段自动填充。
+ * 配置分页插件、多租户拦截器、数据权限拦截器、乐观锁插件、审计字段自动填充。
+ * <p>
+ * 插件顺序有硬性要求：所有会改写 SQL 的拦截器（多租户、数据权限）必须排在分页插件之前。
+ * 分页插件在 {@code willDoQuery} 阶段用当前 SQL 生成 count 语句，排在它后面的改写
+ * 拿不进 count 语句，会出现「列表按租户过滤、总数却是全平台」这类问题。
  */
 @Configuration
 @EnableTransactionManagement
@@ -42,13 +48,17 @@ public class MybatisPlusConfig {
 
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties,
-                                                         HanTenantLineHandler hanTenantLineHandler) {
+                                                         HanTenantLineHandler hanTenantLineHandler,
+                                                         HanDataPermissionHandler hanDataPermissionHandler) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
 
         // 多租户插件（必须放在第一位）
         if (Boolean.TRUE.equals(tenantProperties.getEnable())) {
             interceptor.addInnerInterceptor(tenantLineInnerInterceptor(hanTenantLineHandler));
         }
+
+        // 数据权限插件（必须在分页插件之前，否则 count 语句拿不到数据范围条件）
+        interceptor.addInnerInterceptor(dataPermissionInterceptor(hanDataPermissionHandler));
 
         // 分页插件
         interceptor.addInnerInterceptor(paginationInnerInterceptor());
@@ -87,6 +97,24 @@ public class MybatisPlusConfig {
     @ConditionalOnProperty(prefix = "tenant", name = "enable", havingValue = "true", matchIfMissing = true)
     public TenantLineInnerInterceptor tenantLineInnerInterceptor(HanTenantLineHandler hanTenantLineHandler) {
         return new HanTenantLineInnerInterceptor(hanTenantLineHandler);
+    }
+
+    /**
+     * 数据权限处理器
+     */
+    @Bean
+    public HanDataPermissionHandler hanDataPermissionHandler() {
+        return new HanDataPermissionHandler(securityContext);
+    }
+
+    /**
+     * 数据权限拦截器
+     * <p>
+     * 只对标注了 {@code @DataPermission} 的语句生效，未标注的语句不会产生任何额外条件。
+     */
+    @Bean
+    public DataPermissionInterceptor dataPermissionInterceptor(HanDataPermissionHandler hanDataPermissionHandler) {
+        return new DataPermissionInterceptor(hanDataPermissionHandler);
     }
 
     /**
