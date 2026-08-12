@@ -1,64 +1,361 @@
+## ${tableComment} 管理页面模板
+## 控件按 htmlType 渲染，下拉/单选取 dictType 字典，必填项按 isRequired 生成校验规则。
 <template>
   <div class="app-container">
+#if($hasQueryColumn)
+    <el-card shadow="never" class="search-form">
+      <el-form :model="queryParams" :inline="true">
+#foreach($column in $columns)
+#if($column.isQuery == 1)
+#if($fn.isBetween($column.queryType))
+        <el-form-item label="$fn.attr($column.columnComment)">
+          <el-date-picker
+            v-model="queryParams.${column.javaField}Begin"
+            type="datetime"
+            placeholder="开始"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
+        </el-form-item>
+        <el-form-item label="至">
+          <el-date-picker
+            v-model="queryParams.${column.javaField}End"
+            type="datetime"
+            placeholder="结束"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
+        </el-form-item>
+#elseif($column.dictType && $fn.isDictHtmlType($column.htmlType))
+        <el-form-item label="$fn.attr($column.columnComment)">
+          <el-select v-model="queryParams.${column.javaField}" placeholder="请选择" clearable>
+            <el-option
+              v-for="item in dictMap['${column.dictType}'] || []"
+              :key="item.dictValue"
+              :label="item.dictLabel"
+              :value="item.dictValue"
+            />
+          </el-select>
+        </el-form-item>
+#else
+        <el-form-item label="$fn.attr($column.columnComment)">
+          <el-input v-model="queryParams.${column.javaField}" placeholder="请输入" clearable @keyup.enter="handleQuery" />
+        </el-form-item>
+#end
+#end
+#end
+        <el-form-item>
+          <el-button type="primary" :icon="Search" @click="handleQuery">搜索</el-button>
+          <el-button :icon="Refresh" @click="resetQuery">重置</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+#end
+
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
           <span>${tableComment}</span>
-          <el-button type="primary" @click="handleAdd">新增</el-button>
+#if($hasDtoColumn)
+          <el-button
+            v-if="userStore.hasPermission('${moduleName}:${businessName}:add')"
+            type="primary"
+            :icon="Plus"
+            @click="handleAdd"
+          >新增</el-button>
+#end
         </div>
       </template>
+
       <el-table v-loading="loading" :data="dataList">
 #foreach($column in $columns)
 #if($column.isList == 1)
-        <el-table-column label="${column.columnComment}" prop="${column.javaField}" />
-#end
-#end
-        <el-table-column label="操作" width="200" align="center">
+#if($column.dictType && $fn.isDictHtmlType($column.htmlType))
+        <el-table-column label="$fn.attr($column.columnComment)" prop="${column.javaField}" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            {{ dictLabel('${column.dictType}', row.${column.javaField}) }}
           </template>
         </el-table-column>
+#else
+        <el-table-column label="$fn.attr($column.columnComment)" prop="${column.javaField}" min-width="140" show-overflow-tooltip />
+#end
+#end
+#end
+#if($hasPk)
+        <el-table-column label="操作" width="180" align="center">
+          <template #default="{ row }">
+#if($hasDtoColumn)
+            <el-button
+              v-if="userStore.hasPermission('${moduleName}:${businessName}:edit')"
+              type="primary"
+              link
+              :icon="Edit"
+              @click="handleEdit(row)"
+            >编辑</el-button>
+#end
+            <el-button
+              v-if="userStore.hasPermission('${moduleName}:${businessName}:remove')"
+              type="danger"
+              link
+              :icon="Delete"
+              @click="handleDelete(row)"
+            >删除</el-button>
+          </template>
+        </el-table-column>
+#end
       </el-table>
+
       <el-pagination
         v-model:current-page="queryParams.pageNum"
         v-model:page-size="queryParams.pageSize"
+        :page-sizes="[10, 20, 50]"
         :total="total"
-        layout="total, sizes, prev, pager, next"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="mt-pagination"
         @size-change="getList"
         @current-change="getList"
       />
     </el-card>
+#if($hasDtoColumn)
+
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="45%" destroy-on-close>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
+#foreach($column in $columns)
+#if(($column.isInsert == 1 || $column.isEdit == 1) && !($hasPk && $column.javaField == $pkJavaField))
+        <el-form-item label="$fn.attr($column.columnComment)" prop="${column.javaField}">
+#if($column.dictType && $column.htmlType == 'radio')
+          <el-radio-group v-model="form.${column.javaField}">
+            <el-radio v-for="item in dictMap['${column.dictType}'] || []" :key="item.dictValue" :value="item.dictValue">
+              {{ item.dictLabel }}
+            </el-radio>
+          </el-radio-group>
+#elseif($column.dictType && $fn.isDictHtmlType($column.htmlType))
+          <el-select v-model="form.${column.javaField}" placeholder="请选择" clearable style="width: 100%">
+            <el-option
+              v-for="item in dictMap['${column.dictType}'] || []"
+              :key="item.dictValue"
+              :label="item.dictLabel"
+              :value="item.dictValue"
+            />
+          </el-select>
+#elseif($column.htmlType == 'datetime')
+          <el-date-picker
+            v-model="form.${column.javaField}"
+            type="datetime"
+            placeholder="请选择"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 100%"
+          />
+#elseif($column.htmlType == 'textarea')
+          <el-input v-model="form.${column.javaField}" type="textarea" :rows="3" placeholder="请输入" />
+#elseif($fn.isNumberInput($column.javaType))
+          <el-input-number v-model="form.${column.javaField}" :min="0" style="width: 100%" />
+#else
+          <el-input v-model="form.${column.javaField}" placeholder="请输入" />
+#end
+        </el-form-item>
+#end
+#end
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitForm">确定</el-button>
+      </template>
+    </el-dialog>
+#end
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+#if($iconImports.size() > 0)
+import { #foreach($icon in $iconImports)${icon}#if($foreach.hasNext), #end#end } from '@element-plus/icons-vue'
+#end
+#if($hasDtoColumn && $hasPk)
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+#elseif($hasDtoColumn)
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+#elseif($hasPk)
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { list${className}, delete${className} } from '@/api/${moduleName}/${businessName}'
+#end
+import { useUserStore } from '@/stores/user'
+#if($hasDictColumn)
+import { listDictDataByType, type DictData } from '@/api/system/dict'
+#end
+import {
+  list${className},
+#if($hasPk && $hasDtoColumn)
+  get${className},
+#end
+#if($hasDtoColumn)
+  add${className},
+#if($hasPk)
+  update${className},
+#end
+#end
+#if($hasPk)
+  delete${className},
+#end
+  type ${className},
+#if($hasDtoColumn)
+  type ${className}Form,
+#end
+  type ${className}Query
+} from '@/api/${moduleName}/${businessName}'
+
+const userStore = useUserStore()
 
 const loading = ref(false)
-const dataList = ref([])
+const dataList = ref<${className}[]>([])
 const total = ref(0)
-const queryParams = reactive({ pageNum: 1, pageSize: 10 })
 
-const getList = async () => {
+const queryParams = reactive<${className}Query>({ pageNum: 1, pageSize: 10 })
+#if($hasDictColumn)
+
+/** 字典类型 → 字典项，供下拉选项与列表回显使用 */
+const dictMap = reactive<Record<string, DictData[]>>({})
+
+async function loadDicts() {
+  const types: string[] = [#foreach($type in $dictTypes)'${type}'#if($foreach.hasNext), #end#end]
+  for (const type of types) {
+    try {
+      const res = await listDictDataByType(type)
+      dictMap[type] = res.data || []
+    } catch {
+      dictMap[type] = []
+    }
+  }
+}
+#end
+#if($hasDictListColumn)
+
+function dictLabel(type: string, value: unknown): string {
+  if (value === undefined || value === null) return ''
+  const hit = (dictMap[type] || []).find((item) => String(item.dictValue) === String(value))
+  return hit ? hit.dictLabel : String(value)
+}
+#end
+#if($hasDtoColumn)
+
+const dialogVisible = ref(false)
+const dialogTitle = ref('')
+const submitLoading = ref(false)
+const formRef = ref<FormInstance>()
+
+const defaultForm = (): ${className}Form => ({
+#if($hasPk)
+  ${pkJavaField}: undefined,
+#end
+#foreach($column in $columns)
+#if(($column.isInsert == 1 || $column.isEdit == 1) && !($hasPk && $column.javaField == $pkJavaField))
+  ${column.javaField}: undefined,
+#end
+#end
+})
+
+const form = reactive<${className}Form>(defaultForm())
+
+const rules: FormRules = {
+#foreach($column in $columns)
+#if(($column.isInsert == 1 || $column.isEdit == 1) && !($hasPk && $column.javaField == $pkJavaField) && $column.isRequired == 1)
+  ${column.javaField}: [{ required: true, message: '请填写#if($column.columnComment)$fn.javaString($column.columnComment)#{else}${column.javaField}#end', trigger: 'blur' }],
+#end
+#end
+}
+#end
+
+onMounted(() => {
+#if($hasDictColumn)
+  loadDicts()
+#end
+  getList()
+})
+
+async function getList() {
   loading.value = true
   try {
     const res = await list${className}(queryParams)
-    dataList.value = res.data.rows
-    total.value = res.data.total
-  } finally { loading.value = false }
+    dataList.value = res.data?.rows || []
+    total.value = res.data?.total || 0
+  } finally {
+    loading.value = false
+  }
 }
+#if($hasQueryColumn)
 
-const handleAdd = () => { /* TODO */ }
-const handleEdit = (row: any) => { /* TODO */ }
-const handleDelete = async (row: any) => {
-  await ElMessageBox.confirm('确定删除吗?', '提示', { type: 'warning' })
-  await delete${className}(row.${pkColumn.javaField})
-  ElMessage.success('删除成功')
+function handleQuery() {
+  queryParams.pageNum = 1
   getList()
 }
 
-onMounted(() => getList())
+function resetQuery() {
+#foreach($column in $columns)
+#if($column.isQuery == 1)
+#if($fn.isBetween($column.queryType))
+  queryParams.${column.javaField}Begin = undefined
+  queryParams.${column.javaField}End = undefined
+#else
+  queryParams.${column.javaField} = undefined
+#end
+#end
+#end
+  handleQuery()
+}
+#end
+#if($hasDtoColumn)
+
+function handleAdd() {
+  Object.assign(form, defaultForm())
+  dialogTitle.value = '新增${tableComment}'
+  dialogVisible.value = true
+}
+#if($hasPk)
+
+async function handleEdit(row: ${className}) {
+  Object.assign(form, defaultForm())
+  dialogTitle.value = '编辑${tableComment}'
+  const res = await get${className}(row.${pkJavaField} as $fn.tsType($pkJavaType))
+  Object.assign(form, res.data || {})
+  dialogVisible.value = true
+}
+#end
+
+async function submitForm() {
+  if (!formRef.value) return
+  await formRef.value.validate()
+  submitLoading.value = true
+  try {
+#if($hasPk)
+    if (form.${pkJavaField}) {
+      await update${className}(form)
+      ElMessage.success('修改成功')
+    } else {
+      await add${className}(form)
+      ElMessage.success('新增成功')
+    }
+#else
+    await add${className}(form)
+    ElMessage.success('新增成功')
+#end
+    dialogVisible.value = false
+    getList()
+  } finally {
+    submitLoading.value = false
+  }
+}
+#end
+#if($hasPk)
+
+async function handleDelete(row: ${className}) {
+  await ElMessageBox.confirm('确认删除该条${tableComment}记录？', '提示', { type: 'warning' })
+  await delete${className}(row.${pkJavaField} as $fn.tsType($pkJavaType))
+  ElMessage.success('删除成功')
+  getList()
+}
+#end
 </script>
+
+<style lang="scss" scoped>
+.app-container { padding: 20px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.search-form { margin-bottom: 16px; }
+.mt-pagination { margin-top: 16px; justify-content: flex-end; }
+</style>
