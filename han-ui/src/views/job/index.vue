@@ -260,11 +260,11 @@
     </el-dialog>
 
     <!-- Cron生成器对话框 -->
-    <el-dialog v-model="cronVisible" title="Cron表达式生成器" width="70%" class="dialog-xl">
+    <el-dialog v-model="cronVisible" title="Cron表达式生成器" width="70%" class="dialog-xl" destroy-on-close>
       <CronBuilder v-model="cronValue" />
       <template #footer>
         <el-button @click="cronVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleCronConfirm">确定</el-button>
+        <el-button type="primary" :loading="cronChecking" data-testid="cron-confirm" @click="handleCronConfirm">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -277,7 +277,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Edit, Delete, CaretRight, View, Document } from '@element-plus/icons-vue'
 import { 
   listJob, getJob, addJob, updateJob, deleteJob, deleteJobs, 
-  changeJobStatus, runJob, listJobHandlers,
+  changeJobStatus, runJob, listJobHandlers, checkCron,
   getJobFlowHealth, getJobFlowConfig, getJobFlowMetrics,
   jobGroupOptions, misfirePolicyOptions, concurrentOptions,
   type Job, type JobQuery, type JobForm, type JobHandlerInfo,
@@ -296,6 +296,8 @@ const detailVisible = ref(false)
 const cronVisible = ref(false)
 const submitLoading = ref(false)
 const cronValue = ref('')
+const cronOriginal = ref('')
+const cronChecking = ref(false)
 const handlerLoading = ref(false)
 const handlerList = ref<JobHandlerInfo[]>([])
 
@@ -351,11 +353,40 @@ const initForm: JobForm = {
 const form = reactive<JobForm>({ ...initForm })
 const detailData = ref<Job>({} as Job)
 
+/**
+ * 调后端 /job/checkCron 做服务端合法性校验。
+ * 接口本身不可用时返回 null（无法判定），不阻断用户操作。
+ */
+const verifyCron = async (expression: string): Promise<boolean | null> => {
+  try {
+    const res = await checkCron(expression)
+    return (res as any)?.data === true
+  } catch {
+    return null
+  }
+}
+
+const cronValidator = async (_rule: any, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback()
+    return
+  }
+  const valid = await verifyCron(value)
+  if (valid === false) {
+    callback(new Error('Cron 表达式不合法，请检查后重试'))
+    return
+  }
+  callback()
+}
+
 const rules: FormRules = {
   jobName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
   jobGroup: [{ required: true, message: '请选择任务组', trigger: 'change' }],
   invokeTarget: [{ required: true, message: '请输入调用目标', trigger: 'blur' }],
-  cronExpression: [{ required: true, message: '请输入Cron表达式', trigger: 'blur' }]
+  cronExpression: [
+    { required: true, message: '请输入Cron表达式', trigger: 'blur' },
+    { validator: cronValidator, trigger: 'blur' }
+  ]
 }
 
 const dialogTitle = computed(() => form.jobId ? '编辑任务' : '新增任务')
@@ -446,9 +477,10 @@ const handleDetail = async (row: Job) => {
 
 // 提交
 const handleSubmit = async () => {
-  const valid = await formRef.value?.validate()
+  // validate() 校验失败是 reject 而不是 resolve(false)，必须 catch，否则抛未处理拒绝
+  const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  
+
   submitLoading.value = true
   try {
     if (form.jobId) {
@@ -460,7 +492,7 @@ const handleSubmit = async () => {
     }
     dialogVisible.value = false
     getList()
-  } finally {
+  } catch { /* 提交失败已由请求层提示 */ } finally {
     submitLoading.value = false
   }
 }
@@ -505,16 +537,65 @@ const handleLog = () => {
   router.push({ name: 'JobLog' })
 }
 
-// Cron生成器
+// ==================== Cron 生成器 ====================
+
+/** 秒字段不是固定值时，任务会在一分钟内触发多次，属于高危配置。 */
+const isHighFrequency = (expression: string) => {
+  const second = expression.trim().split(/\s+/)[0] || ''
+  return second === '*' || second.includes('/') || second.includes('-') || second.includes(',')
+}
+
 const handleCronBuilder = () => {
-  cronValue.value = form.cronExpression
+  cronOriginal.value = form.cronExpression || ''
+  cronValue.value = form.cronExpression || ''
   cronVisible.value = true
 }
 
-// 确认Cron
-const handleCronConfirm = () => {
-  form.cronExpression = cronValue.value
-  cronVisible.value = false
+/**
+ * 确认 Cron：先做服务端校验，再把「原表达式 → 新表达式」摆出来二次确认。
+ * 历史缺陷：这里直接回填生成器产出的值，打开生成器点确定就会把任务改成每秒执行。
+ */
+const handleCronConfirm = async () => {
+  const next = (cronValue.value || '').trim()
+  if (!next) {
+    ElMessage.warning('请先在生成器中配置 Cron 表达式')
+    return
+  }
+  if (next === (cronOriginal.value || '').trim()) {
+    cronVisible.value = false
+    return
+  }
+
+  cronChecking.value = true
+  try {
+    const valid = await verifyCron(next)
+    if (valid === false) {
+      ElMessage.error('生成的 Cron 表达式不合法，请调整后重试')
+      return
+    }
+    const lines = [
+      `原表达式：${cronOriginal.value || '（空）'}`,
+      `新表达式：${next}`
+    ]
+    if (valid === null) {
+      lines.push('提示：服务端校验接口暂不可用，未能确认表达式合法性。')
+    }
+    if (isHighFrequency(next)) {
+      lines.push('警告：该表达式在一分钟内会触发多次，可能压垮调度线程池与下游服务。')
+    }
+    await ElMessageBox.confirm(lines.join('\n'), '确认修改 Cron 表达式', {
+      type: 'warning',
+      confirmButtonText: '确认修改',
+      cancelButtonText: '取消',
+      customClass: 'cron-confirm-box'
+    })
+    form.cronExpression = next
+    cronVisible.value = false
+  } catch {
+    // 用户取消确认，保持原表达式不变
+  } finally {
+    cronChecking.value = false
+  }
 }
 
 onMounted(() => {

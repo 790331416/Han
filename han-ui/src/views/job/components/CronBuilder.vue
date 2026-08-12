@@ -1,5 +1,25 @@
 <template>
   <div class="cron-builder">
+    <el-alert
+      v-if="unsupported"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="cron-alert"
+      data-testid="cron-unsupported-alert"
+    >
+      当前表达式包含生成器不支持的语法，已原样保留。若在下方任意修改，确定后原表达式将被覆盖。
+    </el-alert>
+    <el-alert
+      v-if="invalidRanges.length"
+      type="error"
+      show-icon
+      :closable="false"
+      class="cron-alert"
+      data-testid="cron-range-alert"
+    >
+      {{ invalidRanges.join('、') }} 的区间起始值大于结束值，表达式不合法，请调整。
+    </el-alert>
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 秒 -->
       <el-tab-pane label="秒" name="second">
@@ -141,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed, nextTick, ref, watch, onMounted } from 'vue'
 
 const props = defineProps<{
   modelValue: string
@@ -153,6 +173,11 @@ const emit = defineEmits<{
 
 const activeTab = ref('second')
 const cronExpression = ref('* * * * * ?')
+
+/** 传入的表达式无法被生成器还原时置为 true：此时只展示原值，绝不回写。 */
+const unsupported = ref(false)
+/** 第 7 位年份字段生成器没有控件，原样保留，避免重新拼装时被丢掉。 */
+const yearField = ref('')
 
 // 秒
 const secondType = ref('every')
@@ -220,14 +245,15 @@ const generateField = (
     case 'last':
       return 'L'
     case 'specify':
-      return values.length > 0 ? values.sort((a, b) => a - b).join(',') : '*'
+      // 不能原地排序：values 是响应式数组，在生成链路里改动它会触发额外的更新轮次
+      return values.length > 0 ? [...values].sort((a, b) => a - b).join(',') : '*'
     default:
       return '*'
   }
 }
 
-// 更新cron表达式
-const updateCron = () => {
+// 按当前控件状态拼出表达式（纯函数，不写状态、不 emit）
+const buildExpression = (): string => {
   const second = generateField(secondType.value, secondRange.value, secondStep.value, secondValues.value)
   const minute = generateField(minuteType.value, minuteRange.value, minuteStep.value, minuteValues.value)
   const hour = generateField(hourType.value, hourRange.value, hourStep.value, hourValues.value)
@@ -249,9 +275,42 @@ const updateCron = () => {
     finalDay = '*'
   }
 
-  cronExpression.value = `${second} ${minute} ${hour} ${finalDay} ${month} ${finalWeek}`
+  const fields = [second, minute, hour, finalDay, month, finalWeek]
+  if (yearField.value) {
+    fields.push(yearField.value)
+  }
+  return fields.join(' ')
+}
+
+/**
+ * 回填控件状态期间为 true。
+ * 区间/步长用的是 deep watch，回填时同样会触发，必须屏蔽掉，
+ * 否则解析结果又会被当成用户改动回写给父组件。
+ */
+let syncing = false
+
+// 用户改动控件后才更新并回写表达式
+const updateCron = () => {
+  if (syncing) return
+  unsupported.value = false
+  cronExpression.value = buildExpression()
   emit('update:modelValue', cronExpression.value)
 }
+
+// 区间必须满足 start <= end，否则会拼出 59-0 这类非法片段
+const invalidRanges = computed(() => {
+  const checks: Array<[string, string, { start: number; end: number }]> = [
+    ['秒', secondType.value, secondRange.value],
+    ['分', minuteType.value, minuteRange.value],
+    ['时', hourType.value, hourRange.value],
+    ['日', dayType.value, dayRange.value],
+    ['月', monthType.value, monthRange.value],
+    ['周', weekType.value, weekRange.value]
+  ]
+  return checks
+    .filter(([, type, range]) => type === 'range' && range.start > range.end)
+    .map(([label]) => label)
+})
 
 // 监听各字段变化
 watch([secondRange, secondStep], updateCron, { deep: true })
@@ -261,50 +320,151 @@ watch([dayRange, dayStep], updateCron, { deep: true })
 watch([monthRange, monthStep], updateCron, { deep: true })
 watch([weekRange], updateCron, { deep: true })
 
-// 解析传入的cron表达式
-const parseCron = (cron: string) => {
-  if (!cron) return
-  const parts = cron.split(' ')
-  if (parts.length < 6) return
+// ==================== 表达式解析 ====================
 
-  // 简单解析，只处理基本格式
-  const [second, _minute, _hour, _day, _month, _week] = parts
+interface ParsedField {
+  type: string
+  range?: { start: number; end: number }
+  step?: { start: number; step: number }
+  values?: number[]
+}
 
-  // 解析秒
-  if (second === '*') {
-    secondType.value = 'every'
-  } else if (second.includes('/')) {
-    secondType.value = 'step'
-    const [start, step] = second.split('/')
-    secondStep.value = { start: parseInt(start), step: parseInt(step) }
-  } else if (second.includes('-')) {
-    secondType.value = 'range'
-    const [start, end] = second.split('-')
-    secondRange.value = { start: parseInt(start), end: parseInt(end) }
-  } else if (second.includes(',')) {
-    secondType.value = 'specify'
-    secondValues.value = second.split(',').map(Number)
+interface FieldOptions {
+  allowNotSpecify?: boolean
+  allowLast?: boolean
+  allowStep?: boolean
+}
+
+/** 解析单个整数，越界或非数字一律判为不可解析（不再产出 NaN 片段）。 */
+const parseBoundedInt = (raw: string, min: number, max: number): number | null => {
+  if (!/^\d+$/.test(raw.trim())) return null
+  const value = Number.parseInt(raw.trim(), 10)
+  if (Number.isNaN(value) || value < min || value > max) return null
+  return value
+}
+
+/** 解析单个 cron 字段，无法用生成器控件表达时返回 null。 */
+const parseField = (raw: string, min: number, max: number, options: FieldOptions = {}): ParsedField | null => {
+  const text = (raw || '').trim()
+  if (!text) return null
+  if (text === '*') return { type: 'every' }
+  if (text === '?') return options.allowNotSpecify ? { type: 'notSpecify' } : null
+  if (text.toUpperCase() === 'L') return options.allowLast ? { type: 'last' } : null
+
+  if (text.includes('/')) {
+    if (options.allowStep === false) return null
+    const [startRaw, stepRaw, ...rest] = text.split('/')
+    if (rest.length > 0) return null
+    const start = startRaw === '*' ? min : parseBoundedInt(startRaw, min, max)
+    const step = parseBoundedInt(stepRaw, 1, max)
+    if (start === null || step === null) return null
+    return { type: 'step', step: { start, step } }
   }
 
-  // 类似处理其他字段...
+  if (text.includes('-')) {
+    const [startRaw, endRaw, ...rest] = text.split('-')
+    if (rest.length > 0) return null
+    const start = parseBoundedInt(startRaw, min, max)
+    const end = parseBoundedInt(endRaw, min, max)
+    if (start === null || end === null || start > end) return null
+    return { type: 'range', range: { start, end } }
+  }
+
+  const values: number[] = []
+  for (const item of text.split(',')) {
+    const value = parseBoundedInt(item, min, max)
+    if (value === null) return null
+    values.push(value)
+  }
+  return { type: 'specify', values: [...new Set(values)].sort((a, b) => a - b) }
+}
+
+const applyField = (
+  parsed: ParsedField,
+  typeRef: { value: string },
+  rangeRef: { value: { start: number; end: number } },
+  stepRef: { value: { start: number; step: number } } | null,
+  valuesRef: { value: number[] }
+) => {
+  typeRef.value = parsed.type
+  if (parsed.range) rangeRef.value = { ...parsed.range }
+  if (parsed.step && stepRef) stepRef.value = { ...parsed.step }
+  valuesRef.value = parsed.values ? [...parsed.values] : []
+}
+
+/**
+ * 解析已有表达式并回填控件状态。
+ *
+ * 返回 false 表示生成器无法完整还原该表达式，调用方必须保留原值，
+ * 绝不能用控件默认值重新拼一个表达式回写（历史缺陷：会静默改成「每秒执行一次」）。
+ */
+const parseCron = (cron: string): boolean => {
+  const parts = (cron || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length < 6 || parts.length > 7) return false
+
+  const second = parseField(parts[0], 0, 59)
+  const minute = parseField(parts[1], 0, 59)
+  const hour = parseField(parts[2], 0, 23)
+  const day = parseField(parts[3], 1, 31, { allowNotSpecify: true, allowLast: true })
+  const month = parseField(parts[4], 1, 12)
+  const week = parseField(parts[5], 1, 7, { allowNotSpecify: true, allowStep: false })
+  if (!second || !minute || !hour || !day || !month || !week) return false
+
+  const previousYear = yearField.value
+  applyField(second, secondType, secondRange, secondStep, secondValues)
+  applyField(minute, minuteType, minuteRange, minuteStep, minuteValues)
+  applyField(hour, hourType, hourRange, hourStep, hourValues)
+  applyField(day, dayType, dayRange, dayStep, dayValues)
+  applyField(month, monthType, monthRange, monthStep, monthValues)
+  applyField(week, weekType, weekRange, null, weekValues)
+  yearField.value = parts[6] || ''
+
+  // 兜底：只有能原样还原才算解析成功，否则宁可标记为不支持也不回写
+  if (buildExpression() !== parts.join(' ')) {
+    yearField.value = previousYear
+    return false
+  }
+  return true
+}
+
+/** 用外部传入的表达式同步控件状态；解析失败时只展示原值，不 emit。 */
+const syncFromModel = async (value: string) => {
+  syncing = true
+  try {
+    const text = (value || '').trim()
+    if (!text) {
+      unsupported.value = false
+      cronExpression.value = buildExpression()
+      return
+    }
+    const parsed = parseCron(text)
+    unsupported.value = !parsed
+    cronExpression.value = parsed ? buildExpression() : text
+  } finally {
+    // deep watch 是异步 flush 的，要等这一轮调度跑完才能解除屏蔽
+    await nextTick()
+    syncing = false
+  }
 }
 
 onMounted(() => {
-  if (props.modelValue) {
-    parseCron(props.modelValue)
-  }
-  updateCron()
+  // 只同步不回写：历史实现在这里无条件 emit，导致「打开生成器即改写任务」
+  syncFromModel(props.modelValue)
 })
 
 watch(() => props.modelValue, (val) => {
   if (val && val !== cronExpression.value) {
-    parseCron(val)
+    syncFromModel(val)
   }
 })
 </script>
 
 <style lang="scss" scoped>
 .cron-builder {
+  .cron-alert {
+    margin-bottom: 12px;
+  }
+
   .el-radio-group {
     display: flex;
     flex-direction: column;
