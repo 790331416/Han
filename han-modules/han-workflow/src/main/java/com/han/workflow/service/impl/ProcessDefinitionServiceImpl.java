@@ -5,11 +5,13 @@ import com.han.common.core.exception.BusinessException;
 import com.han.workflow.converter.ProcessDefinitionConverter;
 import com.han.workflow.domain.dto.ProcessDefinitionDTO;
 import com.han.workflow.domain.vo.ProcessDefinitionVO;
+import com.han.workflow.security.WorkflowAccessChecker;
 import com.han.workflow.service.IProcessDefinitionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
+import org.flowable.engine.repository.DeploymentBuilder;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.springframework.stereotype.Service;
@@ -29,9 +31,13 @@ public class ProcessDefinitionServiceImpl implements IProcessDefinitionService {
 
     private final RepositoryService repositoryService;
     private final ProcessDefinitionConverter processDefinitionConvert;
+    private final WorkflowAccessChecker accessChecker;
 
     @Override
     public PageResult<ProcessDefinitionVO> listProcessDefinition(ProcessDefinitionDTO dto) {
+        // 租户收敛待定：Flowable 7.2.0 的 ProcessDefinitionQuery 没有 or()，无法在一次查询里
+        // 表达「本租户 OR 存量无租户」。强行只按租户过滤会让存量环境已部署的流程定义直接消失，
+        // 因此这里暂不收敛，需要配合存量数据回填后再收口（部署侧已按租户打标）。
         ProcessDefinitionQuery query = repositoryService.createProcessDefinitionQuery()
                 .latestVersion()
                 .orderByProcessDefinitionKey().asc();
@@ -64,22 +70,22 @@ public class ProcessDefinitionServiceImpl implements IProcessDefinitionService {
 
     @Override
     public void deploy(String name, String category, InputStream inputStream) {
-        Deployment deployment = repositoryService.createDeployment()
+        DeploymentBuilder builder = repositoryService.createDeployment()
                 .name(name)
                 .category(category)
-                .addInputStream(name + ".bpmn20.xml", inputStream)
-                .deploy();
-        log.info("流程部署成功: {}, deploymentId: {}", name, deployment.getId());
+                .addInputStream(name + ".bpmn20.xml", inputStream);
+        Deployment deployment = applyTenant(builder).deploy();
+        log.info("流程部署成功: {}, deploymentId: {}, tenantId: {}", name, deployment.getId(), deployment.getTenantId());
     }
 
     @Override
     public void deployByXml(String name, String category, String bpmnXml) {
-        Deployment deployment = repositoryService.createDeployment()
+        DeploymentBuilder builder = repositoryService.createDeployment()
                 .name(name)
                 .category(category)
-                .addString(name + ".bpmn20.xml", bpmnXml)
-                .deploy();
-        log.info("流程部署成功: {}, deploymentId: {}", name, deployment.getId());
+                .addString(name + ".bpmn20.xml", bpmnXml);
+        Deployment deployment = applyTenant(builder).deploy();
+        log.info("流程部署成功: {}, deploymentId: {}, tenantId: {}", name, deployment.getId(), deployment.getTenantId());
     }
 
     @Override
@@ -126,6 +132,14 @@ public class ProcessDefinitionServiceImpl implements IProcessDefinitionService {
         }
         return repositoryService.getResourceAsStream(
                 definition.getDeploymentId(), definition.getDiagramResourceName());
+    }
+
+    /**
+     * 部署时打上当前租户标记；不在租户上下文中时保持 Flowable 默认的无租户部署
+     */
+    private DeploymentBuilder applyTenant(DeploymentBuilder builder) {
+        String tenantId = accessChecker.currentTenantId();
+        return tenantId == null ? builder : builder.tenantId(tenantId);
     }
 
     private ProcessDefinitionVO toVO(ProcessDefinition definition) {
