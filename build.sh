@@ -119,6 +119,10 @@ for svc in "${SERVICES[@]}"; do
   fi
 done
 
+# 没装 mvn 时回退到容器里跑 Maven。镜像默认仍取 Docker Hub 官方 tag，
+# 95 这类拉不到 Docker Hub 的环境请用 HAN_MAVEN_IMAGE 指到内网/镜像仓库的同版本镜像。
+MAVEN_IMAGE="${HAN_MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-21}"
+
 run_maven() {
   local pl_list="$1"
   if command -v mvn >/dev/null 2>&1; then
@@ -130,13 +134,14 @@ run_maven() {
   uid="$(id -u)"
   gid="$(id -g)"
   mkdir -p "${ROOT_DIR}/.m2"
+  echo "==> mvn not found, falling back to ${MAVEN_IMAGE}"
   docker run --rm \
     -u "${uid}:${gid}" \
     -v "${ROOT_DIR}:/workspace" \
     -v "${ROOT_DIR}/.m2:/var/maven/.m2" \
     -w /workspace \
     -e MAVEN_CONFIG=/var/maven/.m2 \
-    maven:3.9.9-eclipse-temurin-21 \
+    "${MAVEN_IMAGE}" \
     mvn clean package -DskipTests -pl "${pl_list}" -am -q
 }
 
@@ -163,7 +168,6 @@ copy_jars_to_staging() {
 
 if [[ "${NO_BUILD}" == false && "${#JAVA_SERVICES[@]}" -gt 0 ]]; then
   echo "==> Maven package"
-  pl_list="$(IFS=,; echo "${JAVA_SERVICES[*]/#/${ROOT_DIR}/}")"
   pl_list=""
   for svc in "${JAVA_SERVICES[@]}"; do
     if [[ -n "${pl_list}" ]]; then
