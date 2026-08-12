@@ -6,6 +6,14 @@
         <h2 class="welcome-title">{{ greeting }}，{{ userStore.nickname || userStore.username }} 👋</h2>
         <p class="welcome-desc">欢迎回到 HAN Cloud 管理平台</p>
       </div>
+      <el-button
+        :icon="Refresh"
+        :loading="refreshing"
+        data-testid="dashboard-refresh"
+        @click="loadDashboard"
+      >
+        刷新数据
+      </el-button>
     </div>
 
     <!-- 统计卡片 -->
@@ -97,7 +105,7 @@ import { useRouter } from 'vue-router'
 import { version as elementPlusVersion } from 'element-plus'
 import {
   User, OfficeBuilding, UserFilled, Document, Setting, Key,
-  Connection, Notebook, Bell, Timer, Postcard, Menu as MenuIcon
+  Connection, Notebook, Bell, Timer, Postcard, Refresh, Menu as MenuIcon
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts/core'
 import { LineChart, BarChart } from 'echarts/charts'
@@ -134,12 +142,15 @@ interface StatsData {
   recentLogins: any[] | null
   recentOperLogs: any[] | null
   springBootVersion: string | null
+  springCloudVersion: string | null
+  appVersion: string | null
 }
 
 const stats = reactive<StatsData>({
   userCount: null, roleCount: null, deptCount: null, postCount: null,
   onlineCount: null, dictCount: null, noticeCount: null, jobCount: null,
-  recentLogins: null, recentOperLogs: null, springBootVersion: null
+  recentLogins: null, recentOperLogs: null,
+  springBootVersion: null, springCloudVersion: null, appVersion: null
 })
 
 const allStatItems = computed(() => [
@@ -150,6 +161,7 @@ const allStatItems = computed(() => [
   { key: 'onlineCount', label: '在线用户', value: stats.onlineCount, icon: Connection, bg: '#fefce8', color: '#ca8a04', path: '/system/online' },
   { key: 'dictCount', label: '字典类型', value: stats.dictCount, icon: Notebook, bg: '#fff7ed', color: '#ea580c', path: '/system/dict' },
   { key: 'noticeCount', label: '通知公告', value: stats.noticeCount, icon: Bell, bg: '#f0f9ff', color: '#0284c7', path: '/system/notice' },
+  { key: 'jobCount', label: '定时任务', value: stats.jobCount, icon: Timer, bg: '#ecfdf5', color: '#059669', path: '/job' },
 ])
 
 const visibleStats = computed(() => allStatItems.value.filter(item => item.value !== null))
@@ -198,6 +210,8 @@ const chartData = reactive<ChartData>({ loginTrend: null, operModules: null })
 
 function renderLoginChart() {
   if (!loginChartRef.value || !chartData.loginTrend) return
+  // 手动刷新会重复渲染，先销毁旧实例，避免同一 DOM 上叠加多个 echarts 实例
+  loginChart?.dispose()
   loginChart = echarts.init(loginChartRef.value)
   loginChart.setOption({
     tooltip: { trigger: 'axis' },
@@ -214,6 +228,7 @@ function renderLoginChart() {
 
 function renderOperChart() {
   if (!operChartRef.value || !chartData.operModules || chartData.operModules.length === 0) return
+  operChart?.dispose()
   operChart = echarts.init(operChartRef.value)
   const names = chartData.operModules.map(m => m.name)
   const values = chartData.operModules.map(m => m.value)
@@ -236,40 +251,61 @@ function handleResize() {
   operChart?.resize()
 }
 
+/** 组件卸载标记：await 恢复后要先确认组件还活着，否则会在已销毁的组件上创建 echarts 实例 */
+let unmounted = false
+
 onBeforeUnmount(() => {
+  unmounted = true
   window.removeEventListener('resize', handleResize)
   loginChart?.dispose()
   operChart?.dispose()
 })
 
-// Spring Boot 版本由后端运行时下发，避免硬编码漂移（历史：前端写死 4.0.2，实际 4.1.0）
+// 版本号优先取后端运行时下发的值（历史教训：前端写死 4.0.2，实际 4.1.0）。
+// 下面两个常量只是后端字段缺失时的构建期兜底，后端补齐 springCloudVersion / appVersion 后即可移除。
+const FALLBACK_APP_VERSION = 'v1.0.0'
+const FALLBACK_SPRING_CLOUD_VERSION = '2025.1.2'
+
 const sysInfo = computed(() => [
   { label: '系统名称', value: 'HAN Cloud' },
-  { label: '系统版本', value: 'v1.0.0' },
+  { label: '系统版本', value: stats.appVersion || FALLBACK_APP_VERSION },
   { label: 'Spring Boot', value: stats.springBootVersion || '-' },
-  { label: 'Spring Cloud', value: '2025.1.2' },
+  { label: 'Spring Cloud', value: stats.springCloudVersion || FALLBACK_SPRING_CLOUD_VERSION },
   { label: 'Vue', value: vueVersion },
   { label: 'Element Plus', value: elementPlusVersion },
 ])
 
-onMounted(async () => {
-  try {
-    const res = await get<any>('/system/dashboard/stats')
-    if ((res as any)?.data) Object.assign(stats, (res as any).data)
-  } catch { /* 接口不可用保持默认 */ }
+const refreshing = ref(false)
 
-  // 加载图表数据
+async function loadDashboard() {
+  refreshing.value = true
   try {
-    // 图表数据属于增强信息，接口缺失时首页应静默降级而不是打断用户。
-    const chartRes = await get<any>('/system/dashboard/charts', undefined, { silentError: true })
-    const d = (chartRes as any)?.data
-    if (d?.loginTrend) chartData.loginTrend = d.loginTrend
-    if (d?.operModules) chartData.operModules = d.operModules
-    await nextTick()
-    renderLoginChart()
-    renderOperChart()
-    window.addEventListener('resize', handleResize)
-  } catch { /* 图表数据不可用 */ }
+    try {
+      const res = await get<any>('/system/dashboard/stats')
+      if ((res as any)?.data) Object.assign(stats, (res as any).data)
+    } catch { /* 接口不可用保持默认 */ }
+
+    try {
+      // 图表数据属于增强信息，接口缺失时首页应静默降级而不是打断用户。
+      const chartRes = await get<any>('/system/dashboard/charts', undefined, { silentError: true })
+      const d = (chartRes as any)?.data
+      if (d?.loginTrend) chartData.loginTrend = d.loginTrend
+      if (d?.operModules) chartData.operModules = d.operModules
+      await nextTick()
+      if (unmounted) return
+      renderLoginChart()
+      renderOperChart()
+    } catch { /* 图表数据不可用 */ }
+  } finally {
+    refreshing.value = false
+  }
+}
+
+onMounted(() => {
+  // resize 监听必须在同步段注册：接口还在飞的时候用户切走路由，
+  // onBeforeUnmount 会先执行，此时监听还没挂上，等 await 恢复再挂就永远摘不掉了。
+  window.addEventListener('resize', handleResize)
+  loadDashboard()
 })
 </script>
 
@@ -281,6 +317,10 @@ onMounted(async () => {
 
 .welcome-section {
   margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
 }
 .welcome-title {
   font-size: 22px;
