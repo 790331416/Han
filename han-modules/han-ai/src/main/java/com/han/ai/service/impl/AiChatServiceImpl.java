@@ -50,6 +50,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.time.LocalDateTime;
@@ -185,9 +186,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (!"1".equals(agent.getPublishedRaw())) {
             throw new BusinessException("智能体未发布，无法对话");
         }
-        ChatContext context = ChatContext.agent(conversationId, agent.getModelId(), agent.getAgentName(),
-                agent.getSystemPrompt(), parseIdList(agent.getKnowledgeBaseIds()), parseIdList(agent.getMcpServerIds()),
-                agent.getHistoryLimit());
+        ChatContext context = ChatContext.agent(conversationId, agent,
+                parseIdList(agent.getKnowledgeBaseIds()), parseIdList(agent.getMcpServerIds()));
         return appendReply(context, message).assistantMessage().getContent();
     }
 
@@ -203,9 +203,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             throw new BusinessException("应用模型凭据未配置，请联系管理员");
         }
         List<Long> knowledgeBaseIds = parseIdList(agent.getKnowledgeBaseIds());
-        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(knowledgeBaseIds, normalizedMessage);
-        ChatContext context = ChatContext.agent(null, agent.getModelId(), agent.getAgentName(),
-                agent.getSystemPrompt(), knowledgeBaseIds, List.of(), agent.getHistoryLimit());
+        ChatContext context = ChatContext.agent(null, agent, knowledgeBaseIds, List.of());
+        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context, normalizedMessage);
 
         List<AiOpenAiCompatibleClient.ProviderMessage> messages = new ArrayList<>();
         String systemPrompt = buildSystemPrompt(context, hitParagraphs);
@@ -573,7 +572,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private GeneratedReply generateModelReply(StreamSession session, StreamCallbacks callbacks) {
         ChatContext context = session.context();
-        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), session.userMessage());
+        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context, session.userMessage());
         ModelReply reply = buildModelReply(session, hitParagraphs, callbacks);
         Map<String, Object> meta = reply.toolTraces().isEmpty()
                 ? null
@@ -1067,13 +1066,29 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     /**
+     * RAG 检索（应用级参数版）：agent 配置的 retrieval_top_k / similarity_threshold 生效，
+     * 未配置回落默认 top-5 / 0.30。
+     */
+    private List<ScoredParagraph> searchKnowledgeParagraphs(ChatContext context, String userMessage) {
+        return searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage,
+                context.retrievalTopK(), context.similarityThreshold());
+    }
+
+    /**
      * RAG 检索：向量优先（知识库绑定 EMBEDDING 模型），关键词回退，统一走公共检索服务。
      */
     private List<ScoredParagraph> searchKnowledgeParagraphs(List<Long> knowledgeBaseIds, String userMessage) {
+        return searchKnowledgeParagraphs(knowledgeBaseIds, userMessage, null, null);
+    }
+
+    private List<ScoredParagraph> searchKnowledgeParagraphs(List<Long> knowledgeBaseIds, String userMessage,
+                                                            Integer retrievalTopK, BigDecimal similarityThreshold) {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || !StringUtils.hasText(userMessage)) {
             return List.of();
         }
-        return knowledgeRetrievalService.retrieve(knowledgeBaseIds, userMessage.trim(), 5);
+        int topK = retrievalTopK != null && retrievalTopK >= 1 ? Math.min(retrievalTopK, 20) : 5;
+        Double threshold = similarityThreshold != null ? similarityThreshold.doubleValue() : null;
+        return knowledgeRetrievalService.retrieve(knowledgeBaseIds, userMessage.trim(), topK, threshold);
     }
 
     private List<AiChatMessagePo> enrichConversationMessages(List<AiChatMessagePo> messages, ChatContext context) {
@@ -1593,23 +1608,25 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     private record ChatContext(Long conversationId, Long workflowId, Long modelId, String titlePrefix,
                                String sourceName, String systemPrompt, List<Long> knowledgeBaseIds,
-                               List<Long> mcpServerIds, Integer historyLimit) {
+                               List<Long> mcpServerIds, Integer historyLimit,
+                               Integer retrievalTopK, BigDecimal similarityThreshold) {
 
         private static ChatContext general(Long conversationId, Long modelId) {
-            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of(), List.of(), null);
+            return new ChatContext(conversationId, null, modelId, "通用对话", null, null, List.of(), List.of(),
+                    null, null, null);
         }
 
-        private static ChatContext agent(Long conversationId, Long modelId, String agentName,
-                                         String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds,
-                                         Integer historyLimit) {
-            return new ChatContext(conversationId, null, modelId, "智能体对话", agentName, systemPrompt,
-                    knowledgeBaseIds, mcpServerIds, historyLimit);
+        private static ChatContext agent(Long conversationId, AiAgentPo agent,
+                                         List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
+            return new ChatContext(conversationId, null, agent.getModelId(), "智能体对话", agent.getAgentName(),
+                    agent.getSystemPrompt(), knowledgeBaseIds, mcpServerIds, agent.getHistoryLimit(),
+                    agent.getRetrievalTopK(), agent.getSimilarityThreshold());
         }
 
         private static ChatContext workflow(Long conversationId, Long workflowId, Long modelId, String workflowName,
                                             String systemPrompt, List<Long> knowledgeBaseIds, List<Long> mcpServerIds) {
             return new ChatContext(conversationId, workflowId, modelId, "工作流对话", workflowName, systemPrompt,
-                    knowledgeBaseIds, mcpServerIds, null);
+                    knowledgeBaseIds, mcpServerIds, null, null, null);
         }
     }
 }
