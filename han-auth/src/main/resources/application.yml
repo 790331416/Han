@@ -41,3 +41,5 @@ sdfz:
     enabled: ${SDFZ_CLASSROOM_GATEWAY_ENABLED:false}
     token-secret: ${SDFZ_CLASSROOM_TOKEN_SECRET:}
     token-ttl-seconds: ${SDFZ_CLASSROOM_TOKEN_TTL_SECONDS:900}
+    # 本地登录态换发兼容凭证时允许的 roleType，本期只有教师（2）
+    login-role-types: ${SDFZ_CLASSROOM_LOGIN_ROLE_TYPES:2}

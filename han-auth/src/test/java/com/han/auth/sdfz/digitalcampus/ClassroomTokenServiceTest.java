@@ -1,13 +1,19 @@
 package com.han.auth.sdfz.digitalcampus;
 
+import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.UserVO;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.ClassroomTokenCodec;
+import com.han.common.security.domain.LoginUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -19,9 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ClassroomTokenServiceTest {
 
     private static final String SECRET = "0123456789abcdef0123456789abcdef";
@@ -29,9 +37,16 @@ class ClassroomTokenServiceTest {
     @Mock
     private DigitalCampusLoginService loginService;
     @Mock
+    private SystemServiceClient systemServiceClient;
+    @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+
+    private ClassroomTokenService service(boolean enabled) {
+        return new ClassroomTokenService(
+                loginService, systemServiceClient, redisTemplate, enabled, SECRET, 900, "2");
+    }
 
     @Test
     void exchangesVerifiedIdentityForSignedRevocableToken() {
@@ -42,10 +57,8 @@ class ClassroomTokenServiceTest {
         when(loginService.synchronize("external-token", "identity-1"))
                 .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        ClassroomTokenService service = new ClassroomTokenService(
-                loginService, redisTemplate, true, SECRET, 900);
 
-        ClassroomTokenVO result = service.exchange("external-token", "identity-1");
+        ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");
 
         ClassroomTokenCodec.VerifiedToken verified = ClassroomTokenCodec.verify(
                 result.accessToken(), SECRET, Instant.now().getEpochSecond());
@@ -62,11 +75,70 @@ class ClassroomTokenServiceTest {
     }
 
     @Test
-    void refusesToIssueWhenFeatureIsDisabled() {
-        ClassroomTokenService service = new ClassroomTokenService(
-                loginService, redisTemplate, false, SECRET, 900);
+    void pinsUserTypeToTheValueTheLegacyPortalFilterRequires() {
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        when(loginService.synchronize("external-token", "identity-1"))
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity()));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-        assertThatThrownBy(() -> service.exchange("external-token", null))
+        ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");
+
+        assertThat(ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims())
+                .containsEntry("userType", "USER")
+                .containsEntry("roleType", "2");
+    }
+
+    @Test
+    void issuesFromHanLoginSessionWithoutAnyExternalIdentityLookup() {
+        when(systemServiceClient.getClassroomIdentity(100L)).thenReturn(R.ok(ClassroomIdentityVO.builder()
+                .userId("100").identityId("11").userName("Teacher One").roleType("2")
+                .schoolId("7").status(0).roles(List.of("2", "TEACHER")).build()));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO result = service(true).exchangeLocal(
+                LoginUser.builder().userId(100L).tenantId(1L).username("teacher01").build());
+
+        assertThat(ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims())
+                .containsEntry("userId", "100")
+                .containsEntry("identityId", "11")
+                .containsEntry("userType", "USER");
+        verifyNoInteractions(loginService);
+    }
+
+    @Test
+    void refusesLocalExchangeForNonTeacherIdentitiesThisPhase() {
+        when(systemServiceClient.getClassroomIdentity(200L)).thenReturn(R.ok(ClassroomIdentityVO.builder()
+                .userId("200").identityId("21").userName("Student One").roleType("4")
+                .schoolId("7").status(0).roles(List.of("4", "STUDENT")).build()));
+
+        assertThatThrownBy(() -> service(true).exchangeLocal(
+                LoginUser.builder().userId(200L).tenantId(1L).username("student01").build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(ClassroomTokenService.NON_TEACHER_LOGIN_UNSUPPORTED);
+    }
+
+    @Test
+    void refusesLocalExchangeWithoutAnEducationIdentityOrLoginSession() {
+        when(systemServiceClient.getClassroomIdentity(300L)).thenReturn(R.ok(null));
+
+        assertThatThrownBy(() -> service(true).exchangeLocal(
+                LoginUser.builder().userId(300L).tenantId(1L).username("plain").build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前账号未开通三个课堂身份");
+        assertThatThrownBy(() -> service(true).exchangeLocal(null))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void refusesToIssueWhenFeatureIsDisabled() {
+        assertThatThrownBy(() -> service(false).exchange("external-token", null))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service(false).exchangeLocal(
+                LoginUser.builder().userId(100L).build()))
                 .isInstanceOf(BusinessException.class);
     }
 
