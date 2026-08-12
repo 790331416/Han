@@ -126,7 +126,7 @@ public class PermissionCheckPostProcessor implements ApplicationListener<Context
         }
 
         if (violations.isEmpty()) {
-            log.info("✅ 权限校验通过！共检查 {} 个控制器（@AdminAuth {} 个，按权限注解识别 {} 个），{} 个映射方法",
+            log.info("[权限门禁] 校验通过，共检查 {} 个控制器（@AdminAuth {} 个，按权限注解识别 {} 个），{} 个映射方法",
                     targets.size(), adminControllers.size(), targets.size() - adminControllers.size(), checkedMethodCount);
             return;
         }
