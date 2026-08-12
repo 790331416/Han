@@ -10,8 +10,24 @@ PostgreSQL 保持 Han 的默认数据库。MySQL 8.4 是正式可选数据库，
 | 业务模块 JDBC 驱动 | 支持 | 支持 | 两种驱动随数据库模块一起构建 |
 | 代码生成器元数据查询 | 支持 | 支持 | 按数据库产品名选择 mapper SQL |
 | small clean 初始化 | 支持 | 支持 | 独立 SQL/Compose 与 MySQL 8.4.10 clean 导入已验证 |
-| medium/full clean 初始化 | 支持 | 不支持 | 尚未完成 SQL 转换与实库验证 |
-| 存量升级 | 支持 | 不支持 | 正式增量脚本当前仅有 `sql/upgrades/postgres/` |
+| medium/full clean 初始化 | 支持 | 支持（未实库验证） | 已补齐独立 SQL 与 Compose，见下方 §1.1 |
+| 存量升级 | 支持 | 支持（未实库验证） | `sql/upgrades/mysql/`，起算点见下方 §1.2 |
+
+### 1.1 medium/full 的 MySQL 状态
+
+`sql/tiers/{medium,full}/{medium,full}-init-mysql.sql` 与
+`deploy/{medium,full}/docker-compose-mysql.yml` 已经落地，并做过与 PostgreSQL 版的逐项静态比对：
+三档的菜单 ID 集合、权限点集合与 PostgreSQL 版完全一致，无重复 ID、无孤儿父节点。
+
+**但这两档尚未做过真实 MySQL 实例导入**。small 档有 8.4.10 实库导入证据，medium/full 没有。
+进入任何正式环境前必须先补实库导入与服务启动验证，不能拿 small 的验证结果替代。
+
+### 1.2 MySQL 存量升级的起算点
+
+MySQL 支持是 2026-08-11 引入的，此前不存在任何 MySQL 库，
+因此 `sql/upgrades/postgres/` 里 2026-08-11 之前的历史脚本**不回港到 MySQL**——
+那些变更已经烘焙在 `*-init-mysql.sql` 里，回港属于死代码。
+`sql/upgrades/mysql/` 只承载 2026-08-11 之后的增量。全新安装不需要执行升级脚本。
 
 ## 2. 为什么以前不能直接切换
 
@@ -31,21 +47,24 @@ DB_PASSWORD=<从部署环境注入>
 
 不要再设置固定 `driver-class-name`。Spring Boot 根据 JDBC URL 和 classpath 中的驱动自动选择驱动，MyBatis-Plus 同样根据 JDBC URL 识别分页方言。
 
-## 4. small 部署入口
+## 4. 三档部署入口
 
-PostgreSQL：
+每档都有一份独立的 MySQL Compose，与 PostgreSQL 版并列，互不覆盖：
+
+| 档位 | PostgreSQL 入口 | MySQL 入口 | MySQL 初始化脚本 | MySQL 宿主机端口 |
+| --- | --- | --- | --- | --- |
+| small | `deploy/small/docker-compose.yml` | `deploy/small/docker-compose-mysql.yml` | `sql/tiers/small/small-init-mysql.sql` | `13306` |
+| medium | `deploy/medium/docker-compose.yml` | `deploy/medium/docker-compose-mysql.yml` | `sql/tiers/medium/medium-init-mysql.sql` | `23306` |
+| full | `deploy/full/docker-compose.yml` | `deploy/full/docker-compose-mysql.yml` | `sql/tiers/full/full-init-mysql.sql` | `3306` |
 
 ```bash
-docker compose -f deploy/small/docker-compose.yml up -d
+docker compose -f deploy/<tier>/docker-compose-mysql.yml up -d
 ```
 
-MySQL：
-
-```bash
-docker compose -f deploy/small/docker-compose-mysql.yml up -d
-```
-
-MySQL 初始化脚本固定为 `sql/tiers/small/small-init-mysql.sql`，端口默认映射为 `13306`。密码必须通过 `.env` 注入，示例值不得用于正式环境。
+两种数据库的数据卷互不复用（PostgreSQL 用 `postgres_data`，MySQL 用 `mysql_data`），
+同一档位不要同时起两套编排。密码必须通过 `.env` 注入：MySQL 入口的
+`MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD` 与其余机密项都是 `${VAR:?...}` 形式，缺失即启动失败，
+仓库内不提供任何明文默认值，示例值不得用于正式环境。
 
 ## 5. 合并与发布门禁
 
@@ -57,7 +76,11 @@ python scripts/checks/check_sql_layout.py
 python scripts/checks/check_deploy_layout.py
 ```
 
-small MySQL 的 SQL 层已在干净 MySQL 8.4.10 实例验证；进入具体项目部署前还必须完成：
+**验证状态要分档看**：small MySQL 的 SQL 层已在干净 MySQL 8.4.10 实例验证过；
+medium/full 只做过与 PostgreSQL 版的静态逐项比对，**没有实库导入证据**，
+两档的实库导入与服务启动验证仍是欠账，不能拿 small 的结论替代。
+
+进入具体项目部署前还必须完成：
 
 1. 再次导入 `small-init-mysql.sql` 并记录目标 MySQL 小版本。
 2. 启动 system、job，确认健康检查通过。

@@ -116,19 +116,21 @@ def main() -> int:
 
         check_required_env_coverage(violations, compose, tier_dir / ".env.example")
 
-        # small 档已开放 MySQL 入口，medium/full 的 MySQL 尚未落地，这里只校验 small
-        if tier == "small":
-            mysql_compose = tier_dir / "docker-compose-mysql.yml"
-            mysql_init_sql = SQL / "tiers" / tier / "small-init-mysql.sql"
-            if not mysql_compose.exists():
-                violations.append(f"missing MySQL small compose entry: {mysql_compose}")
-            if not mysql_init_sql.exists():
-                violations.append(f"missing MySQL small init SQL: {mysql_init_sql}")
-            if mysql_compose.exists():
-                mysql_text = mysql_compose.read_text(encoding="utf-8")
-                for token in ("mysql:8.4.10", "/tiers/small/small-init-mysql.sql:", "jdbc:mysql://"):
-                    if token not in mysql_text:
-                        violations.append(f"{mysql_compose} missing MySQL token: {token}")
+        # 三档均已开放 MySQL 入口，每档都必须有独立的 MySQL compose 与初始化 SQL
+        mysql_compose = tier_dir / "docker-compose-mysql.yml"
+        mysql_init_sql = SQL / "tiers" / tier / f"{tier}-init-mysql.sql"
+        if not mysql_compose.exists():
+            violations.append(f"missing MySQL {tier} compose entry: {mysql_compose}")
+        if not mysql_init_sql.exists():
+            violations.append(f"missing MySQL {tier} init SQL: {mysql_init_sql}")
+        if mysql_compose.exists():
+            mysql_text = mysql_compose.read_text(encoding="utf-8")
+            for token in ("mysql:8.4.10", f"/tiers/{tier}/{tier}-init-mysql.sql:", "jdbc:mysql://"):
+                if token not in mysql_text:
+                    violations.append(f"{mysql_compose} missing MySQL token: {token}")
+            # MySQL 入口不得再挂 PostgreSQL 的库或初始化脚本
+            if "postgres" in mysql_text.lower():
+                violations.append(f"{mysql_compose} 仍残留 PostgreSQL 引用，MySQL 入口必须完全切换")
 
     for name in (
         "deploy-95.sh",

@@ -152,10 +152,13 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 | 档位 | PostgreSQL 初始化 SQL | MySQL 8.4 初始化 SQL | Nacos 导入 SQL | 覆盖模块 |
 | --- | --- | --- | --- | --- |
 | `small` | `sql/tiers/small/small-init.sql` | `sql/tiers/small/small-init-mysql.sql` | `sql/tiers/small/small-nacos-derby-import.sql` | gateway、auth、system、job |
-| `medium` | `sql/tiers/medium/medium-init.sql` | 暂未提供 | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
-| `full` | `sql/tiers/full/full-init.sql` | 暂未提供 | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
+| `medium` | `sql/tiers/medium/medium-init.sql` | `sql/tiers/medium/medium-init-mysql.sql` | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
+| `full` | `sql/tiers/full/full-init.sql` | `sql/tiers/full/full-init-mysql.sql` | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
 
-PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库但仅开放 small 档全新初始化，
+PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库，三档全新初始化均已提供独立脚本。
+其中只有 small 档有真实 MySQL 8.4.10 实库导入证据，medium/full 仅做过与 PostgreSQL 版的静态比对。
+增量升级脚本按数据库分目录：`sql/upgrades/postgres/` 与 `sql/upgrades/mysql/`，
+MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-mysql.sql` 里，不回港。
 口径与边界以 [PostgreSQL/MySQL 兼容与切换手册](../docs/11-PostgreSQL-MySQL兼容与切换手册.md) 为准。
 
 菜单与权限点按档位裁剪：small 只播系统、监控与任务调度；medium 追加 OSS 配置、工作流、开放平台与租户配额；
