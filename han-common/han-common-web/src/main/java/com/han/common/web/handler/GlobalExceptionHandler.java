@@ -3,6 +3,7 @@ package com.han.common.web.handler;
 import com.han.common.core.constant.Constants;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.ConflictException;
 import com.han.common.core.exception.ForbiddenException;
 import com.han.common.core.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -150,10 +151,30 @@ public class GlobalExceptionHandler {
 
     /**
      * 其他异常
+     *
+     * <p>唯一键冲突单独识别为 409：它是可预期的业务冲突而不是系统故障，前端需要能与"系统繁忙"区分开。
+     * 通过 JDK 的 {@link java.sql.SQLIntegrityConstraintViolationException} 在 cause 链上判定，
+     * 避免为此在本模块引入 spring-tx 依赖。数据库原始报文只写日志，不透出给调用方。</p>
      */
     @ExceptionHandler(Exception.class)
     public R<Void> handleException(Exception e, HttpServletRequest request) {
+        if (isIntegrityViolation(e)) {
+            log.warn("唯一性冲突: {} - {}", request.getRequestURI(), e.getMessage());
+            return R.fail(ConflictException.CODE, "数据已存在或被占用，请修改后重试");
+        }
         log.error("系统异常: {} - {}", request.getRequestURI(), e.getMessage(), e);
         return R.fail("系统繁忙，请稍后重试");
+    }
+
+    private static boolean isIntegrityViolation(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof java.sql.SQLIntegrityConstraintViolationException) {
+                return true;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+        }
+        return false;
     }
 }

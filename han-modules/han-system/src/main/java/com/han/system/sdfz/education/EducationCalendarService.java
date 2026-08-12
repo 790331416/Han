@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.system.sdfz.education.domain.EduDevicePo;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EducationCalendarForms;
 import com.han.system.sdfz.education.domain.SemesterLifecycle;
+import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSemesterMapper;
@@ -37,6 +39,7 @@ public class EducationCalendarService {
     private final EduSemesterMapper semesterMapper;
     private final EduRoomMapper roomMapper;
     private final EduSchoolMapper schoolMapper;
+    private final EduDeviceMapper deviceMapper;
 
     public PageResult<EduSemesterPo> listSemesters(String keyword, Integer status, String lifecycleStatus,
                                                    int pageNum, int pageSize) {
@@ -120,6 +123,25 @@ public class EducationCalendarService {
         return new PageResult<>(result.getRecords(), result.getTotal(), safePage, safeSize);
     }
 
+    /**
+     * 逻辑删除学期。合并教育主数据返工线时从 {@code EducationMasterDataService} 并过来的能力，
+     * 那边的 {@code /semesters/*} 与本类端点完全重合，已整体退役。
+     *
+     * <p>幂等：ID 不存在就跳过，不报错。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteSemesters(List<Long> ids) {
+        requireTenant();
+        int removed = 0;
+        for (Long id : distinct(ids)) {
+            if (semesterMapper.selectById(id) == null) {
+                continue;
+            }
+            removed += semesterMapper.deleteById(id);
+        }
+        return removed;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public Long saveRoom(EducationCalendarForms.Room form) {
         Long tenantId = requireTenant();
@@ -144,6 +166,39 @@ public class EducationCalendarService {
             roomMapper.updateById(item);
         }
         return item.getId();
+    }
+
+    /**
+     * 逻辑删除教室。同样是从主数据返工线并过来的能力，保留它那两道前置校验：
+     * 数字校园同步来的教室不允许在本地删，教室下还挂着设备时先处理设备。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteRooms(List<Long> ids) {
+        requireTenant();
+        int removed = 0;
+        for (Long id : distinct(ids)) {
+            EduRoomPo item = roomMapper.selectById(id);
+            if (item == null) {
+                continue;
+            }
+            if (!LOCAL_SOURCE.equals(item.getSourceSystem())) {
+                throw new BusinessException("教室来自数字校园，请通过同步删除");
+            }
+            Long devices = deviceMapper.selectCount(new LambdaQueryWrapper<EduDevicePo>()
+                    .eq(EduDevicePo::getRoomId, id));
+            if (devices != null && devices > 0) {
+                throw new BusinessException("该教室下仍有 " + devices + " 条设备，请先处理后再删除");
+            }
+            removed += roomMapper.deleteById(id);
+        }
+        return removed;
+    }
+
+    private static List<Long> distinct(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException("请选择要删除的记录");
+        }
+        return ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
     }
 
     private void clearOtherCurrentFlags(Long keepId) {

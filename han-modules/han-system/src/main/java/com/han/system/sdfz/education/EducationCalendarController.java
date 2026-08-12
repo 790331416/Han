@@ -9,6 +9,7 @@ import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EducationCalendarForms;
+import com.han.system.sdfz.education.domain.EducationForms;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -59,6 +60,14 @@ public class EducationCalendarController {
         return R.ok(service.saveSemester(form));
     }
 
+    @RepeatSubmit
+    @PostMapping("/semesters/remove")
+    @PreAuthorize("@ss.hasAuthority('education:semester:remove')")
+    @OperLog(module = "学期管理", type = OperLog.OperType.DELETE)
+    public R<Integer> removeSemesters(@Valid @RequestBody EducationForms.DeleteRequest request) {
+        return R.ok(service.deleteSemesters(request.ids()));
+    }
+
     @GetMapping("/rooms/list")
     @PreAuthorize("@ss.hasAuthority('education:room:list')")
     public R<PageResult<EduRoomPo>> rooms(
@@ -86,6 +95,14 @@ public class EducationCalendarController {
     public R<Long> editRoom(@Valid @RequestBody EducationCalendarForms.Room form) {
         requireEdit(form.id());
         return R.ok(service.saveRoom(form));
+    }
+
+    @RepeatSubmit
+    @PostMapping("/rooms/remove")
+    @PreAuthorize("@ss.hasAuthority('education:room:remove')")
+    @OperLog(module = "教室管理", type = OperLog.OperType.DELETE)
+    public R<Integer> removeRooms(@Valid @RequestBody EducationForms.DeleteRequest request) {
+        return R.ok(service.deleteRooms(request.ids()));
     }
 
     private static void requireCreate(Long id) {

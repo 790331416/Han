@@ -8,6 +8,7 @@ import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EducationCalendarForms;
 import com.han.system.sdfz.education.domain.SemesterLifecycle;
+import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSemesterMapper;
@@ -43,13 +44,15 @@ class EducationCalendarServiceTest {
     private EduRoomMapper roomMapper;
     @Mock
     private EduSchoolMapper schoolMapper;
+    @Mock
+    private EduDeviceMapper deviceMapper;
 
     private EducationCalendarService service;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
-        service = new EducationCalendarService(semesterMapper, roomMapper, schoolMapper);
+        service = new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper);
     }
 
     @AfterEach

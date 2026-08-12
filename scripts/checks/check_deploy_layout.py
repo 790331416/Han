@@ -70,19 +70,25 @@ def main() -> int:
                             f"{mysql_compose} 未挂载 SDFZ SQL，全新部署会缺数据: {mount_token}"
                         )
 
+                # han-auth / han-system / han-job 不在此列：它们已不再映射宿主机端口。
+                # 三者的 Spring Security 是 permitAll、身份靠网关下发的请求头，
+                # 一旦对宿主机开放就能绕过网关认证，所以这里也不能再要求它们有可配端口。
                 for token in (
                     "HAN_MYSQL_HOST_PORT",
                     "HAN_REDIS_HOST_PORT",
                     "HAN_NACOS_HTTP_HOST_PORT",
                     "HAN_NACOS_GRPC_HOST_PORT",
                     "HAN_GATEWAY_HOST_PORT",
-                    "HAN_AUTH_HOST_PORT",
-                    "HAN_SYSTEM_HOST_PORT",
-                    "HAN_JOB_HOST_PORT",
                     "HAN_UI_HOST_PORT",
                 ):
                     if token not in mysql_text:
                         violations.append(f"{mysql_compose} missing configurable host port: {token}")
+
+                for token in ("HAN_AUTH_HOST_PORT", "HAN_SYSTEM_HOST_PORT", "HAN_JOB_HOST_PORT"):
+                    if token in mysql_text:
+                        violations.append(
+                            f"{mysql_compose} 不应再把业务服务端口暴露到宿主机（可绕过网关认证）: {token}"
+                        )
 
             postgres_text = compose.read_text(encoding="utf-8") if compose.exists() else ""
             if "HAN_POSTGRES_HOST_PORT" not in postgres_text:

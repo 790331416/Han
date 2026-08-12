@@ -42,6 +42,10 @@ services:
       - ${HAN_SQL_ROOT:-../../sql}/tiers/small/small-init-mysql.sql:/docker-entrypoint-initdb.d/01-small-init.sql:ro
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260811_education_master.sql:/docker-entrypoint-initdb.d/20-sdfz-education.sql:ro
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812_course_order.sql:/docker-entrypoint-initdb.d/21-sdfz-course-order.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812_education_unified_person.sql:/docker-entrypoint-initdb.d/22-sdfz-education-person.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812b_education_active_unique_index.sql:/docker-entrypoint-initdb.d/23-sdfz-education-active-index.sql:ro
+      # 乱码修数脚本。全新库上没有可修的行，空跑无害；挂进来是为了让「sdfz 脚本必须全部挂载」这条检查保持无豁免。
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812c_fix_education_name_mojibake.sql:/docker-entrypoint-initdb.d/24-sdfz-education-mojibake-fix.sql:ro
     networks:
       - han-network
     healthcheck:
@@ -132,8 +136,8 @@ services:
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
       JAVA_OPTS: -Xms128m -Xmx256m
       TZ: ${TZ:-Asia/Shanghai}
-    ports:
-      - "${HAN_AUTH_HOST_PORT:-19200}:9200"
+    # 不映射宿主机端口：业务服务只在 han-network 内可达，一律经网关进入。
+    # 服务层当前是 permitAll + 依赖网关下发的身份头，直连业务端口可绕过认证。
     depends_on:
       redis:
         condition: service_healthy
@@ -146,8 +150,7 @@ services:
     image: ${HAN_SYSTEM_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest}
     environment:
       <<: *service-env
-    ports:
-      - "${HAN_SYSTEM_HOST_PORT:-19201}:9201"
+    # 同上：不对宿主机暴露，调试请走网关或 docker exec。
     depends_on:
       mysql:
         condition: service_healthy
@@ -162,8 +165,7 @@ services:
     image: ${HAN_JOB_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-job:latest}
     environment:
       <<: *service-env
-    ports:
-      - "${HAN_JOB_HOST_PORT:-19204}:9204"
+    # 同上：不对宿主机暴露。
     depends_on:
       mysql:
         condition: service_healthy

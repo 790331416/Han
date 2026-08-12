@@ -213,8 +213,9 @@ public class OrderIntegrationTestConfig {
     public EducationCalendarService educationCalendarService(
             com.han.system.sdfz.education.mapper.EduSemesterMapper semesterMapper,
             com.han.system.sdfz.education.mapper.EduRoomMapper roomMapper,
-            com.han.system.sdfz.education.mapper.EduSchoolMapper schoolMapper) {
-        return new EducationCalendarService(semesterMapper, roomMapper, schoolMapper);
+            com.han.system.sdfz.education.mapper.EduSchoolMapper schoolMapper,
+            com.han.system.sdfz.education.mapper.EduDeviceMapper deviceMapper) {
+        return new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper);
     }
 
     @Bean
