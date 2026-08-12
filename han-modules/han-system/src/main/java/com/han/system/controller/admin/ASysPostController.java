@@ -36,6 +36,7 @@ public class ASysPostController extends BSysPostController {
 
     @Override
     @GetMapping("/all")
+    @PreAuthorize("@ss.hasAuthority('system:post:list')")
     public R<List<SysPostPo>> listAll() {
         return super.listAll();
     }

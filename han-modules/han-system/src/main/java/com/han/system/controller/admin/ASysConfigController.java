@@ -46,10 +46,18 @@ public class ASysConfigController {
         return R.ok(configMapper.selectById(configId));
     }
 
+    /**
+     * 按键名读取参数值。
+     *
+     * <p>参数值允许承载密钥类内容，因此与 {@link #getInfo} 同级要求 {@code system:config:query}，
+     * 不再对任意登录用户开放遍历。
+     */
     @GetMapping("/key/{configKey}")
+    @PreAuthorize("@ss.hasAuthority('system:config:query')")
     public R<String> getByKey(@PathVariable String configKey) {
         LambdaQueryWrapper<SysConfigPo> wrapper = new LambdaQueryWrapper<SysConfigPo>()
-                .eq(SysConfigPo::getConfigKey, configKey);
+                .eq(SysConfigPo::getConfigKey, configKey)
+                .last("LIMIT 1");
         SysConfigPo config = configMapper.selectOne(wrapper);
         return R.ok(config != null ? config.getConfigValue() : "");
     }
