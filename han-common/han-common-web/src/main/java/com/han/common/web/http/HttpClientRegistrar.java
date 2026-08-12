@@ -2,6 +2,7 @@ package com.han.common.web.http;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanDefinitionStoreException;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
@@ -75,7 +76,10 @@ public class HttpClientRegistrar implements ImportBeanDefinitionRegistrar {
                     log.info("[HttpClient] Registered @HttpExchange client: {} -> service: {}", className, serviceName);
                 }
             } catch (IOException | ClassNotFoundException e) {
-                log.warn("[HttpClient] Error scanning package: {}", basePackage, e);
+                // 扫描失败意味着部分 @HttpExchange 客户端没被注册，应用照常启动，
+                // 直到运行时某个业务分支注入不到 Bean 才炸。启动期能发现的问题不要推迟到线上。
+                throw new BeanDefinitionStoreException(
+                        "[HttpClient] 扫描包 " + basePackage + " 失败，@HttpExchange 客户端可能未完整注册", e);
             }
         }
     }
