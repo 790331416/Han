@@ -8,7 +8,7 @@
 - `medium` 是否补齐多租户、工作流、开放平台、文件能力
 - `full` 是否在 `medium` 基础上补齐 AI 能力，并对可选中间件做正确探测
 
-参考矩阵：[capability-matrix.md](./capability-matrix.md)
+参考矩阵：[capability-matrix.md](../分析/capability-matrix.md)
 
 ## 2. 通用前置
 
