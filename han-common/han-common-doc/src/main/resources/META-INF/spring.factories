@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+com.han.common.doc.config.DocEnvironmentPostProcessor
