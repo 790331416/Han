@@ -111,7 +111,13 @@ public class ShareRateLimitFilter implements GlobalFilter, Ordered {
                         List.of(key), List.of(String.valueOf(windowSeconds)))
                 .next()
                 // 脚本无返回（如 Redis 异常恢复期）按放行处理，避免误伤正常流量
-                .defaultIfEmpty(1L);
+                .defaultIfEmpty(1L)
+                // defaultIfEmpty 兜不住 error 信号：Redis 连接失败/超时时同样降级放行，
+                // 限流是保护性设施而非安全边界，不能让它自己成为故障源
+                .onErrorResume(e -> {
+                    log.warn("分享限流计数失败，降级放行: key={}", key, e);
+                    return Mono.just(1L);
+                });
     }
 
     /**
@@ -147,7 +153,7 @@ public class ShareRateLimitFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
-        // 位于全局 IP 限流（-300）之后、认证过滤器（-100）之前
-        return -200;
+        // 位于全局 IP 限流之后、请求日志与认证过滤器之前
+        return GatewayFilterOrders.SHARE_RATE_LIMIT;
     }
 }

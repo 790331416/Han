@@ -21,7 +21,7 @@ public class RequestLogFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
         String method = request.getMethod().name();
-        String ip = getClientIp(request);
+        String ip = ClientIpResolver.resolve(request);
         long start = System.currentTimeMillis();
 
         return chain.filter(exchange).then(Mono.fromRunnable(() -> {
@@ -36,22 +36,8 @@ public class RequestLogFilter implements GlobalFilter, Ordered {
         }));
     }
 
-    private String getClientIp(ServerHttpRequest request) {
-        String ip = request.getHeaders().getFirst("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeaders().getFirst("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddress() != null ? request.getRemoteAddress().getAddress().getHostAddress() : "unknown";
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.substring(0, ip.indexOf(",")).trim();
-        }
-        return ip;
-    }
-
     @Override
     public int getOrder() {
-        return -200;
+        return GatewayFilterOrders.REQUEST_LOG;
     }
 }

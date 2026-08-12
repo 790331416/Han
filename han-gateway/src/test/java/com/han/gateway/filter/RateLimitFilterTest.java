@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
@@ -106,5 +107,58 @@ class RateLimitFilterTest {
         filter.filter(exchange, chain).block();
 
         verify(chain).filter(exchange);
+    }
+
+    /**
+     * Redis 连接失败/超时发出的是 error 信号，{@code defaultIfEmpty} 完全不参与。
+     * 限流器 order 最靠前，不降级会把包括登录在内的全站请求打成 500。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void fallsThroughWhenRedisScriptErrors() {
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyList()))
+                .thenReturn(Flux.error(new RedisConnectionFailureException("redis down")));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/auth/login").header("X-Forwarded-For", "10.18.35.127"));
+
+        filter.filter(exchange, chain).block();
+
+        verify(chain).filter(exchange);
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
+    }
+
+    /**
+     * nginx 的 {@code proxy_add_x_forwarded_for} 是追加语义，客户端注入的值留在最左侧。
+     * 取最右一跳才是离网关最近的真实来源，否则换个 XFF 就能绕开限流。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void usesLastForwardedHopAsRateLimitKey() {
+        when(redisTemplate.execute(any(RedisScript.class), anyList(), anyList()))
+                .thenReturn(Flux.just(1L));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/system/user/list")
+                        .header("X-Forwarded-For", "1.2.3.4, 203.0.113.7"));
+
+        filter.filter(exchange, chain).block();
+
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redisTemplate).execute(any(RedisScript.class), keysCaptor.capture(), anyList());
+        assertThat(keysCaptor.getValue()).containsExactly("gateway:rate_limit:203.0.113.7");
+    }
+
+    @Test
+    void filterOrdersAreDistinct() {
+        assertThat(List.of(GatewayFilterOrders.RATE_LIMIT, GatewayFilterOrders.SHARE_RATE_LIMIT,
+                        GatewayFilterOrders.REQUEST_LOG, GatewayFilterOrders.AUTH))
+                .as("同 order 的 GlobalFilter 相对顺序由 Spring 决定，必须互不相同")
+                .doesNotHaveDuplicates()
+                .isSorted();
     }
 }
