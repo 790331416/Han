@@ -60,6 +60,10 @@
         <easyexcel.version>4.0.3</easyexcel.version>
         <totp.version>1.7.1</totp.version>
 
+        <!-- 文档解析（知识库 pdf/docx/xlsx 抽取） -->
+        <pdfbox.version>3.0.5</pdfbox.version>
+        <poi.version>5.2.5</poi.version>
+
         <!-- 工作流引擎 -->
         <flowable.version>7.2.0</flowable.version>
 
@@ -358,6 +362,25 @@
                 <groupId>dev.samstevens.totp</groupId>
                 <artifactId>totp</artifactId>
                 <version>${totp.version}</version>
+            </dependency>
+
+            <!-- Apache PDFBox（知识库 pdf 文本抽取） -->
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+
+            <!-- Apache POI（知识库 docx/xlsx 文本抽取） -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
             </dependency>
 
             <!-- TransmittableThreadLocal (线程池上下文传递) -->
