@@ -8,6 +8,7 @@ import com.han.system.domain.vo.UserVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -20,6 +21,11 @@ public interface SysUserMapper extends BaseMapper<SysUserPo> {
      * 分页查询用户列表
      */
     IPage<UserVO> selectUserPage(IPage<UserVO> page, @Param("query") SysUserQuery query);
+
+    /**
+     * 查询用户列表（导出用，不分页，按 maxRows 截断）
+     */
+    List<UserVO> selectUserListForExport(@Param("query") SysUserQuery query, @Param("maxRows") int maxRows);
 
     /**
      * 根据ID查询用户详情

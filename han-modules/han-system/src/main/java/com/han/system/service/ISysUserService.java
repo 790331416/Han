@@ -23,6 +23,17 @@ public interface ISysUserService extends IBaseService<SysUserQuery, SysUserDto> 
     PageResult<UserVO> selectUserPage(SysUserQuery query);
 
     /**
+     * 查询用户列表（导出用）。
+     *
+     * <p>导出不能复用分页查询：前端会把列表当前的 pageNum/pageSize 一起传过来，
+     * 导出文件里只会有当前页那几条；即便传大 pageSize，分页插件的 maxLimit(500)
+     * 也会静默封顶。这里走不分页查询并按 maxRows 显式截断。
+     *
+     * @param maxRows 单次导出的行数上限
+     */
+    java.util.List<UserVO> selectUserListForExport(SysUserQuery query, int maxRows);
+
+    /**
      * 根据用户名查询用户
      */
     SysUserDto selectUserByUsername(String username);

@@ -239,7 +239,8 @@ public class SysDeptServiceImpl implements ISysDeptService {
                         SysDeptPo::getDeptName, query.getDeptName())
                 .eq(query.getStatus() != null, SysDeptPo::getStatus, query.getStatus())
                 .orderByAsc(SysDeptPo::getParentId)
-                .orderByAsc(SysDeptPo::getSort);
+                // sys_dept 没有 sort 列，排序列是 post_sort（映射为 orderNum）
+                .orderByAsc(SysDeptPo::getOrderNum);
     }
 
     /**

@@ -84,6 +84,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     }
 
     @Override
+    public List<UserVO> selectUserListForExport(SysUserQuery query, int maxRows) {
+        if (SecurityContextHolder.isAdmin()) {
+            return TenantHelper.ignore(() -> sysUserMapper.selectUserListForExport(query, maxRows));
+        }
+        return sysUserMapper.selectUserListForExport(query, maxRows);
+    }
+
+    @Override
     public List<SysUserDto> selectListScope(SysUserQuery query) {
         return selectList(query);
     }

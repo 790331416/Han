@@ -34,6 +34,9 @@ import java.util.Set;
 @RequestMapping("/system/user")
 public class ASysUserController extends BSysUserController {
 
+    /** 单次导出的行数上限，超过要求调用方补查询条件 */
+    private static final int EXPORT_MAX_ROWS = 50000;
+
     private final com.han.system.service.SysUserSocialService socialService;
 
     public ASysUserController(ISysUserService service, com.han.system.service.SysUserSocialService socialService) {
@@ -160,11 +163,17 @@ public class ASysUserController extends BSysUserController {
 
     // ==================== 导入导出 ====================
 
+    /**
+     * 导出用户数据。
+     *
+     * <p>导出走不分页查询：前端把列表当前的 pageNum/pageSize 一起传过来，
+     * 复用分页会让导出文件只剩当前页那几条。
+     */
     @GetMapping("/export")
     @PreAuthorize("@ss.hasAuthority('system:user:export')")
     @OperLog(module = "用户管理", type = OperLog.OperType.EXPORT)
     public void export(SysUserQuery query, HttpServletResponse response) throws IOException {
-        java.util.List<UserExportVo> list = baseService.selectUserPage(query).getRows().stream()
+        java.util.List<UserExportVo> list = baseService.selectUserListForExport(query, EXPORT_MAX_ROWS).stream()
                 .map(u -> UserExportVo.builder()
                         .userId(String.valueOf(u.getUserId()))
                         .username(u.getUsername())

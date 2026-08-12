@@ -26,6 +26,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ASysOperLogController {
 
+    /** 单次导出的行数上限，超过要求调用方补查询条件 */
+    private static final int EXPORT_MAX_ROWS = 50000;
+
     private final ISysOperLogService operLogService;
 
     @GetMapping("/list")
@@ -64,8 +67,7 @@ public class ASysOperLogController {
     @PreAuthorize("@ss.hasAuthority('monitor:operlog:export')")
     @OperLog(module = "操作日志", type = OperLog.OperType.EXPORT)
     public void export(SysOperLogQuery query, HttpServletResponse response) throws IOException {
-        query.setPageSize(10000);
-        List<OperLogExportVo> list = operLogService.selectPage(query).getRows().stream()
+        List<OperLogExportVo> list = operLogService.selectListForExport(query, EXPORT_MAX_ROWS).stream()
                 .map(o -> OperLogExportVo.builder()
                         .id(String.valueOf(o.getId()))
                         .module(o.getModule())

@@ -21,13 +21,27 @@ public class SysLoginLogServiceImpl implements ISysLoginLogService {
 
     private final SysLoginLogMapper loginLogMapper;
 
+    /** 单页最大条数，防止 pageSize 被传成超大值拖库 */
+    private static final int MAX_PAGE_SIZE = 200;
+
     @Override
     public PageResult<SysLoginLogPo> selectPage(SysLoginLogQuery query) {
         Page<SysLoginLogPo> page = loginLogMapper.selectPage(
-                new Page<>(query.getPageNum(), query.getPageSize()),
+                new Page<>(clampPageNum(query.getPageNum()), clampPageSize(query.getPageSize())),
                 buildQueryWrapper(query)
         );
         return new PageResult<>(page.getRecords(), page.getTotal());
+    }
+
+    private static long clampPageNum(Integer pageNum) {
+        return pageNum == null || pageNum < 1 ? 1L : pageNum;
+    }
+
+    private static long clampPageSize(Integer pageSize) {
+        if (pageSize == null || pageSize < 1) {
+            return 10L;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
     }
 
     @Override

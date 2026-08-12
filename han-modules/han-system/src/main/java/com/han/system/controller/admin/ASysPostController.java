@@ -79,7 +79,8 @@ public class ASysPostController extends BSysPostController {
     @PreAuthorize("@ss.hasAuthority('system:post:export')")
     @OperLog(module = "岗位管理", type = OperLog.OperType.EXPORT)
     public void export(SysPostQuery query, HttpServletResponse response) throws IOException {
-        List<PostExportVo> list = super.list(query).getData().getRows().stream()
+        // 导出走不分页查询：复用 list 会带上前端传来的 pageNum/pageSize，只导出当前页
+        List<PostExportVo> list = postService.selectPostList(query).stream()
                 .map(p -> PostExportVo.builder()
                         .postId(String.valueOf(p.getId()))
                         .postCode(p.getPostCode())
