@@ -551,7 +551,11 @@ INSERT INTO sys_user_post (user_id, post_id) VALUES (1, 1), (2, 4);
 INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE del_flag = 0;
 
 -- 11. 字典类型
-INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
+-- 种子必须显式写 tenant_id：HanTenantLineHandler 会给 sys_dict_type / sys_dict_data /
+-- sys_config 注入 tenant_id = 当前租户，落库为 NULL 时 NULL = 1 恒为 UNKNOWN，
+-- 默认管理员（tenant_id = 1）一条内置字典和参数都读不到。
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark)
+SELECT v.id, 1, v.dict_name, v.dict_type, v.status, v.remark FROM (VALUES
 (1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
 (2, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
 (3, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
@@ -562,10 +566,12 @@ INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
 (8, '系统状态', 'sys_common_status', 0, '登录状态列表'),
 (9, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
 (10, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
-(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表');
+(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表')
+) AS v(id, dict_name, dict_type, status, remark);
 
 -- 12. 字典数据
-INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status)
+SELECT v.id, 1, v.dict_type, v.dict_label, v.dict_value, v.dict_sort, v.css_class, v.list_class, v.is_default, v.status FROM (VALUES
 (1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
 (2, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
 (3, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
@@ -604,16 +610,19 @@ INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css
 (36, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
 (37, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
 (38, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
-(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0);
+(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0)
+) AS v(id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status);
 
 -- 13. 参数配置
-INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, remark) VALUES
+INSERT INTO sys_config (id, tenant_id, config_name, config_key, config_value, config_type, remark)
+SELECT v.id, 1, v.config_name, v.config_key, v.config_value, v.config_type, v.remark FROM (VALUES
 (1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
 (2, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
 (3, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
 (4, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
 (5, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
-(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
+(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）')
+) AS v(id, config_name, config_key, config_value, config_type, remark);
 
 -- 14. 客户端配置
 INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire, refresh_expire, max_online, kick_strategy, status, remark) VALUES
