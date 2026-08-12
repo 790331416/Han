@@ -208,6 +208,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
                 || agent.getSimilarityThreshold().compareTo(BigDecimal.ONE) > 0)) {
             throw new BusinessException("相似度阈值必须在0到1之间");
         }
+        validateSuggestedQuestions(agent.getSuggestedQuestions());
         if (!STATUS_ENABLED.equals(agent.getStatus()) && !STATUS_DISABLED.equals(agent.getStatus())) {
             throw new BusinessException("智能体状态不合法");
         }
@@ -235,6 +236,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         target.setAvatar(source.getAvatar());
         target.setSystemPrompt(source.getSystemPrompt());
         target.setPrologue(source.getPrologue());
+        target.setSuggestedQuestions(source.getSuggestedQuestions());
         target.setModelId(source.getModelId());
         target.setKnowledgeBaseIds(source.getKnowledgeBaseIds());
         target.setMcpServerIds(source.getMcpServerIds());
@@ -252,6 +254,7 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         agent.setAvatar(trimToEmpty(agent.getAvatar()));
         agent.setSystemPrompt(trimToEmpty(agent.getSystemPrompt()));
         agent.setPrologue(trimToEmpty(agent.getPrologue()));
+        agent.setSuggestedQuestions(StringUtils.hasText(agent.getSuggestedQuestions()) ? agent.getSuggestedQuestions().trim() : "[]");
         agent.setKnowledgeBaseIds(StringUtils.hasText(agent.getKnowledgeBaseIds()) ? agent.getKnowledgeBaseIds().trim() : "[]");
         agent.setMcpServerIds(StringUtils.hasText(agent.getMcpServerIds()) ? agent.getMcpServerIds().trim() : "[]");
         agent.setStatus(StringUtils.hasText(agent.getStatus()) ? agent.getStatus().trim() : STATUS_ENABLED);

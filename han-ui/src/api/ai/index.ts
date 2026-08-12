@@ -231,6 +231,8 @@ export interface AiAgent {
   systemPrompt?: string
   welcomeMessage?: string
   prologue?: string
+  /** 开场推荐问题（JSON 字符串数组，最多 5 条） */
+  suggestedQuestions?: string
   /** 对话历史注入条数（空=默认 12） */
   historyLimit?: number
   /** 知识库检索返回条数（空=默认 5） */
@@ -293,6 +295,8 @@ export interface ShareProfile {
   agentName?: string
   avatar?: string
   prologue?: string
+  /** 开场推荐问题（JSON 字符串数组，最多 5 条） */
+  suggestedQuestions?: string
   description?: string
 }
 
@@ -322,6 +326,8 @@ export interface AiWorkflow {
   systemPrompt?: string
   flowConfig?: string
   prologue?: string
+  /** 开场推荐问题（JSON 字符串数组，最多 5 条） */
+  suggestedQuestions?: string
   published: string
   status: string
   createTime?: string

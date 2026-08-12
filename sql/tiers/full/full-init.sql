@@ -1708,6 +1708,7 @@ CREATE TABLE ai_workflow (
     system_prompt       TEXT            DEFAULT '',
     flow_config         TEXT            DEFAULT '{}',
     prologue            VARCHAR(2000)   DEFAULT '',
+    suggested_questions TEXT            DEFAULT '[]',
     published           CHAR(1)         DEFAULT '0',
     status              CHAR(1)         DEFAULT '0',
     tenant_id           BIGINT          DEFAULT 0,
@@ -1717,6 +1718,7 @@ CREATE TABLE ai_workflow (
     update_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 COMMENT ON TABLE ai_workflow IS 'AI工作流表';
+COMMENT ON COLUMN ai_workflow.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
 
 -- =============================================
 -- 29. AI对话会话表
@@ -1764,6 +1766,7 @@ CREATE TABLE ai_agent (
     avatar         VARCHAR(500),
     system_prompt  TEXT,
     prologue       TEXT,
+    suggested_questions TEXT,
     model_id       BIGINT,
     knowledge_base_ids TEXT,
     mcp_server_ids TEXT,
@@ -1787,6 +1790,7 @@ COMMENT ON COLUMN ai_agent.share_key IS '公开分享链接 key（发布时生�
 COMMENT ON COLUMN ai_agent.history_limit IS '对话历史注入条数（NULL=默认12）';
 COMMENT ON COLUMN ai_agent.retrieval_top_k IS '知识库检索返回条数（NULL=默认5）';
 COMMENT ON COLUMN ai_agent.similarity_threshold IS '向量检索相似度阈值（NULL=默认0.30）';
+COMMENT ON COLUMN ai_agent.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
 
 -- =============================================
 -- 32. Prompt模板表

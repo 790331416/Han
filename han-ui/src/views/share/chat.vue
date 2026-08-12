@@ -20,6 +20,24 @@
         <div v-if="profile?.prologue" class="share-message assistant">
           <div class="bubble">{{ profile.prologue }}</div>
         </div>
+        <!-- 开场推荐问题（G1-10）：会话开场渲染可点击提问，点击即作为用户消息发送 -->
+        <div
+          v-if="suggestedQuestions.length > 0 && messages.length === 0"
+          class="share-suggested"
+          data-testid="share-suggested-questions"
+        >
+          <el-button
+            v-for="question in suggestedQuestions"
+            :key="question"
+            round
+            class="share-suggested-btn"
+            data-testid="share-suggested-question"
+            :disabled="sending"
+            @click="handleSuggestedQuestion(question)"
+          >
+            {{ question }}
+          </el-button>
+        </div>
         <div
           v-for="(msg, idx) in messages"
           :key="idx"
@@ -61,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Promotion } from '@element-plus/icons-vue'
@@ -81,6 +99,27 @@ const scrollToBottom = () => {
   void nextTick(() => {
     messageListRef.value?.scrollTo({ top: messageListRef.value.scrollHeight, behavior: 'smooth' })
   })
+}
+
+// 开场推荐问题（G1-10）：profile 下发 JSON 字符串数组，解析后渲染可点击提问
+const suggestedQuestions = computed<string[]>(() => {
+  const raw = profile.value?.suggestedQuestions
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      .map((item) => item.trim())
+  } catch {
+    return []
+  }
+})
+
+const handleSuggestedQuestion = (question: string) => {
+  if (sending.value) return
+  inputMessage.value = question
+  void handleSend()
 }
 
 const loadProfile = async () => {
@@ -172,6 +211,25 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+// 开场推荐问题（G1-10）
+.share-suggested {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  .share-suggested-btn {
+    max-width: 76%;
+    white-space: normal;
+    height: auto;
+    line-height: 1.6;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    // 覆盖 el-button+el-button 的默认左间距（纵向排列）
+    margin-left: 0;
+  }
 }
 
 .share-message {

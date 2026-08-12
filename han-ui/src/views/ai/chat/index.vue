@@ -84,10 +84,25 @@
         <div class="chat-thread">
           <!-- 消息列表 -->
           <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list" @click="onMessageAreaClick">
-            <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen">
+            <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen" :class="{ 'welcome-screen-compact': showSuggestedQuestions }">
               <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
               <h2>欢迎使用 HAN AI 助手</h2>
               <p>选择一个模型，开始对话吧</p>
+            </div>
+            <!-- 开场推荐问题（G1-10）：会话开场渲染可点击提问，点击即作为用户消息发送 -->
+            <div v-if="showSuggestedQuestions" class="suggested-questions" data-testid="ai-chat-suggested-questions">
+              <div class="suggested-questions-title">试试这样问</div>
+              <el-button
+                v-for="question in contextSuggestedQuestions"
+                :key="question"
+                round
+                class="suggested-question-btn"
+                data-testid="ai-chat-suggested-question"
+                :disabled="sending || streaming"
+                @click="handleSuggestedQuestion(question)"
+              >
+                {{ question }}
+              </el-button>
             </div>
             <div
               v-for="(msg, idx) in messages"
@@ -728,6 +743,8 @@ interface ChatContextApplication {
   modelId?: string | number
   knowledgeBaseIds: string[]
   mcpServerIds: string[]
+  /** 开场推荐问题（G1-10，已解析为字符串数组） */
+  suggestedQuestions: string[]
   status?: string
   published?: boolean
 }
@@ -858,6 +875,24 @@ const selectedMcpServers = computed(() => {
   const targetIds = new Set(currentMcpServerIds.value.map((item) => String(item)))
   return mcpServerList.value.filter((item) => targetIds.has(String(item.mcpId)))
 })
+
+// ==================== 开场推荐问题（G1-10） ====================
+const contextSuggestedQuestions = computed(() => contextApplication.value?.suggestedQuestions || [])
+
+/** 会话开场（无消息）且绑定应用配置了推荐问题时展示 */
+const showSuggestedQuestions = computed(() =>
+  chatMode.value === 'chat'
+  && !streaming.value
+  && !generatingImage.value
+  && messages.value.length === 0
+  && contextSuggestedQuestions.value.length > 0)
+
+/** 点击推荐问题即作为用户消息发送 */
+async function handleSuggestedQuestion(question: string) {
+  if (sending.value || streaming.value) return
+  inputMessage.value = question
+  await handleSend()
+}
 
 const latestKnowledgeSources = computed<AiChatKnowledgeSource[]>(() => {
   const streamSources = streamMeta.value?.knowledgeSources as AiChatKnowledgeSource[] | undefined
@@ -1795,6 +1830,7 @@ function normalizeContextApplication(type: 'agent' | 'workflow', data: AiAgent |
       modelId: agent.modelId,
       knowledgeBaseIds: parseIdArray(agent.knowledgeBaseIds),
       mcpServerIds: parseIdArray(agent.mcpServerIds),
+      suggestedQuestions: parseSuggestedQuestions(agent.suggestedQuestions),
       status: agent.status,
       published: Boolean(agent.published)
     }
@@ -1808,8 +1844,27 @@ function normalizeContextApplication(type: 'agent' | 'workflow', data: AiAgent |
     modelId: workflow.modelId,
     knowledgeBaseIds: parseIdArray(workflow.knowledgeBaseIds),
     mcpServerIds: parseIdArray(workflow.mcpServerIds),
+    suggestedQuestions: parseSuggestedQuestions(workflow.suggestedQuestions),
     status: workflow.status,
     published: Boolean(workflow.published)
+  }
+}
+
+/** 推荐问题 JSON 字符串数组 → string[]（非法内容按空处理） */
+function parseSuggestedQuestions(value?: string) {
+  if (!value) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed
+      .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      .map((item) => item.trim())
+  } catch {
+    return []
   }
 }
 
@@ -2157,6 +2212,37 @@ function restoreSelectedModelId() {
       color: #909399;
       h2 { margin: 16px 0 8px; color: #303133; }
       p { font-size: 14px; }
+
+      // 有推荐问题时收缩欢迎区，给推荐问题按钮让出空间
+      &.welcome-screen-compact {
+        height: auto;
+        padding: 48px 0 16px;
+      }
+    }
+
+    // 开场推荐问题（G1-10）
+    .suggested-questions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 20px 24px;
+
+      .suggested-questions-title {
+        font-size: 13px;
+        color: #909399;
+      }
+
+      .suggested-question-btn {
+        max-width: 520px;
+        white-space: normal;
+        height: auto;
+        line-height: 1.6;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        // 覆盖 el-button+el-button 的默认左间距（纵向排列）
+        margin-left: 0;
+      }
     }
 
     .message-item {
