@@ -130,6 +130,17 @@
             placeholder="输入调试消息，如：帮我总结一下产品优势"
             data-testid="ai-flow-debug-input"
           />
+          <div v-if="debugParamDefs.length > 0" class="debug-params">
+            <div class="debug-timeline-title" style="margin-top: 12px;">开始节点入参</div>
+            <el-form label-position="top" size="small">
+              <el-form-item v-for="param in debugParamDefs" :key="param.name" :label="param.name">
+                <el-input
+                  v-model="debugParams[param.name]"
+                  :placeholder="param.defaultValue ? `默认：${param.defaultValue}` : '入参取值'"
+                />
+              </el-form-item>
+            </el-form>
+          </div>
           <el-button
             type="primary"
             style="margin-top: 12px; width: 100%;"
@@ -193,6 +204,20 @@
             <el-input v-model="selectedNode.data.label" @change="updateNode" />
           </el-form-item>
 
+          <template v-if="selectedNode.type === 'start'">
+            <el-form-item label="自定义入参">
+              <div class="param-list">
+                <div v-for="(param, idx) in startInputParams" :key="idx" class="param-row">
+                  <el-input v-model="param.name" placeholder="参数名" class="param-name" @change="updateNode" />
+                  <el-input v-model="param.defaultValue" placeholder="默认值" class="param-value" @change="updateNode" />
+                  <el-button type="danger" link size="small" @click="removeStartParam(idx)">删除</el-button>
+                </div>
+                <el-button size="small" style="width: 100%;" @click="addStartParam">+ 添加入参</el-button>
+                <div class="prop-tip" v-pre>调试运行时可填写取值，对话路径按默认值注入；下游节点用 {{参数名}} 引用</div>
+              </div>
+            </el-form-item>
+          </template>
+
           <template v-if="selectedNode.type === 'llm'">
             <el-form-item label="AI模型">
               <el-select v-model="selectedNode.data.modelId" placeholder="选择模型" filterable @change="updateNode">
@@ -201,6 +226,16 @@
             </el-form-item>
             <el-form-item label="系统提示词">
               <el-input v-model="selectedNode.data.systemPrompt" type="textarea" :rows="4" @change="updateNode" />
+              <div class="prop-tip" v-pre>支持 {{message}}/{{result}}/{{knowledge}}/{{入参名}}/{{节点ID.output}} 模板变量</div>
+            </el-form-item>
+            <el-form-item label="用户输入模板">
+              <el-input
+                v-model="selectedNode.data.userTemplate"
+                type="textarea"
+                :rows="3"
+                placeholder="留空=沿用最近结果或用户消息；如：请基于 {{node_2.output}} 回答 {{message}}"
+                @change="updateNode"
+              />
             </el-form-item>
             <el-form-item label="温度">
               <el-slider v-model="selectedNode.data.temperature" :min="0" :max="2" :step="0.1" @change="updateNode" />
@@ -236,7 +271,7 @@
                 v-model="selectedNode.data.arguments"
                 type="textarea"
                 :rows="4"
-                placeholder='如 {"query":"{{result}}"}，支持 {{message}}/{{result}}/{{knowledge}}'
+                placeholder='如 {"query":"{{result}}"}，支持 {{message}}/{{result}}/{{knowledge}}/{{入参名}}/{{节点ID.output}}'
                 @change="updateNode"
               />
             </el-form-item>
@@ -250,7 +285,7 @@
 
           <template v-if="selectedNode.type === 'output'">
             <el-form-item label="输出模板">
-              <el-input v-model="selectedNode.data.template" type="textarea" :rows="4" placeholder="使用 {{变量名}} 引用上游输出" @change="updateNode" />
+              <el-input v-model="selectedNode.data.template" type="textarea" :rows="4" placeholder="使用 {{变量名}} 或 {{节点ID.output}} 引用上游输出" @change="updateNode" />
             </el-form-item>
           </template>
         </el-form>
@@ -372,6 +407,35 @@ const updateNode = () => {
   nodes.value = [...nodes.value]
 }
 
+// ==================== start 节点自定义入参（flowConfig v2） ====================
+const startInputParams = computed<{ name: string; defaultValue: string }[]>(() => {
+  if (!selectedNode.value || selectedNode.value.type !== 'start') return []
+  const data = selectedNode.value.data as any
+  if (!Array.isArray(data.inputParams)) {
+    data.inputParams = []
+  }
+  return data.inputParams
+})
+
+const addStartParam = () => {
+  if (!selectedNode.value || selectedNode.value.type !== 'start') return
+  const data = selectedNode.value.data as any
+  if (!Array.isArray(data.inputParams)) {
+    data.inputParams = []
+  }
+  data.inputParams.push({ name: '', defaultValue: '' })
+  updateNode()
+}
+
+const removeStartParam = (idx: number) => {
+  if (!selectedNode.value || selectedNode.value.type !== 'start') return
+  const data = selectedNode.value.data as any
+  if (Array.isArray(data.inputParams)) {
+    data.inputParams.splice(idx, 1)
+    updateNode()
+  }
+}
+
 const deleteNode = () => {
   if (!selectedNode.value) return
   const id = selectedNode.value.id
@@ -468,8 +532,22 @@ const debugVisible = ref(false)
 const debugMessage = ref('')
 const debugRunning = ref(false)
 const debugResult = ref<AiFlowDebugResult | null>(null)
+const debugParams = ref<Record<string, string>>({})
+
+/** 画布 start 节点定义的自定义入参（调试抽屉据此渲染取值输入框） */
+const debugParamDefs = computed<{ name: string; defaultValue: string }[]>(() => {
+  const startNode = (nodes.value as Node[]).find((n: Node) => n.type === 'start')
+  const params = (startNode?.data as any)?.inputParams
+  if (!Array.isArray(params)) return []
+  return params.filter((p: any) => p && typeof p.name === 'string' && p.name.trim())
+})
 
 const openDebugDrawer = () => {
+  const prefill: Record<string, string> = {}
+  for (const param of debugParamDefs.value) {
+    prefill[param.name] = debugParams.value[param.name] ?? ''
+  }
+  debugParams.value = prefill
   debugVisible.value = true
 }
 
@@ -486,15 +564,16 @@ const runDebug = async () => {
   }
   debugRunning.value = true
   debugResult.value = null
+  const params = collectDebugParams()
   try {
     // 先保存再调试，保证后端执行的是当前画布
-    const flowConfig = JSON.stringify({ version: 1, nodes: nodes.value, edges: edges.value })
+    const flowConfig = JSON.stringify({ version: 2, nodes: nodes.value, edges: edges.value })
     await updateAiWorkflow({ workflowId, flowConfig } as any)
-    await runDebugStream(message)
+    await runDebugStream(message, params)
   } catch (streamError: any) {
     // 流式调试链路异常时降级为一次性调试接口
     try {
-      const res = await debugAiWorkflow(workflowId, message)
+      const res = await debugAiWorkflow(workflowId, message, params)
       debugResult.value = (res as any).data || null
     } catch (e: any) {
       ElMessage.error('调试运行失败: ' + (e.message || streamError.message || '未知错误'))
@@ -504,11 +583,25 @@ const runDebug = async () => {
   }
 }
 
+/** 收集调试入参：仅提交有取值的项，空值回落 start 节点 defaultValue。 */
+function collectDebugParams(): Record<string, string> | undefined {
+  const params: Record<string, string> = {}
+  let hasValue = false
+  for (const def of debugParamDefs.value) {
+    const value = (debugParams.value[def.name] ?? '').trim()
+    if (value) {
+      params[def.name] = value
+      hasValue = true
+    }
+  }
+  return hasValue ? params : undefined
+}
+
 /**
  * 流式调试：消费 node_start/node_delta/node_end 事件实时点亮时间线，
  * llm 逐 token 先行展示，最终回复以后端 delta 事件为准。
  */
-async function runDebugStream(message: string) {
+async function runDebugStream(message: string, params?: Record<string, string>) {
   const userStore = useUserStore()
   const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
   const live: AiFlowDebugResult = { success: true, reply: '', nodeTraces: [] }
@@ -522,7 +615,7 @@ async function runDebugStream(message: string) {
     path: `/ai/workflow/debug-stream/${workflowId}`,
     token: userStore.token,
     tenantId: userStore.tenantId,
-    body: { message },
+    body: { message, params },
     onNodeEvent: (event: AiStreamNodeEvent) => {
       if (event.type === 'node_start') {
         live.nodeTraces.push({
@@ -574,7 +667,8 @@ const handleSave = async () => {
   }
   saving.value = true
   try {
-    const flowConfig = JSON.stringify({ version: 1, nodes: nodes.value, edges: edges.value })
+    // schema v2：新增 start.inputParams / llm.userTemplate·memoryRounds / condition.branches；后端对 v1 兼容读
+    const flowConfig = JSON.stringify({ version: 2, nodes: nodes.value, edges: edges.value })
     await updateAiWorkflow({ workflowId, flowConfig } as any)
     ElMessage.success('流程保存成功')
   } catch (e: any) {
@@ -715,6 +809,19 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   line-height: 1.5;
+}
+.param-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  .param-name { flex: 1; }
+  .param-value { flex: 1; }
 }
 
 // 自定义节点样式

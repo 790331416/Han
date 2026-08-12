@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -108,9 +109,10 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
     }
 
     @Override
-    public AiFlowDebugVo debug(Long workflowId, String message) {
+    public AiFlowDebugVo debug(Long workflowId, String message, Map<String, String> params) {
         AiWorkflowPo workflow = requireDebuggableWorkflow(workflowId, message);
-        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), message.trim());
+        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), message.trim(),
+                List.of(), params, null);
         AiFlowDebugVo vo = new AiFlowDebugVo();
         vo.setSuccess(result.success());
         vo.setReply(result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage());
@@ -119,7 +121,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
     }
 
     @Override
-    public SseEmitter debugStream(Long workflowId, String message) {
+    public SseEmitter debugStream(Long workflowId, String message, Map<String, String> params) {
         AiWorkflowPo workflow = requireDebuggableWorkflow(workflowId, message);
         String debugMessage = message.trim();
         SseEmitter emitter = new SseEmitter(DEBUG_STREAM_SSE_TIMEOUT);
@@ -129,6 +131,7 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
             SecurityContextHolder.setLoginUser(loginUser);
             try {
                 AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), debugMessage,
+                        List.of(), params,
                         new AiFlowEngine.FlowEventListener() {
                             @Override
                             public void onNodeStart(AiFlowGraph.FlowNode node) {

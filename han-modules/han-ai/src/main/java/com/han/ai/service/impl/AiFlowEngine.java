@@ -42,6 +42,11 @@ class AiFlowEngine {
     /** llm 节点默认记忆轮数（1 轮 = 一问一答），节点属性 memoryRounds 可覆盖 */
     private static final int DEFAULT_LLM_MEMORY_ROUNDS = 4;
     private static final int MAX_LLM_MEMORY_ROUNDS = 20;
+    /** 引擎保留变量名：start 自定义入参不得覆盖 */
+    private static final Set<String> RESERVED_VAR_NAMES = Set.of("message", "result", "knowledge");
+    /** 变量引用语法：{{name}} 或 {{nodeId.output}}（结构化引用，flowConfig v2） */
+    private static final java.util.regex.Pattern VAR_REF_PATTERN =
+            java.util.regex.Pattern.compile("\\{\\{\\s*([\\w-]+)(?:\\.([\\w-]+))?\\s*}}");
 
     private final AiModelMapper aiModelMapper;
     private final AiMcpServerMapper aiMcpServerMapper;
@@ -97,6 +102,15 @@ class AiFlowEngine {
      * llm 节点按节点级「记忆轮数」（默认 {@link #DEFAULT_LLM_MEMORY_ROUNDS}）截取注入，多轮追问不失忆。
      */
     FlowResult execute(String flowConfig, String userMessage, List<FlowChatTurn> history, FlowEventListener listener) {
+        return execute(flowConfig, userMessage, history, null, listener);
+    }
+
+    /**
+     * 执行编排（全参）：inputParams 为 start 节点自定义入参的调用方取值
+     * （flowConfig v2，缺省回落各入参 defaultValue；v1 画布无入参定义，行为不变）。
+     */
+    FlowResult execute(String flowConfig, String userMessage, List<FlowChatTurn> history,
+                       Map<String, String> inputParams, FlowEventListener listener) {
         AiFlowGraph graph;
         try {
             graph = AiFlowGraph.parse(flowConfig);
@@ -110,6 +124,7 @@ class AiFlowEngine {
         vars.put("message", userMessage == null ? "" : userMessage);
         vars.put("result", "");
         vars.put("knowledge", "");
+        applyStartInputParams(graph.startNode(), inputParams, vars);
 
         List<AiFlowNodeTraceVo> traces = new ArrayList<>();
         Set<String> reachable = new HashSet<>();
@@ -206,6 +221,32 @@ class AiFlowEngine {
         };
     }
 
+    /**
+     * start 节点自定义入参注入（flowConfig v2）：inputParams 定义 [{name, defaultValue}]，
+     * 取值优先级：调用方传值 > defaultValue > 空串；保留变量名不可覆盖。
+     */
+    private void applyStartInputParams(AiFlowGraph.FlowNode startNode, Map<String, String> inputParams,
+                                       Map<String, String> vars) {
+        Object raw = startNode.data() != null ? startNode.data().get("inputParams") : null;
+        if (!(raw instanceof List<?> paramList)) {
+            return;
+        }
+        for (Object item : paramList) {
+            if (!(item instanceof Map<?, ?> param)) {
+                continue;
+            }
+            Object rawName = param.get("name");
+            String name = rawName != null ? String.valueOf(rawName).trim() : "";
+            if (!StringUtils.hasText(name) || RESERVED_VAR_NAMES.contains(name)) {
+                continue;
+            }
+            String provided = inputParams != null ? inputParams.get(name) : null;
+            Object rawDefault = param.get("defaultValue");
+            String defaultValue = rawDefault != null ? String.valueOf(rawDefault) : "";
+            vars.put(name, StringUtils.hasText(provided) ? provided : defaultValue);
+        }
+    }
+
     private void notifyNodeStart(FlowEventListener listener, AiFlowGraph.FlowNode node) {
         if (listener == null) {
             return;
@@ -262,7 +303,8 @@ class AiFlowEngine {
         StringBuilder systemPrompt = new StringBuilder();
         String nodePrompt = node.dataText("systemPrompt");
         if (StringUtils.hasText(nodePrompt)) {
-            systemPrompt.append(nodePrompt.trim());
+            // v2：系统提示词支持 {{变量}} / {{节点ID.output}} 模板渲染
+            systemPrompt.append(renderTemplate(nodePrompt.trim(), vars));
         }
         String knowledge = vars.get("knowledge");
         if (StringUtils.hasText(knowledge)) {
@@ -275,12 +317,27 @@ class AiFlowEngine {
             messages.add(AiOpenAiCompatibleClient.ProviderMessage.system(systemPrompt.toString()));
         }
         appendMemoryTurns(messages, history, resolveMemoryRounds(node));
-        String userInput = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
+        String userInput = resolveLlmUserInput(node, vars);
         messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(userInput));
 
         String reply = requestLlmReply(node, effectiveModel, apiKey, messages, listener);
         return NodeOutcome.succeeded("模型：" + model.getModelName() + "；输入：" + truncate(userInput),
                 truncate(reply), reply);
+    }
+
+    /**
+     * llm 节点用户输入：v2 支持 userTemplate 模板（{{变量}}/{{节点ID.output}}），
+     * 未配置时保持 v1 行为（最近结果，否则用户消息）。
+     */
+    private String resolveLlmUserInput(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+        String userTemplate = node.dataText("userTemplate");
+        if (StringUtils.hasText(userTemplate)) {
+            String rendered = renderTemplate(userTemplate.trim(), vars);
+            if (StringUtils.hasText(rendered)) {
+                return rendered;
+            }
+        }
+        return StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
     }
 
     /**
@@ -517,10 +574,28 @@ class AiFlowEngine {
                 truncate(rendered), rendered);
     }
 
+    /**
+     * 模板渲染：支持 {@code {{name}}}（message/result/knowledge/入参/节点ID）
+     * 与 {@code {{nodeId.output}}} 结构化引用（节点主输出）；未知引用替换为空串。
+     */
     private String renderTemplate(String template, Map<String, String> vars) {
-        return java.util.regex.Pattern.compile("\\{\\{\\s*([\\w-]+)\\s*}}").matcher(template)
+        return VAR_REF_PATTERN.matcher(template)
                 .replaceAll(match -> java.util.regex.Matcher.quoteReplacement(
-                        vars.getOrDefault(match.group(1), "")));
+                        resolveVarRef(vars, match.group(1), match.group(2))));
+    }
+
+    /**
+     * 变量引用解析：无字段名走扁平变量表；字段名为 output 时取该节点主输出，
+     * 其余字段暂未定义（返回空串，为后续结构化字段预留）。
+     */
+    private String resolveVarRef(Map<String, String> vars, String name, String field) {
+        if (field == null) {
+            return vars.getOrDefault(name, "");
+        }
+        if ("output".equals(field)) {
+            return vars.getOrDefault(name, "");
+        }
+        return "";
     }
 
     /**

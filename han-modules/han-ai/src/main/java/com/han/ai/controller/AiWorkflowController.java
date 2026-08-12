@@ -1,6 +1,7 @@
 package com.han.ai.controller;
 
 import com.han.ai.domain.dto.AiChatRequest;
+import com.han.ai.domain.dto.AiFlowDebugRequest;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiWorkflowQuery;
 import com.han.ai.domain.vo.AiFlowDebugVo;
@@ -94,13 +95,16 @@ public class AiWorkflowController {
     }
 
     /**
-     * 编排调试运行（设计器右侧调试抽屉）：不要求已发布、不落会话消息。
+     * 编排调试运行（设计器右侧调试抽屉）：不要求已发布、不落会话消息；
+     * params 为 start 节点自定义入参取值（flowConfig v2，可空）。
      */
     @RepeatSubmit
     @PostMapping("/debug/{workflowId}")
     @PreAuthorize("@ss.hasAuthority('ai:workflow:edit')")
-    public R<AiFlowDebugVo> debug(@PathVariable Long workflowId, @RequestBody AiChatRequest request) {
-        return R.ok(aiWorkflowService.debug(workflowId, request != null ? request.getMessage() : null));
+    public R<AiFlowDebugVo> debug(@PathVariable Long workflowId, @RequestBody AiFlowDebugRequest request) {
+        return R.ok(aiWorkflowService.debug(workflowId,
+                request != null ? request.getMessage() : null,
+                request != null ? request.getParams() : null));
     }
 
     /**
@@ -110,7 +114,9 @@ public class AiWorkflowController {
     @RepeatSubmit
     @PostMapping(value = "/debug-stream/{workflowId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @PreAuthorize("@ss.hasAuthority('ai:workflow:edit')")
-    public SseEmitter debugStream(@PathVariable Long workflowId, @RequestBody AiChatRequest request) {
-        return aiWorkflowService.debugStream(workflowId, request != null ? request.getMessage() : null);
+    public SseEmitter debugStream(@PathVariable Long workflowId, @RequestBody AiFlowDebugRequest request) {
+        return aiWorkflowService.debugStream(workflowId,
+                request != null ? request.getMessage() : null,
+                request != null ? request.getParams() : null);
     }
 }
