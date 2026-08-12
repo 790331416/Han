@@ -95,10 +95,22 @@
           <template #node-condition="{ data }">
             <div class="custom-node node-condition">
               <div class="node-header">⚡ 条件分支</div>
-              <div class="node-body">{{ data.label }}</div>
+              <div class="node-body">
+                {{ data.label }}
+                <div v-if="conditionHandles(data).mode === 'switch'" class="node-branch-hint">
+                  {{ conditionHandles(data).handles.length - 1 }} 分支 + default
+                </div>
+              </div>
               <Handle type="target" :position="Position.Top" />
-              <Handle id="yes" type="source" :position="Position.Bottom" :style="{ left: '30%' }" />
-              <Handle id="no" type="source" :position="Position.Bottom" :style="{ left: '70%' }" />
+              <Handle
+                v-for="(handle, hi) in conditionHandles(data).handles"
+                :id="handle"
+                :key="handle"
+                type="source"
+                :position="Position.Bottom"
+                :style="{ left: `${((hi + 1) * 100) / (conditionHandles(data).handles.length + 1)}%` }"
+                :title="handle"
+              />
             </div>
           </template>
 
@@ -278,9 +290,45 @@
           </template>
 
           <template v-if="selectedNode.type === 'condition'">
-            <el-form-item label="条件表达式">
-              <el-input v-model="selectedNode.data.expression" type="textarea" :rows="3" placeholder="如: {{result}} contains '是'" @change="updateNode" />
+            <el-form-item label="分支模式">
+              <el-radio-group v-model="conditionMode" size="small">
+                <el-radio-button value="simple">是/否</el-radio-button>
+                <el-radio-button value="switch">多分支</el-radio-button>
+              </el-radio-group>
             </el-form-item>
+            <template v-if="conditionMode === 'simple'">
+              <el-form-item label="条件表达式">
+                <el-input
+                  v-model="selectedNode.data.expression"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="如: {{result}} contains '是' / {{score}} >= 60 / {{a}} == 'x' and {{b}} not_empty"
+                  @change="updateNode"
+                />
+                <div class="prop-tip">支持 contains/==/!=/&gt;/&gt;=/&lt;/&lt;=/not_empty/is_empty，多条件用 and / or（两侧空格）</div>
+              </el-form-item>
+            </template>
+            <template v-else>
+              <el-form-item label="分支列表（按序求值，首个命中生效）">
+                <div class="param-list">
+                  <div v-for="(branch, idx) in conditionBranches" :key="branch.handle" class="branch-row">
+                    <div class="branch-row-head">
+                      <el-tag size="small" type="warning">出口 {{ branch.handle }}</el-tag>
+                      <el-button type="danger" link size="small" @click="removeConditionBranch(idx)">删除</el-button>
+                    </div>
+                    <el-input
+                      v-model="branch.expression"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="如: {{result}} contains '是' and {{score}} >= 60"
+                      @change="updateNode"
+                    />
+                  </div>
+                  <el-button size="small" style="width: 100%;" @click="addConditionBranch">+ 添加分支</el-button>
+                  <div class="prop-tip">全部未命中走 default 出口；连线时请从对应出口拖出</div>
+                </div>
+              </el-form-item>
+            </template>
           </template>
 
           <template v-if="selectedNode.type === 'output'">
@@ -295,7 +343,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, ZoomIn, ZoomOut, FullScreen, Check, CircleCheck, VideoPlay } from '@element-plus/icons-vue'
@@ -405,6 +453,62 @@ const onNodeClick = (event: any) => {
 const updateNode = () => {
   // 触发响应式更新
   nodes.value = [...nodes.value]
+}
+
+// ==================== 条件节点分支（G1-4：yes/no 双分支 或 多分支 switch） ====================
+interface ConditionBranchDef { handle: string; expression: string }
+
+/** 条件节点出口 handle 列表：多分支 = 各分支 handle + default；双分支 = yes/no。 */
+const conditionHandles = (data: any): { mode: 'simple' | 'switch'; handles: string[] } => {
+  const branches = data?.branches
+  if (Array.isArray(branches) && branches.length > 0) {
+    return { mode: 'switch', handles: [...branches.map((b: any) => String(b.handle)), 'default'] }
+  }
+  return { mode: 'simple', handles: ['yes', 'no'] }
+}
+
+const conditionBranches = computed<ConditionBranchDef[]>(() => {
+  if (!selectedNode.value || selectedNode.value.type !== 'condition') return []
+  const data = selectedNode.value.data as any
+  return Array.isArray(data.branches) ? data.branches : []
+})
+
+const conditionMode = computed<'simple' | 'switch'>({
+  get: () => (conditionBranches.value.length > 0 ? 'switch' : 'simple'),
+  set: (mode) => {
+    if (!selectedNode.value || selectedNode.value.type !== 'condition') return
+    const data = selectedNode.value.data as any
+    if (mode === 'switch') {
+      if (!Array.isArray(data.branches) || data.branches.length === 0) {
+        data.branches = [{ handle: 'b1', expression: '' }]
+      }
+    } else {
+      data.branches = []
+    }
+    updateNode()
+  }
+})
+
+const addConditionBranch = () => {
+  if (!selectedNode.value || selectedNode.value.type !== 'condition') return
+  const data = selectedNode.value.data as any
+  if (!Array.isArray(data.branches)) {
+    data.branches = []
+  }
+  const used = new Set(data.branches.map((b: any) => String(b.handle)))
+  let seq = data.branches.length + 1
+  while (used.has(`b${seq}`)) seq++
+  data.branches.push({ handle: `b${seq}`, expression: '' })
+  updateNode()
+}
+
+const removeConditionBranch = (idx: number) => {
+  if (!selectedNode.value || selectedNode.value.type !== 'condition') return
+  const data = selectedNode.value.data as any
+  if (Array.isArray(data.branches)) {
+    data.branches.splice(idx, 1)
+    updateNode()
+  }
 }
 
 // ==================== start 节点自定义入参（flowConfig v2） ====================
@@ -822,6 +926,24 @@ onMounted(() => {
   gap: 6px;
   .param-name { flex: 1; }
   .param-value { flex: 1; }
+}
+.branch-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px dashed #e4e7ed;
+  border-radius: 6px;
+  .branch-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+.node-branch-hint {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #909399;
 }
 
 // 自定义节点样式
