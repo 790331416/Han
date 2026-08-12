@@ -1494,14 +1494,16 @@ COMMENT ON COLUMN ai_agent.suggested_questions IS '开场推荐问题（JSON字�
 -- =============================================
 -- 32. Prompt模板表
 -- =============================================
+-- 列宽以 sql/upgrades/postgres/phase8_prompt_template_alignment.sql 为权威口径，
+-- 历史上 init 是 100/20/500、phase8 是 200/30/1000，两类环境结构长期分叉。
 CREATE TABLE ai_prompt_template (
     template_id   BIGSERIAL       PRIMARY KEY,
     tenant_id     BIGINT,
-    template_name VARCHAR(100)    NOT NULL,
-    category      VARCHAR(20)     NOT NULL DEFAULT 'system',
+    template_name VARCHAR(200)    NOT NULL,
+    category      VARCHAR(30)     NOT NULL DEFAULT 'system',
     content       TEXT            NOT NULL,
     variables     TEXT,
-    description   VARCHAR(500),
+    description   VARCHAR(1000),
     built_in      INT             NOT NULL DEFAULT 0,
     status        CHAR(1)         NOT NULL DEFAULT '0',
     create_by     VARCHAR(64)     DEFAULT '',

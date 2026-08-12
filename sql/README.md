@@ -85,7 +85,7 @@
 - `phase5_unique_constraint.sql`：唯一约束改为带 `WHERE del_flag = 0` 的部分唯一索引，支持多租户同名与软删后重建
 - `phase6_notice_center.sql`：通知中心表结构
 - `phase7_login_log_alignment.sql`：登录日志旧列名对齐
-- `phase8_prompt_template_alignment.sql`：`ai_prompt_template` 历史半成品表补列与内置模板补齐
+- `phase8_prompt_template_alignment.sql`：`ai_prompt_template` 历史半成品表补列与内置模板补齐；同时把列宽统一到权威口径（`template_name` 200 / `category` 30 / `description` 1000 / `variables` TEXT）
 - `phase9_base_menu_backfill.sql`：为存量库回填基线菜单与超管授权，按 `perms` 语义键去重
 - `phase10_sys_dept_leader_id_compat.sql`：`sys_dept.leader_id` 兼容
 - `20260415_upgrade_phase2_ai_legacy.sql`：AI 模块旧库表结构与内置 Prompt 模板
@@ -111,7 +111,7 @@
 - `20260703_file_manage_menu.sql`：文件管理菜单与 `file:query`/`file:remove` 按钮权限
 - `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除完全一致的重复字典类型，保留最小 ID
 - `20260720_ai_agent_chat_tuning.sql`：`ai_agent`/`ai_workflow` 对话调优列
-- `20260720_wechat_social_login.sql`：微信扫码登录唯一索引、`sys.login.wechatEnabled` 开关与社交解绑权限
+- `20260720_wechat_social_login.sql`：微信扫码登录唯一索引、`sys.login.wechatEnabled` 开关与社交解绑权限。**本脚本会物理删除违反新唯一规则的历史社交绑定行**，执行前必须备份；脚本自身会先把待删行写进 `sys_user_social_conflict_backup_20260720`
 - `20260812_permission_seed_alignment.sql`：补齐 AI / job / tenant / OSS / 开放平台 / 日志与在线用户的权限点种子，并把日志与监控权限串统一到 `monitor:*` 口径
 - `20260812_unique_constraint_del_flag_alignment.sql`：`sys_user_social` 结构兜底；把角色、岗位、字典、参数、客户端上不带 `del_flag` 条件的唯一约束换成部分唯一索引；存在重复数据时只告警跳过，不中断升级链
 

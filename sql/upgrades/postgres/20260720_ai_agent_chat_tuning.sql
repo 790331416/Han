@@ -15,14 +15,27 @@
 --   ALTER TABLE ai_workflow DROP COLUMN IF EXISTS suggested_questions;
 -- =============================================
 
-ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS history_limit INT;
-ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS retrieval_top_k INT;
-ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS similarity_threshold NUMERIC(4,3);
-ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS suggested_questions TEXT;
-ALTER TABLE ai_workflow ADD COLUMN IF NOT EXISTS suggested_questions TEXT DEFAULT '[]';
+-- 20260812 修正：原来是无守卫的 ALTER TABLE。ai_workflow 只有 full 档才有，
+-- 没有任何升级脚本会创建它，合成旧库和 small/medium 运行库上会直接报
+-- relation "ai_workflow" does not exist；演练用的是 psql -v ON_ERROR_STOP=1，
+-- 一旦报错整条升级链中断，其后的脚本全部不执行。
+-- 守卫写法对齐同仓 20260703_ai_chat_multimodal.sql。
+DO $$
+BEGIN
+    IF to_regclass('public.ai_agent') IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS history_limit INT';
+        EXECUTE 'ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS retrieval_top_k INT';
+        EXECUTE 'ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS similarity_threshold NUMERIC(4,3)';
+        EXECUTE 'ALTER TABLE ai_agent ADD COLUMN IF NOT EXISTS suggested_questions TEXT';
 
-COMMENT ON COLUMN ai_agent.history_limit IS '对话历史注入条数（NULL=默认12）';
-COMMENT ON COLUMN ai_agent.retrieval_top_k IS '知识库检索返回条数（NULL=默认5）';
-COMMENT ON COLUMN ai_agent.similarity_threshold IS '向量检索相似度阈值（NULL=默认0.30）';
-COMMENT ON COLUMN ai_agent.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
-COMMENT ON COLUMN ai_workflow.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
+        EXECUTE 'COMMENT ON COLUMN ai_agent.history_limit IS ''对话历史注入条数（NULL=默认12）''';
+        EXECUTE 'COMMENT ON COLUMN ai_agent.retrieval_top_k IS ''知识库检索返回条数（NULL=默认5）''';
+        EXECUTE 'COMMENT ON COLUMN ai_agent.similarity_threshold IS ''向量检索相似度阈值（NULL=默认0.30）''';
+        EXECUTE 'COMMENT ON COLUMN ai_agent.suggested_questions IS ''开场推荐问题（JSON字符串数组，最多5条）''';
+    END IF;
+
+    IF to_regclass('public.ai_workflow') IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE ai_workflow ADD COLUMN IF NOT EXISTS suggested_questions TEXT DEFAULT ''[]''';
+        EXECUTE 'COMMENT ON COLUMN ai_workflow.suggested_questions IS ''开场推荐问题（JSON字符串数组，最多5条）''';
+    END IF;
+END $$;
