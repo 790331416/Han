@@ -6,8 +6,9 @@ spring:
     name: han-monitor
   security:
     user:
-      name: admin
-      password: admin123
+      # 监控中心登录凭据强制外部注入，不提供默认值：未配置环境变量时启动即失败，避免仓库内出现明文口令
+      name: ${MONITOR_ADMIN_USERNAME}
+      password: ${MONITOR_ADMIN_PASSWORD}
   cloud:
     nacos:
       discovery:
