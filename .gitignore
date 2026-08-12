@@ -70,7 +70,6 @@ coverage/
 *.launch
 .metadata
 bin/
-tmp/
 *.tmp
 *.bak
 *.swp
@@ -341,9 +340,13 @@ $RECYCLE.BIN/
 
 # Temporary folders #
 #####################
-tmp/
-temp/
-cache/
+# 必须带前导斜杠锚定到仓库根。不带斜杠的 `cache/` 会匹配任意层级的同名目录：
+# han-starter-cache 的 com.han.starter.cache 包整个被吞掉过——文件在磁盘上、
+# Maven 编译正常、git status 完全看不见，最后靠模块内加反选才发现。
+# tmp/ 与 temp/ 同理，Java 包名和 src/main/resources 下都可能出现这三个词。
+/tmp/
+/temp/
+/cache/
 
 # Secrets and sensitive data #
 ##############################
@@ -369,6 +372,10 @@ credentials.json
 .env.test
 .env.prod
 *.env
+# 发布清单是正式产物、必须入库，`*.env` 是为了兜住本地私密文件，别把它一起吞了。
+# deploy/release-manifests/95-20260515-f65612a-app.env 当前已被 git 跟踪但同时命中
+# 上面这条忽略规则，一旦被删除重加就会静默消失，新增发布清单也 add 不进来。
+!deploy/release-manifests/*.env
 
 # Testing #
 ###########
