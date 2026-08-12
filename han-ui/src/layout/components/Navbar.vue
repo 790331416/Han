@@ -130,6 +130,8 @@ import { useI18n } from 'vue-i18n'
 import { getMyTenants, switchTenant, type TenantSimple } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+// 默认头像走本地静态资源：内网部署请求不到公网 CDN 会裂图，也不该向第三方域名泄露访问来源。
+import defaultAvatar from '@/assets/avatar-default.svg'
 import NotifyBell from './NotifyBell.vue'
 
 const route = useRoute()
@@ -137,8 +139,6 @@ const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
-// 默认头像走本地静态资源：内网部署请求不到公网 CDN 会裂图，也不该向第三方域名泄露访问来源。
-const defaultAvatar = `${import.meta.env.BASE_URL}avatar-default.svg`
 const { isFullscreen, toggle } = useFullscreen()
 const isDark = useDark({ storageKey: 'han-dark-mode' })
 const toggleDark = useToggle(isDark)
