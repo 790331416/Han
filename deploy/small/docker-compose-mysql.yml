@@ -41,6 +41,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ${HAN_SQL_ROOT:-../../sql}/tiers/small/small-init-mysql.sql:/docker-entrypoint-initdb.d/01-small-init.sql:ro
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260811_education_master.sql:/docker-entrypoint-initdb.d/20-sdfz-education.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812_course_order.sql:/docker-entrypoint-initdb.d/21-sdfz-course-order.sql:ro
     networks:
       - han-network
     healthcheck:
