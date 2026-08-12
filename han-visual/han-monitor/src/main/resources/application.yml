@@ -21,3 +21,13 @@ spring:
     admin:
       ui:
         title: han监控中心
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      # 健康探针对容器放行，但详情仅对已登录用户可见，避免匿名接口泄露内部组件信息
+      show-details: when-authorized

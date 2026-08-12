@@ -18,6 +18,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Actuator：健康检查端点，显式声明，不依赖 Spring Boot Admin 的传递引入 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Spring Boot Admin Server -->
         <dependency>
             <groupId>de.codecentric</groupId>
