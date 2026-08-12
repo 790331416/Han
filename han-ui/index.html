@@ -5,9 +5,78 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HAN Cloud</title>
+    <style>
+      /* 首屏骨架屏：Vue 挂载前顶住白屏，app.mount('#app') 会自动替换掉它 */
+      #app-boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #f9fafb;
+        font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+
+      .boot-splash-logo {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #2563eb, #3b82f6);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .boot-splash-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #dbeafe;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: boot-splash-spin 0.8s linear infinite;
+      }
+
+      .boot-splash-text {
+        margin: 0;
+        color: #6b7280;
+        font-size: 13px;
+      }
+
+      @keyframes boot-splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #app-boot-splash {
+          background: #0f172a;
+        }
+
+        .boot-splash-spinner {
+          border-color: #1e293b;
+          border-top-color: #3b82f6;
+        }
+
+        .boot-splash-text {
+          color: #94a3b8;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="app-boot-splash">
+        <div class="boot-splash-logo">H</div>
+        <div class="boot-splash-spinner"></div>
+        <p class="boot-splash-text">正在加载 HAN Cloud...</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
