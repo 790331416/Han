@@ -59,6 +59,11 @@ spring:
               uri: ${SDFZ_THREE_CLASSROOM_GATEWAY_URI:lb://three-classroom-gateway}
               predicates:
                 - Path=/tcapi/**,/ysfz-tcapi/**
+            # 智慧校园契约兼容目录：旧 api 的 api.url 与旧前端 /api 反代都指到这里
+            - id: sdfz-legacy-compat
+              uri: lb://han-system
+              predicates:
+                - Path=/sdfz-compat/**
 
   data:
     redis:

@@ -1,9 +1,15 @@
 package com.han.auth.sdfz.digitalcampus;
 
+import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.UserVO;
+import com.han.common.core.constant.Constants;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.util.ClassroomClaims;
 import com.han.common.core.util.ClassroomTokenCodec;
 import com.han.common.core.util.HanJsonUtil;
+import com.han.common.security.domain.LoginUser;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -11,34 +17,93 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-/** 校验数字校园身份并签发三个课堂短时兼容令牌。 */
+/**
+ * 签发三个课堂短时兼容令牌，支持两条互不影响的来源通路。
+ *
+ * <ul>
+ *   <li>{@link #exchange} 校验数字校园外部身份后签发，属于已冻结但保留可用的数字校园通路；</li>
+ *   <li>{@link #exchangeLocal} 从 Han 自己的登录态签发，本地账号没有外部 Token，
+ *       也不要求 {@code sys_user_social} 存在任何外部身份绑定。</li>
+ * </ul>
+ */
 @Service
 public class ClassroomTokenService {
 
+    /** 非教师身份请求凭证时的固定文案，与兼容层保持一致。 */
+    public static final String NON_TEACHER_LOGIN_UNSUPPORTED = "本期仅支持教师登录三个课堂，学生登录暂未开放";
+
     private final DigitalCampusLoginService loginService;
+    private final SystemServiceClient systemServiceClient;
     private final StringRedisTemplate redisTemplate;
     private final boolean enabled;
     private final String secret;
     private final long ttlSeconds;
+    private final Set<String> loginRoleTypes;
 
     public ClassroomTokenService(
             DigitalCampusLoginService loginService,
+            SystemServiceClient systemServiceClient,
             StringRedisTemplate redisTemplate,
             @Value("${sdfz.classroom-gateway.enabled:false}") boolean enabled,
             @Value("${sdfz.classroom-gateway.token-secret:}") String secret,
-            @Value("${sdfz.classroom-gateway.token-ttl-seconds:900}") long ttlSeconds) {
+            @Value("${sdfz.classroom-gateway.token-ttl-seconds:900}") long ttlSeconds,
+            @Value("${sdfz.classroom-gateway.login-role-types:2}") String loginRoleTypes) {
         this.loginService = loginService;
+        this.systemServiceClient = systemServiceClient;
         this.redisTemplate = redisTemplate;
         this.enabled = enabled;
         this.secret = secret;
         this.ttlSeconds = ttlSeconds;
+        this.loginRoleTypes = Arrays.stream(loginRoleTypes.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * 用 Han 本地登录态换发兼容凭证。
+     *
+     * <p>本地教师就是 {@code sys_user} + {@code edu_person} 两条记录，claims 直接由这两条记录组装，
+     * 不走任何外部身份查找。本期只对教师签发，其它身份返回
+     * {@link #NON_TEACHER_LOGIN_UNSUPPORTED}——这只限制登录，不影响该身份在兼容目录里的可见性。
+     */
+    public ClassroomTokenVO exchangeLocal(LoginUser loginUser) {
+        requireConfigured();
+        if (loginUser == null || loginUser.getUserId() == null) {
+            throw new BusinessException("当前没有可用的 Han 登录态");
+        }
+
+        R<ClassroomIdentityVO> result = systemServiceClient.getClassroomIdentity(loginUser.getUserId());
+        if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
+            throw new BusinessException("当前账号未开通三个课堂身份");
+        }
+        ClassroomIdentityVO identity = result.getData();
+        if (identity.getStatus() != null && identity.getStatus() != 0) {
+            throw new BusinessException("当前账号的三个课堂身份已停用");
+        }
+        if (!loginRoleTypes.contains(identity.getRoleType())) {
+            throw new BusinessException(NON_TEACHER_LOGIN_UNSUPPORTED);
+        }
+
+        String userId = identity.getUserId() != null
+                ? identity.getUserId() : String.valueOf(loginUser.getUserId());
+        Map<String, Object> claims = ClassroomClaims.build(
+                userId,
+                identity.getUserName(),
+                identity.getRoleType(),
+                identity.getRoles(),
+                identity.getIdentityId(),
+                identity.getSchoolId(),
+                String.valueOf(loginUser.getUserId()));
+        return sign(claims, userId);
     }
 
     public ClassroomTokenVO exchange(String externalToken, String identityId) {
@@ -53,9 +118,12 @@ public class ClassroomTokenService {
         }
 
         DigitalCampusProfile.Identity identity = synchronizedIdentity.identity();
+        return sign(claims(hanUser, identity), identity.userId());
+    }
+
+    private ClassroomTokenVO sign(Map<String, Object> claims, String sessionUserId) {
         long issuedAt = Instant.now().getEpochSecond();
         String tokenId = UUID.randomUUID().toString().replace("-", "");
-        Map<String, Object> claims = claims(hanUser, identity);
         String token;
         try {
             token = ClassroomTokenCodec.issue(claims, secret, issuedAt, ttlSeconds, tokenId);
@@ -64,7 +132,7 @@ public class ClassroomTokenService {
         }
         redisTemplate.opsForValue().set(
                 ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId,
-                String.valueOf(identity.userId()),
+                String.valueOf(sessionUserId),
                 Duration.ofSeconds(ttlSeconds));
         return new ClassroomTokenVO(token, ttlSeconds);
     }
@@ -75,16 +143,9 @@ public class ClassroomTokenService {
         identity.duties().forEach(item -> addRole(roles, item.roleType()));
         identity.classes().forEach(item -> addRole(roles, item.classRoleId()));
 
-        Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("userId", identity.userId());
-        claims.put("username", identity.userName());
-        claims.put("userType", identity.roleType());
-        claims.put("roles", roles);
-        claims.put("status", 0);
-        claims.put("identityId", identity.identityId());
-        claims.put("schoolId", identity.schoolId());
-        claims.put("hanUserId", String.valueOf(hanUser.getUserId()));
-        return claims;
+        return ClassroomClaims.build(
+                identity.userId(), identity.userName(), identity.roleType(), roles,
+                identity.identityId(), identity.schoolId(), String.valueOf(hanUser.getUserId()));
     }
 
     private String inferIdentityId(String token) {

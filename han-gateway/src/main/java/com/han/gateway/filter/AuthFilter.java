@@ -73,9 +73,23 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/file/public/",
             "/doc.html",
             "/swagger-resources",
-            "/v3/api-docs",
+            "/v3/api-docs"
+    );
+
+    /**
+     * 由三课堂兼容凭证而非 Han 登录态鉴权的前缀。
+     *
+     * <p><b>这不是免认证清单。</b>这些前缀的调用方是旧三课堂（旧 api 服务端与旧前端），
+     * 手上没有 Han Token，按 Han Token 拦截会让所有调用拿到 401；
+     * 它们的身份校验由 {@link ClassroomAuthFilter} 与 {@link LegacyCompatAuthFilter} 完成，
+     * 两者的 order 都小于本过滤器，会先执行并在校验不过时直接拒绝。
+     *
+     * <p>移除这两个过滤器中的任何一个之前，必须先把对应前缀从这里删掉，否则会变成真正的裸奔。
+     */
+    private static final List<String> CLASSROOM_AUTHENTICATED_PREFIXES = List.of(
             "/tcapi/",
-            "/ysfz-tcapi/"
+            "/ysfz-tcapi/",
+            LegacyCompatAuthFilter.PREFIX
     );
 
     private final ReactiveStringRedisTemplate redisTemplate;
@@ -129,8 +143,10 @@ public class AuthFilter implements GlobalFilter, Ordered {
         }).build();
     }
 
+    /** 命中即跳过 Han Token 校验：要么本就公开，要么已由三课堂兼容过滤器完成鉴权。 */
     private boolean isWhitelist(String path) {
-        return WHITE_LIST.stream().anyMatch(path::startsWith);
+        return WHITE_LIST.stream().anyMatch(path::startsWith)
+                || CLASSROOM_AUTHENTICATED_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
     private String getToken(ServerHttpRequest request) {

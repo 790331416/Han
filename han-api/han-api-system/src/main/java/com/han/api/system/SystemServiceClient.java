@@ -1,5 +1,6 @@
 package com.han.api.system;
 
+import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.LoginLogDTO;
 import com.han.api.system.domain.SocialBindingVO;
 import com.han.api.system.domain.TenantInitDto;
@@ -173,4 +174,10 @@ public interface SystemServiceClient {
      */
     @PostExchange("/external/digital-campus/user/sync")
     R<UserVO> syncDigitalCampusUser(@RequestBody DigitalCampusUserSyncDTO dto);
+
+    /**
+     * 查询本地账号在三个课堂里的教育身份，用于从 Han 登录态换发兼容凭证。
+     */
+    @GetExchange("/external/classroom/identity")
+    R<ClassroomIdentityVO> getClassroomIdentity(@RequestParam("userId") Long userId);
 }

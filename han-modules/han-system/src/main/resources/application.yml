@@ -55,3 +55,19 @@ han:
       enabled: ${HAN_INNER_AUTH_ENABLED:true}
       secret: ${HAN_INNER_AUTH_SECRET:han-cloud-inner-auth}
       clock-skew-seconds: ${HAN_INNER_AUTH_CLOCK_SKEW_SECONDS:300}
+
+# 智慧校园契约兼容层。默认关闭，启用前必须先注入 token-secret 与匿名 AES 密钥，
+# 匿名密钥取值须与旧客户端内置常量一致，不写进仓库。
+sdfz:
+  compat:
+    enabled: ${SDFZ_COMPAT_ENABLED:false}
+    tenant-id: ${SDFZ_COMPAT_TENANT_ID:1}
+    token-secret: ${SDFZ_CLASSROOM_TOKEN_SECRET:}
+    token-ttl-seconds: ${SDFZ_COMPAT_TOKEN_TTL_SECONDS:3600}
+    interim-token-ttl-seconds: ${SDFZ_COMPAT_INTERIM_TOKEN_TTL_SECONDS:300}
+    anonymous-key: ${SDFZ_COMPAT_ANONYMOUS_KEY:}
+    anonymous-iv: ${SDFZ_COMPAT_ANONYMOUS_IV:}
+    default-area-code: ${SDFZ_COMPAT_DEFAULT_AREA_CODE:620100}
+    captcha-enabled: ${SDFZ_COMPAT_CAPTCHA_ENABLED:true}
+    # 本期只放行教师登录；学生仍在兼容目录里可见，只是拿不到凭证
+    login-person-types: ${SDFZ_COMPAT_LOGIN_PERSON_TYPES:TEACHER}
