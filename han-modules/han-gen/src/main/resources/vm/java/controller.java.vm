@@ -1,12 +1,23 @@
 package ${packageName}.controller.admin;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
+#if($hasDtoColumn || $hasPk)
+import com.han.common.log.annotation.OperLog;
+#end
 import com.han.common.security.annotation.AdminAuth;
+#if($hasDtoColumn || $hasPk)
+import com.han.common.security.annotation.RepeatSubmit;
+#end
+#if($hasDtoColumn)
+import ${packageName}.domain.dto.${className}Dto;
+#end
 import ${packageName}.domain.po.${className}Po;
+import ${packageName}.domain.query.${className}Query;
 import ${packageName}.service.I${className}Service;
+#if($hasDtoColumn)
+import jakarta.validation.Valid;
+#end
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -27,37 +38,52 @@ public class A${className}Controller {
 
     @GetMapping("/list")
     @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:list')")
-    public R<PageResult<${className}Po>> list(
-            @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
-            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
-        Page<${className}Po> page = ${classname}Service.page(new Page<>(pageNum, pageSize));
-        return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
+    public R<PageResult<${className}Po>> list(${className}Query query) {
+        return R.ok(${classname}Service.select${className}Page(query));
     }
+#if($hasPk)
 
-    @GetMapping("/{id}")
+    @GetMapping("/{${pkJavaField}}")
     @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:query')")
-    public R<${className}Po> getInfo(@PathVariable Long id) {
-        return R.ok(${classname}Service.getById(id));
+    public R<${className}Po> getInfo(@PathVariable ${pkJavaType} ${pkJavaField}) {
+        return R.ok(${classname}Service.getById(${pkJavaField}));
     }
+#end
+#if($hasDtoColumn)
 
+    @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:add')")
-    public R<Void> add(@RequestBody ${className}Po po) {
-        ${classname}Service.save(po);
+    @OperLog(module = "${tableComment}", type = OperLog.OperType.INSERT)
+    public R<Void> add(@Valid @RequestBody ${className}Dto dto) {
+        ${classname}Service.insert${className}(dto);
         return R.ok();
     }
+#if($hasPk)
 
+    @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:edit')")
-    public R<Void> edit(@RequestBody ${className}Po po) {
-        ${classname}Service.updateById(po);
+    @OperLog(module = "${tableComment}", type = OperLog.OperType.UPDATE)
+    public R<Void> edit(@Valid @RequestBody ${className}Dto dto) {
+        ${classname}Service.update${className}(dto);
         return R.ok();
     }
+#end
+#end
+#if($hasPk)
 
-    @PostMapping("/remove/{id}")
+    @RepeatSubmit
+    @PostMapping("/remove/{${pkJavaField}}")
     @PreAuthorize("@ss.hasAuthority('${moduleName}:${businessName}:remove')")
-    public R<Void> remove(@PathVariable Long id) {
-        ${classname}Service.removeById(id);
+    @OperLog(module = "${tableComment}", type = OperLog.OperType.DELETE)
+    public R<Void> remove(@PathVariable ${pkJavaType} ${pkJavaField}) {
+        ${classname}Service.removeById(${pkJavaField});
         return R.ok();
     }
+#else
+
+    // 表 ${tableName} 没有单列主键（无主键或复合主键），
+    // 按主键查询 / 修改 / 删除的端点无法自动生成，请按业务语义自行补充。
+#end
 }

@@ -1,7 +1,13 @@
 package ${packageName}.domain.dto;
 
+#if($dtoHasNotBlank)
+import jakarta.validation.constraints.NotBlank;
+#end
+#if($dtoHasNotNull)
+import jakarta.validation.constraints.NotNull;
+#end
 import lombok.Data;
-#foreach($type in $importTypes)
+#foreach($type in $dtoImportTypes)
 import ${type};
 #end
 
@@ -13,11 +19,23 @@ import ${type};
  */
 @Data
 public class ${className}Dto {
+#if($hasPk)
+
+    /** ${tableComment}主键（修改时必填） */
+    private ${pkJavaType} ${pkJavaField};
+#end
 #foreach($column in $columns)
-#if($column.isInsert == 1 || $column.isEdit == 1)
+#if(($column.isInsert == 1 || $column.isEdit == 1) && !($hasPk && $column.javaField == $pkJavaField))
 
 #if($column.columnComment)
     /** ${column.columnComment} */
+#end
+#if($column.isRequired == 1)
+#if($column.javaType == 'String')
+    @NotBlank(message = "#if($column.columnComment)$fn.javaString($column.columnComment)#{else}${column.javaField}#end不能为空")
+#else
+    @NotNull(message = "#if($column.columnComment)$fn.javaString($column.columnComment)#{else}${column.javaField}#end不能为空")
+#end
 #end
     private ${column.javaType} ${column.javaField};
 #end
