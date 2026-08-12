@@ -73,7 +73,11 @@ test.describe('开放平台应用管理', () => {
       await expect(updatedRow).toBeVisible()
       await expect(updatedRow).toContainText(updatedContactName)
 
+      // 停用会立即切断接入方调用，现在需要二次确认
       await authenticatedPage.getByTestId(`open-app-status-switch-${createdAppId}`).click()
+      const disableDialog = authenticatedPage.locator('.el-message-box').last()
+      await expect(disableDialog).toContainText('确认停用吗')
+      await disableDialog.locator('.el-button--primary').click()
       await expect.poll(async () => {
         const record = await findOpenAppByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, updatedAppName)
         return record?.status ?? null
@@ -84,11 +88,13 @@ test.describe('开放平台应用管理', () => {
       await expect(confirmDialog).toContainText('确认重置应用')
       await confirmDialog.locator('.el-button--primary').click()
 
-      const secretDialog = authenticatedPage.locator('.el-message-box').last()
-      await expect(secretDialog).toContainText('新密钥:')
-      const secretText = (await secretDialog.locator('.el-message-box__content').textContent()) || ''
-      expect(secretText).toMatch(/新密钥:\s*\S+/)
-      await secretDialog.locator('.el-button--primary').click()
+      // 新密钥改用带复制按钮的独立弹窗展示，不再是只有文案的 alert
+      const secretDialog = authenticatedPage.getByTestId('open-app-secret-dialog')
+      await expect(secretDialog).toBeVisible()
+      await expect(secretDialog).toContainText('新密钥仅本次可见')
+      const secretValue = await authenticatedPage.getByTestId('open-app-secret-value').locator('input').inputValue()
+      expect(secretValue).toMatch(/\S+/)
+      await authenticatedPage.getByTestId('open-app-secret-close').click()
 
       await authenticatedPage.getByTestId(`open-app-delete-button-${createdAppId}`).click()
       const deleteDialog = authenticatedPage.locator('.el-message-box').last()
