@@ -48,7 +48,6 @@ public class SysRoleServiceImpl implements ISysRoleService {
     private final SysRoleConverter roleConverter;
     private final ISysMenuService menuService;
     private final SysOnlineSessionService onlineSessionService;
-    private final SysOnlineSessionService onlineSessionService;
 
     @Override
     public PageResult<SysRolePo> selectRolePage(SysRoleQuery query) {
