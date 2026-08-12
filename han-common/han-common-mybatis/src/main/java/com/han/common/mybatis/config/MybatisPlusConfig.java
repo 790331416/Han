@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
  */
 @Configuration
 @EnableTransactionManagement
-@EnableConfigurationProperties(TenantProperties.class)
+@EnableConfigurationProperties({TenantProperties.class, DataPermissionProperties.class})
 @MapperScan("com.han.**.mapper")
 @RequiredArgsConstructor
 public class MybatisPlusConfig {
@@ -48,6 +48,7 @@ public class MybatisPlusConfig {
 
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties,
+                                                         DataPermissionProperties dataPermissionProperties,
                                                          HanTenantLineHandler hanTenantLineHandler,
                                                          HanDataPermissionHandler hanDataPermissionHandler) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
@@ -58,7 +59,9 @@ public class MybatisPlusConfig {
         }
 
         // 数据权限插件（必须在分页插件之前，否则 count 语句拿不到数据范围条件）
-        interceptor.addInnerInterceptor(dataPermissionInterceptor(hanDataPermissionHandler));
+        if (Boolean.TRUE.equals(dataPermissionProperties.getEnable())) {
+            interceptor.addInnerInterceptor(dataPermissionInterceptor(hanDataPermissionHandler));
+        }
 
         // 分页插件
         interceptor.addInnerInterceptor(paginationInnerInterceptor());
@@ -113,6 +116,7 @@ public class MybatisPlusConfig {
      * 只对标注了 {@code @DataPermission} 的语句生效，未标注的语句不会产生任何额外条件。
      */
     @Bean
+    @ConditionalOnProperty(prefix = "data-permission", name = "enable", havingValue = "true", matchIfMissing = true)
     public DataPermissionInterceptor dataPermissionInterceptor(HanDataPermissionHandler hanDataPermissionHandler) {
         return new DataPermissionInterceptor(hanDataPermissionHandler);
     }

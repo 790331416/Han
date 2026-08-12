@@ -20,17 +20,7 @@ class MybatisPlusConfigTest {
 
     @Test
     void rewritingInterceptorsMustRunBeforePagination() {
-        StubSecurityContext securityContext = StubSecurityContext.tenantUser(100L, 1001L);
-        MybatisPlusConfig config = new MybatisPlusConfig(securityContext);
-        TenantProperties properties = new TenantProperties();
-
-        MybatisPlusInterceptor interceptor = config.mybatisPlusInterceptor(properties,
-                new HanTenantLineHandler(properties, securityContext, new MissingTenantContextRecorder(false, 0L)),
-                new HanDataPermissionHandler(securityContext));
-
-        // 顺序错会导致分页 count 语句拿不到租户与数据权限条件
-        assertThat(interceptor.getInterceptors())
-                .extracting(InnerInterceptor::getClass)
+        assertThat(interceptors(new TenantProperties(), new DataPermissionProperties()))
                 .containsExactly(
                         HanTenantLineInnerInterceptor.class,
                         DataPermissionInterceptor.class,
@@ -40,20 +30,24 @@ class MybatisPlusConfigTest {
 
     @Test
     void tenantInterceptorIsSkippedWhenMultiTenancyDisabled() {
-        StubSecurityContext securityContext = StubSecurityContext.tenantUser(100L, 1001L);
-        MybatisPlusConfig config = new MybatisPlusConfig(securityContext);
         TenantProperties properties = new TenantProperties();
         properties.setEnable(false);
 
-        MybatisPlusInterceptor interceptor = config.mybatisPlusInterceptor(properties,
-                new HanTenantLineHandler(properties, securityContext, new MissingTenantContextRecorder(false, 0L)),
-                new HanDataPermissionHandler(securityContext));
-
-        List<InnerInterceptor> interceptors = interceptor.getInterceptors();
-        assertThat(interceptors).noneMatch(HanTenantLineInnerInterceptor.class::isInstance);
-        assertThat(interceptors).extracting(InnerInterceptor::getClass)
+        assertThat(interceptors(properties, new DataPermissionProperties()))
                 .containsExactly(
                         DataPermissionInterceptor.class,
+                        PaginationInnerInterceptor.class,
+                        OptimisticLockerInnerInterceptor.class);
+    }
+
+    @Test
+    void dataPermissionInterceptorCanBeTurnedOff() {
+        DataPermissionProperties dataPermissionProperties = new DataPermissionProperties();
+        dataPermissionProperties.setEnable(false);
+
+        assertThat(interceptors(new TenantProperties(), dataPermissionProperties))
+                .containsExactly(
+                        HanTenantLineInnerInterceptor.class,
                         PaginationInnerInterceptor.class,
                         OptimisticLockerInnerInterceptor.class);
     }
@@ -67,5 +61,19 @@ class MybatisPlusConfigTest {
 
         properties.setObserveMissingContext(false);
         assertThat(config.missingTenantContextRecorder(properties).isEnabled()).isFalse();
+    }
+
+    private List<Class<? extends InnerInterceptor>> interceptors(TenantProperties tenantProperties,
+                                                                 DataPermissionProperties dataPermissionProperties) {
+        StubSecurityContext securityContext = StubSecurityContext.tenantUser(100L, 1001L);
+        MybatisPlusConfig config = new MybatisPlusConfig(securityContext);
+
+        MybatisPlusInterceptor interceptor = config.mybatisPlusInterceptor(tenantProperties, dataPermissionProperties,
+                new HanTenantLineHandler(tenantProperties, securityContext, new MissingTenantContextRecorder(false, 0L)),
+                new HanDataPermissionHandler(securityContext));
+
+        return interceptor.getInterceptors().stream()
+                .<Class<? extends InnerInterceptor>>map(InnerInterceptor::getClass)
+                .toList();
     }
 }
