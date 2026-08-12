@@ -142,18 +142,21 @@ docker compose -f deploy/full/docker-compose.yml up -d
 
 | 文档 | 说明 |
 | --- | --- |
-| [01-产品与架构总览](/D:/code/Han/docs/01-产品与架构总览.md) | 产品定位、拓扑、能力矩阵、A/I/B 架构、开放平台能力 |
-| [02-开发手册](/D:/code/Han/docs/02-开发手册.md) | 本地开发、技术栈约束、开发规范、对接口径、安全与测试要求 |
-| [03-部署手册](/D:/code/Han/docs/03-部署手册.md) | 三档部署、本地开发部署、Kubernetes 说明、SQL/Nacos 初始化、回滚与排障 |
-| [04-测试与验收手册](/D:/code/Han/docs/04-测试与验收手册.md) | 测试策略、手测清单、Playwright、当前通过状态 |
-| [05-运维与95环境手册](/D:/code/Han/docs/05-运维与95环境手册.md) | 95 目录、发布链路、Nacos / PostgreSQL 运维、清理与排障 |
-| [06-牛马协作总规则](/D:/code/Han/docs/06-牛马协作总规则.md) | 仓库、文档、SQL、部署、发布与验证规则 |
-| [07-仓库整理与重构执行计划](/D:/code/Han/docs/07-仓库整理与重构执行计划.md) | 最终目标结构与执行计划 |
-| [docs/index.md](/D:/code/Han/docs/index.md) | 正式文档索引页 |
+| [01-产品与架构总览](docs/01-产品与架构总览.md) | 产品定位、拓扑、能力矩阵、A/I/B 架构、开放平台能力 |
+| [02-开发手册](docs/02-开发手册.md) | 本地开发、技术栈约束、开发规范、对接口径、安全与测试要求 |
+| [03-部署手册](docs/03-部署手册.md) | 三档部署、本地开发部署、Kubernetes 说明、SQL/Nacos 初始化、回滚与排障 |
+| [04-测试与验收手册](docs/04-测试与验收手册.md) | 测试策略、手测清单、Playwright、当前通过状态 |
+| [05-运维与95环境手册](docs/05-运维与95环境手册.md) | 95 目录、发布链路、Nacos / PostgreSQL 运维、清理与排障 |
+| [06-牛马协作总规则](docs/06-牛马协作总规则.md) | 仓库、文档、SQL、部署、发布与验证规则 |
+| [07-仓库整理与重构执行计划](docs/07-仓库整理与重构执行计划.md) | 最终目标结构与执行计划 |
+| [08-AI短剧开发手册](docs/08-AI短剧开发手册.md) | AIVideo / AI 短剧开发入口、模块边界、发布门禁 |
+| [09-代码注释规范](docs/09-代码注释规范.md) | 前后端中文注释、JavaDoc、SQL/脚本注释规范 |
+| [10-系统枚举治理与公共能力落位](docs/10-系统枚举治理与公共能力落位.md) | 枚举治理与公共能力落位 |
+| [docs/index.md](docs/index.md) | 正式文档索引页 |
 
 ## SQL 与部署入口
 
-- 正式 SQL 入口：[sql/README.md](/D:/code/Han/sql/README.md)
+- 正式 SQL 入口：[sql/README.md](sql/README.md)
 - 正式部署入口：`deploy/small`、`deploy/medium`、`deploy/full`
 - 历史 SQL 与历史文档均已迁入 `archive/`，不再作为正式入口
 
