@@ -1,6 +1,7 @@
 package com.han.ai.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.ai.domain.po.AiDocumentPo;
 import com.han.ai.domain.po.AiKnowledgeBasePo;
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -62,6 +64,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     private final AiEmbeddingClient embeddingClient;
     private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
     private final AiDocumentTextExtractor textExtractor;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${han.ai.document-storage-path:./data/ai-documents}")
     private String documentStoragePath;
@@ -122,17 +125,14 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteById(Long kbId) {
         AiKnowledgeBasePo knowledgeBase = requireKnowledgeBase(kbId);
-        List<AiDocumentPo> documents = aiDocumentMapper.selectList(new LambdaQueryWrapper<AiDocumentPo>()
-                .eq(AiDocumentPo::getKbId, kbId));
-        for (AiDocumentPo document : documents) {
-            deleteDocumentFile(document.getFilePath());
-        }
-        aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getKbId, kbId));
-        aiDocumentMapper.delete(new LambdaQueryWrapper<AiDocumentPo>().eq(AiDocumentPo::getKbId, kbId));
-        aiKnowledgeBaseMapper.deleteById(kbId);
+        transactionTemplate.executeWithoutResult(status -> {
+            aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getKbId, kbId));
+            aiDocumentMapper.delete(new LambdaQueryWrapper<AiDocumentPo>().eq(AiDocumentPo::getKbId, kbId));
+            aiKnowledgeBaseMapper.deleteById(kbId);
+        });
+        // 物理文件在数据库提交之后再清理，事务回滚时源文件仍然完整
         deleteKnowledgeBaseDirectory(knowledgeBase.getKbId());
     }
 
@@ -153,8 +153,11 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         return PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize);
     }
 
+    /**
+     * 上传并建索引：文档落库走短事务，文本解析与远程 Embedding 一律在事务外执行，
+     * 避免远程调用期间独占数据库连接。落盘文件在建档失败时同步清理，不留孤儿文件。
+     */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void uploadDocument(Long kbId, MultipartFile file) {
         AiKnowledgeBasePo knowledgeBase = requireKnowledgeBase(kbId);
         if (file == null || file.isEmpty()) {
@@ -177,30 +180,37 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         document.setIndexError("");
         document.setStatus(STATUS_ENABLED);
         fillDocumentCreateAudit(document);
-        aiDocumentMapper.insert(document);
+        try {
+            transactionTemplate.executeWithoutResult(status -> aiDocumentMapper.insert(document));
+        } catch (RuntimeException ex) {
+            deleteDocumentFile(storedPath.toString());
+            throw ex;
+        }
 
         indexDocument(knowledgeBase, document);
-        refreshKnowledgeBaseStats(kbId);
     }
 
+    /**
+     * 重建索引：旧段落只在新段落成功构建之后才替换（同一事务内先删后插）。
+     * 源文件缺失、解析失败或内容为空时保留原有段落与向量，只把失败原因写回文档状态。
+     */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void reindexDocument(Long docId) {
         AiDocumentPo document = requireDocument(docId);
         AiKnowledgeBasePo knowledgeBase = requireKnowledgeBase(document.getKbId());
-        aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, docId));
         indexDocument(knowledgeBase, document);
-        refreshKnowledgeBaseStats(document.getKbId());
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void deleteDocument(Long docId) {
         AiDocumentPo document = requireDocument(docId);
-        aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, docId));
-        aiDocumentMapper.deleteById(docId);
+        transactionTemplate.executeWithoutResult(status -> {
+            aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, docId));
+            aiDocumentMapper.deleteById(docId);
+            refreshKnowledgeBaseStats(document.getKbId());
+        });
+        // 物理文件在数据库提交之后再删，事务回滚时文件仍可用于重建索引
         deleteDocumentFile(document.getFilePath());
-        refreshKnowledgeBaseStats(document.getKbId());
     }
 
     @Override
@@ -390,33 +400,71 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         document.setUpdateTime(now());
     }
 
+    /**
+     * 三段式建索引：短事务置 indexing → 事务外解析与向量化 → 短事务落库。
+     * <p>
+     * 关键约束：只有成功产出新段落时才替换旧段落；任何失败分支都保留既有段落与向量，
+     * 只回写文档的失败状态与原因，避免「重建索引失败反而清空知识库」的不可逆数据丢失。
+     */
     private void indexDocument(AiKnowledgeBasePo knowledgeBase, AiDocumentPo document) {
-        document.setIndexStatus(DOC_STATUS_INDEXING);
-        document.setIndexError("");
-        fillDocumentUpdateAudit(document);
-        aiDocumentMapper.updateById(document);
+        markIndexing(document);
 
+        IndexOutcome outcome;
+        String embeddingWarning;
         try {
-            IndexOutcome outcome = buildIndexOutcome(knowledgeBase, document);
-            String embeddingWarning = outcome.failed() ? "" : embedParagraphs(knowledgeBase, outcome.paragraphs());
+            // 事务外：文件读取、文本抽取、分片
+            outcome = buildIndexOutcome(knowledgeBase, document);
+            // 事务外：远程 Embedding 调用（可能耗时数十秒）
+            embeddingWarning = outcome.failed() ? "" : embedParagraphs(knowledgeBase, outcome.paragraphs());
+        } catch (IOException ex) {
+            applyIndexFailure(document, "文档读取失败: " + ex.getMessage());
+            return;
+        } catch (RuntimeException ex) {
+            log.warn("Document index failed, docId={}", document.getDocId(), ex);
+            applyIndexFailure(document, "文档解析失败: " + ex.getMessage());
+            return;
+        }
+
+        if (outcome.failed()) {
+            applyIndexFailure(document, outcome.errorMessage());
+            return;
+        }
+
+        String indexError = embeddingWarning;
+        transactionTemplate.executeWithoutResult(status -> {
             aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, document.getDocId()));
             for (AiParagraphPo paragraph : outcome.paragraphs()) {
                 aiParagraphMapper.insert(paragraph);
             }
             document.setCharCount((long) outcome.charCount());
             document.setParagraphCount(outcome.paragraphs().size());
-            document.setIndexStatus(outcome.failed() ? DOC_STATUS_FAILED : DOC_STATUS_COMPLETED);
-            document.setIndexError(StringUtils.hasText(outcome.errorMessage()) ? outcome.errorMessage() : embeddingWarning);
+            document.setIndexStatus(DOC_STATUS_COMPLETED);
+            document.setIndexError(indexError);
             fillDocumentUpdateAudit(document);
             aiDocumentMapper.updateById(document);
-        } catch (IOException ex) {
-            document.setIndexStatus(DOC_STATUS_FAILED);
-            document.setIndexError("文档读取失败: " + ex.getMessage());
-            document.setParagraphCount(0);
-            document.setCharCount(0L);
-            fillDocumentUpdateAudit(document);
+            refreshKnowledgeBaseStats(document.getKbId());
+        });
+    }
+
+    private void markIndexing(AiDocumentPo document) {
+        document.setIndexStatus(DOC_STATUS_INDEXING);
+        document.setIndexError("");
+        fillDocumentUpdateAudit(document);
+        transactionTemplate.executeWithoutResult(status -> aiDocumentMapper.updateById(document));
+    }
+
+    /**
+     * 建索引失败：保留既有段落，仅回写文档状态与失败原因。
+     * 段落数与字符数沿用上一次成功建索引的结果，不清零，避免统计与实际内容脱节。
+     */
+    private void applyIndexFailure(AiDocumentPo document, String errorMessage) {
+        document.setIndexStatus(DOC_STATUS_FAILED);
+        document.setIndexError(StringUtils.hasText(errorMessage) ? errorMessage : "建索引失败");
+        fillDocumentUpdateAudit(document);
+        transactionTemplate.executeWithoutResult(status -> {
             aiDocumentMapper.updateById(document);
-        }
+            refreshKnowledgeBaseStats(document.getKbId());
+        });
     }
 
     /**
@@ -543,22 +591,34 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         }
     }
 
+    /**
+     * 统计刷新：三个计数全部下推数据库聚合。
+     * 原实现把整库段落（含 content 与 embedding 大字段）拉进内存做 count/sum，大知识库必 OOM。
+     */
     private void refreshKnowledgeBaseStats(Long kbId) {
         AiKnowledgeBasePo knowledgeBase = requireKnowledgeBase(kbId);
-        List<AiDocumentPo> documents = aiDocumentMapper.selectList(new LambdaQueryWrapper<AiDocumentPo>()
+        Long documentCount = aiDocumentMapper.selectCount(new LambdaQueryWrapper<AiDocumentPo>()
                 .eq(AiDocumentPo::getKbId, kbId));
-        List<AiParagraphPo> paragraphs = aiParagraphMapper.selectList(new LambdaQueryWrapper<AiParagraphPo>()
+        Long paragraphCount = aiParagraphMapper.selectCount(new LambdaQueryWrapper<AiParagraphPo>()
                 .eq(AiParagraphPo::getKbId, kbId)
                 .eq(AiParagraphPo::getDelFlag, 0));
-        knowledgeBase.setDocumentCount(documents.size());
-        knowledgeBase.setParagraphCount(paragraphs.size());
-        knowledgeBase.setCharCount(paragraphs.stream()
-                .map(AiParagraphPo::getCharCount)
-                .filter(value -> value != null && value > 0)
-                .mapToLong(Integer::longValue)
-                .sum());
+        knowledgeBase.setDocumentCount(documentCount != null ? documentCount.intValue() : 0);
+        knowledgeBase.setParagraphCount(paragraphCount != null ? paragraphCount.intValue() : 0);
+        knowledgeBase.setCharCount(sumParagraphCharCount(kbId));
         fillKnowledgeBaseUpdateAudit(knowledgeBase);
         aiKnowledgeBaseMapper.updateById(knowledgeBase);
+    }
+
+    private long sumParagraphCharCount(Long kbId) {
+        QueryWrapper<AiParagraphPo> wrapper = new QueryWrapper<AiParagraphPo>()
+                .select("COALESCE(SUM(CASE WHEN char_count > 0 THEN char_count ELSE 0 END), 0)")
+                .eq("kb_id", kbId)
+                .eq("del_flag", 0);
+        List<Object> rows = aiParagraphMapper.selectObjs(wrapper);
+        if (rows.isEmpty() || !(rows.get(0) instanceof Number total)) {
+            return 0L;
+        }
+        return total.longValue();
     }
 
     private void deleteDocumentFile(String filePath) {
