@@ -1,5 +1,10 @@
 package com.han.api.ai.domain;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import lombok.Data;
+
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -7,11 +12,15 @@ import java.util.Map;
 /**
  * Image generation request for internal AI service.
  */
+@Data
 public class AiImageGenerateRequest implements Serializable {
+
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private Long tenantId;
 
+    /** 模型ID。为空时服务端按租户可见范围挑选默认图片模型。 */
     private Long modelId;
 
     private Long promptTemplateId;
@@ -22,6 +31,16 @@ public class AiImageGenerateRequest implements Serializable {
 
     private Map<String, String> variables;
 
+    /**
+     * 出图张数。
+     *
+     * <p>服务端 {@code AiOpenAiCompatibleClient#buildImageRequest} 实际按
+     * {@code min(max(n, 1), 4)} 归一，这里把既有上限显式写进契约，避免调用方误以为无上界。
+     * 服务端 I 层启用 {@code @Validated} 后，超限请求会被 400 明确拒绝，
+     * 而不是像现在这样静默截断到 4。
+     */
+    @Min(1)
+    @Max(4)
     private Integer candidateCount;
 
     private String ratio;
@@ -31,92 +50,4 @@ public class AiImageGenerateRequest implements Serializable {
     private String size;
 
     private List<String> referenceImageUrls;
-
-    public Long getTenantId() {
-        return tenantId;
-    }
-
-    public void setTenantId(Long tenantId) {
-        this.tenantId = tenantId;
-    }
-
-    public Long getModelId() {
-        return modelId;
-    }
-
-    public void setModelId(Long modelId) {
-        this.modelId = modelId;
-    }
-
-    public Long getPromptTemplateId() {
-        return promptTemplateId;
-    }
-
-    public void setPromptTemplateId(Long promptTemplateId) {
-        this.promptTemplateId = promptTemplateId;
-    }
-
-    public String getUserPrompt() {
-        return userPrompt;
-    }
-
-    public void setUserPrompt(String userPrompt) {
-        this.userPrompt = userPrompt;
-    }
-
-    public String getCustomPrompt() {
-        return customPrompt;
-    }
-
-    public void setCustomPrompt(String customPrompt) {
-        this.customPrompt = customPrompt;
-    }
-
-    public Map<String, String> getVariables() {
-        return variables;
-    }
-
-    public void setVariables(Map<String, String> variables) {
-        this.variables = variables;
-    }
-
-    public Integer getCandidateCount() {
-        return candidateCount;
-    }
-
-    public void setCandidateCount(Integer candidateCount) {
-        this.candidateCount = candidateCount;
-    }
-
-    public String getRatio() {
-        return ratio;
-    }
-
-    public void setRatio(String ratio) {
-        this.ratio = ratio;
-    }
-
-    public String getResolution() {
-        return resolution;
-    }
-
-    public void setResolution(String resolution) {
-        this.resolution = resolution;
-    }
-
-    public String getSize() {
-        return size;
-    }
-
-    public void setSize(String size) {
-        this.size = size;
-    }
-
-    public List<String> getReferenceImageUrls() {
-        return referenceImageUrls;
-    }
-
-    public void setReferenceImageUrls(List<String> referenceImageUrls) {
-        this.referenceImageUrls = referenceImageUrls;
-    }
 }
