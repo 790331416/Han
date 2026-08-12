@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.ForbiddenException;
+import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.util.DataOwnerUtil;
 import com.han.system.domain.dto.SysRoleDto;
 import com.han.system.domain.po.SysRoleMenuPo;
 import com.han.system.domain.po.SysRolePo;
@@ -15,12 +18,14 @@ import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysRoleMenuMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
+import com.han.system.service.ISysMenuService;
 import com.han.system.service.ISysRoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -39,6 +44,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
     private final SysUserRoleMapper userRoleMapper;
     private final SysUserMapper userMapper;
     private final SysRoleConverter roleConverter;
+    private final ISysMenuService menuService;
 
     @Override
     public PageResult<SysRolePo> selectRolePage(SysRoleQuery query) {
@@ -88,6 +94,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
     @Transactional(rollbackFor = Exception.class)
     public void insertRole(SysRoleDto dto) {
         validateRole(dto);
+        checkMenuGrantAllowed(dto.getMenuIds());
 
         SysRolePo role = roleConverter.toPo(dto);
         if (role.getStatus() == null) {
@@ -104,7 +111,9 @@ public class SysRoleServiceImpl implements ISysRoleService {
         if (dto.getRoleId() == null) {
             throw new BusinessException("角色ID不能为空");
         }
+        checkRoleAllowed(dto.getRoleId());
         validateRole(dto);
+        checkMenuGrantAllowed(dto.getMenuIds());
 
         SysRolePo role = roleMapper.selectById(dto.getRoleId());
         if (role == null) {
@@ -236,6 +245,8 @@ public class SysRoleServiceImpl implements ISysRoleService {
             return;
         }
         checkRoleAllowed(roleId);
+        DataOwnerUtil.checkRolePermission(Set.of(roleId));
+        checkUsersInCurrentTenant(userIds);
         for (Long userId : userIds) {
             // 防重复
             Long count = userRoleMapper.selectCount(
@@ -256,6 +267,8 @@ public class SysRoleServiceImpl implements ISysRoleService {
             return;
         }
         checkRoleAllowed(roleId);
+        DataOwnerUtil.checkRolePermission(Set.of(roleId));
+        checkUsersInCurrentTenant(userIds);
         userRoleMapper.delete(
                 new LambdaQueryWrapper<SysUserRolePo>()
                         .eq(SysUserRolePo::getRoleId, roleId)
@@ -302,10 +315,58 @@ public class SysRoleServiceImpl implements ISysRoleService {
         }
     }
 
+    /**
+     * 超管角色不可被任何入口改写；角色不存在时也要拦下，
+     * 否则跨租户传一个不可见的 roleId 会被静默放行并写出脏关联。
+     */
     private void checkRoleAllowed(Long roleId) {
+        if (roleId == null) {
+            throw new BusinessException("角色ID不能为空");
+        }
         SysRolePo role = roleMapper.selectById(roleId);
-        if (role != null && "admin".equals(role.getRoleKey())) {
+        if (role == null) {
+            throw new BusinessException("角色不存在");
+        }
+        if ("admin".equals(role.getRoleKey())) {
             throw new BusinessException("不允许操作超级管理员角色");
+        }
+    }
+
+    /**
+     * 菜单集合必须是操作者自身菜单的子集，否则「新建角色 + 自我授权」两步就能提权到任意权限点。
+     *
+     * <p>超级管理员拥有全量菜单，无需校验。
+     */
+    private void checkMenuGrantAllowed(Collection<Long> menuIds) {
+        if (menuIds == null || menuIds.isEmpty() || SecurityContextHolder.isAdmin()) {
+            return;
+        }
+        Long operatorId = SecurityContextHolder.getUserId();
+        if (operatorId == null) {
+            throw new ForbiddenException("未登录");
+        }
+        Set<Long> ownedMenuIds = new HashSet<>(menuService.selectMenuIdsByUserId(operatorId));
+        for (Long menuId : menuIds) {
+            if (!ownedMenuIds.contains(menuId)) {
+                throw new ForbiddenException("无权分配未拥有的菜单权限: " + menuId);
+            }
+        }
+    }
+
+    /**
+     * 关联表 sys_user_role 被排除出租户过滤，跨租户绑定只能在应用层拦。
+     * 主表 sys_user 会被租户插件加条件，查不齐即说明有 ID 不属于当前租户。
+     */
+    private void checkUsersInCurrentTenant(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty() || SecurityContextHolder.isAdmin()) {
+            return;
+        }
+        Set<Long> distinctIds = new HashSet<>(userIds);
+        Long visible = userMapper.selectCount(
+                new LambdaQueryWrapper<SysUserPo>().in(SysUserPo::getId, distinctIds)
+        );
+        if (visible == null || visible != distinctIds.size()) {
+            throw new ForbiddenException("存在不属于当前租户的用户，无法授权");
         }
     }
 
