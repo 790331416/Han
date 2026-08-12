@@ -20,7 +20,10 @@ import {
   waitForAssistantMessageCount
 } from '../utils/ai-chat'
 
-const EXPECTED_TOOL_NAME = 'http_stream_call'
+// G1-5 后 MCP 刷新/调用均为真连：本用例需要一个真实可达、至少暴露一个工具的 MCP server。
+// 未配置 PW_MCP_SERVER_URL 时自动跳过（真实 MCP server 端到端实测按决策 D5 随下一轮部署安排）。
+const MCP_SERVER_URL = process.env.PW_MCP_SERVER_URL || ''
+const EXPECTED_TOOL_NAME = process.env.PW_MCP_TOOL_NAME || 'http_stream_call'
 
 function buildUniqueName(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
@@ -28,6 +31,7 @@ function buildUniqueName(prefix: string): string {
 
 test.describe('ai chat structured metadata', () => {
   test('workflow chat should render structured knowledge and tool metadata', async ({ authenticatedPage, request, authSession }) => {
+    test.skip(!MCP_SERVER_URL, '需要真实 MCP server：配置 PW_MCP_SERVER_URL（及 PW_MCP_TOOL_NAME）后启用')
     const page = authenticatedPage
     const uniqueSuffix = Date.now()
     const knowledgePhrase = `结构化来源命中短语-${uniqueSuffix}`
@@ -79,7 +83,7 @@ test.describe('ai chat structured metadata', () => {
       createdServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
         serverName,
         transportType: 'streamable_http',
-        url: 'http://127.0.0.1:65535/mcp'
+        url: MCP_SERVER_URL
       })
       await refreshMcpServerTools(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdServer.mcpId)
 

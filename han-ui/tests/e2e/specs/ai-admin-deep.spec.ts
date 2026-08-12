@@ -138,9 +138,10 @@ test('ai prompt page should render preview variables with real template data', a
   }
 })
 
-test('ai mcp page should refresh tools and show generated tool list', async ({ authenticatedPage, request, authSession }) => {
+test('ai mcp page should surface real connection failure when refreshing unreachable server', async ({ authenticatedPage, request, authSession }) => {
   const page = authenticatedPage
   const serverName = buildUniqueName('工具服务回归')
+  // G1-12 SSRF：127.0.0.1 占位地址需 e2e 环境配置 AI_SSRF_ALLOWED_HOSTS=127.0.0.1 放行后才能保存
   const createdServer = await createMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, {
     serverName,
     transportType: 'sse'
@@ -155,22 +156,21 @@ test('ai mcp page should refresh tools and show generated tool list', async ({ a
     const row = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: serverName }).first()
     await expect(row).toBeVisible()
 
+    // G1-5 后刷新工具为真连 MCP server：占位地址不可达应返回可诊断失败，而不是 mock 工具清单
     const refreshResponse = waitForPostResponse(page, `/ai/mcp/refresh/${createdServer.mcpId}`)
-    const refreshListResponse = waitForGetResponse(page, '/ai/mcp/list')
     await row.getByTestId('ai-mcp-refresh-button').click()
-    await refreshResponse
-    await refreshListResponse
+    const refreshBody = (await (await refreshResponse).json()) as { code: number; msg?: string }
+    expect(refreshBody.code).not.toBe(200)
+    expect(refreshBody.msg || '').toContain('MCP 服务连接失败')
+    await expect(page.locator('.el-message--error').last()).toContainText('MCP 服务连接失败')
 
-    await expect.poll(async () => {
-      const server = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, serverName)
-      return server?.tools || ''
-    }, { timeout: 15000 }).toContain('health_check')
+    const latestServer = await findMcpServerByName(request, e2eRuntime.apiBaseUrl, authSession.accessToken, serverName)
+    expect(JSON.parse(latestServer?.tools || '[]')).toEqual([])
 
     const refreshedRow = page.getByTestId('ai-mcp-table').locator('.el-table__row', { hasText: serverName }).first()
     await refreshedRow.getByTestId('ai-mcp-view-tools-button').click()
     await expect(page.getByTestId('ai-mcp-tools-dialog')).toBeVisible()
-    await expect(page.getByTestId('ai-mcp-tools-table')).toContainText('health_check')
-    await expect(page.getByTestId('ai-mcp-tools-table')).toContainText('sse_subscribe')
+    await expect(page.getByTestId('ai-mcp-tools-dialog')).toContainText('暂无工具，请先刷新')
   } finally {
     await deleteMcpServer(request, e2eRuntime.apiBaseUrl, authSession.accessToken, createdServer.mcpId).catch(() => undefined)
   }
