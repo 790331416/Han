@@ -6,7 +6,7 @@ import com.han.gen.domain.GenTableColumn;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
-import org.apache.velocity.app.Velocity;
+import org.apache.velocity.app.VelocityEngine;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -35,13 +35,31 @@ public class VelocityHelper {
     private static final Pattern SAFE_PACKAGE =
             Pattern.compile("^[A-Za-z][A-Za-z0-9_]{0,63}(\\.[A-Za-z][A-Za-z0-9_]{0,63}){0,15}$");
 
+    /**
+     * 模板引擎实例。
+     *
+     * <p>不用 {@code Velocity} 全局静态门面：那是 JVM 级共享状态，一旦进程内出现第二个使用方
+     * （例如通知模板、导出模板），双方的 resource.loaders 配置会互相覆盖。
+     */
+    private VelocityEngine engine;
+
     @PostConstruct
     public void init() {
         Properties props = new Properties();
         props.setProperty("resource.loaders", "class");
         props.setProperty("resource.loader.class.class",
                 "org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader");
-        Velocity.init(props);
+        VelocityEngine velocityEngine = new VelocityEngine();
+        velocityEngine.init(props);
+        this.engine = velocityEngine;
+
+        // 模板清单是编译期常量，缺失属于打包事故；启动期先报出来，别等到用户点生成才发现
+        List<String> missing = Arrays.stream(TEMPLATE_FILES)
+                .filter(tpl -> !velocityEngine.resourceExists(tpl))
+                .toList();
+        if (!missing.isEmpty()) {
+            log.error("代码生成模板缺失，生成功能不可用：{}", String.join("、", missing));
+        }
     }
 
     private static final String[] TEMPLATE_FILES = {
@@ -69,7 +87,7 @@ public class VelocityHelper {
         List<String> failed = new ArrayList<>();
         for (String tpl : TEMPLATE_FILES) {
             try {
-                Template template = Velocity.getTemplate(tpl, "UTF-8");
+                Template template = engine.getTemplate(tpl, "UTF-8");
                 StringWriter sw = new StringWriter();
                 template.merge(ctx, sw);
                 result.put(getOutputFileName(tpl, table), sw.toString());
