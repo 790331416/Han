@@ -57,6 +57,7 @@ public class SocialLoginService {
     private final IAuthService authService;
     private final SecurityProperties securityProperties;
     private final StringRedisTemplate redisTemplate;
+    private final LoginAttemptGuard loginAttemptGuard;
 
     public SocialLoginService(List<SocialOAuthProvider> providerList,
                               LoginMethodSettingService loginMethodSettingService,
@@ -64,7 +65,8 @@ public class SocialLoginService {
                               TenantServiceClient tenantServiceClient,
                               IAuthService authService,
                               SecurityProperties securityProperties,
-                              StringRedisTemplate redisTemplate) {
+                              StringRedisTemplate redisTemplate,
+                              LoginAttemptGuard loginAttemptGuard) {
         this.providers = providerList.stream()
                 .collect(Collectors.toUnmodifiableMap(SocialOAuthProvider::provider, Function.identity()));
         this.loginMethodSettingService = loginMethodSettingService;
@@ -73,6 +75,7 @@ public class SocialLoginService {
         this.authService = authService;
         this.securityProperties = securityProperties;
         this.redisTemplate = redisTemplate;
+        this.loginAttemptGuard = loginAttemptGuard;
     }
 
     /**
@@ -280,11 +283,15 @@ public class SocialLoginService {
         return XuJsonUtil.parseObject(json, SocialTicket.class);
     }
 
+    /**
+     * ticket 维度的绑定失败计数。
+     * <p>自增与设置 TTL 走 {@link LoginAttemptGuard#incrementWithTtl} 的原子脚本，
+     * 避免两次往返之间中断留下无 TTL 的永生计数 key。
+     */
     private void recordBindFail(String ticketId) {
         String failKey = CacheConstants.SOCIAL_TICKET_KEY + ticketId + ":fail";
-        Long count = redisTemplate.opsForValue().increment(failKey);
-        redisTemplate.expire(failKey, TICKET_TTL);
-        if (count != null && count >= MAX_BIND_ATTEMPTS) {
+        long count = loginAttemptGuard.incrementWithTtl(failKey, TICKET_TTL);
+        if (count >= MAX_BIND_ATTEMPTS) {
             deleteTicket(ticketId);
             throw new BusinessException("密码错误次数过多，请重新扫码后再试");
         }
