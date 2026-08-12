@@ -561,6 +561,18 @@ public class LegacyDirectoryService {
         return LegacyPayload.page(records, page.getTotal(), request.pageNo(), request.pageSize());
     }
 
+    /**
+     * 组织节点。
+     *
+     * <p><b>{@code orgId} 用的是 Han 的雪花主键，不是 {@code external_id}</b>，这是 2026-08-12 拍的板：
+     * 数字校园整条线已冻结，Han 新建的学校 {@code external_id} 本来就是空，U3/U4 不受影响。
+     *
+     * <p>前提是「旧库里这些 ID 列都是快照列而非外键，Han 是唯一的目录来源」，
+     * 依据见 {@code doc/Han与三课堂实体ID映射结论-2026-08-12.md}。
+     * 一旦数字校园解冻、需要兼容历史同步数据，这里必须改成
+     * {@code external_id} 优先、雪花 ID 兜底的双向查找，<b>并且所有按 {@code orgId} 反查的地方要同步改</b>，
+     * 否则前端传回来的历史 ID 会查不到。
+     */
     private Map<String, Object> orgNode(EduSchoolPo school) {
         EduSchoolPo parent = schoolById(school.getParentId());
         Map<String, Object> value = new LinkedHashMap<>();
