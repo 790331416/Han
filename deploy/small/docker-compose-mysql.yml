@@ -41,6 +41,8 @@ services:
       - mysql_data:/var/lib/mysql
       - ${HAN_SQL_ROOT:-../../sql}/tiers/small/small-init-mysql.sql:/docker-entrypoint-initdb.d/01-small-init.sql:ro
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260811_education_master.sql:/docker-entrypoint-initdb.d/20-sdfz-education.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812_education_unified_person.sql:/docker-entrypoint-initdb.d/21-sdfz-education-person.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812b_education_active_unique_index.sql:/docker-entrypoint-initdb.d/22-sdfz-education-active-index.sql:ro
     networks:
       - han-network
     healthcheck:

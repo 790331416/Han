@@ -7,10 +7,9 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("edu_person_class")
-public class EduPersonClassPo extends TenantEntity {
+@TableName("edu_person_subject")
+public class EduPersonSubjectPo extends TenantEntity {
     private Long personId;
+    private Long subjectId;
     private Long classId;
-    private String membershipRole;
-    private String sourceSystem;
 }

@@ -190,6 +190,17 @@ def main() -> int:
             if forbidden in sdfz_text:
                 violations.append(f"SDFZ management schema must not own runtime video/device field: {forbidden}")
 
+    # 含中文字面量的 SDFZ MySQL 脚本必须自带 SET NAMES utf8mb4，
+    # 否则手工用 mysql 客户端执行时中文会被双重编码入库（2026-08-12 已实际发生）。
+    sdfz_mysql_dir = SQL / "sdfz" / "mysql"
+    if sdfz_mysql_dir.is_dir():
+        for script_file in sorted(sdfz_mysql_dir.glob("*.sql")):
+            text = read_sql(script_file)
+            if not any("\u4e00" <= ch <= "\u9fa5" for ch in text):
+                continue
+            if "set names utf8mb4" not in text.lower():
+                violations.append(f"含中文的 SDFZ MySQL 脚本缺少 SET NAMES utf8mb4 文件头: {script_file}")
+
     for script in UPGRADE_REHEARSAL_SCRIPTS:
         if not script.exists():
             violations.append(f"缺少 PostgreSQL 升级演练脚本: {script}")

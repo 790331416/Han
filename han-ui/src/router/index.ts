@@ -277,6 +277,18 @@ export const constantRoutes: RouteRecordRaw[] = [
         name: 'EducationDevice',
         component: () => import('@/views/education/device/index.vue'),
         meta: { title: '设备管理', icon: 'Monitor', permission: 'education:device:list' }
+      },
+      {
+        path: 'semester',
+        name: 'EducationSemester',
+        component: () => import('@/views/education/semester/index.vue'),
+        meta: { title: '学期管理', icon: 'Calendar', permission: 'education:semester:list' }
+      },
+      {
+        path: 'room',
+        name: 'EducationRoom',
+        component: () => import('@/views/education/room/index.vue'),
+        meta: { title: '教室管理', icon: 'House', permission: 'education:room:list' }
       }
     ]
   },

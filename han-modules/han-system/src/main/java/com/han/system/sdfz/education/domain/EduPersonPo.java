@@ -21,6 +21,19 @@ public class EduPersonPo extends BizEntity {
     private String externalUserId;
     private String externalIdentityId;
     private Integer status;
+
+    /**
+     * 离校标记（0=在校 1=离校）。
+     *
+     * <p>与账号停用是两件事：{@code sys_user.status} 管登录能力，本字段管教育身份是否在校，
+     * 两者可以独立变化（验收方案 §4.13 里"仅人员停用"与"Han 账号禁用"是两行）。
+     * 离校后不参与新课程，历史课程与审计按 ID 关联保留。</p>
+     */
+    private Integer leaveFlag;
+
+    /** 离校时间，由 leaveFlag 从 0 变 1 时写入，恢复在校时清空。 */
+    private LocalDateTime leaveTime;
+
     private String syncHash;
     private LocalDateTime lastSyncTime;
 }

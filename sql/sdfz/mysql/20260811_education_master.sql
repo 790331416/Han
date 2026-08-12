@@ -1,5 +1,9 @@
 -- 附中三课堂教育主数据（MySQL 8.4）
 -- 运行时设备在线状态、心跳、课堂控制和视频数据不进入这些表。
+--
+-- 必须保留下面这行：手工用 mysql 客户端执行时，若会话字符集不是 utf8mb4，
+-- 脚本里的中文菜单名会被按客户端默认字符集二次编码后入库，表现为乱码。
+SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS edu_school (
     id BIGINT NOT NULL PRIMARY KEY,

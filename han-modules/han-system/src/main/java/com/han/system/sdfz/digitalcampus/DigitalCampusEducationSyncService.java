@@ -209,6 +209,7 @@ public class DigitalCampusEducationSyncService {
             value.setPersonId(personId);
             value.setClassId(classId);
             value.setMembershipRole(safeRole);
+            value.setSourceSystem(SOURCE);
             personClassMapper.insert(value);
         }
     }

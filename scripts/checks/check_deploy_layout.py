@@ -56,6 +56,8 @@ def main() -> int:
                     "mysql:8.4.10",
                     "/tiers/small/small-init-mysql.sql:",
                     "/sdfz/mysql/20260811_education_master.sql:",
+                    "/sdfz/mysql/20260812_education_unified_person.sql:",
+                    "/sdfz/mysql/20260812b_education_active_unique_index.sql:",
                     "jdbc:mysql://",
                 ):
                     if token not in mysql_text:

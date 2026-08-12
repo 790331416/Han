@@ -8,6 +8,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.api.tenant.TenantServiceClient;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.HanStrUtil;
 import com.han.common.mybatis.helper.TenantHelper;
@@ -123,13 +124,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
             }
         }
 
+        // 唯一性冲突用独立错误码，便于前端区分"重名"和"系统故障"
         if (dto.getUsername() != null && sysUserMapper.checkUsernameUnique(dto.getUsername(), tenantId, null) > 0) {
-            throw new BusinessException("用户名'" + dto.getUsername() + "'已存在");
+            throw new ConflictException("用户名“" + dto.getUsername() + "”已存在，请更换后重试");
         }
 
         if (HanStrUtil.isNotBlank(dto.getPhone()) &&
                 sysUserMapper.checkPhoneUnique(dto.getPhone(), tenantId, null) > 0) {
-            throw new BusinessException("手机号'" + dto.getPhone() + "'已存在");
+            throw new ConflictException("手机号“" + dto.getPhone() + "”已存在，请更换后重试");
         }
 
         PasswordUtil.validate(dto.getPassword());
@@ -167,7 +169,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
 
         if (HanStrUtil.isNotBlank(dto.getPhone()) &&
                 sysUserMapper.checkPhoneUnique(dto.getPhone(), tenantId, dto.getUserId()) > 0) {
-            throw new BusinessException("手机号'" + dto.getPhone() + "'已存在");
+            throw new ConflictException("手机号“" + dto.getPhone() + "”已存在，请更换后重试");
         }
 
         sysUserConverter.updatePo(dto, existUser);
