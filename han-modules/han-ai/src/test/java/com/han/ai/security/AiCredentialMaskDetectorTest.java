@@ -1,20 +1,19 @@
 package com.han.ai.security;
 
+import com.han.common.web.sensitive.SensitiveMasker;
 import com.han.common.web.sensitive.SensitiveType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 掩码识别单测。
  * <p>
- * 核心断言：识别器必须认得 {@code SensitiveSerializer} 真实产出的掩码。
- * 这里直接反射调用序列化器的 maskCustom，而不是照抄一份期望字符串，
- * 这样一旦上游掩码格式变化，本测试会立刻失败而不是悄悄失效。
+ * 核心断言：识别器必须认得脱敏序列化器真实产出的掩码。这里直接调用
+ * {@link SensitiveMasker#maskCustom}（{@code SensitiveSerializer} 与 Jackson 2 侧共用的同一份实现），
+ * 而不是照抄一份期望字符串，这样一旦上游掩码格式变化，本测试会立刻失败而不是悄悄失效。
  */
 class AiCredentialMaskDetectorTest {
 
@@ -22,11 +21,8 @@ class AiCredentialMaskDetectorTest {
     private static final int PREFIX_KEEP = 4;
     private static final int SUFFIX_KEEP = 4;
 
-    private String maskLikeSerializer(String value) throws Exception {
-        Class<?> serializer = Class.forName("com.han.common.web.sensitive.SensitiveSerializer");
-        Method maskCustom = serializer.getDeclaredMethod("maskCustom", String.class, int.class, int.class);
-        maskCustom.setAccessible(true);
-        return (String) maskCustom.invoke(null, value, PREFIX_KEEP, SUFFIX_KEEP);
+    private String maskLikeSerializer(String value) {
+        return SensitiveMasker.maskCustom(value, PREFIX_KEEP, SUFFIX_KEEP);
     }
 
     @ParameterizedTest
@@ -37,7 +33,7 @@ class AiCredentialMaskDetectorTest {
             "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789",
             "{\"Authorization\":\"Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature\"}"
     })
-    void detectsEveryMaskTheSerializerCanProduce(String rawValue) throws Exception {
+    void detectsEveryMaskTheSerializerCanProduce(String rawValue) {
         String masked = maskLikeSerializer(rawValue);
 
         assertThat(AiCredentialMaskDetector.isMasked(masked))

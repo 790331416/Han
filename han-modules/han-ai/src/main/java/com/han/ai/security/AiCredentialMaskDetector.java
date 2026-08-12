@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  * 用于判定「客户端回传的值是不是我们自己脱敏出去的掩码串」，配合 han-common-web 的
  * {@code SensitiveSerializer} 使用。凡是被判定为掩码的值，一律不得写库、不得当作真实凭据外发。
  * <p>
- * 必须与 {@code SensitiveSerializer.maskCustom(value, prefixKeep, suffixKeep)} 的产出保持一致：
+ * 必须与 {@code SensitiveMasker.maskCustom(value, prefixKeep, suffixKeep)} 的产出保持一致：
  * <ul>
  *   <li>原值长度 ≤ prefixKeep + suffixKeep 时产出全星号，例如 {@code ********}；</li>
  *   <li>原值更长时产出「前 N 位 + 星号段 + 后 M 位」，例如 {@code sk-1****************abcd}。</li>
