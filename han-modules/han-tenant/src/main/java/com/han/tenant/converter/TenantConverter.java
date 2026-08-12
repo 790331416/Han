@@ -2,6 +2,7 @@ package com.han.tenant.converter;
 
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.po.TenantPo;
+import com.han.tenant.domain.vo.TenantOptionVO;
 import com.han.tenant.domain.vo.TenantVO;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -26,6 +27,17 @@ public interface TenantConverter {
      * PO List -> VO List
      */
     List<TenantVO> toVOList(List<TenantPo> pos);
+
+    /**
+     * PO -> 下拉选项 VO（只含 ID 与名称）
+     */
+    @Mapping(source = "id", target = "tenantId")
+    TenantOptionVO toOptionVO(TenantPo po);
+
+    /**
+     * PO List -> 下拉选项 VO List
+     */
+    List<TenantOptionVO> toOptionVOList(List<TenantPo> pos);
 
     /**
      * DTO -> PO

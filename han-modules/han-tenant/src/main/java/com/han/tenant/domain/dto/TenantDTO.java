@@ -38,16 +38,20 @@ public class TenantDTO implements Serializable {
 
     /**
      * 管理员密码(新增租户时创建)
+     *
+     * <p>明文承载，仅用于创建租户时初始化管理员账号。
+     * 使用该字段的接口必须标注 {@code @OperLog(saveParams = false)}，否则会被操作日志切面
+     * 序列化进 sys_oper_log.oper_param。
      */
     private String adminPassword;
 
     /**
-     * 濂楅鍚嶇О
+     * 套餐名称
      */
     private String packageName;
 
     /**
-     * 宸蹭娇鐢ㄧ敤鎴锋暟
+     * 已使用用户数
      */
     private Integer userCount;
 

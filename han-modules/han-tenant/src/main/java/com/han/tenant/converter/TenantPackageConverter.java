@@ -3,6 +3,7 @@ package com.han.tenant.converter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.han.common.core.exception.BusinessException;
 import com.han.tenant.domain.dto.TenantPackageDTO;
 import com.han.tenant.domain.po.TenantPackagePo;
 import com.han.tenant.domain.vo.TenantPackageVO;
@@ -51,7 +52,10 @@ public interface TenantPackageConverter {
     void updatePo(TenantPackageDTO dto, @MappingTarget TenantPackagePo po);
 
     /**
-     * JSON字符串 -> Set<Long>
+     * JSON字符串 -> Set&lt;Long&gt;
+     * <p>
+     * 解析失败必须响亮失败：套餐菜单会经 syncRoleMenus 覆盖租户角色菜单，
+     * 一旦这里把损坏的 menu_ids 静默降级成空集，整个租户所有角色的菜单会被清空且不可恢复。
      */
     @Named("jsonToSet")
     default Set<Long> jsonToSet(String json) {
@@ -61,12 +65,12 @@ public interface TenantPackageConverter {
         try {
             return OBJECT_MAPPER.readValue(json, new TypeReference<Set<Long>>() {});
         } catch (JsonProcessingException e) {
-            return Collections.emptySet();
+            throw new BusinessException("套餐菜单数据已损坏，无法解析: " + json);
         }
     }
 
     /**
-     * Set<Long> -> JSON字符串
+     * Set&lt;Long&gt; -> JSON字符串
      */
     @Named("setToJson")
     default String setToJson(Set<Long> set) {
@@ -76,7 +80,7 @@ public interface TenantPackageConverter {
         try {
             return OBJECT_MAPPER.writeValueAsString(set);
         } catch (JsonProcessingException e) {
-            return "[]";
+            throw new BusinessException("套餐菜单序列化失败");
         }
     }
 }

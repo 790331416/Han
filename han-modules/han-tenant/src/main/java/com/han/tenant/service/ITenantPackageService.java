@@ -56,4 +56,11 @@ public interface ITenantPackageService {
      * 更新套餐菜单
      */
     void updatePackageMenus(Long packageId, Set<Long> menuIds);
+
+    /**
+     * 把套餐当前菜单重新下发给所有订阅该套餐的存量租户
+     *
+     * @return 成功下发的租户数
+     */
+    int resyncPackageToTenants(Long packageId);
 }
