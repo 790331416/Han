@@ -75,7 +75,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/swagger-resources",
             "/v3/api-docs",
             "/tcapi/",
-            "/ysfz-tcapi/"
+            "/ysfz-tcapi/",
+            // 兼容目录由旧系统调用，身份走兼容凭证而非 Han 登录态，不能按 Han Token 拦截
+            "/sdfz-compat/"
     );
 
     private final ReactiveStringRedisTemplate redisTemplate;
