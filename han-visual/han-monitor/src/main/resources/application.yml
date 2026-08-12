@@ -1,5 +1,5 @@
 ﻿server:
-  port: 9100
+  port: ${SERVER_PORT:9100}
 
 spring:
   application:
@@ -12,8 +12,11 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
-        namespace: han
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        # 默认留空表示不带鉴权访问 Nacos，需要时由部署侧注入，避免在仓库内写死凭据
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
   boot:
     admin:
       ui:
