@@ -30,6 +30,20 @@
   的 `UPGRADE_FILES` 数组，否则 `scripts/checks/check_sql_layout.py` 会报未登记
 - 修改 `sql/upgrades/postgres/` 后，必须至少执行结构检查；涉及旧库兼容时还要执行升级演练脚本
 
+## Nacos 配置正文的落位
+
+根目录 `nacos/` 目录当前是空的，**各服务的 Nacos 配置正文内嵌在
+`sql/tiers/<tier>/<tier>-nacos-derby-import.sql` 的 `nacos.config_info.content` 字段里**。
+要改某个服务的 Nacos 运行配置（端口、数据源、上传大小、超时等），改的就是这几个文件。
+
+- 每档覆盖的配置：small 5 个、medium 9 个、full 11 个，
+  含 `application-shared.yml` 与各服务的 `han-<service>.yml`
+- 配置优先级：模块自带的 `application.yml` / `application-docker.yml` **高于** 通过
+  `spring.config.import: optional:nacos:han-<service>.yml` 导入的 Nacos 配置。
+  也就是说，只有模块本地没写这个键时，在这里补的值才会生效
+- 改完必须确认 YAML 缩进正确：正文是 SQL 单引号字符串，缩进错了不会报 SQL 错，
+  只会在服务启动时静默丢配置
+
 ## 初始化与升级脚本的一致性约定
 
 三档 `*-init.sql` 是全新部署的唯一结构来源，`upgrades/postgres/` 只服务存量库。

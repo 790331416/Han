@@ -441,6 +441,13 @@ INSERT INTO nacos.config_info (
   port: 9208
 
 spring:
+  servlet:
+    multipart:
+      # 知识库文档上传走 han-ai 自己的 MultipartFile 入口，不经过 han-file。
+      # 不显式设置就会落到 Spring 默认的 1MB，稍大一点的文档直接 413。
+      # 默认值与 han-file 对齐，避免同一套网关/nginx 尺寸下两个服务上限不一致。
+      max-file-size: ${HAN_AI_MAX_FILE_SIZE:300MB}
+      max-request-size: ${HAN_AI_MAX_REQUEST_SIZE:320MB}
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
