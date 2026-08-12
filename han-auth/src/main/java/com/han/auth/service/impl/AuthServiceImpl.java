@@ -137,11 +137,28 @@ public class AuthServiceImpl implements IAuthService {
 
         clearLoginFail(dto.getUsername(), user.getTenantId());
 
+        return issueLoginForUser(user, dto.getClientType(), forceChangePwd);
+    }
+
+    /**
+     * 密码登录与社交登录共用的登录态签发出口：
+     * 账号状态校验 → 租户有效性校验 → 权限装载 → token 签发 → 互踢 → 登录日志。
+     */
+    @Override
+    public LoginVO issueLoginForUser(UserVO user, ClientType clientType, boolean forceChangePassword) {
+        if (user == null || user.getUserId() == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (user.getStatus() == null || user.getStatus() != 0) {
+            recordLoginFail(user.getUsername(), user.getTenantId(), "账号已停用");
+            throw new BusinessException("账号已停用，请联系管理员");
+        }
+
         if (user.getTenantId() != null && user.getTenantId() != 1L) {
             try {
                 R<Boolean> validResult = tenantServiceClient.checkTenantValid(user.getTenantId());
                 if (validResult.getData() == null || !validResult.getData()) {
-                    recordLoginFail(dto.getUsername(), user.getTenantId(), "租户已停用或已过期");
+                    recordLoginFail(user.getUsername(), user.getTenantId(), "租户已停用或已过期");
                     throw new BusinessException("租户已停用或已过期，请联系管理员");
                 }
             } catch (BusinessException e) {
@@ -156,28 +173,28 @@ public class AuthServiceImpl implements IAuthService {
         R<Set<Long>> dataScopeDeptIdsResult = systemServiceClient.getDataScopeDeptIds(user.getUserId());
         Set<Long> dataScopeDeptIds = dataScopeDeptIdsResult != null ? dataScopeDeptIdsResult.getData() : null;
 
-        LoginUser loginUser = buildLoginUser(user, dto.getClientType(), permissions, dataScopeDeptIds);
+        LoginUser loginUser = buildLoginUser(user, clientType, permissions, dataScopeDeptIds);
 
         String accessToken = generateToken();
         String refreshToken = generateToken();
 
-        Duration tokenExpire = getTokenExpire(dto.getClientType());
-        Duration refreshExpire = getRefreshExpire(dto.getClientType());
+        Duration tokenExpire = getTokenExpire(clientType);
+        Duration refreshExpire = getRefreshExpire(clientType);
         loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
 
-        handleMultiLogin(user.getUserId(), dto.getClientType());
+        handleMultiLogin(user.getUserId(), clientType);
 
         String tokenKey = CacheConstants.TOKEN_KEY + accessToken;
         String refreshKey = CacheConstants.REFRESH_TOKEN_KEY + refreshToken;
-        String userKey = CacheConstants.LOGIN_USER_KEY + user.getUserId() + ":" + dto.getClientType().getCode();
+        String userKey = CacheConstants.LOGIN_USER_KEY + user.getUserId() + ":" + clientType.getCode();
 
         redisTemplate.opsForValue().set(tokenKey, XuJsonUtil.toJsonString(loginUser), tokenExpire);
         redisTemplate.opsForValue().set(refreshKey, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, accessToken, tokenExpire);
 
-        recordLoginSuccess(user.getUserId(), dto.getUsername(), dto.getClientType());
+        recordLoginSuccess(user.getUserId(), user.getUsername(), clientType);
 
-        return buildLoginVO(accessToken, refreshToken, tokenExpire, forceChangePwd, user.getUserId(),
+        return buildLoginVO(accessToken, refreshToken, tokenExpire, forceChangePassword, user.getUserId(),
                 user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
     }
 

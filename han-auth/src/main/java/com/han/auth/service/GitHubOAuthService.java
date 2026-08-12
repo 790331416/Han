@@ -1,12 +1,15 @@
 package com.han.auth.service;
 
 import com.han.auth.domain.SocialUser;
+import com.han.common.core.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -14,7 +17,9 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-public class GitHubOAuthService {
+public class GitHubOAuthService implements SocialOAuthProvider {
+
+    public static final String PROVIDER = "github";
 
     @Value("${social.github.client-id:}")
     private String clientId;
@@ -27,21 +32,35 @@ public class GitHubOAuthService {
 
     private final RestClient restClient = RestClient.create();
 
+    @Override
+    public String provider() {
+        return PROVIDER;
+    }
+
     /**
      * 获取 GitHub OAuth 授权 URL。
      */
-    public String getAuthorizeUrl(String redirectUri) {
+    @Override
+    public String buildAuthorizeUrl(String redirectUri, String state) {
+        if (!isConfigured()) {
+            throw new BusinessException("GitHub 登录未配置");
+        }
         return "https://github.com/login/oauth/authorize"
-                + "?client_id=" + clientId
-                + "&redirect_uri=" + redirectUri
-                + "&scope=read:user user:email";
+                + "?client_id=" + encode(clientId)
+                + "&redirect_uri=" + encode(redirectUri)
+                + "&state=" + encode(state)
+                + "&scope=" + encode("read:user user:email");
     }
 
     /**
      * 用授权码换取用户信息。
      */
+    @Override
     @SuppressWarnings("unchecked")
-    public SocialUser getUserByCode(String code) {
+    public SocialUser fetchUser(String code) {
+        if (!isConfigured()) {
+            throw new BusinessException("GitHub 登录未配置");
+        }
         Map<String, String> body = Map.of(
                 "client_id", clientId,
                 "client_secret", clientSecret,
@@ -56,7 +75,7 @@ public class GitHubOAuthService {
 
         if (tokenData == null || !tokenData.containsKey("access_token")) {
             log.error("GitHub OAuth token exchange failed: {}", tokenData);
-            throw new RuntimeException("GitHub 授权失败");
+            throw new BusinessException("GitHub 授权失败");
         }
         String accessToken = (String) tokenData.get("access_token");
 
@@ -68,21 +87,25 @@ public class GitHubOAuthService {
 
         if (userData == null || !userData.containsKey("id")) {
             log.error("GitHub user info fetch failed");
-            throw new RuntimeException("获取 GitHub 用户信息失败");
+            throw new BusinessException("获取 GitHub 用户信息失败");
         }
 
         return SocialUser.builder()
-                .provider("github")
+                .provider(PROVIDER)
                 .openId(String.valueOf(userData.get("id")))
                 .nickname((String) userData.getOrDefault("login", ""))
                 .avatar((String) userData.getOrDefault("avatar_url", ""))
                 .email((String) userData.get("email"))
-                .accessToken(accessToken)
                 .build();
     }
 
+    @Override
     public boolean isConfigured() {
         return clientId != null && !clientId.isBlank()
                 && clientSecret != null && !clientSecret.isBlank();
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value != null ? value : "", StandardCharsets.UTF_8);
     }
 }
