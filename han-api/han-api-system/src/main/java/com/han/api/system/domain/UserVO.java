@@ -3,6 +3,7 @@ package com.han.api.system.domain;
 import lombok.Data;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -33,7 +34,18 @@ public class UserVO implements Serializable {
     /** 昵称 */
     private String nickname;
 
-    /** 密码（加密后） */
+    /**
+     * 密码（BCrypt 哈希）。
+     *
+     * @deprecated 哈希跟着 {@code getUserById} / {@code getUserByUsername} 这类高频查询接口
+     *         跨进程传输，会进入两端的访问日志、链路追踪 payload 与抓包，而服务间是纯 HTTP 明文。
+     *         请改用 {@code SystemServiceClient#verifyPassword}，比对在 han-system 内部完成。
+     *         <p><b>本字段暂不能删也不能加 {@code @JsonIgnore}</b>：han-auth 的
+     *         {@code AuthServiceImpl#login} 与 {@code TotpController#unbindTotp} 目前仍靠它取哈希
+     *         做 {@code PasswordUtil.matches}，改成 {@code @JsonIgnore} 会当场让登录失败。
+     *         删除动作必须排在这两个调用点切到 {@code verifyPassword} 之后。
+     */
+    @Deprecated
     private String password;
 
     /** 头像 */
@@ -77,7 +89,15 @@ public class UserVO implements Serializable {
     /** 权限列表 */
     private Set<String> permissions;
 
-    /** 是否管理员 */
+    /**
+     * 是否管理员。
+     *
+     * <p>派生方法，不是数据字段。加 {@code @JsonIgnore} 是因为 Jackson 会把这个无参 boolean
+     * getter 当成属性序列化出一个没有 setter 的 {@code admin} 字段：只出不进、每个响应都多传，
+     * 还容易让调用方误以为后端下发了权威的管理员标志 —— 它的判断依据只是 {@code userId == 1}，
+     * 并不代表真实权限。
+     */
+    @JsonIgnore
     public boolean isAdmin() {
         return userId != null && userId == 1L;
     }

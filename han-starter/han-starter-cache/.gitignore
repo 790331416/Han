@@ -1,0 +1,12 @@
+# 根 .gitignore 的「Temporary folders」段里有一条不带路径锚点的 `cache/`（第 346 行），
+# 它会匹配仓库里任何叫 cache 的目录 —— 包括本模块的 Java 包目录
+# src/main/java/com/han/starter/cache/。后果是这个包下的源码会被 git 静默忽略：
+# 文件在磁盘上、Maven 能编译，但 git status 里看不见，提交时悄悄丢掉。
+#
+# 这里在模块级重新纳入该目录。先反选目录本身再反选文件，顺序不能反 ——
+# 父目录仍处于排除状态时，git 不会下沉进去，单独反选文件无效。
+#
+# 根本修法是把根 .gitignore 的 `cache/` 改成带锚点的形式（例如 `/cache/`），
+# 但那是仓库根文件，不在本节点的改动范围内，已记入跨组待办。
+!src/main/java/com/han/starter/cache/
+!src/main/java/com/han/starter/cache/**

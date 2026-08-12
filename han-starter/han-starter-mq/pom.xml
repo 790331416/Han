@@ -10,7 +10,8 @@
     </parent>
 
     <artifactId>han-starter-mq</artifactId>
-    <description>消息队列Starter - 支持RabbitMQ/Kafka可插拔</description>
+    <!-- 状态：仅有接口定义，尚无实现与自动装配，详见 com.han.starter.mq 的 package-info -->
+    <description>消息队列Starter - 规划支持RabbitMQ/Kafka可插拔（当前仅接口）</description>
 
     <dependencies>
         <dependency>
