@@ -214,7 +214,9 @@ const handleLogin = async () => {
     }
     const loginRes = await userStore.login(loginData)
     if (loginRes.data.requireTotp) {
-      // 需要 2FA 验证，弹出 TOTP 输入框
+      // 2FA 首段响应没有 accessToken，store 里的 applySession 会把字符串 "undefined"
+      // 写进 localStorage，刷新后路由守卫会误判为已登录。这里先清掉再进入第二段。
+      userStore.resetToken()
       pendingLoginData = { ...loginData }
       totpCode.value = ''
       totpVisible.value = true
