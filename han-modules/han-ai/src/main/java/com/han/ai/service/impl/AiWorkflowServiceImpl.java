@@ -270,18 +270,22 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     * 编排设计器保存画布只提交 workflowId + flowConfig，其余字段必须沿用库内值。
+     */
     private void copyEditableFields(AiWorkflowPo source, AiWorkflowPo target) {
-        target.setWorkflowName(source.getWorkflowName());
-        target.setDescription(source.getDescription());
-        target.setWorkflowType(source.getWorkflowType());
-        target.setModelId(source.getModelId());
-        target.setKnowledgeBaseIds(source.getKnowledgeBaseIds());
-        target.setMcpServerIds(source.getMcpServerIds());
-        target.setSystemPrompt(source.getSystemPrompt());
-        target.setFlowConfig(source.getFlowConfig());
-        target.setPrologue(source.getPrologue());
-        target.setSuggestedQuestions(source.getSuggestedQuestions());
-        target.setStatus(source.getStatus());
+        copyIfPresent(source.getWorkflowName(), target::setWorkflowName);
+        copyIfPresent(source.getDescription(), target::setDescription);
+        copyIfPresent(source.getWorkflowType(), target::setWorkflowType);
+        copyIfPresent(source.getModelId(), target::setModelId);
+        copyIfPresent(source.getKnowledgeBaseIds(), target::setKnowledgeBaseIds);
+        copyIfPresent(source.getMcpServerIds(), target::setMcpServerIds);
+        copyIfPresent(source.getSystemPrompt(), target::setSystemPrompt);
+        copyIfPresent(source.getFlowConfig(), target::setFlowConfig);
+        copyIfPresent(source.getPrologue(), target::setPrologue);
+        copyIfPresent(source.getSuggestedQuestions(), target::setSuggestedQuestions);
+        copyIfPresent(source.getStatus(), target::setStatus);
     }
 
     private void normalize(AiWorkflowPo workflow) {

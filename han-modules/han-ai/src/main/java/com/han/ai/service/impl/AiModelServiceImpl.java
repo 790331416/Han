@@ -228,20 +228,24 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     */
     private void copyEditableFields(AiModelPo source, AiModelPo target) {
-        target.setModelName(source.getModelName());
-        target.setModelType(source.getModelType());
-        target.setProvider(source.getProvider());
-        target.setModelCode(source.getModelCode());
-        target.setBaseUrl(source.getBaseUrl());
+        copyIfPresent(source.getModelName(), target::setModelName);
+        copyIfPresent(source.getModelType(), target::setModelType);
+        copyIfPresent(source.getProvider(), target::setProvider);
+        copyIfPresent(source.getModelCode(), target::setModelCode);
+        copyIfPresent(source.getBaseUrl(), target::setBaseUrl);
+        // 凭据单独判定：空值与掩码值都表示沿用库内 API Key，不能被请求体覆盖
         if (!credentialResolver.shouldKeepExistingApiKey(source.getApiKey())) {
             target.setApiKey(source.getApiKey());
         }
-        target.setMaxTokens(source.getMaxTokens());
-        target.setTemperature(source.getTemperature());
-        target.setSupportsVision(source.getSupportsVision());
-        target.setStatus(source.getStatus());
-        target.setRemark(source.getRemark());
+        copyIfPresent(source.getMaxTokens(), target::setMaxTokens);
+        copyIfPresent(source.getTemperature(), target::setTemperature);
+        copyIfPresent(source.getSupportsVision(), target::setSupportsVision);
+        copyIfPresent(source.getStatus(), target::setStatus);
+        copyIfPresent(source.getRemark(), target::setRemark);
     }
 
     private void normalize(AiModelPo model) {

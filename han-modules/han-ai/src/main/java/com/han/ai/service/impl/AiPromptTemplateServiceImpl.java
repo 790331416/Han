@@ -257,13 +257,16 @@ public class AiPromptTemplateServiceImpl extends AiServiceSupport implements IAi
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     */
     private void copyEditableFields(AiPromptTemplatePo source, AiPromptTemplatePo target) {
-        target.setTemplateName(source.getTemplateName());
-        target.setCategory(source.getCategory());
-        target.setContent(source.getContent());
-        target.setVariables(source.getVariables());
-        target.setDescription(source.getDescription());
-        target.setStatus(source.getStatus());
+        copyIfPresent(source.getTemplateName(), target::setTemplateName);
+        copyIfPresent(source.getCategory(), target::setCategory);
+        copyIfPresent(source.getContent(), target::setContent);
+        copyIfPresent(source.getVariables(), target::setVariables);
+        copyIfPresent(source.getDescription(), target::setDescription);
+        copyIfPresent(source.getStatus(), target::setStatus);
     }
 
     private void normalize(AiPromptTemplatePo template) {

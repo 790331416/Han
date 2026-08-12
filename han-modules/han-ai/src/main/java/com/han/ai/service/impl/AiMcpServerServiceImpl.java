@@ -236,15 +236,18 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     */
     private void copyEditableFields(AiMcpServerPo source, AiMcpServerPo target) {
-        target.setServerName(source.getServerName());
-        target.setDescription(source.getDescription());
-        target.setTransportType(source.getTransportType());
-        target.setCommand(source.getCommand());
-        target.setArgs(source.getArgs());
-        target.setEnvVars(source.getEnvVars());
-        target.setUrl(source.getUrl());
-        target.setStatus(source.getStatus());
+        copyIfPresent(source.getServerName(), target::setServerName);
+        copyIfPresent(source.getDescription(), target::setDescription);
+        copyIfPresent(source.getTransportType(), target::setTransportType);
+        copyIfPresent(source.getCommand(), target::setCommand);
+        copyIfPresent(source.getArgs(), target::setArgs);
+        copyIfPresent(source.getEnvVars(), target::setEnvVars);
+        copyIfPresent(source.getUrl(), target::setUrl);
+        copyIfPresent(source.getStatus(), target::setStatus);
     }
 
     private void normalize(AiMcpServerPo server) {
