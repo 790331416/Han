@@ -88,6 +88,22 @@
 
         <!-- 火山引擎 SDK -->
         <volcengine.sdk.version>1.0.272</volcengine.sdk.version>
+
+        <!-- ==================== 构建插件版本 ==================== -->
+        <!-- 本工程用 spring-boot-dependencies 做 BOM 导入，而不是继承 spring-boot-starter-parent，
+             所以拿不到 parent 里的插件版本管理，插件版本必须在这里自己钉死，
+             否则同一份代码在不同 Maven 版本上会解析出不同的默认插件版本。 -->
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+        <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
+        <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+
+        <!-- ==================== 构建门禁开关 ==================== -->
+        <!-- 基线校验（Maven/JDK 版本、单 pom 内重复依赖）默认开启，代价极低。 -->
+        <han.enforcer.skip>false</han.enforcer.skip>
+        <!-- 依赖收敛校验默认关闭：全仓当前存在大量传递依赖版本分歧，直接开启会立刻红。
+             用 -Dhan.enforcer.convergence.skip=false 单独跑，可查看全部冲突清单。 -->
+        <han.enforcer.convergence.skip>true</han.enforcer.convergence.skip>
     </properties>
 
     <dependencyManagement>
@@ -469,6 +485,16 @@
             <version>${lombok.version}</version>
             <scope>provided</scope>
         </dependency>
+
+        <!-- 测试栈全局下发：版本由 spring-boot-dependencies 管理。
+             放在这里是为了让任何模块新建 src/test/java 后立刻能写 JUnit 5 / Mockito / AssertJ，
+             不必先改自己的 pom —— 29 个叶子模块里 23 个零测试，逐个加依赖是补测试的第一道门槛。
+             test 作用域，不进入任何运行时产物。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -490,7 +516,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.13.0</version>
+                    <version>${maven-compiler-plugin.version}</version>
                     <configuration>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
@@ -505,7 +531,7 @@
                             <path>
                                 <groupId>org.projectlombok</groupId>
                                 <artifactId>lombok-mapstruct-binding</artifactId>
-                                <version>0.2.0</version>
+                                <version>${lombok-mapstruct-binding.version}</version>
                             </path>
                             <path>
                                 <groupId>org.mapstruct</groupId>
@@ -515,8 +541,81 @@
                         </annotationProcessorPaths>
                     </configuration>
                 </plugin>
+
+                <!-- 单元测试执行。29 个叶子模块里 23 个当前零测试，这里先把执行口径统一，
+                     模块补上 src/test/java 之后不需要再各自配置一遍。 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <!-- 控制台与报告统一 UTF-8，否则 Windows 上中文断言消息会乱码 -->
+                        <argLine>-Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai</argLine>
+                        <trimStackTrace>false</trimStackTrace>
+                        <!-- 没有测试目录的模块直接跳过，不让 `mvn test` 因为空模块失败。
+                             注意：这也意味着 `-pl <无测试模块> test` 的 BUILD SUCCESS
+                             不能作为「测试通过」的证据。 -->
+                        <failIfNoTests>false</failIfNoTests>
+                        <includes>
+                            <include>**/*Test.java</include>
+                            <include>**/*Tests.java</include>
+                            <include>**/*TestCase.java</include>
+                        </includes>
+                    </configuration>
+                </plugin>
+
+                <!-- 依赖与环境版本门禁 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${maven-enforcer-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <!-- 版本收敛门禁。分两个 execution：
+                 baseline 常开，代价可忽略；convergence 默认关闭，避免在存量冲突清干净之前
+                 把全仓 34 个模块的构建打红。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-baseline</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${han.enforcer.skip}</skip>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[${java.version},)</version>
+                                </requireJavaVersion>
+                                <banDuplicatePomDependencyVersions/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-dependency-convergence</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${han.enforcer.convergence.skip}</skip>
+                            <rules>
+                                <dependencyConvergence/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <repositories>
