@@ -36,8 +36,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -55,6 +58,8 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     private static final String DOC_STATUS_COMPLETED = "completed";
     private static final String DOC_STATUS_FAILED = "failed";
     private static final int MAX_PARAGRAPH_LENGTH = 500;
+    /** 与 ai_document.doc_name 列宽对齐 */
+    private static final int MAX_DOC_NAME_LENGTH = 255;
 
     private final AiKnowledgeBaseMapper aiKnowledgeBaseMapper;
     private final AiDocumentMapper aiDocumentMapper;
@@ -68,6 +73,10 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
 
     @Value("${han.ai.document-storage-path:./data/ai-documents}")
     private String documentStoragePath;
+
+    /** 知识库上传扩展名白名单（不含点号，逗号分隔） */
+    @Value("${han.ai.document.allowed-extensions:txt,md,markdown,csv,tsv,log,json,xml,yml,yaml,html,htm,pdf,docx,xlsx}")
+    private String allowedExtensionsConfig;
 
     @Override
     public PageResult<AiKnowledgeBasePo> selectPage(AiKnowledgeBaseQuery query) {
@@ -163,10 +172,10 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         if (file == null || file.isEmpty()) {
             throw new BusinessException("上传文件不能为空");
         }
-        String originalFilename = file.getOriginalFilename();
-        String docName = StringUtils.hasText(originalFilename) ? originalFilename.trim() : "unnamed.txt";
+        String docName = resolveSafeDocName(file.getOriginalFilename());
+        String extension = resolveAllowedExtension(docName);
         String docType = textExtractor.resolveDocumentType(docName);
-        Path storedPath = storeFile(kbId, docName, file);
+        Path storedPath = storeFile(kbId, extension, file);
 
         AiDocumentPo document = new AiDocumentPo();
         document.setKbId(kbId);
@@ -572,16 +581,65 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         return result;
     }
 
-    private Path storeFile(Long kbId, String docName, MultipartFile file) {
-        Path directory = Paths.get(documentStoragePath, String.valueOf(kbId));
+    /**
+     * 文件名去路径化：只保留最后一段，并剔除路径分隔符与穿越片段。
+     * 原实现直接使用客户端原始文件名，后缀里可以塞 {@code ../} 逃出知识库目录。
+     */
+    private String resolveSafeDocName(String originalFilename) {
+        String candidate = trimToEmpty(originalFilename)
+                .replace('\\', '/');
+        int lastSeparator = candidate.lastIndexOf('/');
+        if (lastSeparator >= 0) {
+            candidate = candidate.substring(lastSeparator + 1);
+        }
+        candidate = candidate.replace("\u0000", "").trim();
+        if (!StringUtils.hasText(candidate) || ".".equals(candidate) || "..".equals(candidate)) {
+            return "unnamed.txt";
+        }
+        return candidate.length() > MAX_DOC_NAME_LENGTH
+                ? candidate.substring(candidate.length() - MAX_DOC_NAME_LENGTH)
+                : candidate;
+    }
+
+    /**
+     * 扩展名白名单校验，返回已净化的小写扩展名（不含点号，无扩展名时返回空串）。
+     * 白名单之外的类型直接拒绝，不再按 UTF-8 文本兜底把二进制文件整个读进内存。
+     */
+    private String resolveAllowedExtension(String docName) {
+        int lastDot = docName.lastIndexOf('.');
+        String rawExtension = lastDot >= 0 ? docName.substring(lastDot + 1) : "";
+        String extension = rawExtension.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (!StringUtils.hasText(extension)) {
+            // 无扩展名按纯文本处理，保持历史行为
+            return "";
+        }
+        if (!allowedDocumentExtensions().contains(extension)) {
+            throw new BusinessException("暂不支持该文档类型：." + extension
+                    + "；当前允许的类型为 " + String.join("、", allowedDocumentExtensions()));
+        }
+        return extension;
+    }
+
+    private Set<String> allowedDocumentExtensions() {
+        Set<String> extensions = new LinkedHashSet<>();
+        for (String part : allowedExtensionsConfig.split(",")) {
+            String normalized = part.trim().toLowerCase(Locale.ROOT);
+            if (StringUtils.hasText(normalized)) {
+                extensions.add(normalized);
+            }
+        }
+        return extensions;
+    }
+
+    private Path storeFile(Long kbId, String extension, MultipartFile file) {
+        Path directory = Paths.get(documentStoragePath, String.valueOf(kbId)).normalize();
         try {
             Files.createDirectories(directory);
-            String suffix = "";
-            int lastDot = docName.lastIndexOf('.');
-            if (lastDot >= 0) {
-                suffix = docName.substring(lastDot);
+            String fileName = UUID.randomUUID() + (StringUtils.hasText(extension) ? "." + extension : "");
+            Path target = directory.resolve(fileName).normalize();
+            if (!target.startsWith(directory)) {
+                throw new BusinessException("文档存储路径不合法");
             }
-            Path target = directory.resolve(UUID.randomUUID() + suffix);
             try (var inputStream = file.getInputStream()) {
                 Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
             }

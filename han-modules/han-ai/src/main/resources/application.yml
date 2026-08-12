@@ -8,6 +8,12 @@ spring:
       - "optional:nacos:han-ai.yml"
   application:
     name: han-ai
+  servlet:
+    # 知识库文档上传：不配置时受 Spring 默认 1MB 约束，绝大多数 pdf/docx 会直接上传失败。
+    # 口径与 han-file 一致（同为 HAN_<模块>_MAX_FILE_SIZE 环境变量覆盖）。
+    multipart:
+      max-file-size: ${HAN_AI_MAX_FILE_SIZE:100MB}
+      max-request-size: ${HAN_AI_MAX_REQUEST_SIZE:120MB}
   cloud:
     nacos:
       discovery:

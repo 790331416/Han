@@ -9,18 +9,24 @@ import com.han.ai.mapper.AiKnowledgeBaseMapper;
 import com.han.ai.mapper.AiModelMapper;
 import com.han.ai.mapper.AiParagraphMapper;
 import com.han.ai.service.IAiKnowledgeRetrievalService;
+import com.han.common.core.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -124,6 +130,75 @@ class AiKnowledgeBaseServiceImplTest {
             Mockito.verify(paragraphMapper, Mockito.times(2)).insert(any(AiParagraphPo.class));
         } finally {
             Files.deleteIfExists(file);
+        }
+    }
+
+    // ---------- 上传净化：路径穿越与扩展名白名单 ----------
+
+    @Test
+    void uploadRejectsExtensionOutsideWhitelist() {
+        prepareUploadService();
+        AiKnowledgeBasePo knowledgeBase = new AiKnowledgeBasePo();
+        knowledgeBase.setKbId(11L);
+        knowledgeBase.setStatus("0");
+        when(knowledgeBaseMapper.selectById(11L)).thenReturn(knowledgeBase);
+
+        MockMultipartFile payload = new MockMultipartFile(
+                "file", "payload.exe", "application/octet-stream", "MZ".getBytes(StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> service.uploadDocument(11L, payload))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("暂不支持该文档类型");
+        Mockito.verify(documentMapper, Mockito.never()).insert(any(AiDocumentPo.class));
+    }
+
+    @Test
+    void uploadStripsTraversalFromClientFilename() throws Exception {
+        Path storageRoot = Files.createTempDirectory("han-ai-storage");
+        try {
+            prepareUploadService();
+            ReflectionTestUtils.setField(service, "documentStoragePath", storageRoot.toString());
+            AiKnowledgeBasePo knowledgeBase = new AiKnowledgeBasePo();
+            knowledgeBase.setKbId(11L);
+            knowledgeBase.setStatus("0");
+            when(knowledgeBaseMapper.selectById(11L)).thenReturn(knowledgeBase);
+            when(textExtractor.resolveDocumentType(Mockito.anyString())).thenReturn("txt");
+            when(textExtractor.extract(any(Path.class), Mockito.eq("txt"))).thenReturn("正文内容");
+
+            MockMultipartFile payload = new MockMultipartFile(
+                    "file", "../../../evil.txt", "text/plain", "正文内容".getBytes(StandardCharsets.UTF_8));
+            service.uploadDocument(11L, payload);
+
+            ArgumentCaptor<AiDocumentPo> captor = ArgumentCaptor.forClass(AiDocumentPo.class);
+            Mockito.verify(documentMapper).insert(captor.capture());
+            Path stored = Path.of(captor.getValue().getFilePath()).normalize();
+            assertThat(stored.startsWith(storageRoot.resolve("11").normalize()))
+                    .as("落盘路径必须留在知识库目录内: %s", stored)
+                    .isTrue();
+            assertThat(captor.getValue().getDocName()).isEqualTo("evil.txt");
+        } finally {
+            deleteRecursively(storageRoot);
+        }
+    }
+
+    private void prepareUploadService() {
+        ReflectionTestUtils.setField(service, "allowedExtensionsConfig", "txt,md,pdf,docx,xlsx");
+        ReflectionTestUtils.setField(service, "documentStoragePath",
+                System.getProperty("java.io.tmpdir") + "/han-ai-test-docs");
+    }
+
+    private void deleteRecursively(Path root) throws Exception {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (var walk = Files.walk(root)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (Exception ignored) {
+                    // best effort cleanup
+                }
+            });
         }
     }
 
