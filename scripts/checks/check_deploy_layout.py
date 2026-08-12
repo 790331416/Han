@@ -61,6 +61,15 @@ def main() -> int:
                     if token not in mysql_text:
                         violations.append(f"{mysql_compose} missing MySQL token: {token}")
 
+                # 新增 sdfz 脚本却忘了挂进 compose，全新部署就会缺表缺数据。
+                # 这里按目录反查，任何新脚本都必须同时出现在挂载列表里。
+                for sdfz_file in sorted((SQL / "sdfz" / "mysql").glob("*.sql")):
+                    mount_token = f"/sdfz/mysql/{sdfz_file.name}:"
+                    if mount_token not in mysql_text:
+                        violations.append(
+                            f"{mysql_compose} 未挂载 SDFZ SQL，全新部署会缺数据: {mount_token}"
+                        )
+
                 for token in (
                     "HAN_MYSQL_HOST_PORT",
                     "HAN_REDIS_HOST_PORT",

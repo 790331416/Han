@@ -170,6 +170,13 @@ def main() -> int:
                 if stripped.startswith(prefix):
                     violations.append(f"PostgreSQL upgrade SQL contains forbidden statement at {upgrade_file}:{lineno}: {line.strip()}")
 
+    # 手工执行 sdfz 脚本时客户端字符集常常缺省为 latin1，中文会被双重编码落库。
+    # 95 上已经有一批记录被这么写坏过，所以这里把「文件头声明 utf8mb4」变成硬性检查。
+    for sdfz_file in sorted((SQL / "sdfz" / "mysql").glob("*.sql")):
+        head = "\n".join(read_sql(sdfz_file).splitlines()[:12]).lower()
+        if "set names utf8mb4;" not in head:
+            violations.append(f"SDFZ MySQL SQL 必须在文件头声明 SET NAMES utf8mb4;: {sdfz_file}")
+
     sdfz_mysql = SQL / "sdfz" / "mysql" / "20260811_education_master.sql"
     if sdfz_mysql.exists():
         sdfz_text = read_sql(sdfz_mysql).lower()
@@ -189,6 +196,19 @@ def main() -> int:
         for forbidden in ("online_status", "heartbeat", "stream_url", "record_url"):
             if forbidden in sdfz_text:
                 violations.append(f"SDFZ management schema must not own runtime video/device field: {forbidden}")
+
+    sdfz_order = SQL / "sdfz" / "mysql" / "20260812_course_order.sql"
+    if sdfz_order.exists():
+        order_text = read_sql(sdfz_order).lower()
+        for table in ("edu_course_order", "edu_course_order_subject", "edu_course_order_grant"):
+            if f"create table if not exists {table}" not in order_text:
+                violations.append(f"SDFZ course order SQL missing table: {table}")
+        # 「同一听讲班+主讲班+学期只能有一张有效单」由这条唯一键保证，丢了就退化成应用层抢锁。
+        if "uq_edu_course_order_active" not in order_text:
+            violations.append("SDFZ course order SQL missing unique key: uq_edu_course_order_active")
+        # 学期三态必须独立成列，不能复用 status（0 在 edu_* 里已经是「正常」）。
+        if "lifecycle_status" not in order_text:
+            violations.append("SDFZ course order SQL missing edu_semester.lifecycle_status")
 
     for script in UPGRADE_REHEARSAL_SCRIPTS:
         if not script.exists():
