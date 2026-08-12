@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.ai.domain.po.AiMcpServerPo;
 import com.han.ai.domain.query.AiMcpServerQuery;
 import com.han.ai.mapper.AiMcpServerMapper;
+import com.han.ai.security.AiCredentialMaskDetector;
 import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.ai.service.IAiMcpServerService;
 import com.han.common.core.domain.PageResult;
@@ -191,9 +192,21 @@ public class AiMcpServerServiceImpl extends AiServiceSupport implements IAiMcpSe
         // SSRF 防护（G1-12）：保存路径即校验，内网/环回等地址默认拒绝，可配白名单放行
         urlSecurityValidator.validate(server.getUrl(), "MCP服务");
         validateJson(server.getArgs(), "参数");
+        validateEnvVarsNotMasked(server.getEnvVars());
         validateJson(server.getEnvVars(), "环境变量");
         if (!STATUS_ENABLED.equals(server.getStatus()) && !STATUS_DISABLED.equals(server.getStatus())) {
             throw new BusinessException("MCP服务状态不合法");
+        }
+    }
+
+    /**
+     * envVars 已按 {@code AiModelPo.apiKey} 的口径脱敏出参，前端拿到的是掩码串。
+     * 若掩码被原样回传，写库会把真实凭据替换成一串星号（且此后每次请求都会带着星号去鉴权），
+     * 因此保存路径直接拒绝，把「静默销毁凭据」变成用户可见、可纠正的错误。
+     */
+    private void validateEnvVarsNotMasked(String envVars) {
+        if (AiCredentialMaskDetector.isMasked(envVars)) {
+            throw new BusinessException("环境变量包含脱敏掩码占位符，无法保存；请重新填写完整的环境变量 JSON");
         }
     }
 
