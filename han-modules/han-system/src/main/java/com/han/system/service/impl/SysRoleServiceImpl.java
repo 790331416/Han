@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 角色服务实现
@@ -29,6 +30,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class SysRoleServiceImpl implements ISysRoleService {
+
+    /** 用户表上的凭据字段，任何角色侧查询都不得带出 */
+    private static final Set<String> CREDENTIAL_FIELDS = Set.of("password", "totpSecret");
 
     private final SysRoleMapper roleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
@@ -198,6 +202,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
                 .in(SysUserPo::getId, userIds)
                 .like(username != null && !username.isEmpty(), SysUserPo::getUsername, username)
                 .like(phone != null && !phone.isEmpty(), SysUserPo::getPhone, phone);
+        excludeCredentialColumns(wrapper);
 
         Page<SysUserPo> page = userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         return new PageResult<>(page.getRecords(), page.getTotal());
@@ -218,6 +223,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
         if (!allocatedUserIds.isEmpty()) {
             wrapper.notIn(SysUserPo::getId, allocatedUserIds);
         }
+        excludeCredentialColumns(wrapper);
 
         Page<SysUserPo> page = userMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         return new PageResult<>(page.getRecords(), page.getTotal());
@@ -258,6 +264,15 @@ public class SysRoleServiceImpl implements ISysRoleService {
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 「分配用户」两个列表直出 {@link SysUserPo}，这里在 SQL 层就不查密码哈希与 TOTP 密钥，
+     * 与 PO 上的 {@code WRITE_ONLY} 构成双重防护，同时保持响应字段结构不变。
+     */
+    private void excludeCredentialColumns(LambdaQueryWrapper<SysUserPo> wrapper) {
+        wrapper.select(SysUserPo.class,
+                field -> !CREDENTIAL_FIELDS.contains(field.getProperty()));
+    }
 
     private LambdaQueryWrapper<SysRolePo> buildQueryWrapper(SysRoleQuery query) {
         return new LambdaQueryWrapper<SysRolePo>()

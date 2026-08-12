@@ -1,6 +1,7 @@
 package com.han.system.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.han.common.mybatis.domain.entity.BizEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -24,7 +25,8 @@ public class SysUserPo extends BizEntity {
     /** 昵称 */
     private String nickname;
 
-    /** 密码 */
+    /** 密码（BCrypt 哈希，任何响应体都不得回传） */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /** 头像 */
@@ -54,7 +56,8 @@ public class SysUserPo extends BizEntity {
     /** 密码重置标记（1=需要修改密码） */
     private Integer pwdResetFlag;
 
-    /** TOTP 密钥（2FA 绑定后存储，加密保存） */
+    /** TOTP 密钥（2FA 绑定后存储，加密保存；泄漏即可绕过二次验证，任何响应体都不得回传） */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String totpSecret;
 
     /** 是否启用 2FA（0=未启用 1=已启用） */

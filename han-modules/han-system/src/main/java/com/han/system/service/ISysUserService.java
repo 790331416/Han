@@ -73,7 +73,12 @@ public interface ISysUserService extends IBaseService<SysUserQuery, SysUserDto> 
 
     /**
      * 查询简单用户列表（下拉选择用）
-     * 返回当前租户下正常状态用户的 userId/nickname/phone/email
+     *
+     * <p>返回当前租户下正常状态用户的 userId/nickname；手机号与邮箱只对具备
+     * 用户查询或部门维护权限的调用方下发。结果按关键字过滤并限制条数，
+     * 避免最低权限账号一次性拉走整租户通讯录。
+     *
+     * @param keyword 昵称/用户名模糊关键字，可为空
      */
-    java.util.List<java.util.Map<String, Object>> selectSimpleUserList();
+    java.util.List<com.han.system.domain.vo.SimpleUserVo> selectSimpleUserList(String keyword);
 }

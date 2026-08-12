@@ -12,10 +12,12 @@ import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.HanStrUtil;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import com.han.common.security.util.DataOwnerUtil;
 import com.han.system.converter.SysUserConverter;
 import com.han.system.domain.dto.ProfileDto;
 import com.han.system.domain.dto.SysUserDto;
+import com.han.system.domain.vo.SimpleUserVo;
 import com.han.system.domain.vo.UserImportVo;
 import com.han.system.domain.po.SysUserPostPo;
 import com.han.system.domain.po.SysUserPo;
@@ -42,6 +44,13 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> implements ISysUserService {
+
+    /** 下拉接口单次最多返回的用户数，避免大租户下变成通讯录导出口 */
+    private static final int SIMPLE_LIST_MAX_ROWS = 200;
+
+    /** 允许在下拉接口里看到联系方式的权限点 */
+    private static final List<String> CONTACT_VISIBLE_PERMISSIONS = List.of(
+            "system:user:query", "system:user:list", "system:dept:add", "system:dept:edit");
 
     private final SysUserMapper sysUserMapper;
     private final SysUserConverter sysUserConverter;
@@ -408,20 +417,51 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     }
 
     @Override
-    public List<java.util.Map<String, Object>> selectSimpleUserList() {
-        List<SysUserPo> users = sysUserMapper.selectList(
-                new LambdaQueryWrapper<SysUserPo>()
-                        .eq(SysUserPo::getStatus, 0)
-                        .select(SysUserPo::getId, SysUserPo::getNickname, SysUserPo::getPhone, SysUserPo::getEmail)
-                        .orderByAsc(SysUserPo::getNickname)
-        );
-        return users.stream().map(u -> {
-            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
-            map.put("userId", u.getId());
-            map.put("nickname", u.getNickname());
-            map.put("phone", u.getPhone());
-            map.put("email", u.getEmail());
-            return map;
-        }).toList();
+    public List<SimpleUserVo> selectSimpleUserList(String keyword) {
+        boolean contactVisible = canViewContact();
+
+        LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getStatus, 0);
+        if (HanStrUtil.isNotBlank(keyword)) {
+            String trimmed = keyword.trim();
+            wrapper.and(w -> w.like(SysUserPo::getNickname, trimmed).or().like(SysUserPo::getUsername, trimmed));
+        }
+        if (contactVisible) {
+            wrapper.select(SysUserPo::getId, SysUserPo::getNickname, SysUserPo::getPhone, SysUserPo::getEmail);
+        } else {
+            wrapper.select(SysUserPo::getId, SysUserPo::getNickname);
+        }
+        wrapper.orderByAsc(SysUserPo::getNickname).last("LIMIT " + SIMPLE_LIST_MAX_ROWS);
+
+        return sysUserMapper.selectList(wrapper).stream()
+                .map(u -> SimpleUserVo.builder()
+                        .userId(u.getId())
+                        .nickname(u.getNickname())
+                        .phone(contactVisible ? u.getPhone() : null)
+                        .email(contactVisible ? u.getEmail() : null)
+                        .build())
+                .toList();
+    }
+
+    /**
+     * 下拉接口是否可以下发联系方式。
+     *
+     * <p>部门维护页需要用负责人的真实手机号/邮箱回填部门联系方式，因此对具备
+     * 用户查询或部门维护权限的调用方保留明文；其余已登录用户只能拿到昵称。
+     */
+    private boolean canViewContact() {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        if (user == null) {
+            return false;
+        }
+        if (user.isAdmin()) {
+            return true;
+        }
+        for (String permission : CONTACT_VISIBLE_PERMISSIONS) {
+            if (user.hasPermission(permission)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
