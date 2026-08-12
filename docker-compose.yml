@@ -4,6 +4,12 @@
 # 硬件: 4核8GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6.0 + Nacos 3.1.1 + RustFS
 # 服务: gateway, auth, system, tenant, workflow, job, file, open
+# ---------------------------------------------
+# 【已弃用 / 过渡保留】
+# 正式部署入口是 deploy/small、deploy/medium、deploy/full（见 AGENTS.md 与
+# docs/03-部署手册.md §11）。本文件只保留给本地开发过渡使用，不得用于 95 或
+# 任何正式环境；三档的端口偏移、镜像清单与初始化顺序以 deploy/<tier> 为准。
+# 口令等敏感项必须由环境变量注入，缺失即启动失败，参见根目录 .env.example。
 # =============================================
 
 x-db-env: &db-env
@@ -53,10 +59,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./sql/postgres/init-base-data.sql:/docker-entrypoint-initdb.d/02-base-data.sql
-      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/03-ai.sql
-      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/04-oss.sql
+      - ./sql/tiers/medium/medium-init.sql:/docker-entrypoint-initdb.d/01-medium-init.sql:ro
     networks:
       - han-network
     healthcheck:
