@@ -52,6 +52,8 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260715_sys_dict_type_exact_duplicate_alignment.sql"
   "sql/upgrades/postgres/20260720_ai_agent_chat_tuning.sql"
   "sql/upgrades/postgres/20260720_wechat_social_login.sql"
+  "sql/upgrades/postgres/20260812_permission_seed_alignment.sql"
+  "sql/upgrades/postgres/20260812_unique_constraint_del_flag_alignment.sql"
 )
 BACKUP_INPUTS=()
 COMPOSE_TIER=""
