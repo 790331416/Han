@@ -11,6 +11,7 @@ import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.IAuthService;
+import com.han.auth.service.LoginAttemptGuard;
 import com.han.auth.service.TotpService;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
@@ -51,6 +52,7 @@ public class AuthServiceImpl implements IAuthService {
     private final SecurityProperties securityProperties;
     private final TotpService totpService;
     private final CaptchaSettingService captchaSettingService;
+    private final LoginAttemptGuard loginAttemptGuard;
 
     private static final Duration PC_TOKEN_EXPIRE = Duration.ofMinutes(30);
     private static final Duration APP_TOKEN_EXPIRE = Duration.ofDays(7);
@@ -61,10 +63,6 @@ public class AuthServiceImpl implements IAuthService {
     private static final Duration WECHAT_REFRESH_EXPIRE = Duration.ofDays(90);
 
     private static final int PASSWORD_EXPIRE_DAYS = 90;
-
-    private static final int MAX_LOGIN_ATTEMPTS = 5;
-    private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(10);
-    private static final String LOGIN_FAIL_KEY = CacheConstants.CACHE_PREFIX + "login_fail:";
 
     @Override
     public LoginVO login(LoginDTO dto) {
@@ -93,7 +91,7 @@ public class AuthServiceImpl implements IAuthService {
             throw new BusinessException("账号已停用，请联系管理员");
         }
 
-        checkLoginLockout(dto.getUsername(), user.getTenantId());
+        loginAttemptGuard.assertNotLocked(dto.getUsername(), user.getTenantId());
 
         String rawPassword = dto.getPassword();
         if (securityProperties.isEnabled()) {
@@ -106,10 +104,11 @@ public class AuthServiceImpl implements IAuthService {
         }
 
         if (!PasswordUtil.matches(rawPassword, user.getPassword())) {
-            int remaining = incrementLoginFail(dto.getUsername(), user.getTenantId());
+            int remaining = loginAttemptGuard.recordFailure(dto.getUsername(), user.getTenantId());
             recordLoginFail(dto.getUsername(), user.getTenantId(), "密码错误");
             if (remaining <= 0) {
-                throw new BusinessException("密码错误次数过多，账户已锁定" + LOCKOUT_DURATION.toMinutes() + "分钟");
+                throw new BusinessException("密码错误次数过多，账户已锁定"
+                        + loginAttemptGuard.getLockoutDuration().toMinutes() + "分钟");
             }
             throw new BusinessException("用户名或密码错误，还可尝试" + remaining + "次");
         }
@@ -127,15 +126,16 @@ public class AuthServiceImpl implements IAuthService {
             R<String> secretResult = systemServiceClient.getTotpSecret(user.getUserId());
             String secret = secretResult.getData();
             if (secret == null || !totpService.verifyCode(secret, totpCode)) {
-                int remaining = incrementLoginFail(dto.getUsername(), user.getTenantId());
+                int remaining = loginAttemptGuard.recordFailure(dto.getUsername(), user.getTenantId());
                 if (remaining <= 0) {
-                    throw new BusinessException("验证码错误次数过多，账户已锁定" + LOCKOUT_DURATION.toMinutes() + "分钟");
+                    throw new BusinessException("验证码错误次数过多，账户已锁定"
+                            + loginAttemptGuard.getLockoutDuration().toMinutes() + "分钟");
                 }
                 throw new BusinessException("两步验证码错误，还可尝试" + remaining + "次");
             }
         }
 
-        clearLoginFail(dto.getUsername(), user.getTenantId());
+        loginAttemptGuard.clear(dto.getUsername(), user.getTenantId());
 
         return issueLoginForUser(user, dto.getClientType(), forceChangePwd);
     }
@@ -638,31 +638,4 @@ public class AuthServiceImpl implements IAuthService {
         return "unknown";
     }
 
-    private void checkLoginLockout(String username, Long tenantId) {
-        String key = buildLoginFailKey(username, tenantId);
-        String failCount = redisTemplate.opsForValue().get(key);
-        if (failCount != null && Integer.parseInt(failCount) >= MAX_LOGIN_ATTEMPTS) {
-            Long ttl = redisTemplate.getExpire(key);
-            long minutes = (ttl != null && ttl > 0) ? (ttl + 59) / 60 : LOCKOUT_DURATION.toMinutes();
-            throw new BusinessException("账户已锁定，请" + minutes + "分钟后再试");
-        }
-    }
-
-    private int incrementLoginFail(String username, Long tenantId) {
-        String key = buildLoginFailKey(username, tenantId);
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1L) {
-            redisTemplate.expire(key, LOCKOUT_DURATION);
-        }
-        return MAX_LOGIN_ATTEMPTS - (count != null ? count.intValue() : 1);
-    }
-
-    private void clearLoginFail(String username, Long tenantId) {
-        redisTemplate.delete(buildLoginFailKey(username, tenantId));
-    }
-
-    private String buildLoginFailKey(String username, Long tenantId) {
-        String tenantSegment = tenantId != null ? String.valueOf(tenantId) : "default";
-        return LOGIN_FAIL_KEY + tenantSegment + ":" + username;
-    }
 }
