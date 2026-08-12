@@ -2,12 +2,14 @@ package com.han.workflow.service.impl;
 
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.ForbiddenException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.workflow.domain.dto.ProcessStartDTO;
 import com.han.workflow.domain.dto.TaskCompleteDTO;
 import com.han.workflow.domain.dto.TaskQueryDTO;
 import com.han.workflow.domain.vo.ProcessInstanceVO;
 import com.han.workflow.domain.vo.TaskVO;
+import com.han.workflow.security.WorkflowAccessChecker;
 import com.han.workflow.service.IProcessInstanceService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.common.engine.impl.identity.Authentication;
@@ -16,10 +18,14 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.history.HistoricProcessInstanceQuery;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.task.Comment;
 import org.flowable.task.api.Task;
+import org.flowable.task.api.TaskQuery;
 import org.flowable.task.api.history.HistoricTaskInstance;
+import org.flowable.task.api.history.HistoricTaskInstanceQuery;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,6 +48,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     private final TaskService taskService;
     private final HistoryService historyService;
     private final RepositoryService repositoryService;
+    private final WorkflowAccessChecker accessChecker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -66,27 +73,30 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         }
 
         String currentUserId = requiredCurrentUserId();
+        String tenantId = accessChecker.currentTenantId();
+        String previousAuthenticatedUserId = Authentication.getAuthenticatedUserId();
         Authentication.setAuthenticatedUserId(currentUserId);
         try {
-            ProcessInstance processInstance = runtimeService.startProcessInstanceByKey(
-                    processKey,
-                    trimToNull(dto.getBusinessKey()),
-                    variables
-            );
+            ProcessInstance processInstance = hasTenantScopedDefinition(processKey, tenantId)
+                    ? runtimeService.startProcessInstanceByKeyAndTenantId(
+                            processKey, trimToNull(dto.getBusinessKey()), variables, tenantId)
+                    : runtimeService.startProcessInstanceByKey(
+                            processKey, trimToNull(dto.getBusinessKey()), variables);
             HistoricProcessInstance historic = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(processInstance.getProcessInstanceId())
                     .singleResult();
             return historic != null ? toProcessVO(historic) : toProcessVO(processInstance);
         } finally {
-            Authentication.setAuthenticatedUserId(null);
+            Authentication.setAuthenticatedUserId(previousAuthenticatedUserId);
         }
     }
 
     @Override
     public PageResult<TaskVO> listMyTodoTasks(TaskQueryDTO dto) {
         TaskQueryDTO query = safeQuery(dto);
-        List<Task> tasks = taskService.createTaskQuery()
-                .active()
+        TaskQuery taskQuery = taskService.createTaskQuery().active();
+        applyTenant(taskQuery);
+        List<Task> tasks = taskQuery
                 .taskAssignee(requiredCurrentUserId())
                 .orderByTaskCreateTime()
                 .desc()
@@ -97,7 +107,9 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     @Override
     public PageResult<TaskVO> listMyDoneTasks(TaskQueryDTO dto) {
         TaskQueryDTO query = safeQuery(dto);
-        List<HistoricTaskInstance> tasks = historyService.createHistoricTaskInstanceQuery()
+        HistoricTaskInstanceQuery taskQuery = historyService.createHistoricTaskInstanceQuery();
+        applyTenant(taskQuery);
+        List<HistoricTaskInstance> tasks = taskQuery
                 .taskAssignee(requiredCurrentUserId())
                 .finished()
                 .orderByHistoricTaskInstanceEndTime()
@@ -109,7 +121,9 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     @Override
     public PageResult<ProcessInstanceVO> listMyStartedProcess(TaskQueryDTO dto) {
         TaskQueryDTO query = safeQuery(dto);
-        List<HistoricProcessInstance> processes = historyService.createHistoricProcessInstanceQuery()
+        HistoricProcessInstanceQuery processQuery = historyService.createHistoricProcessInstanceQuery();
+        applyTenant(processQuery);
+        List<HistoricProcessInstance> processes = processQuery
                 .startedBy(requiredCurrentUserId())
                 .orderByProcessInstanceStartTime()
                 .desc()
@@ -129,6 +143,11 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         }
 
         Task task = requireTask(dto.getTaskId());
+        accessChecker.checkCanComplete(task);
+        if (!StringUtils.hasText(task.getAssignee())) {
+            // 候选人办理前先签收，保证 ACT_HI_TASKINST 上留下真实办理人
+            taskService.claim(task.getId(), requiredCurrentUserId());
+        }
         if (StringUtils.hasText(dto.getComment())) {
             taskService.addComment(task.getId(), task.getProcessInstanceId(), dto.getComment().trim());
         }
@@ -152,6 +171,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     @Transactional(rollbackFor = Exception.class)
     public void transferTask(String taskId, String targetUserId, String reason) {
         Task task = requireTask(taskId);
+        accessChecker.checkCanTransfer(task, "转办");
         String assignee = trimToNull(targetUserId);
         if (!StringUtils.hasText(assignee)) {
             throw new BusinessException("目标办理人不能为空");
@@ -166,6 +186,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     @Transactional(rollbackFor = Exception.class)
     public void delegateTask(String taskId, String targetUserId, String reason) {
         Task task = requireTask(taskId);
+        accessChecker.checkCanTransfer(task, "委派");
         String assignee = trimToNull(targetUserId);
         if (!StringUtils.hasText(assignee)) {
             throw new BusinessException("委派人不能为空");
@@ -179,26 +200,32 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void claimTask(String taskId) {
-        taskService.claim(requireTask(taskId).getId(), requiredCurrentUserId());
+        Task task = requireTask(taskId);
+        accessChecker.checkCanClaim(task);
+        taskService.claim(task.getId(), requiredCurrentUserId());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unclaimTask(String taskId) {
-        taskService.unclaim(requireTask(taskId).getId());
+        Task task = requireTask(taskId);
+        accessChecker.checkCanUnclaim(task);
+        taskService.unclaim(task.getId());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelProcess(String processInstanceId, String reason) {
-        ensureActiveProcess(processInstanceId);
+        ProcessInstance process = ensureActiveProcess(processInstanceId);
+        accessChecker.checkInstanceOwner(process.getTenantId(), process.getStartUserId(), "终止");
         runtimeService.deleteProcessInstance(processInstanceId, trimToNull(reason));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void suspendProcess(String processInstanceId) {
-        ensureActiveProcess(processInstanceId);
+        ProcessInstance process = ensureActiveProcess(processInstanceId);
+        accessChecker.checkInstanceOwner(process.getTenantId(), process.getStartUserId(), "挂起");
         runtimeService.suspendProcessInstanceById(processInstanceId);
     }
 
@@ -211,6 +238,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         if (process == null) {
             throw new BusinessException("流程实例不存在");
         }
+        accessChecker.checkInstanceOwner(process.getTenantId(), process.getStartUserId(), "激活");
         runtimeService.activateProcessInstanceById(processInstanceId);
     }
 
@@ -221,6 +249,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
                 .processInstanceId(processInstanceId)
                 .singleResult();
         if (runtimeProcess != null) {
+            accessChecker.checkInstanceOwner(runtimeProcess.getTenantId(), runtimeProcess.getStartUserId(), "删除");
             runtimeService.deleteProcessInstance(processInstanceId, trimToNull(reason));
             return;
         }
@@ -230,6 +259,11 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         if (historicProcess == null) {
             throw new BusinessException("流程实例不存在");
         }
+        accessChecker.checkInstanceOwner(historicProcess.getTenantId(), historicProcess.getStartUserId(), "删除");
+        // 已结束实例的历史是审计资产，删除即不可恢复，仅允许平台管理员执行
+        if (!accessChecker.isAdmin()) {
+            throw new BusinessException("流程已结束，历史审计记录仅允许平台管理员删除");
+        }
         historyService.deleteHistoricProcessInstance(processInstanceId);
     }
 
@@ -238,18 +272,24 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         ProcessInstance runtimeProcess = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
-        return runtimeProcess == null ? Map.of() : runtimeService.getVariables(processInstanceId);
+        if (runtimeProcess == null) {
+            return Map.of();
+        }
+        accessChecker.checkInstanceOwner(runtimeProcess.getTenantId(), runtimeProcess.getStartUserId(), "查看");
+        return runtimeService.getVariables(processInstanceId);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void setProcessVariables(String processInstanceId, Map<String, Object> variables) {
-        ensureActiveProcess(processInstanceId);
+        ProcessInstance process = ensureActiveProcess(processInstanceId);
+        accessChecker.checkInstanceOwner(process.getTenantId(), process.getStartUserId(), "修改");
         runtimeService.setVariables(processInstanceId, variables == null ? Map.of() : variables);
     }
 
     @Override
     public InputStream getProcessDiagram(String processInstanceId) {
+        requireReadableProcess(processInstanceId);
         ProcessDefinition definition = resolveProcessDefinition(resolveProcessDefinitionId(processInstanceId));
         if (definition == null || !StringUtils.hasText(definition.getDiagramResourceName())) {
             return InputStream.nullInputStream();
@@ -260,10 +300,35 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
 
     @Override
     public List<TaskVO> getProcessHistory(String processInstanceId) {
+        requireReadableProcess(processInstanceId);
         List<HistoricTaskInstance> tasks = historyService.createHistoricTaskInstanceQuery()
                 .processInstanceId(processInstanceId)
+                .orderByHistoricTaskInstanceStartTime()
+                .asc()
                 .list();
-        return mapDoneTasks(tasks);
+        List<TaskVO> rows = mapDoneTasks(tasks);
+        fillTaskComments(processInstanceId, rows);
+        return rows;
+    }
+
+    /**
+     * 回填审批意见：{@code completeTask} 写进 ACT_HI_COMMENT 的意见此前没有任何读取入口
+     */
+    private void fillTaskComments(String processInstanceId, List<TaskVO> rows) {
+        List<Comment> comments = taskService.getProcessInstanceComments(processInstanceId);
+        if (comments == null || comments.isEmpty()) {
+            return;
+        }
+        Map<String, String> commentByTask = new LinkedHashMap<>();
+        for (Comment comment : comments) {
+            if (!StringUtils.hasText(comment.getTaskId()) || !StringUtils.hasText(comment.getFullMessage())) {
+                continue;
+            }
+            commentByTask.merge(comment.getTaskId(), comment.getFullMessage(), (left, right) -> left + "\n" + right);
+        }
+        for (TaskVO row : rows) {
+            row.setComment(commentByTask.get(row.getTaskId()));
+        }
     }
 
     private List<TaskVO> mapTodoTasks(List<Task> tasks) {
@@ -413,13 +478,86 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
         return task;
     }
 
-    private void ensureActiveProcess(String processInstanceId) {
+    private ProcessInstance ensureActiveProcess(String processInstanceId) {
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
         if (processInstance == null) {
             throw new BusinessException("流程实例不存在或已结束");
         }
+        return processInstance;
+    }
+
+    /**
+     * 读取一个流程实例前的可见性校验：同租户，且为发起人 / 流程参与人 / 平台管理员
+     */
+    private HistoricProcessInstance requireReadableProcess(String processInstanceId) {
+        if (!StringUtils.hasText(processInstanceId)) {
+            throw new BusinessException("流程实例ID不能为空");
+        }
+        HistoricProcessInstance process = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(processInstanceId.trim())
+                .singleResult();
+        if (process == null) {
+            throw new BusinessException("流程实例不存在");
+        }
+        accessChecker.checkTenant(process.getTenantId());
+        if (accessChecker.isAdmin()) {
+            return process;
+        }
+        String currentUserId = requiredCurrentUserId();
+        if (currentUserId.equals(trimToNull(process.getStartUserId()))) {
+            return process;
+        }
+        boolean involved = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(processInstanceId.trim())
+                .involvedUser(currentUserId)
+                .count() > 0;
+        if (!involved) {
+            throw new ForbiddenException("无权查看他人的流程");
+        }
+        return process;
+    }
+
+    /**
+     * 当前租户下是否存在该 key 的流程定义。
+     *
+     * <p>启用租户隔离之前部署的流程定义在 Flowable 里没有租户标记，按租户启动会直接报
+     * 「no processes deployed with key」。这里先探测，探测不到就回退到不带租户的启动，
+     * 保证存量环境的流程还能发起。
+     */
+    private boolean hasTenantScopedDefinition(String processKey, String tenantId) {
+        if (tenantId == null) {
+            return false;
+        }
+        return repositoryService.createProcessDefinitionQuery()
+                .processDefinitionKey(processKey)
+                .processDefinitionTenantId(tenantId)
+                .count() > 0;
+    }
+
+    private void applyTenant(TaskQuery query) {
+        String tenantId = accessChecker.currentTenantId();
+        if (tenantId == null) {
+            return;
+        }
+        query.or().taskTenantId(tenantId).taskWithoutTenantId().endOr();
+    }
+
+    private void applyTenant(HistoricTaskInstanceQuery query) {
+        String tenantId = accessChecker.currentTenantId();
+        if (tenantId == null) {
+            return;
+        }
+        query.or().taskTenantId(tenantId).taskWithoutTenantId().endOr();
+    }
+
+    private void applyTenant(HistoricProcessInstanceQuery query) {
+        String tenantId = accessChecker.currentTenantId();
+        if (tenantId == null) {
+            return;
+        }
+        query.or().processInstanceTenantId(tenantId).processInstanceWithoutTenantId().endOr();
     }
 
     private String resolveProcessDefinitionId(String processInstanceId) {
@@ -492,11 +630,7 @@ public class ProcessInstanceServiceImpl implements IProcessInstanceService {
     }
 
     private String requiredCurrentUserId() {
-        Long userId = SecurityContextHolder.getUserId();
-        if (userId == null) {
-            throw new BusinessException("未获取到当前用户");
-        }
-        return String.valueOf(userId);
+        return accessChecker.requiredCurrentUserId();
     }
 
     private TaskQueryDTO safeQuery(TaskQueryDTO query) {
