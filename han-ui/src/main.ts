@@ -9,6 +9,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import i18n from './locales'
+import { setupDirectives } from '@/directive'
 import { formatDate } from '@/utils/request'
 import { useAppStore } from '@/stores/app'
 
@@ -30,6 +31,8 @@ async function bootstrap() {
   for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
     app.component(key, component)
   }
+
+  setupDirectives(app)
 
   app.config.globalProperties.$formatDate = formatDate
 
