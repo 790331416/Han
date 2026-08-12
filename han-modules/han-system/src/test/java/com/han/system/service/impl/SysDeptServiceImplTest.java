@@ -1,7 +1,12 @@
 package com.han.system.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.han.common.core.exception.BusinessException;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import com.han.system.converter.SysDeptConverter;
 import com.han.system.domain.dto.SysDeptDto;
 import com.han.system.domain.po.SysDeptPo;
@@ -29,6 +34,14 @@ class SysDeptServiceImplTest {
 
     private SysDeptMapper deptMapper;
     private SysDeptServiceImpl service;
+
+    @BeforeAll
+    static void initTableInfo() {
+        // 单测里没有 MyBatis 容器，手动注册实体元数据，才能把 LambdaQueryWrapper 渲染成 SQL 片段
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        GlobalConfigUtils.setGlobalConfig(configuration, GlobalConfigUtils.defaults());
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), SysDeptPo.class);
+    }
 
     @BeforeEach
     void setUp() {
