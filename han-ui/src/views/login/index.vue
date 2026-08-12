@@ -133,6 +133,7 @@ import { useUserStore } from '@/stores/user'
 import { getCaptcha, getPublicKey, getSocialProviders, getSocialAuthorizeUrl, type TenantSimple } from '@/api/auth'
 import { rsaEncrypt } from '@/utils/crypto'
 import { get } from '@/utils/request'
+import { persistSocialState, resolveSafeRedirect } from './social-state'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
@@ -159,7 +160,8 @@ let pendingLoginData: any = null
 
 const loginForm = reactive({
   tenantId: undefined as string | number | undefined,
-  username: 'admin',
+  // 生产环境不预填管理员账号，避免公开默认用户名、也不覆盖「记住账号」的空白态
+  username: import.meta.env.DEV ? 'admin' : '',
   password: '',
   code: '',
   uuid: ''
@@ -191,7 +193,8 @@ const getCaptchaImg = async () => {
       return
     }
     captchaEnabled.value = true
-    captchaImg.value = 'data:image/gif;base64,' + (res.data.img || '')
+    // 后端用 Hutool LineCaptcha 出图，实际编码是 PNG，声明成 gif 在严格 CSP / WebView 下可能加载失败
+    captchaImg.value = 'data:image/png;base64,' + (res.data.img || '')
     loginForm.uuid = res.data.uuid || ''
   } catch (e) {
     captchaEnabled.value = false
@@ -200,9 +203,9 @@ const getCaptchaImg = async () => {
 
 // 登录
 const handleLogin = async () => {
-  const valid = await loginFormRef.value?.validate()
+  const valid = await loginFormRef.value?.validate().catch(() => false)
   if (!valid) return
-  
+
   loading.value = true
   try {
     const loginData = { ...loginForm }
@@ -211,14 +214,16 @@ const handleLogin = async () => {
     }
     const loginRes = await userStore.login(loginData)
     if (loginRes.data.requireTotp) {
-      // 需要 2FA 验证，弹出 TOTP 输入框
+      // 2FA 首段响应没有 accessToken，store 里的 applySession 会把字符串 "undefined"
+      // 写进 localStorage，刷新后路由守卫会误判为已登录。这里先清掉再进入第二段。
+      userStore.resetToken()
       pendingLoginData = { ...loginData }
       totpCode.value = ''
       totpVisible.value = true
       return
     }
     handleLoginSuccess(loginRes)
-  } catch (e: any) {
+  } catch {
     getCaptchaImg()
   } finally {
     loading.value = false
@@ -229,11 +234,11 @@ const handleLoginSuccess = (loginRes: any) => {
   persistRememberedAccount()
   if (loginRes.data.forceChangePassword) {
     ElMessage.warning('您的密码需要修改，请先修改密码')
-    router.push('/user/profile?tab=password')
+    // 个人中心的实际路由是 /profile（Layout 的子路由），/user/profile 会落到 404
+    router.push('/profile?tab=password')
   } else {
     ElMessage.success('登录成功')
-    const redirect = (route.query.redirect as string) || '/'
-    router.push(redirect)
+    router.push(resolveSafeRedirect(route.query.redirect))
   }
 }
 
@@ -265,6 +270,13 @@ const persistRememberedAccount = () => {
   }))
 }
 
+/**
+ * 二次提交 TOTP。
+ *
+ * 已知缺陷（需后端配合，见汇报中的依赖说明）：图形验证码在第一段登录时已被后端消费，
+ * 这里原样重发同一份 code/uuid 必然拿到「验证码已过期」。在后端引入独立的 TOTP 挑战票据之前，
+ * 这里至少要把错误暴露出来并把用户带回可操作的状态，而不是让弹窗静默反复失败。
+ */
 const handleTotpVerify = async () => {
   if (!totpCode.value || totpCode.value.length !== 6) {
     ElMessage.warning('请输入6位验证码')
@@ -277,7 +289,20 @@ const handleTotpVerify = async () => {
     totpVisible.value = false
     handleLoginSuccess(loginRes)
   } catch (e: any) {
-    // 验证失败，保持弹窗打开
+    const message = e?.message || '两步验证失败，请重试'
+    const isTotpCodeError = message.includes('两步验证')
+    if (isTotpCodeError) {
+      ElMessage.error(message)
+      totpCode.value = ''
+      return
+    }
+    // 图形验证码已被上一段登录消费，只能退回登录页重来
+    ElMessage.error(`${message}，请重新输入验证码后登录`)
+    totpVisible.value = false
+    totpCode.value = ''
+    pendingLoginData = null
+    loginForm.code = ''
+    getCaptchaImg()
   } finally {
     loading.value = false
   }
@@ -306,12 +331,29 @@ const loadSocialProviders = async () => {
   } catch { /* social login not available */ }
 }
 
+/** 从授权 URL 里取出后端签发的 state，用于回调时与本浏览器会话比对 */
+const extractState = (authorizeUrl: string): string => {
+  try {
+    return new URL(authorizeUrl).searchParams.get('state') || ''
+  } catch {
+    return ''
+  }
+}
+
 const handleSocialLogin = async (provider: 'github' | 'wechat') => {
   try {
     const redirectUri = window.location.origin + '/social/callback?provider=' + provider
     const res = await getSocialAuthorizeUrl(provider, redirectUri)
     const url = res.data?.authorizeUrl
-    if (url) window.location.href = url
+    if (!url) return
+    // state 只存在服务端时无法防登录 CSRF：攻击者可以拿自己的 code+state 拼链接诱导受害者打开。
+    // 这里把 state 与本浏览器会话绑定，回调页比对通过才继续。
+    persistSocialState({
+      provider,
+      state: extractState(url),
+      redirect: resolveSafeRedirect(route.query.redirect)
+    })
+    window.location.href = url
   } catch { /* error handled */ }
 }
 

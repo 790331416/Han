@@ -21,7 +21,8 @@
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span>流程实例列表</span>
+          <span>我发起的流程</span>
+          <span class="header-tip">仅展示当前账号发起的流程实例，平台级全量视图尚未提供</span>
         </div>
       </template>
 
@@ -135,31 +136,55 @@ const resetQuery = () => {
 }
 
 const handleSuspend = async (row: ProcessInstance) => {
-  await ElMessageBox.confirm(`确定挂起该流程实例吗?`, '提示', { type: 'warning' })
-  await suspendProcessInstance(row.instanceId)
-  ElMessage.success('挂起成功')
-  getList()
+  try {
+    await ElMessageBox.confirm('挂起后该流程的待办任务将无法办理，确定挂起吗?', '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await suspendProcessInstance(row.instanceId)
+    ElMessage.success('挂起成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 const handleActivate = async (row: ProcessInstance) => {
-  await ElMessageBox.confirm(`确定激活该流程实例吗?`, '提示', { type: 'warning' })
-  await activateProcessInstance(row.instanceId)
-  ElMessage.success('激活成功')
-  getList()
+  try {
+    await ElMessageBox.confirm('确定激活该流程实例吗?', '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await activateProcessInstance(row.instanceId)
+    ElMessage.success('激活成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 const handleStop = async (row: ProcessInstance) => {
-  await ElMessageBox.confirm(`确定终止该流程实例吗? 此操作不可恢复!`, '提示', { type: 'warning' })
-  await stopProcessInstance(row.instanceId, '管理员终止')
-  ElMessage.success('终止成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(
+      '终止会立即结束该流程，所有未办理的任务都会被取消，此操作不可恢复。确定终止吗?',
+      '提示',
+      { type: 'warning' }
+    )
+  } catch { return }
+  try {
+    await stopProcessInstance(row.instanceId, '管理员终止')
+    ElMessage.success('终止成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 const handleDelete = async (row: ProcessInstance) => {
-  await ElMessageBox.confirm(`确定删除该流程实例吗?`, '提示', { type: 'warning' })
-  await deleteProcessInstance(row.instanceId)
-  ElMessage.success('删除成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(
+      '删除会连同该实例的全部历史记录与审批意见一起清除，此操作不可恢复。确定删除吗?',
+      '提示',
+      { type: 'warning' }
+    )
+  } catch { return }
+  try {
+    await deleteProcessInstance(row.instanceId)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 onMounted(() => {
@@ -176,6 +201,12 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-tip {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 400;
 }
 
 .pagination-container {

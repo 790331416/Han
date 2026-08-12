@@ -131,6 +131,7 @@ import {
 } from '@/api/auth'
 import { rsaEncrypt } from '@/utils/crypto'
 import { get } from '@/utils/request'
+import { consumeSocialState, resolveSafeRedirect } from './social-state'
 import type { LoginVO } from '@/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -156,6 +157,8 @@ const deployTier = computed(() => appStore.deployTier || import.meta.env.VITE_DE
 
 // 一次性绑定票据（服务端 10 分钟有效）
 const ticket = ref('')
+// 发起第三方登录时记录的目标页
+const redirectTarget = ref('/')
 const tenantOptions = ref<SocialTenantOption[]>([])
 const socialNickname = ref('')
 const socialAvatar = ref('')
@@ -184,8 +187,25 @@ const backToLogin = () => {
 // ticket 作废（密码试错超限 / 过期）时后端提示均含「重新扫码」，此时表单已无法继续
 const isTicketDeadMessage = (message: string) => message.includes('重新扫码')
 
+const GENERIC_ERROR = '登录失败，请返回登录页重新发起登录'
+// 明显属于技术细节的内容一律不往未登录页面上渲染
+const TECHNICAL_MARKERS = /(exception|error:|\bat\s|\.java|sql|jdbc|https?:\/\/|[a-z]:\\|\/[a-z]+\/[a-z]+)/i
+
+/**
+ * 回调页对所有人可见（未登录即可访问），后端异常消息不能无条件原样渲染。
+ * 当前 SocialLoginService 抛出的都是面向用户的短提示，这里只做长度与技术特征兜底，
+ * 避免将来有人在 Service 里加一条带上下文的异常消息就直接泄露到公开页面。
+ */
+const sanitizeErrorMessage = (message: string): string => {
+  const text = (message || '').trim()
+  if (!text || text.length > 60 || TECHNICAL_MARKERS.test(text)) {
+    return GENERIC_ERROR
+  }
+  return text
+}
+
 const enterErrorState = (message: string) => {
-  errorMessage.value = message || '登录失败，请重新发起登录'
+  errorMessage.value = sanitizeErrorMessage(message)
   status.value = 'error'
 }
 
@@ -193,10 +213,12 @@ const handleLoginSuccess = (login: LoginVO) => {
   userStore.applySession(login.accessToken, login.refreshToken, login.userInfo?.userId ?? null)
   if (login.forceChangePassword) {
     ElMessage.warning('您的密码需要修改，请先修改密码')
-    router.replace('/user/profile?tab=password')
+    // 个人中心的实际路由是 /profile（Layout 的子路由），/user/profile 会落到 404
+    router.replace('/profile?tab=password')
   } else {
     ElMessage.success('登录成功')
-    router.replace('/')
+    // 跳回发起第三方登录时的目标页，与账号密码登录的行为保持一致
+    router.replace(resolveSafeRedirect(redirectTarget.value))
   }
 }
 
@@ -207,6 +229,19 @@ const handleCallback = async () => {
     enterErrorState('授权信息缺失，可能已取消授权，请返回登录页重新发起登录')
     return
   }
+
+  // 登录 CSRF 防护：state 必须与本浏览器会话在发起授权时记录的一致
+  const pending = consumeSocialState()
+  if (!pending || pending.provider !== provider.value) {
+    enterErrorState('未找到本次授权的发起记录，请返回登录页重新发起登录')
+    return
+  }
+  if (pending.state && pending.state !== state) {
+    enterErrorState('授权状态校验失败，请返回登录页重新发起登录')
+    return
+  }
+  redirectTarget.value = pending.redirect
+
   try {
     const res = await socialCallback(provider.value, code, state)
     const data = res.data
@@ -245,7 +280,7 @@ const handleSelectTenant = async (tenant: SocialTenantOption) => {
     if (isTicketDeadMessage(message)) {
       enterErrorState(message)
     } else {
-      ElMessage.error(message)
+      ElMessage.error(sanitizeErrorMessage(message))
     }
   } finally {
     loading.value = false
@@ -274,7 +309,7 @@ const handleBind = async () => {
     if (isTicketDeadMessage(message)) {
       enterErrorState(message)
     } else {
-      ElMessage.error(message)
+      ElMessage.error(sanitizeErrorMessage(message))
     }
   } finally {
     loading.value = false
