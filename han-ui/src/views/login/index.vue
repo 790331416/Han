@@ -228,7 +228,7 @@ const handleLogin = async () => {
   }
 }
 
-const handleLoginSuccess = (loginRes: any, redirectOverride?: string) => {
+const handleLoginSuccess = (loginRes: any) => {
   persistRememberedAccount()
   if (loginRes.data.forceChangePassword) {
     ElMessage.warning('您的密码需要修改，请先修改密码')
@@ -236,7 +236,7 @@ const handleLoginSuccess = (loginRes: any, redirectOverride?: string) => {
     router.push('/profile?tab=password')
   } else {
     ElMessage.success('登录成功')
-    router.push(resolveSafeRedirect(redirectOverride ?? route.query.redirect))
+    router.push(resolveSafeRedirect(route.query.redirect))
   }
 }
 
