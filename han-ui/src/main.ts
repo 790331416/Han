@@ -10,7 +10,8 @@ import App from './App.vue'
 import router from './router'
 import i18n from './locales'
 import { setupDirectives } from '@/directive'
-import { formatDate } from '@/utils/request'
+import { formatDate } from '@/utils/date'
+import { setupSessionSync } from '@/utils/session-sync'
 import { useAppStore } from '@/stores/app'
 
 import 'virtual:uno.css'
@@ -35,6 +36,8 @@ async function bootstrap() {
   setupDirectives(app)
 
   app.config.globalProperties.$formatDate = formatDate
+
+  setupSessionSync()
 
   app.use(router)
   app.mount('#app')
