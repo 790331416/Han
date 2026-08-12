@@ -102,7 +102,8 @@ public class AiUrlSecurityValidator {
                 continue;
             }
             throw new BusinessException(label + "URL指向" + reason + "地址（" + host
-                    + "），已被安全策略拒绝；如确需放行请配置 han.ai.ssrf.allowed-hosts 白名单");
+                    + "），已被安全策略拒绝；如确需放行请配置 han.ai.ssrf.allowed-hosts 白名单"
+                    + "（部署环境变量 AI_SSRF_ALLOWED_HOSTS）");
         }
     }
 

@@ -189,6 +189,35 @@ export function listAllMcpServers() {
   return get<McpServer[]>('/ai/mcp/all')
 }
 
+// MCP 工具元数据（refreshTools 落库的 tools/list 结果）
+export interface McpToolMeta {
+  name: string
+  description?: string
+  /** JSON Schema：{ type, properties: { 参数名: { type, description, enum, default } }, required: [] } */
+  inputSchema?: {
+    type?: string
+    properties?: Record<string, McpToolSchemaProperty>
+    required?: string[]
+  }
+}
+
+export interface McpToolSchemaProperty {
+  type?: string
+  description?: string
+  enum?: (string | number)[]
+  default?: unknown
+}
+
+// 测试连接（initialize + tools/list 真连不落库），失败时错误文案含 SSRF 拒绝原因
+export function testMcpConnection(mcpId: string | number) {
+  return post<string>(`/ai/mcp/test/${mcpId}`)
+}
+
+// 查询库内工具元数据清单（designer 工具下拉/参数表单数据源）
+export function listMcpTools(mcpId: string | number) {
+  return get<McpToolMeta[]>(`/ai/mcp/tools/${mcpId}`, undefined, { silentError: true })
+}
+
 // ===================== AI智能体 =====================
 
 export interface AiAgent {

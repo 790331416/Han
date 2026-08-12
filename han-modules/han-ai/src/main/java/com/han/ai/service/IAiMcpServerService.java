@@ -5,6 +5,7 @@ import com.han.ai.domain.query.AiMcpServerQuery;
 import com.han.common.core.domain.PageResult;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * MCP server service.
@@ -62,4 +63,20 @@ public interface IAiMcpServerService {
      * @return refresh summary
      */
     String refreshTools(Long mcpId);
+
+    /**
+     * Test connection (initialize + tools/list, no persistence).
+     *
+     * @param mcpId server id
+     * @return test summary with tool count
+     */
+    String testConnection(Long mcpId);
+
+    /**
+     * Query stored tool metadata list (name/description/inputSchema).
+     *
+     * @param mcpId server id
+     * @return tool metadata list
+     */
+    List<Map<String, Object>> listToolMetadata(Long mcpId);
 }

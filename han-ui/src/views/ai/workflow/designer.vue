@@ -271,15 +271,87 @@
 
           <template v-if="selectedNode.type === 'tool'">
             <el-form-item label="MCP服务">
-              <el-select v-model="selectedNode.data.mcpId" placeholder="选择MCP" filterable @change="updateNode">
+              <el-select v-model="selectedNode.data.mcpId" placeholder="选择MCP" filterable @change="onToolMcpChange">
                 <el-option v-for="mcp in allMcps" :key="mcp.mcpId" :label="mcp.serverName" :value="mcp.mcpId" />
               </el-select>
             </el-form-item>
             <el-form-item label="工具名称">
-              <el-input v-model="selectedNode.data.toolName" placeholder="工具名称" @change="updateNode" />
+              <el-select
+                v-model="selectedNode.data.toolName"
+                placeholder="选择工具（可手输）"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                :loading="toolListLoading"
+                data-testid="ai-flow-tool-select"
+                @change="onToolNameChange"
+              >
+                <el-option v-for="tool in toolOptions" :key="tool.name" :label="tool.name" :value="tool.name">
+                  <div class="tool-option">
+                    <span>{{ tool.name }}</span>
+                    <span v-if="tool.description" class="tool-option-desc">{{ tool.description }}</span>
+                  </div>
+                </el-option>
+              </el-select>
+              <div
+                v-if="selectedNode.data.mcpId && !toolListLoading && toolOptions.length === 0"
+                class="prop-tip"
+              >
+                未获取到工具清单，请先到 MCP 管理页「刷新工具」，或手动输入工具名
+              </div>
+              <div v-else-if="selectedToolMeta?.description" class="prop-tip">{{ selectedToolMeta.description }}</div>
             </el-form-item>
-            <el-form-item label="入参JSON">
+            <el-form-item label="入参">
+              <el-radio-group
+                v-model="toolArgMode"
+                size="small"
+                style="margin-bottom: 6px;"
+                data-testid="ai-flow-tool-arg-mode"
+                @change="onToolArgModeChange"
+              >
+                <el-radio-button value="form" :disabled="toolSchemaFields.length === 0">参数表单</el-radio-button>
+                <el-radio-button value="json">JSON 高级模式</el-radio-button>
+              </el-radio-group>
+              <template v-if="toolArgMode === 'form' && toolSchemaFields.length > 0">
+                <div class="param-list" data-testid="ai-flow-tool-param-form">
+                  <div v-for="field in toolSchemaFields" :key="field.name" class="tool-param-item">
+                    <div class="tool-param-label">
+                      <span>{{ field.name }}<span v-if="field.required" class="tool-param-required">*</span></span>
+                      <span class="tool-param-type">{{ field.type }}</span>
+                    </div>
+                    <el-select
+                      v-if="field.enumOptions.length > 0"
+                      v-model="toolParamForm[field.name]"
+                      filterable
+                      allow-create
+                      clearable
+                      placeholder="选择或输入"
+                      @change="onToolParamChange"
+                    >
+                      <el-option v-for="opt in field.enumOptions" :key="opt" :label="opt" :value="opt" />
+                    </el-select>
+                    <el-input
+                      v-else-if="field.multiline"
+                      v-model="toolParamForm[field.name]"
+                      type="textarea"
+                      :rows="2"
+                      :placeholder="field.placeholder"
+                      @input="onToolParamChange"
+                    />
+                    <el-input
+                      v-else
+                      v-model="toolParamForm[field.name]"
+                      :placeholder="field.placeholder"
+                      @input="onToolParamChange"
+                    />
+                    <div v-if="field.description" class="prop-tip">{{ field.description }}</div>
+                  </div>
+                </div>
+                <div class="prop-tip" v-pre>支持 {{message}}/{{result}}/{{knowledge}}/{{入参名}}/{{节点ID.output}} 模板变量</div>
+              </template>
               <el-input
+                v-else
                 v-model="selectedNode.data.arguments"
                 type="textarea"
                 :rows="4"
@@ -355,8 +427,8 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
-import { getAiWorkflow, updateAiWorkflow, debugAiWorkflow, listAllModels, listAllKnowledgeBases, listAllMcpServers } from '@/api/ai'
-import type { AiModel, KnowledgeBase, McpServer, AiFlowDebugResult, AiFlowNodeTrace } from '@/api/ai'
+import { getAiWorkflow, updateAiWorkflow, debugAiWorkflow, listAllModels, listAllKnowledgeBases, listAllMcpServers, listMcpTools } from '@/api/ai'
+import type { AiModel, KnowledgeBase, McpServer, McpToolMeta, AiFlowDebugResult, AiFlowNodeTrace } from '@/api/ai'
 import type { Node, Edge, Connection } from '@vue-flow/core'
 import { requestAiStream, type AiStreamNodeEvent } from '@/utils/ai-stream'
 import { useUserStore } from '@/stores/user'
@@ -448,6 +520,9 @@ const onConnect = (connection: Connection) => {
 // 选中节点
 const onNodeClick = (event: any) => {
   selectedNode.value = event.node
+  if (event.node?.type === 'tool') {
+    void initToolPanel()
+  }
 }
 
 const updateNode = () => {
@@ -546,6 +621,195 @@ const deleteNode = () => {
   nodes.value = nodes.value.filter(n => n.id !== id)
   edges.value = edges.value.filter(e => e.source !== id && e.target !== id)
   selectedNode.value = null
+}
+
+// ==================== tool 节点：工具下拉 + inputSchema 参数表单（G1-5） ====================
+interface ToolSchemaField {
+  name: string
+  type: string
+  required: boolean
+  description?: string
+  enumOptions: string[]
+  multiline: boolean
+  placeholder: string
+}
+
+/** 工具清单缓存（key=mcpId），按需从后端拉取库内 tools 元数据 */
+const toolCatalog = ref<Record<string, McpToolMeta[]>>({})
+const toolListLoading = ref(false)
+/** 入参编辑模式：form=按 inputSchema 生成的参数表单；json=原 JSON 高级模式（保留） */
+const toolArgMode = ref<'form' | 'json'>('json')
+const toolParamForm = ref<Record<string, string>>({})
+
+const toolOptions = computed<McpToolMeta[]>(() => {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return []
+  const mcpId = (selectedNode.value.data as any)?.mcpId
+  if (mcpId === null || mcpId === undefined || mcpId === '') return []
+  return toolCatalog.value[String(mcpId)] || []
+})
+
+const selectedToolMeta = computed<McpToolMeta | undefined>(() => {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return undefined
+  const toolName = (selectedNode.value.data as any)?.toolName
+  if (!toolName) return undefined
+  return toolOptions.value.find(t => t.name === toolName)
+})
+
+const toolSchemaFields = computed<ToolSchemaField[]>(() => {
+  const schema = selectedToolMeta.value?.inputSchema
+  const properties = schema?.properties
+  if (!properties || typeof properties !== 'object') return []
+  const required = new Set(Array.isArray(schema?.required) ? schema.required : [])
+  return Object.entries(properties).map(([name, prop]) => {
+    const type = prop?.type || 'string'
+    const complex = type === 'object' || type === 'array'
+    return {
+      name,
+      type,
+      required: required.has(name),
+      description: prop?.description,
+      enumOptions: Array.isArray(prop?.enum) ? prop.enum.map(item => String(item)) : [],
+      multiline: complex,
+      placeholder: complex
+        ? '填 JSON 片段或 {{变量}} 模板'
+        : (prop?.default !== undefined ? `默认：${String(prop.default)}` : '参数取值，支持 {{变量}} 模板')
+    }
+  })
+})
+
+async function loadToolCatalog(mcpId: string | number | null | undefined, force = false) {
+  if (mcpId === null || mcpId === undefined || mcpId === '') return
+  const key = String(mcpId)
+  if (!force && toolCatalog.value[key]) return
+  toolListLoading.value = true
+  try {
+    const res = await listMcpTools(mcpId)
+    toolCatalog.value = { ...toolCatalog.value, [key]: (res as any).data || [] }
+  } catch {
+    // 拉取失败按空清单处理，保留手输工具名兜底
+    toolCatalog.value = { ...toolCatalog.value, [key]: [] }
+  } finally {
+    toolListLoading.value = false
+  }
+}
+
+/** 选中 tool 节点时初始化：加载工具清单，并按已存 arguments 恢复表单/JSON 模式。 */
+async function initToolPanel() {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return
+  const data = selectedNode.value.data as any
+  await loadToolCatalog(data.mcpId)
+  syncToolFormFromArguments()
+}
+
+/**
+ * arguments(JSON 字符串) → 参数表单：能解析为 schema 内的平面对象时进表单模式；
+ * 空/含 schema 外键/非对象 JSON 时保持 JSON 模式，不破坏已有配置。
+ */
+function syncToolFormFromArguments() {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return
+  const data = selectedNode.value.data as any
+  const fields = toolSchemaFields.value
+  if (fields.length === 0) {
+    toolArgMode.value = 'json'
+    toolParamForm.value = {}
+    return
+  }
+  const raw = typeof data.arguments === 'string' ? data.arguments.trim() : ''
+  let parsed: Record<string, unknown> | null = null
+  if (raw) {
+    try {
+      const candidate = JSON.parse(raw)
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+        parsed = candidate as Record<string, unknown>
+      }
+    } catch { parsed = null }
+    if (!parsed) {
+      toolArgMode.value = 'json'
+      toolParamForm.value = {}
+      return
+    }
+    const extraKeys = Object.keys(parsed).filter(key => !fields.some(field => field.name === key))
+    if (extraKeys.length > 0) {
+      toolArgMode.value = 'json'
+      toolParamForm.value = {}
+      return
+    }
+  }
+  const form: Record<string, string> = {}
+  for (const field of fields) {
+    const value = parsed?.[field.name]
+    if (value === undefined || value === null) {
+      form[field.name] = ''
+    } else if (typeof value === 'string') {
+      form[field.name] = value
+    } else {
+      form[field.name] = JSON.stringify(value)
+    }
+  }
+  toolParamForm.value = form
+  toolArgMode.value = 'form'
+}
+
+/** 参数表单 → arguments JSON：数字/布尔字面量按原生类型写入，{{模板}}与其余内容按字符串。 */
+function rebuildToolArguments() {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return
+  const data = selectedNode.value.data as any
+  const result: Record<string, unknown> = {}
+  for (const field of toolSchemaFields.value) {
+    const raw = (toolParamForm.value[field.name] ?? '').trim()
+    if (!raw) continue
+    result[field.name] = coerceToolParamValue(field, raw)
+  }
+  data.arguments = Object.keys(result).length > 0 ? JSON.stringify(result) : ''
+  updateNode()
+}
+
+function coerceToolParamValue(field: ToolSchemaField, raw: string): unknown {
+  if (raw.includes('{{')) return raw
+  if (field.type === 'integer' || field.type === 'number') {
+    const num = Number(raw)
+    return Number.isNaN(num) ? raw : num
+  }
+  if (field.type === 'boolean') {
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    return raw
+  }
+  if (field.type === 'object' || field.type === 'array') {
+    try { return JSON.parse(raw) } catch { return raw }
+  }
+  return raw
+}
+
+const onToolParamChange = () => rebuildToolArguments()
+
+const onToolMcpChange = async () => {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return
+  const data = selectedNode.value.data as any
+  data.toolName = ''
+  data.arguments = ''
+  toolParamForm.value = {}
+  updateNode()
+  await loadToolCatalog(data.mcpId, true)
+  toolArgMode.value = 'json'
+}
+
+const onToolNameChange = () => {
+  if (!selectedNode.value || selectedNode.value.type !== 'tool') return
+  const data = selectedNode.value.data as any
+  data.arguments = ''
+  toolParamForm.value = {}
+  // 选中带 schema 的工具默认进参数表单；手输/无 schema 工具落回 JSON 模式
+  syncToolFormFromArguments()
+  updateNode()
+}
+
+const onToolArgModeChange = (mode: string | number | boolean | undefined) => {
+  if (mode !== 'form') return
+  syncToolFormFromArguments()
+  if (toolArgMode.value !== 'form') {
+    ElMessage.warning('当前入参 JSON 无法映射为参数表单（含表单外键或非对象结构），已保留 JSON 高级模式')
+  }
 }
 
 // ==================== 画布校验（前端体验层，后端保存时二次复核） ====================
@@ -944,6 +1208,44 @@ onMounted(() => {
   margin-top: 2px;
   font-size: 11px;
   color: #909399;
+}
+
+// tool 节点参数表单（G1-5）
+.tool-param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px dashed #e4e7ed;
+  border-radius: 6px;
+}
+.tool-param-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #303133;
+}
+.tool-param-required {
+  color: #f56c6c;
+  margin-left: 2px;
+}
+.tool-param-type {
+  font-size: 11px;
+  color: #909399;
+}
+.tool-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  .tool-option-desc {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #909399;
+  }
 }
 
 // 自定义节点样式
