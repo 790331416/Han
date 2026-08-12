@@ -64,7 +64,7 @@
         <span class="notice-detail-title" data-testid="notify-detail-title">{{ currentNotice.noticeTitle }}</span>
       </div>
       <div class="notice-detail-time">{{ formatTime(currentNotice.createTime) }}</div>
-      <div class="notice-detail-content" v-html="currentNotice.noticeContent"></div>
+      <div class="notice-detail-content" v-html="sanitizeHtml(currentNotice.noticeContent || '')"></div>
     </div>
   </el-dialog>
 </template>
@@ -77,6 +77,7 @@ import { Bell, Loading } from '@element-plus/icons-vue'
 import { getLatestNotices, getUnreadCount, markAllNoticeRead, markNoticeRead } from '@/api/system/notice'
 import type { Notice } from '@/api/system/notice'
 import { getToken } from '@/utils/auth'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 import { tryRefreshSession } from '@/utils/session-refresh'
 import { useUserStore } from '@/stores/user'
 

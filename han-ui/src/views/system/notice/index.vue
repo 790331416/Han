@@ -123,7 +123,7 @@
         <el-descriptions-item label="创建者">{{ detailData.createName }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ detailData.createTime }}</el-descriptions-item>
         <el-descriptions-item label="内容" :span="2">
-          <div class="notice-content" v-html="detailData.noticeContent"></div>
+          <div class="notice-content" v-html="sanitizeHtml(detailData.noticeContent || '')"></div>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2" v-if="detailData.remark">{{ detailData.remark }}</el-descriptions-item>
       </el-descriptions>
@@ -140,6 +140,7 @@ import type { IDomEditor } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { listNotice, getNotice, addNotice, updateNotice, deleteNotice, deleteNotices } from '@/api/system/notice'
 import type { Notice, NoticeForm } from '@/api/system/notice'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const loading = ref(false)

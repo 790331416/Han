@@ -672,6 +672,7 @@ import {
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
 import { requestAiStream, type AiStreamMetaPayload, type AiStreamNodeEvent } from '@/utils/ai-stream'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 
 // marked 配置：启用代码高亮
 marked.setOptions({
@@ -1975,9 +1976,9 @@ function scrollToBottom() {
 function renderMarkdown(content: string): string {
   if (!content) return ''
   try {
-    return marked.parse(content) as string
+    return sanitizeHtml(marked.parse(content) as string)
   } catch {
-    return content
+    return sanitizeHtml(content)
   }
 }
 
