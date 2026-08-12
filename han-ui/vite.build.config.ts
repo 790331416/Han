@@ -6,6 +6,7 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
 import path from 'path'
+import { CHUNK_SIZE_WARNING_LIMIT, MANUAL_CHUNKS } from './build/chunks'
 
 /**
  * 生产构建专用配置。
@@ -43,18 +44,26 @@ export default defineConfig(({ mode }) => {
         symbolId: 'icon-[dir]-[name]'
       })
     ],
+    /**
+     * 只 drop debugger，刻意保留 console。
+     *
+     * console 泄露 token 的问题已经在 `utils/request.ts` 里按字段脱敏解决；
+     * 而权限指令降级、运行时能力回退、buildTree 挂载失败这几处 `console.warn`
+     * 是生产环境的诊断依据，清掉会让线上问题彻底失去线索。
+     */
+    esbuild: {
+      drop: ['debugger'] as const
+    },
     build: {
       outDir: 'dist',
-      chunkSizeWarningLimit: 2000,
+      sourcemap: false,
+      chunkSizeWarningLimit: CHUNK_SIZE_WARNING_LIMIT,
       rollupOptions: {
         output: {
           chunkFileNames: 'assets/js/[name]-[hash].js',
           entryFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
-          manualChunks: {
-            vue: ['vue', 'vue-router', 'pinia'],
-            elementPlus: ['element-plus', '@element-plus/icons-vue']
-          }
+          manualChunks: MANUAL_CHUNKS
         }
       }
     }

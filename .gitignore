@@ -173,6 +173,8 @@ maven-status/
 .gradle/
 .gradle2/
 build/
+# han-ui/build 放的是 Vite 构建期配置源码，被 vite.config.ts 引用，不是构建产物
+!han-ui/build/
 
 # Others #
 ##########
