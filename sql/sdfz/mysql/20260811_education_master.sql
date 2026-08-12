@@ -1,5 +1,8 @@
 -- 附中三课堂教育主数据（MySQL 8.4）
 -- 运行时设备在线状态、心跳、课堂控制和视频数据不进入这些表。
+--
+-- 手工执行时必须保留下面这行：客户端字符集缺省为 latin1 时，脚本里的中文会被双重编码成乱码。
+SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS edu_school (
     id BIGINT NOT NULL PRIMARY KEY,
