@@ -21,7 +21,7 @@
       <template #header>
         <div class="card-header">
           <span>知识库管理</span>
-          <el-button type="primary" :icon="Plus" data-testid="ai-knowledge-create-button" @click="handleAdd">创建知识库</el-button>
+          <el-button v-hasPermi="['ai:kb:add']" type="primary" :icon="Plus" data-testid="ai-knowledge-create-button" @click="handleAdd">创建知识库</el-button>
         </div>
       </template>
 
@@ -35,9 +35,9 @@
                 <el-icon class="kb-more" :data-testid="`ai-knowledge-card-actions-${kb.kbId}`"><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                    <el-dropdown-item v-hasPermi="['ai:kb:edit']" command="edit">编辑</el-dropdown-item>
                     <el-dropdown-item command="hitTest" data-testid="ai-knowledge-hit-test-command">命中测试</el-dropdown-item>
-                    <el-dropdown-item command="delete" data-testid="ai-knowledge-delete-command" divided>删除</el-dropdown-item>
+                    <el-dropdown-item v-hasPermi="['ai:kb:remove']" command="delete" data-testid="ai-knowledge-delete-command" divided>删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -94,11 +94,40 @@
     </el-dialog>
 
     <!-- 文档管理对话框 -->
-    <el-dialog v-model="docVisible" :title="`文档管理 - ${currentKb?.kbName || ''}`" width="80%" class="dialog-xl" destroy-on-close>
+    <el-dialog
+      v-model="docVisible"
+      :title="`文档管理 - ${currentKb?.kbName || ''}`"
+      width="80%"
+      class="dialog-xl"
+      destroy-on-close
+      @closed="handleDocDialogClosed"
+    >
       <div data-testid="ai-knowledge-doc-dialog">
       <div class="doc-header">
+        <div class="doc-filters">
+          <el-input
+            v-model="docQuery.docName"
+            placeholder="按文档名筛选"
+            clearable
+            style="width: 200px"
+            data-testid="ai-knowledge-doc-name-filter"
+            @keyup.enter="handleDocQuery"
+            @clear="handleDocQuery"
+          />
+          <el-select
+            v-model="docQuery.indexStatus"
+            placeholder="索引状态"
+            clearable
+            style="width: 140px"
+            data-testid="ai-knowledge-doc-status-filter"
+            @change="handleDocQuery"
+          >
+            <el-option v-for="item in indexStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <el-button :icon="Search" @click="handleDocQuery">筛选</el-button>
+        </div>
         <el-upload data-testid="ai-knowledge-upload" :auto-upload="false" :show-file-list="false" accept=".txt,.pdf,.md,.docx,.html,.xlsx,.csv" :on-change="handleFileSelect">
-          <el-button type="primary" :icon="Upload" data-testid="ai-knowledge-upload-button">上传文档</el-button>
+          <el-button v-hasPermi="['ai:kb:upload']" type="primary" :icon="Upload" data-testid="ai-knowledge-upload-button">上传文档</el-button>
         </el-upload>
       </div>
       <el-table v-loading="docLoading" :data="docList" :row-class-name="docRowClassName" style="margin-top: 16px;" data-testid="ai-knowledge-doc-table">
@@ -110,9 +139,14 @@
           <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
         </el-table-column>
         <el-table-column label="段落数" prop="paragraphCount" width="80" align="center" />
-        <el-table-column label="索引状态" width="100" align="center">
+        <el-table-column label="索引状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="getIndexStatusType(row.indexStatus)" size="small">
+            <el-tooltip v-if="row.indexStatus === 'failed' && row.indexError" :content="row.indexError" placement="top">
+              <el-tag type="danger" size="small" data-testid="ai-knowledge-doc-index-error">
+                {{ getIndexStatusLabel(row.indexStatus) }}
+              </el-tag>
+            </el-tooltip>
+            <el-tag v-else :type="getIndexStatusType(row.indexStatus)" size="small">
               {{ getIndexStatusLabel(row.indexStatus) }}
             </el-tag>
           </template>
@@ -120,11 +154,23 @@
         <el-table-column label="上传时间" prop="createTime" min-width="170" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="150">
           <template #default="{ row }">
-            <el-button type="primary" link data-testid="ai-knowledge-reindex-button" @click="handleReindex(row)">重新索引</el-button>
-            <el-button type="danger" link data-testid="ai-knowledge-delete-doc-button" @click="handleDeleteDoc(row)">删除</el-button>
+            <el-button v-hasPermi="['ai:kb:edit']" type="primary" link data-testid="ai-knowledge-reindex-button" @click="handleReindex(row)">重新索引</el-button>
+            <el-button v-hasPermi="['ai:kb:remove']" type="danger" link data-testid="ai-knowledge-delete-doc-button" @click="handleDeleteDoc(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="docQuery.pageNum"
+          v-model:page-size="docQuery.pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="docTotal"
+          layout="total, sizes, prev, pager, next"
+          data-testid="ai-knowledge-doc-pagination"
+          @size-change="() => loadDocList()"
+          @current-change="() => loadDocList()"
+        />
+      </div>
       </div>
     </el-dialog>
     <!-- 命中测试对话框 -->
@@ -160,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Upload, Document, Tickets, Collection, MoreFilled } from '@element-plus/icons-vue'
@@ -224,10 +270,19 @@ const getList = async () => {
 const handleQuery = () => { queryParams.pageNum = 1; getList() }
 const resetQuery = () => { queryFormRef.value?.resetFields(); handleQuery() }
 
+/** 向量模型列表加载失败不应该挡住对话框：留空即可，用户仍可只填基本信息。 */
+const loadEmbeddingModels = async () => {
+  try {
+    const res = await listAllModels('EMBEDDING')
+    embeddingModels.value = res.data || []
+  } catch {
+    embeddingModels.value = []
+  }
+}
+
 const handleAdd = async () => {
   Object.assign(form, { kbId: undefined, kbName: '', kbType: 'general', description: '', embeddingModelId: undefined })
-  const res = await listAllModels('EMBEDDING')
-  embeddingModels.value = res.data || []
+  await loadEmbeddingModels()
   dialogVisible.value = true
 }
 
@@ -271,8 +326,7 @@ const doHitTest = async () => {
 
 const handleEdit = async (kb: KnowledgeBase) => {
   Object.assign(form, kb)
-  const res = await listAllModels('EMBEDDING')
-  embeddingModels.value = res.data || []
+  await loadEmbeddingModels()
   dialogVisible.value = true
 }
 
@@ -297,14 +351,86 @@ const handleDelete = async (kb: KnowledgeBase) => {
   } catch { /* 接口不可用 */ }
 }
 
+// ==================== 文档列表：分页 + 筛选 + 索引状态轮询 ====================
+const docQuery = reactive<{ pageNum: number; pageSize: number; docName: string; indexStatus: string }>({
+  pageNum: 1,
+  pageSize: 10,
+  docName: '',
+  indexStatus: ''
+})
+const docTotal = ref(0)
+
+/** 索引进行中的状态，命中时启动轮询直到全部收敛。 */
+const PENDING_INDEX_STATUS = ['pending', 'indexing']
+const DOC_POLL_INTERVAL = 4000
+let docPollTimer: ReturnType<typeof setInterval> | null = null
+
+const stopDocPolling = () => {
+  if (docPollTimer !== null) {
+    clearInterval(docPollTimer)
+    docPollTimer = null
+  }
+}
+
+/**
+ * 上传与重建索引都是后端异步任务，前端如果只在提交那一刻拉一次列表，
+ * 「索引中」的黄标签会一直挂着，用户必须手动关抽屉再打开才知道结果。
+ */
+const syncDocPolling = () => {
+  const hasPending = docList.value.some((doc) => PENDING_INDEX_STATUS.includes(doc.indexStatus))
+  if (!hasPending || !docVisible.value) {
+    stopDocPolling()
+    return
+  }
+  if (docPollTimer !== null) return
+  docPollTimer = setInterval(() => {
+    if (!docVisible.value || !currentKb.value) {
+      stopDocPolling()
+      return
+    }
+    void loadDocList({ silent: true })
+  }, DOC_POLL_INTERVAL)
+}
+
+const loadDocList = async (options: { silent?: boolean } = {}) => {
+  if (!currentKb.value) return
+  if (!options.silent) docLoading.value = true
+  try {
+    const res = await listKbDocument(currentKb.value.kbId, {
+      pageNum: docQuery.pageNum,
+      pageSize: docQuery.pageSize,
+      docName: docQuery.docName || undefined,
+      indexStatus: docQuery.indexStatus || undefined
+    })
+    docList.value = res.data.rows
+    docTotal.value = res.data.total
+    syncDocPolling()
+  } catch {
+    // 接口不可用：轮询要停掉，避免持续打失败请求
+    stopDocPolling()
+  } finally {
+    if (!options.silent) docLoading.value = false
+  }
+}
+
+const handleDocQuery = () => {
+  docQuery.pageNum = 1
+  void loadDocList()
+}
+
+const handleDocDialogClosed = () => {
+  stopDocPolling()
+  docList.value = []
+  docTotal.value = 0
+}
+
 const handleDetail = async (kb: KnowledgeBase) => {
   currentKb.value = kb
   docVisible.value = true
-  docLoading.value = true
-  try {
-    const res = await listKbDocument(kb.kbId, { pageNum: 1, pageSize: 100 })
-    docList.value = res.data.rows
-  } catch { /* 接口不可用 */ } finally { docLoading.value = false }
+  docQuery.pageNum = 1
+  docQuery.docName = ''
+  docQuery.indexStatus = ''
+  await loadDocList()
 }
 
 // ==================== 引用出处跳转定位（对话页「在知识库中查看」携带 kbId/docId） ====================
@@ -332,8 +458,9 @@ const handleFileSelect = async (file: UploadFile) => {
   try {
     if (!currentKb.value || !file.raw) return
     await uploadKbDocument(currentKb.value.kbId, file.raw)
-    ElMessage.success('上传成功')
-    handleDetail(currentKb.value)
+    ElMessage.success('上传成功，正在建立索引')
+    docQuery.pageNum = 1
+    await loadDocList()
     getList()
   } catch { /* 接口不可用 */ }
 }
@@ -342,19 +469,31 @@ const handleReindex = async (doc: KbDocument) => {
   try {
     await reindexKbDocument(doc.docId)
     ElMessage.success('已提交重新索引')
-    if (currentKb.value) handleDetail(currentKb.value)
+    await loadDocList()
   } catch { /* 接口不可用 */ }
 }
 
 const handleDeleteDoc = async (doc: KbDocument) => {
   try {
     await ElMessageBox.confirm(`确定删除文档"${doc.docName}"吗?`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
     await deleteKbDocument(doc.docId)
     ElMessage.success('删除成功')
-    if (currentKb.value) handleDetail(currentKb.value)
+    // 删掉当前页最后一条时回退一页，避免停在空白页
+    if (docList.value.length === 1 && docQuery.pageNum > 1) {
+      docQuery.pageNum -= 1
+    }
+    await loadDocList()
     getList()
   } catch { /* 接口不可用 */ }
 }
+
+onUnmounted(() => {
+  stopDocPolling()
+})
 
 onMounted(async () => {
   const options = await loadDictOptionSet({
@@ -395,7 +534,8 @@ watch(
 .kb-desc { color: #909399; font-size: 13px; margin-bottom: 12px; height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .kb-stats { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #909399; }
 .kb-stat-item { display: flex; align-items: center; gap: 4px; }
-.doc-header { display: flex; justify-content: flex-end; }
+.doc-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.doc-filters { display: flex; align-items: center; gap: 8px; }
 
 .hit-test-input { margin-bottom: 16px; }
 .hit-test-results { margin-top: 16px; }

@@ -21,7 +21,7 @@
       <template #header>
         <div class="card-header">
           <span>AI工作流管理</span>
-          <el-button type="primary" :icon="Plus" data-testid="ai-workflow-create-button" @click="handleAdd">
+          <el-button v-hasPermi="['ai:workflow:add']" type="primary" :icon="Plus" data-testid="ai-workflow-create-button" @click="handleAdd">
             创建工作流
           </el-button>
         </div>
@@ -40,13 +40,13 @@
                   <el-icon class="wf-more"><MoreFilled /></el-icon>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                      <el-dropdown-item command="design">设计流程</el-dropdown-item>
+                      <el-dropdown-item v-hasPermi="['ai:workflow:edit']" command="edit">编辑</el-dropdown-item>
+                      <el-dropdown-item v-hasPermi="['ai:workflow:edit']" command="design">设计流程</el-dropdown-item>
                       <el-dropdown-item command="chat" v-if="wf.published === '1'">对话测试</el-dropdown-item>
-                      <el-dropdown-item :command="wf.published === '1' ? 'unpublish' : 'publish'">
+                      <el-dropdown-item v-hasPermi="['ai:workflow:edit']" :command="wf.published === '1' ? 'unpublish' : 'publish'">
                         {{ wf.published === '1' ? '取消发布' : '发布' }}
                       </el-dropdown-item>
-                      <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                      <el-dropdown-item v-hasPermi="['ai:workflow:remove']" command="delete" divided>删除</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -286,11 +286,18 @@ const handleDesign = (wf: AiWorkflow) => {
 }
 
 const handleEdit = async (wf: AiWorkflow) => {
-  const res = await getAiWorkflow(wf.workflowId)
-  Object.assign(form, res.data)
-  try { selectedKbIds.value = res.data.knowledgeBaseIds ? JSON.parse(res.data.knowledgeBaseIds) : [] } catch { selectedKbIds.value = [] }
-  try { selectedMcpIds.value = res.data.mcpServerIds ? JSON.parse(res.data.mcpServerIds) : [] } catch { selectedMcpIds.value = [] }
-  suggestedList.value = parseSuggestedQuestions(res.data.suggestedQuestions)
+  let detail: AiWorkflow
+  try {
+    const res = await getAiWorkflow(wf.workflowId)
+    detail = res.data
+  } catch {
+    // 详情拉取失败时不要静默不开对话框（错误文案由拦截器弹出）
+    return
+  }
+  Object.assign(form, detail)
+  try { selectedKbIds.value = detail.knowledgeBaseIds ? JSON.parse(detail.knowledgeBaseIds) : [] } catch { selectedKbIds.value = [] }
+  try { selectedMcpIds.value = detail.mcpServerIds ? JSON.parse(detail.mcpServerIds) : [] } catch { selectedMcpIds.value = [] }
+  suggestedList.value = parseSuggestedQuestions(detail.suggestedQuestions)
   await loadOptions()
   dialogVisible.value = true
 }
@@ -405,7 +412,8 @@ const handleSendMessage = async () => {
     } catch { /* 非JSON格式，直接使用 */ }
     chatMessages.value.push({ role: 'assistant', content })
   } catch (e: any) {
-    chatMessages.value.push({ role: 'assistant', content: '请求失败: ' + (e.message || '未知错误') })
+    // 失败要用错误提示，不能伪装成一条 AI 回复
+    ElMessage.error('对话测试失败: ' + (e?.message || '未知错误'))
   } finally {
     chatLoading.value = false
     scrollToBottom()

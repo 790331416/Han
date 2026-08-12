@@ -145,6 +145,16 @@
         </el-radio-group>
       </div>
 
+      <el-alert
+        v-if="truncatedNotice"
+        type="warning"
+        :title="truncatedNotice"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px;"
+        data-testid="ai-application-truncated-notice"
+      />
+
       <div v-loading="loading" data-testid="ai-application-list">
         <el-row v-if="filteredApplications.length > 0" :gutter="16">
           <el-col
@@ -264,14 +274,14 @@ import {
   UserFilled
 } from '@element-plus/icons-vue'
 import {
+  listAiAgent,
+  listAiWorkflow,
   listAllModels,
   type AiAgent,
   type AiModel,
   type AiWorkflow
 } from '@/api/ai'
-import type { PageResult } from '@/types'
 import { useUserStore } from '@/stores/user'
-import { get } from '@/utils/request'
 
 type ApplicationType = 'agent' | 'workflow'
 
@@ -353,26 +363,43 @@ const filteredApplications = computed(() => {
   })
 })
 
+/** 应用总览一次性拉取的上限；超过这个量说明该做真分页了。 */
+const APPLICATION_FETCH_SIZE = 100
+
 async function loadData() {
   loading.value = true
   try {
     const modelResponse = await listAllModels('LLM')
     modelList.value = (modelResponse.data || []) as AiModel[]
 
+    // 走 api/ai 的封装而不是手拼 URL：接口路径只能有一处定义，后端调整时才不会漏改
     const [agentResponse, workflowResponse] = await Promise.all([
       canViewAgent.value
-        ? get<PageResult<AiAgent>>('/ai/agent/list', { pageNum: 1, pageSize: 100 }, { silentError: true }).catch(() => null)
+        ? listAiAgent({ pageNum: 1, pageSize: APPLICATION_FETCH_SIZE }, { silentError: true }).catch(() => null)
         : Promise.resolve(null),
       canViewWorkflow.value
-        ? get<PageResult<AiWorkflow>>('/ai/workflow/list', { pageNum: 1, pageSize: 100 }, { silentError: true }).catch(() => null)
+        ? listAiWorkflow({ pageNum: 1, pageSize: APPLICATION_FETCH_SIZE }, { silentError: true }).catch(() => null)
         : Promise.resolve(null)
     ])
 
-    agentList.value = canViewAgent.value ? (((agentResponse as any)?.data?.rows || []) as AiAgent[]) : []
-    workflowList.value = canViewWorkflow.value ? (((workflowResponse as any)?.data?.rows || []) as AiWorkflow[]) : []
+    agentList.value = canViewAgent.value ? (agentResponse?.data?.rows || []) : []
+    workflowList.value = canViewWorkflow.value ? (workflowResponse?.data?.rows || []) : []
+    truncatedNotice.value = buildTruncatedNotice(agentResponse?.data?.total, workflowResponse?.data?.total)
   } finally {
     loading.value = false
   }
+}
+
+/** 列表被 pageSize 截断时给出明确提示，不要让用户以为应用「消失」了。 */
+const truncatedNotice = ref('')
+
+function buildTruncatedNotice(agentTotal?: number, workflowTotal?: number): string {
+  const overflow: string[] = []
+  if (Number(agentTotal || 0) > APPLICATION_FETCH_SIZE) overflow.push('智能体')
+  if (Number(workflowTotal || 0) > APPLICATION_FETCH_SIZE) overflow.push('工作流')
+  return overflow.length > 0
+    ? `${overflow.join(' / ')}数量超过 ${APPLICATION_FETCH_SIZE} 个，此处仅展示前 ${APPLICATION_FETCH_SIZE} 个，请到对应管理页查看完整列表`
+    : ''
 }
 
 function redirectToFirstAvailableRoute() {
