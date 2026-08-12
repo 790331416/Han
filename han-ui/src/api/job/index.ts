@@ -172,16 +172,33 @@ export interface JobFlowMetrics {
   clustered?: boolean
 }
 
-export function getJobFlowHealth() {
-  return get<never>('/actuator/jobflow/health', undefined, { silentError: true }) as unknown as Promise<JobFlowHealth>
+/**
+ * 裸 JSON 端点的响应兜底。
+ *
+ * 请求层对「不带 R 包装」的响应直接透传，生产环境 nginx 若没有 /actuator/ 的 location，
+ * 请求会落进 SPA 兜底拿到一整篇 index.html，透传后被当成正常数据，
+ * 面板只会显示一排 -- 且不报错。这里强制要求是对象，否则按失败抛出。
+ */
+function requireJsonObject<T>(payload: unknown, endpoint: string): T {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(`${endpoint} 未返回 JSON 数据，请检查网关或 nginx 是否已放行 /actuator/ 路径`)
+  }
+  return payload as T
 }
 
-export function getJobFlowConfig() {
-  return get<never>('/actuator/jobflow/config', undefined, { silentError: true }) as unknown as Promise<JobFlowConfig>
+export async function getJobFlowHealth(): Promise<JobFlowHealth> {
+  const res = await get<never>('/actuator/jobflow/health', undefined, { silentError: true })
+  return requireJsonObject<JobFlowHealth>(res, '/actuator/jobflow/health')
 }
 
-export function getJobFlowMetrics() {
-  return get<never>('/actuator/jobflow/metrics', undefined, { silentError: true }) as unknown as Promise<JobFlowMetrics>
+export async function getJobFlowConfig(): Promise<JobFlowConfig> {
+  const res = await get<never>('/actuator/jobflow/config', undefined, { silentError: true })
+  return requireJsonObject<JobFlowConfig>(res, '/actuator/jobflow/config')
+}
+
+export async function getJobFlowMetrics(): Promise<JobFlowMetrics> {
+  const res = await get<never>('/actuator/jobflow/metrics', undefined, { silentError: true })
+  return requireJsonObject<JobFlowMetrics>(res, '/actuator/jobflow/metrics')
 }
 
 // ===================== 任务日志接口 =====================
@@ -201,9 +218,10 @@ export function deleteJobLog(jobLogId: string | number) {
   return post<void>(`/job/log/remove/${jobLogId}`)
 }
 
-// 批量删除日志
+// 批量删除日志。后端只有 POST /job/log/remove/{jobLogIds}（逗号分隔的路径变量），
+// 没有接收请求体的 /job/log/remove，原来那种写法必定 404。
 export function deleteJobLogs(jobLogIds: (string | number)[]) {
-  return post<void>('/job/log/remove', jobLogIds)
+  return post<void>(`/job/log/remove/${jobLogIds.join(',')}`)
 }
 
 // 清空日志

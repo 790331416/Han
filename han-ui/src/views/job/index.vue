@@ -11,6 +11,16 @@
           <el-button link :icon="Refresh" :loading="monitorLoading" data-testid="jobflow-monitor-refresh" @click="loadMonitor">刷新</el-button>
         </div>
       </template>
+      <el-alert
+        v-if="monitorError"
+        type="error"
+        show-icon
+        :closable="false"
+        class="monitor-alert"
+        data-testid="jobflow-monitor-error"
+      >
+        {{ monitorMessage }}
+      </el-alert>
       <div v-loading="monitorLoading" class="monitor-grid">
         <div class="monitor-item" data-testid="jobflow-monitor-status">
           <span class="monitor-label">调度器状态</span>
@@ -307,6 +317,7 @@ const formRef = ref<FormInstance>()
 // ==================== JobFlow 调度监控 ====================
 const monitorLoading = ref(false)
 const monitorError = ref(false)
+const monitorMessage = ref('')
 const monitorHealth = ref<JobFlowHealth | null>(null)
 const monitorConfig = ref<JobFlowConfig | null>(null)
 const monitorMetrics = ref<JobFlowMetrics | null>(null)
@@ -323,8 +334,14 @@ const loadMonitor = async () => {
     monitorConfig.value = config
     monitorMetrics.value = metrics
     monitorError.value = false
-  } catch {
+    monitorMessage.value = ''
+  } catch (e: any) {
+    // 失败时清空旧值，避免面板留着上一次的数据看起来还正常
+    monitorHealth.value = null
+    monitorConfig.value = null
+    monitorMetrics.value = null
     monitorError.value = true
+    monitorMessage.value = e?.message || '调度监控数据获取失败'
   } finally {
     monitorLoading.value = false
   }
@@ -462,17 +479,21 @@ const handleAdd = () => {
 
 // 编辑
 const handleEdit = async (row: Job) => {
-  const res = await getJob(row.jobId)
-  Object.assign(form, res.data)
-  dialogVisible.value = true
-  loadHandlers()
+  try {
+    const res = await getJob(row.jobId)
+    Object.assign(form, res.data)
+    dialogVisible.value = true
+    loadHandlers()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 详情
 const handleDetail = async (row: Job) => {
-  const res = await getJob(row.jobId)
-  detailData.value = res.data
-  detailVisible.value = true
+  try {
+    const res = await getJob(row.jobId)
+    detailData.value = res.data
+    detailVisible.value = true
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 提交
@@ -499,18 +520,26 @@ const handleSubmit = async () => {
 
 // 删除
 const handleDelete = async (row: Job) => {
-  await ElMessageBox.confirm(`确定删除任务"${row.jobName}"吗?`, '提示', { type: 'warning' })
-  await deleteJob(row.jobId)
-  ElMessage.success('删除成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(`确定删除任务"${row.jobName}"吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await deleteJob(row.jobId)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 批量删除
 const handleBatchDelete = async () => {
-  await ElMessageBox.confirm(`确定删除选中的${selectedIds.value.length}个任务吗?`, '提示', { type: 'warning' })
-  await deleteJobs(selectedIds.value)
-  ElMessage.success('删除成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(`确定删除选中的${selectedIds.value.length}个任务吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await deleteJobs(selectedIds.value)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 状态修改
@@ -525,11 +554,15 @@ const handleStatusChange = async (row: Job) => {
   }
 }
 
-// 立即执行
+// 立即执行：接口成功只代表提交给了调度器，不代表业务逻辑跑完
 const handleRun = async (row: Job) => {
-  await ElMessageBox.confirm(`确定立即执行任务"${row.jobName}"吗?`, '提示', { type: 'warning' })
-  await runJob(row.jobId)
-  ElMessage.success('执行成功')
+  try {
+    await ElMessageBox.confirm(`确定立即执行任务"${row.jobName}"吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await runJob(row.jobId)
+    ElMessage.success('已触发执行，执行结果请到调度日志查看')
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 查看日志
@@ -611,6 +644,10 @@ onMounted(() => {
 
 .monitor-card {
   margin-bottom: 20px;
+
+  .monitor-alert {
+    margin-bottom: 12px;
+  }
 
   .monitor-grid {
     display: grid;

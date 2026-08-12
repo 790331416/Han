@@ -70,9 +70,10 @@
         </el-table-column>
         <el-table-column label="耗时(ms)" prop="costTime" width="100" align="center" />
         <el-table-column label="开始时间" prop="startTime" min-width="180" />
-        <el-table-column label="操作" min-width="100">
+        <el-table-column label="操作" min-width="140">
           <template #default="{ row }">
             <el-button type="primary" link :icon="View" @click="handleDetail(row)">详情</el-button>
+            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -121,7 +122,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Delete, View, Back } from '@element-plus/icons-vue'
 import {
-  listJobLog, getJobLog, deleteJobLogs, cleanJobLog,
+  listJobLog, getJobLog, deleteJobLog, deleteJobLogs, cleanJobLog,
   jobGroupOptions,
   type JobLog, type JobLogQuery
 } from '@/api/job'
@@ -199,25 +200,47 @@ const handleSelectionChange = (selection: JobLog[]) => {
 
 // 详情
 const handleDetail = async (row: JobLog) => {
-  const res = await getJobLog(row.jobLogId)
-  detailData.value = res.data
-  detailVisible.value = true
+  try {
+    const res = await getJobLog(row.jobLogId)
+    detailData.value = res.data
+    detailVisible.value = true
+  } catch { /* 失败提示由请求层统一处理 */ }
+}
+
+// 单条删除
+const handleDelete = async (row: JobLog) => {
+  try {
+    await ElMessageBox.confirm(`确定删除任务"${row.jobName}"的这条日志吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await deleteJobLog(row.jobLogId)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 批量删除
 const handleBatchDelete = async () => {
-  await ElMessageBox.confirm(`确定删除选中的${selectedIds.value.length}条日志吗?`, '提示', { type: 'warning' })
-  await deleteJobLogs(selectedIds.value)
-  ElMessage.success('删除成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(`确定删除选中的${selectedIds.value.length}条日志吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await deleteJobLogs(selectedIds.value)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 清空
 const handleClean = async () => {
-  await ElMessageBox.confirm('确定清空所有任务日志吗? 此操作不可恢复!', '警告', { type: 'warning' })
-  await cleanJobLog()
-  ElMessage.success('清空成功')
-  getList()
+  try {
+    await ElMessageBox.confirm('确定清空所有任务日志吗? 此操作不可恢复!', '警告', { type: 'warning' })
+  } catch { return }
+  try {
+    await cleanJobLog()
+    ElMessage.success('清空成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 // 返回
