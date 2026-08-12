@@ -1,3 +1,8 @@
+# AI 短剧（aivideo）业务线专用的 ACR 发布助手，目标是腾讯云 full-app 环境，
+# 不属于 generic-v2 通用底座三档部署（deploy/small、deploy/medium、deploy/full）
+# 的任何一环，95 发布流程也不经过它。
+# generic-v2 上没有 han-modules/han-aivideo，CI 不构建 han-aivideo 镜像，
+# 因此这里的 aivideo 服务项在本分支上取不到镜像。该脚本的去留待拍板。
 param(
     [string] $Tag = '',
     [string[]] $Services = @('ai', 'aivideo', 'ui'),

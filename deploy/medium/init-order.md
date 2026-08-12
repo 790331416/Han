@@ -19,9 +19,11 @@
 
 - PostgreSQL `25432`
 - Redis `26379`
-- Nacos `28848`
+- Nacos `28848` / `29848`
 - RustFS `29000`
 - RustFS Console `29001`
+- RabbitMQ `25672`
+- RabbitMQ Management `25673`
 - Gateway `29090`
 - Auth `29200`
 - System `29201`

@@ -4,6 +4,12 @@
 # 硬件: 2核4GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1
 # 服务: gateway, auth, system
+# ---------------------------------------------
+# 【已弃用 / 过渡保留】
+# 正式部署入口是 deploy/small、deploy/medium、deploy/full（见 AGENTS.md 与
+# docs/03-部署手册.md §11）。本文件只保留给本地开发过渡使用，不得用于 95 或
+# 任何正式环境；三档的端口偏移、镜像清单与初始化顺序以 deploy/<tier> 为准。
+# 口令等敏感项必须由环境变量注入，缺失即启动失败，参见根目录 .env.example。
 # =============================================
 
 x-db-env: &db-env
@@ -11,12 +17,12 @@ x-db-env: &db-env
   DB_PORT: "5432"
   DB_NAME: han
   DB_USER: han
-  DB_PASSWORD: han@2026
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
 
 x-redis-env: &redis-env
   REDIS_HOST: redis
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: han@2026
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 
 x-nacos-env: &nacos-env
   NACOS_SERVER_ADDR: nacos:8848
@@ -28,7 +34,7 @@ x-service-env: &service-env
   <<: [*db-env, *redis-env, *nacos-env]
   SPRING_PROFILES_ACTIVE: docker
   HAN_DEPLOY_TIER: small
-  HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+  HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
   JAVA_OPTS: -Xms128m -Xmx256m
   TZ: Asia/Shanghai
 
@@ -37,19 +43,19 @@ services:
 
   postgres:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/postgres:18.1
+    restart: always
+    mem_limit: ${HAN_POSTGRES_MEM_LIMIT:-1g}
     container_name: han-postgres
     environment:
       POSTGRES_DB: han
       POSTGRES_USER: han
-      POSTGRES_PASSWORD: han@2026
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       TZ: Asia/Shanghai
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./sql/postgres/init-base-data.sql:/docker-entrypoint-initdb.d/02-base-data.sql
-      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/03-oss.sql
+      - ./sql/tiers/small/small-init.sql:/docker-entrypoint-initdb.d/01-small-init.sql:ro
     networks:
       - han-network
     healthcheck:
@@ -60,8 +66,10 @@ services:
 
   redis:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6.0
+    restart: always
+    mem_limit: ${HAN_REDIS_MEM_LIMIT:-512m}
     container_name: han-redis
-    command: redis-server --requirepass han@2026
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
       - "6379:6379"
     volumes:
@@ -69,20 +77,22 @@ services:
     networks:
       - han-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "han@2026", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   nacos:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/nacos:v3.1.1
+    restart: always
+    mem_limit: ${HAN_NACOS_MEM_LIMIT:-1g}
     container_name: han-nacos
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
-      NACOS_AUTH_TOKEN: "aGFuQDIwMjZoYW5AMjAyNmhhbkAyMDI2aGFuQDIwMjZoYW5AMjAyNg=="
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN is required}
       NACOS_AUTH_IDENTITY_KEY: serverIdentity
-      NACOS_AUTH_IDENTITY_VALUE: han2026
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?NACOS_AUTH_IDENTITY_VALUE is required}
       JVM_XMS: 256m
       JVM_XMX: 256m
       TZ: Asia/Shanghai
@@ -104,13 +114,15 @@ services:
 
   gateway:
     image: han-gateway:local
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-768m}
     pull_policy: never
     container_name: han-gateway
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: small
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
       JAVA_OPTS: -Xms128m -Xmx256m -Dio.netty.transport.noNative=true
       TZ: Asia/Shanghai
     ports:
@@ -125,13 +137,15 @@ services:
 
   auth:
     image: han-auth:local
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-768m}
     pull_policy: never
     container_name: han-auth
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: small
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
       SPRING_AUTOCONFIGURE_EXCLUDE: >-
         org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
@@ -149,6 +163,8 @@ services:
 
   system:
     image: han-system:local
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-768m}
     pull_policy: never
     container_name: han-system
     environment:
@@ -167,6 +183,8 @@ services:
 
   job:
     image: han-job:local
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-768m}
     pull_policy: never
     container_name: han-job
     environment:

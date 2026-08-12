@@ -63,10 +63,15 @@ REM ========================================================
 echo [Step 1/8] Setup Java Environment...
 echo --------------------------------------------------------
 
-set "JAVA_HOME=D:\Program Files\Java\jdk-21.0.10"
-set "MAVEN_HOME=D:\Program Files\apache-maven-3.9.12"
+REM 工具链统一走 D:\source（见工作区规范），不使用 Program Files 下的副本
+set "JAVA_HOME=D:\source\java\jdk-21.0.10"
+set "MAVEN_HOME=D:\source\maven\apache-maven-3.9.12"
+set "NODE_HOME=D:\source\nodejs"
+set "COREPACK_SHIM_HOME=D:\source\nodejs\node_modules\corepack\shims"
 set "MAVEN_CMD=%MAVEN_HOME%\bin\mvn.cmd"
-set "PATH=%JAVA_HOME%\bin;%MAVEN_HOME%\bin;%PATH%"
+set "MAVEN_OPTS=-Dmaven.repo.local=D:\source\maven\.m2\repository"
+set "NPM_CONFIG_CACHE=D:\source\nvm\npm-cache"
+set "PATH=%JAVA_HOME%\bin;%MAVEN_HOME%\bin;%NODE_HOME%;%COREPACK_SHIM_HOME%;%PATH%"
 
 echo JAVA_HOME: %JAVA_HOME%
 echo MAVEN_HOME: %MAVEN_HOME%
@@ -130,29 +135,41 @@ if !JAR_COUNT! NEQ !EXPECTED_JAR! echo WARNING: Some JARs missing!
 echo.
 
 REM ========================================================
-REM Step 4: NPM Build Frontend
+REM Step 4: pnpm Build Frontend
 REM ========================================================
-echo [Step 4/8] NPM Build Frontend...
+echo [Step 4/8] pnpm Build Frontend...
 echo --------------------------------------------------------
 
+REM han-ui 是 pnpm workspace 工程（han-ui/Dockerfile 用 corepack prepare pnpm
+REM 加 pnpm install --frozen-lockfile，锁文件是 pnpm-lock.yaml）。用 npm install
+REM 会忽略 pnpm 锁文件重新解析依赖，产出的 dist 与 CI 产物不可比。
 if "%UI_BUILD%"=="0" goto :skip_ui
 if not exist "%PROJECT_DIR%\han-ui\package.json" goto :skip_ui
 
 cd /d "%PROJECT_DIR%\han-ui"
-echo Installing dependencies...
-call npm install
+echo Preparing pnpm via corepack...
+call corepack enable
+call corepack prepare pnpm@10.17.1 --activate
 if errorlevel 1 (
-    echo NPM install FAILED - skipping frontend
+    echo ERROR: corepack prepare pnpm FAILED
     cd /d "%PROJECT_DIR%"
-    goto :skip_ui
+    exit /b 1
+)
+
+echo Installing dependencies...
+call pnpm install --frozen-lockfile
+if errorlevel 1 (
+    echo ERROR: pnpm install FAILED
+    cd /d "%PROJECT_DIR%"
+    exit /b 1
 )
 
 echo Building frontend...
-call npm run build
+call pnpm build
 if errorlevel 1 (
-    echo Frontend build FAILED - skipping frontend
+    echo ERROR: Frontend build FAILED
     cd /d "%PROJECT_DIR%"
-    goto :skip_ui
+    exit /b 1
 )
 
 echo Frontend Build SUCCESS
@@ -161,7 +178,7 @@ goto :ui_done
 
 :skip_ui
 set UI_BUILD=0
-echo Skipping frontend build.
+echo Skipping frontend build (not selected for this environment).
 :ui_done
 echo.
 
@@ -176,6 +193,14 @@ docker network inspect han-network >nul 2>&1
 if errorlevel 1 docker network create han-network
 
 echo Stopping old containers...
+echo   han-ui han-monitor han-workflow han-tenant han-open han-job han-file han-system han-auth han-gateway
+if not defined HAN_BUILD_DEPLOY_CONFIRM (
+    set /p STOP_CONFIRM=Type yes to stop and remove the containers above: 
+    if not "!STOP_CONFIRM!"=="yes" (
+        echo Aborted by user.
+        exit /b 1
+    )
+)
 for %%s in (han-ui han-monitor han-workflow han-tenant han-open han-job han-file han-system han-auth han-gateway) do (
     docker stop %%s 2>nul
     docker rm %%s 2>nul
@@ -214,12 +239,24 @@ echo Docker Image Build SUCCESS
 echo.
 
 REM ========================================================
-REM Step 5.5: Push to Alibaba Cloud Registry
+REM Step 5.5: Push to Alibaba Cloud Registry (opt-in)
 REM ========================================================
 echo [Step 5.5/8] Push to Alibaba Cloud Registry...
 echo --------------------------------------------------------
 echo.
 
+REM docs/03-部署手册.md:220 与 :391、docs/05-运维与95环境手册.md:126 都明确规定
+REM 后端和前端正式镜像只能由 GitHub Actions 构建推送，开发机不得替代 CI 构建。
+REM 这一步会覆盖生产 ACR 的 :latest，默认关闭；确需隔离环境自测时显式设置
+REM HAN_ALLOW_PROD_PUSH=1 再执行。
+if not defined HAN_ALLOW_PROD_PUSH (
+    echo SKIPPED - pushing to %REGISTRY% is CI-only.
+    echo           Set HAN_ALLOW_PROD_PUSH=1 to override for an isolated environment.
+    echo.
+    goto :push_done
+)
+
+echo WARNING: pushing :latest to %REGISTRY% from a developer machine.
 docker tag han-gateway:latest %REGISTRY%/han-gateway:latest
 docker tag han-auth:latest %REGISTRY%/han-auth:latest
 docker tag han-system:latest %REGISTRY%/han-system:latest
@@ -239,6 +276,8 @@ echo.
 echo Image Push SUCCESS
 echo.
 
+:push_done
+
 REM ========================================================
 REM Step 6: Docker Container Deploy
 REM ========================================================
@@ -246,9 +285,25 @@ echo [Step 6/8] Docker Container Deploy...
 echo --------------------------------------------------------
 echo.
 
+REM 口令一律由环境变量注入，不再在脚本里写明文
+if not defined DB_PASSWORD (
+    echo ERROR: DB_PASSWORD is not set. Export it before running this script.
+    exit /b 1
+)
+if "%ENV_TYPE%"=="LARGE" (
+    if not defined MONITOR_ADMIN_USERNAME (
+        echo ERROR: MONITOR_ADMIN_USERNAME is not set; han-monitor refuses to start without it.
+        exit /b 1
+    )
+    if not defined MONITOR_ADMIN_PASSWORD (
+        echo ERROR: MONITOR_ADMIN_PASSWORD is not set; han-monitor refuses to start without it.
+        exit /b 1
+    )
+)
+
 docker run -d --name han-gateway --network han-network -p 8080:8080 -e NACOS_SERVER_ADDR=han-nacos:8848 -e REDIS_HOST=han-redis han-gateway:latest
 docker run -d --name han-auth --network han-network -p 9200:9200 -e NACOS_SERVER_ADDR=han-nacos:8848 -e REDIS_HOST=han-redis han-auth:latest
-docker run -d --name han-system --network han-network -p 9201:9201 -e NACOS_SERVER_ADDR=han-nacos:8848 -e REDIS_HOST=han-redis -e DB_URL=jdbc:postgresql://han-postgres:5432/han?useUnicode=true -e DB_USER=han -e DB_PASSWORD=han@2026 han-system:latest
+docker run -d --name han-system --network han-network -p 9201:9201 -e NACOS_SERVER_ADDR=han-nacos:8848 -e REDIS_HOST=han-redis -e DB_URL=jdbc:postgresql://han-postgres:5432/han?useUnicode=true -e DB_USER=han -e DB_PASSWORD=%DB_PASSWORD% han-system:latest
 
 if "%ENV_TYPE%"=="MEDIUM" docker run -d --name han-job --network han-network -p 9204:9204 han-job:latest
 
@@ -288,7 +343,7 @@ if "%ENV_TYPE%"=="LARGE" (
     echo   Job:      http://localhost:9204
     echo   Open:     http://localhost:9205
     echo   File:     http://localhost:9207
-    echo   Monitor:  http://localhost:9208
+    echo   Monitor:  http://localhost:9100
 )
 if "%UI_BUILD%"=="1" echo   Frontend: http://localhost
 echo.
@@ -381,7 +436,9 @@ docker run -d --name han-workflow --network han-network -p 9203:9203 han-workflo
 docker run -d --name han-job --network han-network -p 9204:9204 han-job:latest
 docker run -d --name han-open --network han-network -p 9205:9205 han-open:latest
 docker run -d --name han-file --network han-network -p 9207:9207 han-file:latest
-docker run -d --name han-monitor --network han-network -p 9208:9208 han-monitor:latest
+REM han-monitor 的镜像端口已从 9208 统一为 9100（与 han-ai 的 9208 冲突），
+REM 且凭据改为强制环境变量注入，未配置即启动失败。
+docker run -d --name han-monitor --network han-network -p 9100:9100 -e MONITOR_ADMIN_USERNAME=%MONITOR_ADMIN_USERNAME% -e MONITOR_ADMIN_PASSWORD=%MONITOR_ADMIN_PASSWORD% han-monitor:latest
 goto :eof
 
 :docker_error

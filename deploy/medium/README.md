@@ -5,6 +5,9 @@
 - PostgreSQL 初始化：`sql/tiers/medium/medium-init.sql`
 - Nacos 导入：`sql/tiers/medium/medium-nacos-derby-import.sql`
 
+`.env.example` 里标为必填的口令在 compose 里是 `${VAR:?...}` 形式，缺失即启动失败，
+先 `cp .env.example .env` 并逐项填写真实值再启动。
+
 初始化顺序：
 
 1. PostgreSQL
@@ -26,9 +29,11 @@
 
 - PostgreSQL `25432`
 - Redis `26379`
-- Nacos `28848`
+- Nacos `28848` / `29848`
 - RustFS `29000`
 - RustFS Console `29001`
+- RabbitMQ `25672`
+- RabbitMQ Management `25673`
 - Gateway `29090`
 - Auth `29200`
 - System `29201`
