@@ -110,16 +110,31 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { tokenStatsByModel, tokenStatsByUser, tokenStatsByDay } from '@/api/ai'
+import {
+  tokenStatsByModel,
+  tokenStatsByUser,
+  tokenStatsByDay,
+  type AiTokenStatsByDayRow,
+  type AiTokenStatsByModelRow,
+  type AiTokenStatsByUserRow
+} from '@/api/ai'
 
 const loading = ref(false)
-const modelStats = ref<any[]>([])
-const userStats = ref<any[]>([])
-const dailyStats = ref<any[]>([])
+const modelStats = ref<AiTokenStatsByModelRow[]>([])
+const userStats = ref<AiTokenStatsByUserRow[]>([])
+const dailyStats = ref<AiTokenStatsByDayRow[]>([])
 
 const today = new Date()
 const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
-const formatDate = (d: Date) => d.toISOString().split('T')[0]
+
+/**
+ * 按**本地日期**拼装。
+ *
+ * <p>不能用 `toISOString()` —— 它取的是 UTC 日期，UTC+8 的用户在本地 00:00–08:00 之间打开页面时
+ * 还停留在前一天，默认区间会少一天，「今天」的用量看不到。
+ */
+const formatDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const dateRange = ref([formatDate(thirtyDaysAgo), formatDate(today)])
 
@@ -140,24 +155,24 @@ const summary = computed(() => {
   return { totalCalls, totalTokens, promptTokens, completionTokens }
 })
 
-const formatNumber = (n: number | string) => {
+const formatNumber = (n: number | string | undefined) => {
   const num = Number(n || 0)
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
   return num.toString()
 }
 
-const getPercentage = (tokens: number) => {
+const getPercentage = (tokens: number | string | undefined) => {
   if (!summary.value.totalTokens) return 0
-  return Math.round(Number(tokens) / summary.value.totalTokens * 100)
+  return Math.round(Number(tokens || 0) / summary.value.totalTokens * 100)
 }
 
 const maxDailyTokens = computed(() => {
   return Math.max(...dailyStats.value.map(r => Number(r.total_tokens || 0)), 1)
 })
 
-const getDailyPercentage = (tokens: number) => {
-  return Math.round(Number(tokens) / maxDailyTokens.value * 100)
+const getDailyPercentage = (tokens: number | string | undefined) => {
+  return Math.round(Number(tokens || 0) / maxDailyTokens.value * 100)
 }
 
 const handleQuery = async () => {

@@ -42,6 +42,7 @@
         <div class="card-header">
           <span>AI 模型列表</span>
           <el-button
+            v-hasPermi="['ai:model:add']"
             type="primary"
             :icon="Plus"
             data-testid="ai-model-add-button"
@@ -99,6 +100,7 @@
         <el-table-column label="操作" min-width="280">
           <template #default="{ row }">
             <el-button
+              v-hasPermi="['ai:model:test']"
               type="success"
               link
               :data-testid="`ai-model-test-button-${row.modelId}`"
@@ -107,6 +109,7 @@
               测试
             </el-button>
             <el-button
+              v-hasPermi="['ai:model:edit']"
               type="primary"
               link
               :icon="Edit"
@@ -116,6 +119,7 @@
               编辑
             </el-button>
             <el-button
+              v-hasPermi="['ai:model:remove']"
               type="danger"
               link
               :icon="Delete"

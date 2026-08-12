@@ -16,7 +16,7 @@
       <template #header>
         <div class="card-header">
           <span>智能体管理</span>
-          <el-button type="primary" :icon="Plus" data-testid="ai-agent-create-button" @click="handleAdd">
+          <el-button v-hasPermi="['ai:agent:add']" type="primary" :icon="Plus" data-testid="ai-agent-create-button" @click="handleAdd">
             创建智能体
           </el-button>
         </div>
@@ -37,12 +37,12 @@
                   <el-icon class="agent-more"><MoreFilled /></el-icon>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                      <el-dropdown-item v-hasPermi="['ai:agent:edit']" command="edit">编辑</el-dropdown-item>
                       <el-dropdown-item command="chat" v-if="agent.published">对话测试</el-dropdown-item>
-                      <el-dropdown-item :command="agent.published ? 'unpublish' : 'publish'">
+                      <el-dropdown-item v-hasPermi="['ai:agent:edit']" :command="agent.published ? 'unpublish' : 'publish'">
                         {{ agent.published ? '取消发布' : '发布' }}
                       </el-dropdown-item>
-                      <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                      <el-dropdown-item v-hasPermi="['ai:agent:remove']" command="delete" divided>删除</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -249,16 +249,40 @@ const serializeSuggestedQuestions = () =>
 const formRef = ref<FormInstance>()
 const queryParams = reactive<AiAgentQuery>({ pageNum: 1, pageSize: 8 })
 
-const defaultForm = () => ({
-  agentId: undefined as any, agentName: '', description: '', systemPrompt: '', prologue: '',
+/**
+ * 智能体表单模型。
+ *
+ * <p>原来是 `reactive<any>`，等于把整张表单的类型检查全关掉 ——
+ * 字段拼写错误、后端不认的字段都不会被 TS 发现。这里显式声明出来。
+ */
+interface AgentFormModel {
+  agentId?: string | number
+  agentName: string
+  description: string
+  systemPrompt: string
+  prologue: string
+  suggestedQuestions: string
+  modelId?: string | number
+  knowledgeBaseIds?: string
+  mcpServerIds?: string
+  temperature: number
+  maxTokens: number
+  historyLimit?: number
+  retrievalTopK?: number
+  similarityThreshold?: number
+  status: string
+}
+
+const defaultForm = (): AgentFormModel => ({
+  agentId: undefined, agentName: '', description: '', systemPrompt: '', prologue: '',
   suggestedQuestions: '[]',
-  modelId: undefined as any, temperature: 0.7, maxTokens: 2048,
-  historyLimit: undefined as number | undefined,
-  retrievalTopK: undefined as number | undefined,
-  similarityThreshold: undefined as number | undefined,
+  modelId: undefined, temperature: 0.7, maxTokens: 2048,
+  historyLimit: undefined,
+  retrievalTopK: undefined,
+  similarityThreshold: undefined,
   status: '0'
 })
-const form = reactive<any>(defaultForm())
+const form = reactive<AgentFormModel>(defaultForm())
 
 const rules: FormRules = {
   agentName: [{ required: true, message: '请输入名称', trigger: 'blur' }],
@@ -304,11 +328,18 @@ const handleCommand = (cmd: string, agent: AiAgent) => {
 }
 
 const handleEdit = async (agent: AiAgent) => {
-  const res = await getAiAgent(agent.agentId)
-  Object.assign(form, res.data)
-  try { selectedKbIds.value = res.data.knowledgeBaseIds ? JSON.parse(res.data.knowledgeBaseIds) : [] } catch { selectedKbIds.value = [] }
-  try { selectedMcpIds.value = res.data.mcpServerIds ? JSON.parse(res.data.mcpServerIds) : [] } catch { selectedMcpIds.value = [] }
-  suggestedList.value = parseSuggestedQuestions(res.data.suggestedQuestions)
+  let detail: AiAgent
+  try {
+    const res = await getAiAgent(agent.agentId)
+    detail = res.data
+  } catch {
+    // 详情拉取失败时不要静默不开对话框，否则用户会以为按钮坏了（错误文案由拦截器弹出）
+    return
+  }
+  Object.assign(form, detail)
+  try { selectedKbIds.value = detail.knowledgeBaseIds ? JSON.parse(detail.knowledgeBaseIds) : [] } catch { selectedKbIds.value = [] }
+  try { selectedMcpIds.value = detail.mcpServerIds ? JSON.parse(detail.mcpServerIds) : [] } catch { selectedMcpIds.value = [] }
+  suggestedList.value = parseSuggestedQuestions(detail.suggestedQuestions)
   await loadOptions()
   dialogVisible.value = true
 }
@@ -329,22 +360,33 @@ const handleSubmit = async () => {
 }
 
 const handleDelete = async (agent: AiAgent) => {
-  await ElMessageBox.confirm(`确定删除智能体"${agent.agentName}"吗?`, '提示', { type: 'warning' })
-  await deleteAiAgent(agent.agentId)
-  ElMessage.success('删除成功')
-  getList()
+  // 确认框取消与接口失败要分开：不能把真实失败也当成「用户取消」吞掉
+  try {
+    await ElMessageBox.confirm(`确定删除智能体"${agent.agentName}"吗?`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await deleteAiAgent(agent.agentId)
+    ElMessage.success('删除成功')
+    getList()
+  } catch { /* 错误文案由全局拦截器弹出 */ }
 }
 
 const handlePublish = async (agent: AiAgent) => {
-  await publishAiAgent(agent.agentId)
-  ElMessage.success('发布成功')
-  getList()
+  try {
+    await publishAiAgent(agent.agentId)
+    ElMessage.success('发布成功')
+    getList()
+  } catch { /* 错误文案由全局拦截器弹出 */ }
 }
 
 const handleUnpublish = async (agent: AiAgent) => {
-  await unpublishAiAgent(agent.agentId)
-  ElMessage.success('已取消发布')
-  getList()
+  try {
+    await unpublishAiAgent(agent.agentId)
+    ElMessage.success('已取消发布')
+    getList()
+  } catch { /* 错误文案由全局拦截器弹出 */ }
 }
 
 const handleChat = (agent: AiAgent) => {
@@ -407,7 +449,8 @@ const handleSendMessage = async () => {
     const res = await chatWithAgent(currentAgent.value.agentId, msg)
     chatMessages.value.push({ role: 'assistant', content: res.data || '无响应' })
   } catch (e: any) {
-    chatMessages.value.push({ role: 'assistant', content: '请求失败: ' + (e.message || '未知错误') })
+    // 失败要用错误提示，不能伪装成一条 AI 回复，否则用户分不清是模型说的还是请求挂了
+    ElMessage.error('对话测试失败: ' + (e?.message || '未知错误'))
   } finally {
     chatLoading.value = false
     scrollToBottom()
