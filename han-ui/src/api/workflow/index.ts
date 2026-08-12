@@ -187,6 +187,8 @@ export interface TaskCompleteForm {
   taskId: string
   variables?: Record<string, any>
   comment?: string
+  /** 审批结论：pass 通过 / reject 驳回 / return 退回，后端写成 result 流程变量 */
+  result?: string
 }
 
 // 待办任务列表
@@ -214,8 +216,8 @@ export function delegateTask(taskId: string, userId: string) {
   return post<void>('/workflow/task/delegate', { taskId, userId })
 }
 
-// 撤回任务
-export function revokeTask(taskId: string) {
+// 取消签收（后端 /revoke 内部执行的是 Flowable unclaim，即清空 assignee，不是流程回退）
+export function unclaimTask(taskId: string) {
   return post<void>(`/workflow/task/revoke/${taskId}`)
 }
 

@@ -167,6 +167,39 @@
       </template>
     </el-dialog>
 
+    <!-- 删除流程定义对话框：级联删除必须由用户显式勾选 -->
+    <el-dialog v-model="deleteVisible" title="删除流程定义" width="45%" class="dialog-sm" destroy-on-close>
+      <p class="delete-text">
+        确定删除流程「{{ deleteTarget?.processName }}」（版本 V{{ deleteTarget?.version }}）吗？此操作不可恢复。
+      </p>
+      <el-checkbox v-model="deleteCascade" data-testid="workflow-delete-cascade">
+        同时删除该部署下的全部流程实例与历史记录
+      </el-checkbox>
+      <el-alert
+        v-if="deleteCascade"
+        type="error"
+        show-icon
+        :closable="false"
+        class="delete-alert"
+      >
+        级联删除会一并清除运行中的流程实例、已办历史和审批意见，删除后无法恢复，请确认业务方已知悉。
+      </el-alert>
+      <p v-else class="form-tip">
+        不勾选时只删除流程定义本身；若该部署下仍存在流程实例，后端会拒绝删除。
+      </p>
+      <template #footer>
+        <el-button @click="deleteVisible = false">取消</el-button>
+        <el-button
+          type="danger"
+          :loading="deleteLoading"
+          data-testid="workflow-delete-submit"
+          @click="handleDeleteSubmit"
+        >
+          确定删除
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 查看XML对话框 -->
     <el-dialog v-model="xmlVisible" title="流程定义XML" width="75%" class="dialog-xl">
       <div class="xml-content">
@@ -209,6 +242,10 @@ const diagramVisible = ref(false)
 const diagramUrl = ref('')
 const diagramLoading = ref(false)
 const diagramError = ref('')
+const deleteVisible = ref(false)
+const deleteLoading = ref(false)
+const deleteCascade = ref(false)
+const deleteTarget = ref<ProcessDefinition | null>(null)
 
 const queryFormRef = ref<FormInstance>()
 const deployFormRef = ref<FormInstance>()
@@ -269,7 +306,7 @@ const handleFileChange = (file: UploadFile) => {
 }
 
 const handleDeploySubmit = async () => {
-  const valid = await deployFormRef.value?.validate()
+  const valid = await deployFormRef.value?.validate().catch(() => false)
   if (!valid) return
   if (!deployForm.file) {
     ElMessage.warning('请选择流程文件')
@@ -286,36 +323,59 @@ const handleDeploySubmit = async () => {
     ElMessage.success('部署成功')
     deployVisible.value = false
     getList()
-  } finally {
+  } catch { /* 失败提示由请求层统一处理 */ } finally {
     deployLoading.value = false
   }
 }
 
 const handleActivate = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定激活流程"${row.processName}"吗?`, '提示', { type: 'warning' })
-  await activateProcessDefinition(row.processDefinitionId)
-  ElMessage.success('激活成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(`确定激活流程"${row.processName}"吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await activateProcessDefinition(row.processDefinitionId)
+    ElMessage.success('激活成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 const handleSuspend = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定挂起流程"${row.processName}"吗?`, '提示', { type: 'warning' })
-  await suspendProcessDefinition(row.processDefinitionId)
-  ElMessage.success('挂起成功')
-  getList()
+  try {
+    await ElMessageBox.confirm(`确定挂起流程"${row.processName}"吗?`, '提示', { type: 'warning' })
+  } catch { return }
+  try {
+    await suspendProcessDefinition(row.processDefinitionId)
+    ElMessage.success('挂起成功')
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
-const handleDelete = async (row: ProcessDefinition) => {
-  await ElMessageBox.confirm(`确定删除流程"${row.processName}"吗? 此操作不可恢复!`, '提示', { type: 'warning' })
-  await deleteProcessDefinition(row.deploymentId, true)
-  ElMessage.success('删除成功')
-  getList()
+const handleDelete = (row: ProcessDefinition) => {
+  deleteTarget.value = row
+  // 级联删除默认关闭：历史实现写死 cascade=true，会连带删掉运行中的实例与全部历史
+  deleteCascade.value = false
+  deleteVisible.value = true
+}
+
+const handleDeleteSubmit = async () => {
+  if (!deleteTarget.value) return
+  deleteLoading.value = true
+  try {
+    await deleteProcessDefinition(deleteTarget.value.deploymentId, deleteCascade.value)
+    ElMessage.success('删除成功')
+    deleteVisible.value = false
+    getList()
+  } catch { /* 失败提示由请求层统一处理 */ } finally {
+    deleteLoading.value = false
+  }
 }
 
 const handleViewXml = async (row: ProcessDefinition) => {
-  const res = await getProcessDefinitionXml(row.processDefinitionId)
-  xmlContent.value = res.data
-  xmlVisible.value = true
+  try {
+    const res = await getProcessDefinitionXml(row.processDefinitionId)
+    xmlContent.value = res.data
+    xmlVisible.value = true
+  } catch { /* 失败提示由请求层统一处理 */ }
 }
 
 /** 释放上一张流程图的 object URL，避免 blob 常驻内存 */
@@ -476,5 +536,14 @@ onBeforeUnmount(() => {
   color: #909399;
   line-height: 1.5;
   margin-top: 4px;
+}
+
+.delete-text {
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.delete-alert {
+  margin-top: 12px;
 }
 </style>
