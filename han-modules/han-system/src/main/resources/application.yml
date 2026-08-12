@@ -56,9 +56,9 @@ han:
       secret: ${HAN_INNER_AUTH_SECRET:han-cloud-inner-auth}
       clock-skew-seconds: ${HAN_INNER_AUTH_CLOCK_SKEW_SECONDS:300}
 
-# 智慧校园契约兼容层。默认关闭，启用前必须先注入 token-secret 与匿名 AES 密钥，
-# 匿名密钥取值须与旧客户端内置常量一致，不写进仓库。
 sdfz:
+  # 智慧校园契约兼容层。默认关闭，启用前必须先注入 token-secret 与匿名 AES 密钥，
+  # 匿名密钥取值须与旧客户端内置常量一致，不写进仓库。
   compat:
     enabled: ${SDFZ_COMPAT_ENABLED:false}
     tenant-id: ${SDFZ_COMPAT_TENANT_ID:1}
@@ -71,3 +71,24 @@ sdfz:
     captcha-enabled: ${SDFZ_COMPAT_CAPTCHA_ENABLED:true}
     # 本期只放行教师登录；学生仍在兼容目录里可见，只是拿不到凭证
     login-person-types: ${SDFZ_COMPAT_LOGIN_PERSON_TYPES:TEACHER}
+  order:
+    legacy:
+      # disabled / jdbc / http。缺省不启用：订购单只在 Han 侧闭环，不往三课堂写听课记录。
+      # 走 http 需要旧 api 先补齐内部接口，契约见 LegacyClassroomHttpGateway 类注释。
+      channel: ${SDFZ_ORDER_LEGACY_CHANNEL:disabled}
+      jdbc:
+        url: ${SDFZ_ORDER_LEGACY_DB_URL:}
+        username: ${SDFZ_ORDER_LEGACY_DB_USER:}
+        password: ${SDFZ_ORDER_LEGACY_DB_PASSWORD:}
+        maximum-pool-size: ${SDFZ_ORDER_LEGACY_DB_POOL_SIZE:4}
+      http:
+        base-url: ${SDFZ_ORDER_LEGACY_API_BASE_URL:}
+        token: ${SDFZ_ORDER_LEGACY_API_TOKEN:}
+    schedule:
+      enabled: ${SDFZ_ORDER_SCHEDULE_ENABLED:true}
+      lifecycle-cron: ${SDFZ_ORDER_LIFECYCLE_CRON:0 5 * * * ?}
+      retry-cron: ${SDFZ_ORDER_RETRY_CRON:0 */10 * * * ?}
+      reconcile-cron: ${SDFZ_ORDER_RECONCILE_CRON:0 30 3 * * ?}
+    retry:
+      max-attempts: ${SDFZ_ORDER_RETRY_MAX_ATTEMPTS:6}
+      batch-size: ${SDFZ_ORDER_RETRY_BATCH_SIZE:200}

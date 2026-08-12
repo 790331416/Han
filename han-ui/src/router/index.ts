@@ -277,6 +277,39 @@ export const constantRoutes: RouteRecordRaw[] = [
         name: 'EducationDevice',
         component: () => import('@/views/education/device/index.vue'),
         meta: { title: '设备管理', icon: 'Monitor', permission: 'education:device:list' }
+      },
+      {
+        path: 'semester',
+        name: 'EducationSemester',
+        component: () => import('@/views/education/semester/index.vue'),
+        meta: { title: '学期管理', icon: 'Calendar', permission: 'education:semester:list' }
+      },
+      {
+        path: 'room',
+        name: 'EducationRoom',
+        component: () => import('@/views/education/room/index.vue'),
+        meta: { title: '教室管理', icon: 'House', permission: 'education:room:list' }
+      }
+    ]
+  },
+  {
+    path: '/order',
+    name: 'CourseOrder',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/order/course',
+    meta: { title: '课程订购', icon: 'ShoppingCart' },
+    children: [
+      {
+        path: 'course',
+        name: 'CourseOrderList',
+        component: () => import('@/views/order/course/index.vue'),
+        meta: { title: '订购单管理', icon: 'Tickets', permission: 'order:course:list' }
+      },
+      {
+        path: 'grant',
+        name: 'CourseOrderGrant',
+        component: () => import('@/views/order/grant/index.vue'),
+        meta: { title: '授权台账', icon: 'DocumentChecked', permission: 'order:grant:list' }
       }
     ]
   },

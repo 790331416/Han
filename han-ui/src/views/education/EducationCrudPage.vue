@@ -167,6 +167,11 @@ const configs: Record<EducationEntity, EntityConfig> = {
     columns: [{ key: 'subjectCode', label: '科目编码' }, { key: 'subjectName', label: '科目名称', width: 180 }, { key: 'sort', label: '排序' }],
     fields: [{ key: 'subjectCode', label: '科目编码', required: true }, { key: 'subjectName', label: '科目名称', required: true }, { key: 'sort', label: '排序', required: true, type: 'number' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
+  rooms: {
+    title: '教室', permission: 'education:room',
+    columns: [{ key: 'roomCode', label: '教室编码' }, { key: 'roomName', label: '教室名称', width: 180 }, { key: 'roomType', label: '教室类型' }, { key: 'schoolId', label: '学校ID', width: 180 }],
+    fields: [{ key: 'schoolId', label: '学校ID', required: true }, { key: 'roomCode', label: '教室编码', required: true }, { key: 'roomName', label: '教室名称', required: true }, { key: 'roomType', label: '教室类型' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+  },
   devices: {
     title: '设备', permission: 'education:device',
     columns: [{ key: 'deviceCode', label: '设备编码' }, { key: 'deviceName', label: '设备名称', width: 180 }, { key: 'deviceType', label: '设备类型' }, { key: 'serialNumber', label: '序列号' }, { key: 'assetStatus', label: '资产状态' }],

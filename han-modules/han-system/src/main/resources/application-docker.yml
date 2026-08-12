@@ -49,9 +49,9 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# 智慧校园契约兼容层。默认关闭，启用前必须先注入 token-secret 与匿名 AES 密钥，
-# 匿名密钥取值须与旧客户端内置常量一致，不写进仓库。
 sdfz:
+  # 智慧校园契约兼容层。默认关闭，启用前必须先注入 token-secret 与匿名 AES 密钥，
+  # 匿名密钥取值须与旧客户端内置常量一致，不写进仓库。
   compat:
     enabled: ${SDFZ_COMPAT_ENABLED:false}
     tenant-id: ${SDFZ_COMPAT_TENANT_ID:1}
@@ -64,6 +64,18 @@ sdfz:
     captcha-enabled: ${SDFZ_COMPAT_CAPTCHA_ENABLED:true}
     # 本期只放行教师登录；学生仍在兼容目录里可见，只是拿不到凭证
     login-person-types: ${SDFZ_COMPAT_LOGIN_PERSON_TYPES:TEACHER}
+  order:
+    legacy:
+      channel: ${SDFZ_ORDER_LEGACY_CHANNEL:disabled}
+      jdbc:
+        url: ${SDFZ_ORDER_LEGACY_DB_URL:}
+        username: ${SDFZ_ORDER_LEGACY_DB_USER:}
+        password: ${SDFZ_ORDER_LEGACY_DB_PASSWORD:}
+      http:
+        base-url: ${SDFZ_ORDER_LEGACY_API_BASE_URL:}
+        token: ${SDFZ_ORDER_LEGACY_API_TOKEN:}
+    schedule:
+      enabled: ${SDFZ_ORDER_SCHEDULE_ENABLED:true}
 
 logging:
   level:
