@@ -6,12 +6,15 @@ on:
     branches:
       - master
       - main
-      - feature/aivideo-mvp1-text
     paths:
       - ".github/workflows/rabbitmq-image.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
