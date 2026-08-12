@@ -109,7 +109,7 @@
             <el-input v-model="form.adminUsername" placeholder="请输入管理员用户名" />
           </el-form-item>
           <el-form-item label="管理员密码" prop="adminPassword">
-            <el-input v-model="form.adminPassword" placeholder="8-20位，含大写/小写/数字/特殊字符至少3种" show-password />
+            <el-input v-model="form.adminPassword" type="password" :placeholder="PASSWORD_RULE_TEXT" show-password />
           </el-form-item>
         </template>
         <el-form-item label="备注">
@@ -131,6 +131,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { listTenant, getTenant, addTenant, updateTenant, deleteTenant, changeTenantStatus, getTenantAdminUser, type Tenant, type TenantForm } from '@/api/system/tenant'
 import { listAllPackage, type TenantPackage } from '@/api/system/tenantPackage'
 import { resetUserPwd } from '@/api/system/user'
+import { PASSWORD_RULE_TEXT, passwordInputValidator, validatePasswordRule } from '../shared/password-rule'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -145,30 +146,13 @@ const queryParams = reactive({ tenantName: '', contactName: '', status: '' as an
 
 const form = reactive<TenantForm>({ tenantName: '', contactName: '', contactPhone: '', contactEmail: '', userLimit: -1, expireTime: '', domain: '', status: 0, remark: '', adminUsername: 'admin', adminPassword: '' })
 
-// 与后端 PasswordUtil.validate 规则一致：8-20位，大写/小写/数字/特殊字符至少3种。
-// 后端校验失败会导致租户初始化整体回滚，这里提前拦截。
-function validateAdminPassword(_rule: any, value: string, callback: (error?: Error) => void) {
-  if (!value) { callback(); return }
-  if (value.length < 8 || value.length > 20) {
-    callback(new Error('密码长度8-20位')); return
-  }
-  let categories = 0
-  if (/[a-z]/.test(value)) categories++
-  if (/[A-Z]/.test(value)) categories++
-  if (/\d/.test(value)) categories++
-  if (/[^a-zA-Z0-9]/.test(value)) categories++
-  if (categories < 3) {
-    callback(new Error('须包含大写字母、小写字母、数字、特殊字符中的至少3种')); return
-  }
-  callback()
-}
-
+// 后端 PasswordUtil.validate 校验失败会导致租户初始化整体回滚，这里提前拦截。
 const rules: FormRules = {
   tenantName: [{ required: true, message: '请输入租户名称', trigger: 'blur' }],
   adminUsername: [{ required: true, message: '请输入管理员用户名', trigger: 'blur' }],
   adminPassword: [
     { required: true, message: '请输入管理员密码', trigger: 'blur' },
-    { validator: validateAdminPassword, trigger: 'blur' }
+    { validator: validatePasswordRule, trigger: 'blur' }
   ]
 }
 
@@ -244,7 +228,12 @@ async function handleResetPwd(row: Tenant) {
     const { value: newPwd } = await ElMessageBox.prompt(
       `重置租户「${row.tenantName}」管理员密码`,
       '重置密码',
-      { confirmButtonText: '确定', cancelButtonText: '取消', inputValue: 'admin123', inputPlaceholder: '请输入新密码' }
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPlaceholder: PASSWORD_RULE_TEXT,
+        inputValidator: passwordInputValidator
+      }
     )
     if (!newPwd) return
     const adminRes = await getTenantAdminUser(row.tenantId)

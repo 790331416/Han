@@ -137,7 +137,7 @@
         <el-row :gutter="20" v-if="!form.userId">
           <el-col :span="12">
             <el-form-item label="密码" prop="password">
-              <el-input v-model="form.password" type="password" placeholder="须含大小写字母、数字、特殊字符，8位以上" show-password />
+              <el-input v-model="form.password" type="password" :placeholder="PASSWORD_RULE_TEXT" show-password />
             </el-form-item>
           </el-col>
         </el-row>
@@ -211,6 +211,7 @@ import { listTenant, type Tenant } from '@/api/system/tenant'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
+import { PASSWORD_RULE_TEXT, passwordInputValidator, validatePasswordRule } from '../shared/password-rule'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -264,8 +265,7 @@ const rules: FormRules = {
   nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, max: 32, message: '密码长度8-32位', trigger: 'blur' },
-    { pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/, message: '须含大小写字母、数字和特殊字符', trigger: 'blur' }
+    { validator: validatePasswordRule, trigger: 'blur' }
   ]
 }
 
@@ -428,11 +428,14 @@ const handleStatusChange = async (row: User) => {
 
 // 重置密码
 const handleResetPwd = async (row: User) => {
-  const result = await ElMessageBox.prompt(`请输入"${row.username}"的新密码`, '重置密码', {
-    inputPattern: /^.{6,20}$/,
-    inputErrorMessage: '密码长度在6到20个字符'
-  }) as unknown as { value: string }
-  const { value } = result
+  let value: string
+  try {
+    const result = await ElMessageBox.prompt(`请输入"${row.username}"的新密码`, '重置密码', {
+      inputPlaceholder: PASSWORD_RULE_TEXT,
+      inputValidator: passwordInputValidator
+    }) as unknown as { value: string }
+    value = result.value
+  } catch { return }
   await resetUserPwd(row.userId, value)
   ElMessage.success('重置成功')
 }
