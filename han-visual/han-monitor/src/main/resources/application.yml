@@ -1,19 +1,33 @@
 ﻿server:
-  port: 9100
+  port: ${SERVER_PORT:9100}
 
 spring:
   application:
     name: han-monitor
   security:
     user:
-      name: admin
-      password: admin123
+      # 监控中心登录凭据强制外部注入，不提供默认值：未配置环境变量时启动即失败，避免仓库内出现明文口令
+      name: ${MONITOR_ADMIN_USERNAME}
+      password: ${MONITOR_ADMIN_PASSWORD}
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
-        namespace: han
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+        namespace: ${NACOS_NAMESPACE:han}
+        # 默认留空表示不带鉴权访问 Nacos，需要时由部署侧注入，避免在仓库内写死凭据
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
   boot:
     admin:
       ui:
         title: han监控中心
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      # 健康探针对容器放行，但详情仅对已登录用户可见，避免匿名接口泄露内部组件信息
+      show-details: when-authorized
