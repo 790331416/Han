@@ -26,7 +26,11 @@ public class OAuth2TokenDTO implements Serializable {
 
     /**
      * 客户端密钥
+     *
+     * <p>WRITE_ONLY：只接收、不序列化。当前 Token 端点没有 @OperLog，这里是防御性收口，
+     * 避免以后有人给该端点加操作日志时把客户端密钥和用户口令写进库。</p>
      */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String clientSecret;
 
     /**
@@ -62,5 +66,6 @@ public class OAuth2TokenDTO implements Serializable {
     /**
      * 密码(password模式,不推荐)
      */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;
 }
