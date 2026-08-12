@@ -26,6 +26,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ASysOperLogController {
 
+    /** 单次导出的行数上限，超过要求调用方补查询条件 */
+    private static final int EXPORT_MAX_ROWS = 50000;
+
     private final ISysOperLogService operLogService;
 
     @GetMapping("/list")
@@ -40,8 +43,13 @@ public class ASysOperLogController {
         return R.ok(operLogService.selectById(id));
     }
 
+    /**
+     * 删除与清空日志本身也必须留痕，否则审计记录可以被无痕抹除。
+     * 切面在方法返回后才异步写日志，所以 clean 写下的这条记录不会被本次清空带走。
+     */
     @PostMapping("/remove")
     @PreAuthorize("@ss.hasAuthority('monitor:operlog:remove')")
+    @OperLog(module = "操作日志", type = OperLog.OperType.DELETE)
     public R<Void> remove(@RequestBody List<Long> ids) {
         operLogService.deleteByIds(ids);
         return R.ok();
@@ -49,6 +57,7 @@ public class ASysOperLogController {
 
     @PostMapping("/clean")
     @PreAuthorize("@ss.hasAuthority('monitor:operlog:remove')")
+    @OperLog(module = "操作日志", type = OperLog.OperType.CLEAN)
     public R<Void> clean() {
         operLogService.cleanAll();
         return R.ok();
@@ -58,8 +67,7 @@ public class ASysOperLogController {
     @PreAuthorize("@ss.hasAuthority('monitor:operlog:export')")
     @OperLog(module = "操作日志", type = OperLog.OperType.EXPORT)
     public void export(SysOperLogQuery query, HttpServletResponse response) throws IOException {
-        query.setPageSize(10000);
-        List<OperLogExportVo> list = operLogService.selectPage(query).getRows().stream()
+        List<OperLogExportVo> list = operLogService.selectListForExport(query, EXPORT_MAX_ROWS).stream()
                 .map(o -> OperLogExportVo.builder()
                         .id(String.valueOf(o.getId()))
                         .module(o.getModule())
@@ -76,19 +84,30 @@ public class ASysOperLogController {
         ExcelUtil.exportExcel(response, "操作日志", OperLogExportVo.class, list);
     }
 
+    /**
+     * 落库的 oper_type 是 {@code OperLog.OperType.ordinal()}，此前这里另写了一张硬编码
+     * 映射表且顺序与枚举不符，type &gt;= 4 的记录全部显示成错误的操作类型。
+     *
+     * <p>改为先按 ordinal 还原枚举常量再取文案：switch 对枚举是穷尽的，
+     * 以后往枚举里加值会直接编译失败，不会再静默漂移。
+     */
     private String formatOperType(Integer operType) {
-        if (operType == null) return "其他";
-        return switch (operType) {
-            case 1 -> "新增";
-            case 2 -> "修改";
-            case 3 -> "删除";
-            case 4 -> "授权";
-            case 5 -> "导出";
-            case 6 -> "导入";
-            case 7 -> "强退";
-            case 8 -> "清空";
-            case 9 -> "查询";
-            default -> "其他";
+        OperLog.OperType[] types = OperLog.OperType.values();
+        if (operType == null || operType < 0 || operType >= types.length) {
+            return "其他";
+        }
+        return switch (types[operType]) {
+            case OTHER -> "其他";
+            case INSERT -> "新增";
+            case UPDATE -> "修改";
+            case DELETE -> "删除";
+            case SELECT -> "查询";
+            case QUERY -> "列表查询";
+            case EXPORT -> "导出";
+            case IMPORT -> "导入";
+            case GRANT -> "授权";
+            case FORCE_LOGOUT -> "强退";
+            case CLEAN -> "清空";
         };
     }
 }

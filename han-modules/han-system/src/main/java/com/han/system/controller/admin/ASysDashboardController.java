@@ -1,7 +1,6 @@
 package com.han.system.controller.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.PermissionExempt;
@@ -17,9 +16,9 @@ import com.han.system.mapper.SysOperLogMapper;
 import com.han.system.mapper.SysPostMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
+import com.han.system.service.SysOnlineSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,7 +30,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Admin dashboard controller.
@@ -54,7 +52,7 @@ public class ASysDashboardController {
     private final SysNoticeMapper noticeMapper;
     private final SysOperLogMapper operLogMapper;
     private final SysLoginLogMapper loginLogMapper;
-    private final StringRedisTemplate redisTemplate;
+    private final SysOnlineSessionService onlineSessionService;
 
     @GetMapping("/stats")
     @PermissionExempt("登录用户查看首页统计，各模块数据按权限过滤")
@@ -69,8 +67,8 @@ public class ASysDashboardController {
                 .onlineCount(has(user, "monitor:online:list") ? countOnlineUsers() : null)
                 .dictCount(has(user, "system:dict:list") ? toInt(dictTypeMapper.selectCount(null)) : null)
                 .noticeCount(has(user, "system:notice:list") ? toInt(noticeMapper.selectCount(null)) : null)
-                .recentLogins(has(user, "system:loginlog:list") ? recentLogins() : null)
-                .recentOperLogs(has(user, "system:operlog:list") ? recentOperLogs() : null)
+                .recentLogins(has(user, "monitor:loginlog:list") ? recentLogins() : null)
+                .recentOperLogs(has(user, "monitor:operlog:list") ? recentOperLogs() : null)
                 .springBootVersion(org.springframework.boot.SpringBootVersion.getVersion())
                 .build();
 
@@ -83,10 +81,12 @@ public class ASysDashboardController {
         LoginUser user = SecurityContextHolder.getLoginUser();
         Map<String, Object> result = new LinkedHashMap<>();
 
-        if (has(user, "system:loginlog:list")) {
+        // 权限键以 sql/tiers 种子为准：monitor:loginlog / monitor:operlog，
+        // 此前写的 system:* 前缀在种子里不存在，两块面板对非超管永远是空的
+        if (has(user, "monitor:loginlog:list")) {
             result.put("loginTrend", loginTrend());
         }
-        if (has(user, "system:operlog:list")) {
+        if (has(user, "monitor:operlog:list")) {
             result.put("operModules", operModuleDistribution());
         }
 
@@ -103,8 +103,7 @@ public class ASysDashboardController {
 
     private int countOnlineUsers() {
         try {
-            Set<String> keys = redisTemplate.keys(CacheConstants.TOKEN_KEY + "*");
-            return keys != null ? keys.size() : 0;
+            return onlineSessionService.countVisibleSessions();
         } catch (Exception e) {
             log.warn("Failed to count online users", e);
             return 0;

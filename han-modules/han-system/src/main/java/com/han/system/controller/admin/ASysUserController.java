@@ -11,6 +11,7 @@ import com.han.system.domain.dto.SysUserDto;
 import com.han.system.domain.query.SysUserQuery;
 import com.han.system.domain.vo.CurrentUserVO;
 import com.han.common.web.excel.ExcelUtil;
+import com.han.system.domain.vo.SimpleUserVo;
 import com.han.system.domain.vo.UserExportVo;
 import com.han.system.domain.vo.UserImportVo;
 import com.han.system.domain.vo.UserVO;
@@ -32,6 +33,9 @@ import java.util.Set;
 @RestController("adminSysUserController")
 @RequestMapping("/system/user")
 public class ASysUserController extends BSysUserController {
+
+    /** 单次导出的行数上限，超过要求调用方补查询条件 */
+    private static final int EXPORT_MAX_ROWS = 50000;
 
     private final com.han.system.service.SysUserSocialService socialService;
 
@@ -146,22 +150,30 @@ public class ASysUserController extends BSysUserController {
 
     /**
      * 获取简单用户列表（用于部门负责人等下拉选择）
-     * 返回当前租户下正常状态用户的 userId/nickname/phone/email
+     *
+     * <p>默认只返回 userId/nickname；手机号与邮箱仅对具备用户查询或部门维护权限的
+     * 调用方下发，避免最低权限账号一次性拉走整租户通讯录。
      */
     @GetMapping("/simple-list")
-    @PermissionExempt("下拉选择用公共接口，无需特定权限")
-    public R<java.util.List<java.util.Map<String, Object>>> simpleList() {
-        var users = baseService.selectSimpleUserList();
-        return R.ok(users);
+    @PermissionExempt("下拉选择用公共接口，无需特定权限；联系方式已按权限下发")
+    public R<java.util.List<SimpleUserVo>> simpleList(
+            @RequestParam(value = "keyword", required = false) String keyword) {
+        return R.ok(baseService.selectSimpleUserList(keyword));
     }
 
     // ==================== 导入导出 ====================
 
+    /**
+     * 导出用户数据。
+     *
+     * <p>导出走不分页查询：前端把列表当前的 pageNum/pageSize 一起传过来，
+     * 复用分页会让导出文件只剩当前页那几条。
+     */
     @GetMapping("/export")
     @PreAuthorize("@ss.hasAuthority('system:user:export')")
     @OperLog(module = "用户管理", type = OperLog.OperType.EXPORT)
     public void export(SysUserQuery query, HttpServletResponse response) throws IOException {
-        java.util.List<UserExportVo> list = baseService.selectUserPage(query).getRows().stream()
+        java.util.List<UserExportVo> list = baseService.selectUserListForExport(query, EXPORT_MAX_ROWS).stream()
                 .map(u -> UserExportVo.builder()
                         .userId(String.valueOf(u.getUserId()))
                         .username(u.getUsername())

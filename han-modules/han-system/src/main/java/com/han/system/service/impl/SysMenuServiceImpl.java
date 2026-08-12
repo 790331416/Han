@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.common.core.exception.BusinessException;
 import com.han.system.domain.po.SysMenuPo;
 import com.han.system.domain.po.SysRoleMenuPo;
+import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserRolePo;
 import com.han.system.domain.vo.MetaVO;
 import com.han.system.domain.vo.RouterVO;
 import com.han.system.mapper.SysMenuMapper;
+import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysRoleMenuMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysMenuService;
@@ -40,10 +42,13 @@ public class SysMenuServiceImpl implements ISysMenuService {
     private static final String PARENT_VIEW = "ParentView";
     /** InnerLink 组件 */
     private static final String INNER_LINK = "InnerLink";
+    /** 启用状态 */
+    private static final int STATUS_ENABLED = 0;
 
     private final SysMenuMapper menuMapper;
     private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
+    private final SysRoleMapper roleMapper;
 
     @Override
     public List<SysMenuPo> selectMenuList(String menuName, Integer status) {
@@ -239,9 +244,12 @@ public class SysMenuServiceImpl implements ISysMenuService {
     // ==================== 私有方法 ====================
 
     /**
-     * 通过 user_role + role_menu 查询用户的菜单ID列表
+     * 通过 user_role + role_menu 查询用户的菜单ID列表。
+     *
+     * <p>只统计启用中的角色：角色被停用后就不应再发它的菜单与权限点。
      */
-    private List<Long> selectMenuIdsByUserId(Long userId) {
+    @Override
+    public List<Long> selectMenuIdsByUserId(Long userId) {
         List<SysUserRolePo> userRoles = userRoleMapper.selectList(
                 new LambdaQueryWrapper<SysUserRolePo>().eq(SysUserRolePo::getUserId, userId)
         );
@@ -249,8 +257,17 @@ public class SysMenuServiceImpl implements ISysMenuService {
             return List.of();
         }
         List<Long> roleIds = userRoles.stream().map(SysUserRolePo::getRoleId).toList();
+        List<Long> enabledRoleIds = roleMapper.selectList(
+                new LambdaQueryWrapper<SysRolePo>()
+                        .select(SysRolePo::getId)
+                        .in(SysRolePo::getId, roleIds)
+                        .eq(SysRolePo::getStatus, STATUS_ENABLED)
+        ).stream().map(SysRolePo::getId).toList();
+        if (enabledRoleIds.isEmpty()) {
+            return List.of();
+        }
         List<SysRoleMenuPo> roleMenus = roleMenuMapper.selectList(
-                new LambdaQueryWrapper<SysRoleMenuPo>().in(SysRoleMenuPo::getRoleId, roleIds)
+                new LambdaQueryWrapper<SysRoleMenuPo>().in(SysRoleMenuPo::getRoleId, enabledRoleIds)
         );
         return roleMenus.stream().map(SysRoleMenuPo::getMenuId).distinct().toList();
     }
