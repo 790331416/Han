@@ -96,6 +96,19 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+            订购模块的事务原子性、幂等与引用计数撤销必须用真实事务管理器验证，
+            纯 Mockito 单测在原理上验证不了回滚。本机没有 Docker，用不了 Testcontainers，
+            改用 H2（MySQL 兼容模式）跑真库集成测试：DataSourceTransactionManager 是真的，
+            唯一索引对 NULL 的处理、生成列、逻辑删除也都是真的。
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.3.232</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- EasyExcel（用户导入导出） -->
         <dependency>
             <groupId>com.alibaba</groupId>

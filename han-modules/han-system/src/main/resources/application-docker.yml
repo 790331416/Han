@@ -49,6 +49,20 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
+sdfz:
+  order:
+    legacy:
+      channel: ${SDFZ_ORDER_LEGACY_CHANNEL:disabled}
+      jdbc:
+        url: ${SDFZ_ORDER_LEGACY_DB_URL:}
+        username: ${SDFZ_ORDER_LEGACY_DB_USER:}
+        password: ${SDFZ_ORDER_LEGACY_DB_PASSWORD:}
+      http:
+        base-url: ${SDFZ_ORDER_LEGACY_API_BASE_URL:}
+        token: ${SDFZ_ORDER_LEGACY_API_TOKEN:}
+    schedule:
+      enabled: ${SDFZ_ORDER_SCHEDULE_ENABLED:true}
+
 logging:
   level:
     root: INFO
