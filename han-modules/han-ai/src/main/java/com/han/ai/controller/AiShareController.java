@@ -25,7 +25,7 @@ import java.util.Map;
  * <p>
  * 安全边界：仅暴露已发布且启用的智能体；shareKey 无效一律 404；
  * profile 不返回模型/凭据等敏感配置；对话无状态不落库，历史由前端携带。
- * 限流（单 key QPS/日调用量）属网关级配套，本期未实现，上 95 前需补齐。
+ * 限流（单 key QPS/日调用量）由网关 ShareRateLimitFilter 实现（G1-9），本服务无需重复计数。
  */
 @RestController
 @RequestMapping("/ai/share")
