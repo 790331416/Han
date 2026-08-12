@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { getToken, setToken, removeToken, setRefreshToken, removeRefreshToken } from '@/utils/auth'
 import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'
+import { useAppStore } from '@/stores/app'
+import { useTagsViewStore } from '@/stores/tagsView'
 import type { LoginDTO, UserInfo } from '@/types'
 
 /**
@@ -39,6 +41,22 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
+   * 清掉与账号绑定的其他 Store。
+   *
+   * 登出走的是 `router.push('/login')`、Pinia 实例存活，只清 user store 会留下：
+   * 页签列表还挂着上一个用户访问过的页面（含新用户无权限的），首页快捷入口
+   * 也沿用上一个人的点击热度。这些都要一起清。
+   */
+  function clearAccountScopedStores() {
+    try {
+      useTagsViewStore().resetViews()
+      useAppStore().resetUserPreferences()
+    } catch {
+      // Pinia 尚未激活（例如请求层在应用初始化早期兜底清会话）时忽略。
+    }
+  }
+
+  /**
    * 统一清理当前用户上下文，确保令牌、租户、权限与调试身份一起失效。
    */
   function clearUserContext() {
@@ -51,6 +69,7 @@ export const useUserStore = defineStore('user', () => {
     permissions.value = []
     removeToken()
     removeRefreshToken()
+    clearAccountScopedStores()
   }
 
   async function login(loginForm: LoginDTO) {
@@ -121,7 +140,16 @@ export const useUserStore = defineStore('user', () => {
   }
 }, {
   persist: {
+    /**
+     * `token` 刻意不进持久化白名单。
+     *
+     * 原来 access token 同时躺在 `Admin-Token`（utils/auth.ts）和 `HAN-user.token`
+     * （持久化插件）两个键里：A 标签页登出会清掉两个键，B 标签页内存里的 token 仍在，
+     * 一旦 B 触发任何持久化字段变更就把旧 token 写回 `HAN-user`，
+     * 此后任意标签页刷新都会 hydrate 出这个已经登出的令牌。
+     * 现在令牌只认 `utils/auth.ts` 的显式键这一个权威源。
+     */
     key: 'HAN-user',
-    pick: ['token', 'tenantId', '_userId']
+    pick: ['tenantId', '_userId']
   }
 })

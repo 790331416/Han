@@ -63,6 +63,48 @@ function buildRequestRuntimeError(
 }
 
 /**
+ * 相同文案在这个时间窗内只弹一次。
+ *
+ * 刷新令牌本身已经用共享 Promise 去重了，但**提示没有跟着去重**：N 个并发 401
+ * 各自 await 同一个 Promise，拿到失败结果后各弹一次红条。一个页面同时发
+ * 列表 + 字典 + 统计五到八个接口很常见，认证服务一抖就叠一屏。
+ * 这里统一收口，顺带覆盖业务错误与 HTTP 错误两处同样没有节流的提示。
+ */
+const TOAST_DEDUPE_WINDOW_MS = 3000
+const recentToastAt = new Map<string, number>()
+
+function notifyRequestError(message: string): void {
+  const now = Date.now()
+
+  for (const [text, at] of recentToastAt) {
+    if (now - at >= TOAST_DEDUPE_WINDOW_MS) {
+      recentToastAt.delete(text)
+    }
+  }
+
+  if (recentToastAt.has(message)) {
+    return
+  }
+
+  recentToastAt.set(message, now)
+  ElMessage.error(message)
+}
+
+/**
+ * 日志脱敏：`error.config.headers` 里带着 `Authorization: Bearer <token>`，
+ * 整个 error 对象打进控制台等于把会话令牌暴露给任何能看到控制台的人
+ * （远程协助、录屏、浏览器插件）。只保留定位问题真正需要的字段。
+ */
+function logRequestError(scope: string, error: any): void {
+  console.error(scope, {
+    message: error?.message,
+    url: error?.config?.url,
+    method: error?.config?.method,
+    status: error?.response?.status
+  })
+}
+
+/**
  * 统一处理 401：
  * 1. 优先尝试刷新会话并重放原请求；
  * 2. 只有刷新凭证真实失效时才清会话跳登录；
@@ -102,7 +144,7 @@ async function retryOriginalRequestAfterRefresh(
 
   if (refreshResult.status === 'failed') {
     if (!originalConfig.silentError) {
-      ElMessage.error(refreshResult.message)
+      notifyRequestError(refreshResult.message)
     }
     throw buildRequestRuntimeError(refreshResult.message, {
       sessionRefreshFailed: true,
@@ -146,15 +188,52 @@ service.interceptors.request.use(
     return config
   },
   (error) => {
-    console.error('请求错误:', error)
+    logRequestError('请求错误:', error)
     return Promise.reject(error)
   }
 )
 
-/** 仅用于模板渲染的日期格式化工具，不修改原始值。 */
-export function formatDate(value: string | null | undefined): string {
-  if (!value) return ''
-  return value.replace('T', ' ').replace(/\.\d+$/, '')
+/**
+ * 日期格式化已迁到 `utils/date.ts`。
+ * 这里保留再导出，避免改动散落在各视图里的 `import { formatDate } from '@/utils/request'`。
+ */
+export { formatDate } from '@/utils/date'
+
+/**
+ * blob 响应的错误体识别。
+ *
+ * 导出接口失败时后端仍会返回 HTTP 200 + `{"code":500,"msg":"导出失败"}`（R 包装的标准做法），
+ * 而拦截器原来对 blob 一律原样返回，调用方会把这段 JSON 当成 xlsx 落盘，
+ * 用户拿到一个打不开的损坏文件且没有任何提示。
+ */
+async function resolveBlobResponse(response: AxiosResponse) {
+  const blob = response.data as Blob
+  const contentType: string = blob?.type || ''
+  if (!/^(application\/json|text\/)/i.test(contentType)) {
+    return response
+  }
+
+  let payload: any
+  try {
+    payload = JSON.parse(await blob.text())
+  } catch {
+    // 不是 JSON（例如真的在下载 CSV / 纯文本），按正常响应处理。
+    return response
+  }
+
+  if (!payload || typeof payload.code !== 'number' || payload.code === 200) {
+    return response
+  }
+
+  if (payload.code === 401) {
+    return resolveUnauthorizedRequest(response.config, payload.msg || '登录状态已过期，请重新登录')
+  }
+
+  const message = payload.msg || '请求失败'
+  if (!response.config.silentError) {
+    notifyRequestError(message)
+  }
+  return Promise.reject(buildRequestRuntimeError(message, { bizCode: payload.code }))
 }
 
 service.interceptors.response.use(
@@ -162,7 +241,7 @@ service.interceptors.response.use(
     const res = response.data as R
 
     if (response.config.responseType === 'blob') {
-      return response
+      return resolveBlobResponse(response)
     }
 
     // 非 R 包装的裸 JSON（如 /actuator/jobflow/* 监控端点）直接透传，避免被误判为业务失败
@@ -176,7 +255,7 @@ service.interceptors.response.use(
       }
 
       if (!response.config.silentError) {
-        ElMessage.error(res.msg || '请求失败')
+        notifyRequestError(res.msg || '请求失败')
       }
 
       return Promise.reject(buildRequestRuntimeError(res.msg || '请求失败', {
@@ -187,7 +266,12 @@ service.interceptors.response.use(
     return res as any
   },
   async (error) => {
-    console.error('响应错误:', error)
+    // 主动取消的请求不是故障：既不打日志也不弹提示，直接原样抛给调用方。
+    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') {
+      return Promise.reject(error)
+    }
+
+    logRequestError('响应错误:', error)
 
     let message = error.message || '请求失败'
     let unauthorized = false
@@ -223,7 +307,7 @@ service.interceptors.response.use(
     }
 
     if (!unauthorized && !error.config?.silentError) {
-      ElMessage.error(message)
+      notifyRequestError(message)
     }
 
     return Promise.reject(Object.assign(error, {

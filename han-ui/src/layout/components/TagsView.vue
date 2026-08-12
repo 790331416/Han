@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, onMounted } from 'vue'
+import { computed, nextTick, reactive, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import { useTagsViewStore, type TagView } from '@/stores/tagsView'
@@ -94,9 +94,16 @@ function closeAllTags() {
   toLastView()
 }
 
-function refreshPage() {
-  // Force re-render by navigating to a redirect then back
-  const { fullPath } = route
+async function refreshPage() {
+  /**
+   * 只跳 /redirect 是刷不掉页面的：目标组件的 name 还留在 cachedViews 里，
+   * keep-alive 会把原来的缓存实例恢复出来，onMounted 不重跑，
+   * 对「只在 onMounted 里取数」的列表页（本仓库绝大多数）点刷新数据纹丝不动。
+   * 必须先摘掉缓存、等 keep-alive 的 include 生效，再跳转。
+   */
+  const { fullPath, name } = route
+  tagsViewStore.removeCachedView(name)
+  await nextTick()
   router.replace('/redirect' + fullPath)
 }
 

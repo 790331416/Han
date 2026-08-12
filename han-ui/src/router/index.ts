@@ -1,10 +1,23 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
+import { ElMessage } from 'element-plus'
+import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import type { RequestRuntimeError } from '@/utils/request'
+import { DENY_REASON_MESSAGE, resolveRouteDenyReason } from '@/utils/route-access'
 
 NProgress.configure({ showSpinner: false })
+
+/**
+ * 错误页组件的容错加载。
+ *
+ * `403.vue` / `500.vue` 由 ui-business 分支提供，本分支基线尚未合入。
+ * 用可失败的动态导入兜底：合入前退化到 404 页，合入后自动生效，
+ * 不会因为缺文件而卡住本分支的类型检查与构建。
+ */
+const errorView = (name: string) => () =>
+  import(`../views/error/${name}.vue`).catch(() => import('../views/error/404.vue'))
 
 // 公共路由
 export const constantRoutes: RouteRecordRaw[] = [
@@ -25,6 +38,18 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: '404',
     component: () => import('@/views/error/404.vue'),
     meta: { title: '404', hidden: true }
+  },
+  {
+    path: '/403',
+    name: '403',
+    component: errorView('403'),
+    meta: { title: '无权访问', hidden: true }
+  },
+  {
+    path: '/500',
+    name: '500',
+    component: errorView('500'),
+    meta: { title: '服务异常', hidden: true }
   },
   {
     path: '/redirect',
@@ -359,6 +384,16 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: 'AI对话', hidden: true }
   },
   {
+    /**
+     * 强制改密流程历史上跳转的是 `/user/profile`，而个人中心的真实路径是 `/profile`，
+     * 需要改密的新用户会被通配路由打到 404、完全登不进系统。
+     * 这里保留一条兼容重定向做兜底，查询串一并透传，避免 `?tab=password` 丢失。
+     */
+    path: '/user/profile',
+    redirect: (to) => ({ path: '/profile', query: to.query }),
+    meta: { hidden: true }
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/404',
     meta: { hidden: true }
@@ -372,17 +407,46 @@ const router = createRouter({
 })
 
 // 白名单
-const whiteList = ['/login', '/social/callback', '/404']
+const whiteList = ['/login', '/social/callback', '/404', '/403', '/500']
 
-// 嵌入式/公开分享对话路径前缀（免登录）
-const isEmbedPath = (path: string) => path.startsWith('/embed/') || path.startsWith('/chat/share/')
+// 公开分享对话路径前缀（免登录）
+const isPublicSharePath = (path: string) => path.startsWith('/chat/share/')
+
+/** 访问控制自身的落地页不能再被访问控制拦截，否则会形成重定向死循环。 */
+const isAccessControlExempt = (path: string) => whiteList.includes(path) || isPublicSharePath(path)
+
+/**
+ * 统一的页面级访问控制。
+ *
+ * 只做「菜单能看见就能进、菜单看不见就进不去」这一件事：判定规则与侧边栏共用
+ * `utils/route-access.ts`，不额外收紧，因此不会出现菜单可见但 URL 打不开的割裂。
+ */
+async function ensureRouteAccessible(to: RouteLocationNormalized): Promise<boolean> {
+  if (isAccessControlExempt(to.path)) {
+    return true
+  }
+
+  // 档位与功能开关来自运行时能力接口，先确保拿到结果再判定，避免误拦或漏拦。
+  const appStore = useAppStore()
+  if (!appStore.capabilitiesLoaded) {
+    await appStore.loadRuntimeCapabilities()
+  }
+
+  const denyReason = resolveRouteDenyReason(to)
+  if (!denyReason) {
+    return true
+  }
+
+  ElMessage.warning(DENY_REASON_MESSAGE[denyReason])
+  return false
+}
 
 // 路由守卫
 router.beforeEach(async (to, _from, next) => {
   NProgress.start()
-  
+
   const userStore = useUserStore()
-  
+
   if (userStore.token) {
     if (to.path === '/login') {
       next({ path: '/' })
@@ -408,12 +472,15 @@ router.beforeEach(async (to, _from, next) => {
 
           next()
         }
-      } else {
+      } else if (await ensureRouteAccessible(to)) {
         next()
+      } else {
+        next({ path: '/403', replace: true })
+        NProgress.done()
       }
     }
   } else {
-    if (whiteList.includes(to.path) || isEmbedPath(to.path)) {
+    if (isAccessControlExempt(to.path)) {
       next()
     } else {
       next(`/login?redirect=${to.path}`)
