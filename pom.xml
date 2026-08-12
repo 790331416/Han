@@ -36,6 +36,7 @@
 
         <!-- 数据库相关 -->
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
+        <mybatis-spring-boot.version>4.0.1</mybatis-spring-boot.version>
         <dynamic-datasource.version>4.5.0</dynamic-datasource.version>
         <postgresql.version>42.7.4</postgresql.version>
 
@@ -43,6 +44,7 @@
         <hutool.version>5.8.36</hutool.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.38</lombok.version>
+        <commons-io.version>2.15.1</commons-io.version>
 
         <!-- 安全相关 -->
         <bcrypt.version>0.10.2</bcrypt.version>
@@ -63,6 +65,17 @@
         <!-- 文档解析（知识库 pdf/docx/xlsx 抽取） -->
         <pdfbox.version>3.0.5</pdfbox.version>
         <poi.version>5.2.5</poi.version>
+
+        <!-- 代码生成模板引擎 -->
+        <velocity.version>2.4</velocity.version>
+
+        <!-- 对象存储 SDK（RustFS 走 S3 兼容协议） -->
+        <awssdk.version>2.25.27</awssdk.version>
+
+        <!-- Spring Boot Admin（han-visual/han-monitor）。
+             当前 3.3.4 与 Spring Boot ${spring-boot.version} 不兼容，模块去留待拍板，
+             此处只做版本收口，升级动作见汇报中的方案。 -->
+        <spring-boot-admin.version>3.3.4</spring-boot-admin.version>
 
         <!-- 工作流引擎 -->
         <flowable.version>7.2.0</flowable.version>
@@ -243,11 +256,11 @@
                 </exclusions>
             </dependency>
 
-            <!-- MyBatis Spring Boot 4.0.1（兼容 Spring Boot 4.0 / Spring Framework 7）-->
+            <!-- MyBatis Spring Boot（兼容 Spring Boot 4.0 / Spring Framework 7）-->
             <dependency>
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
-                <version>4.0.1</version>
+                <version>${mybatis-spring-boot.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.baomidou</groupId>
@@ -279,6 +292,13 @@
                 <groupId>cn.hutool</groupId>
                 <artifactId>hutool-all</artifactId>
                 <version>${hutool.version}</version>
+            </dependency>
+
+            <!-- Commons IO -->
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
             </dependency>
 
             <!-- EasyExcel -->
@@ -395,6 +415,27 @@
                 <groupId>com.volcengine</groupId>
                 <artifactId>volc-sdk-java</artifactId>
                 <version>${volcengine.sdk.version}</version>
+            </dependency>
+
+            <!-- Velocity（han-gen 代码生成模板） -->
+            <dependency>
+                <groupId>org.apache.velocity</groupId>
+                <artifactId>velocity-engine-core</artifactId>
+                <version>${velocity.version}</version>
+            </dependency>
+
+            <!-- AWS S3 SDK（han-starter-storage，RustFS 兼容） -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>${awssdk.version}</version>
+            </dependency>
+
+            <!-- Spring Boot Admin Server（han-visual/han-monitor） -->
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-server</artifactId>
+                <version>${spring-boot-admin.version}</version>
             </dependency>
 
             <!-- ==================== 工作流引擎 ==================== -->
