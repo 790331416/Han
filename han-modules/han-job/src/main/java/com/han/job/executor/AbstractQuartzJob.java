@@ -4,37 +4,40 @@ import com.han.job.context.TraceContext;
 import com.han.job.domain.po.SysJobLogPo;
 import com.han.job.domain.po.SysJobPo;
 import com.han.job.mapper.SysJobLogMapper;
+import com.han.job.service.impl.JobHandlerRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.JobExecutionContext;
-import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 
 /**
  * 任务执行抽象类。
  *
  * <p>负责创建 TraceId、执行目标方法并持久化执行日志。</p>
+ *
+ * <p>本类是抽象类，不会被组件扫描注册成 Bean；依赖由 Spring 的
+ * {@code SpringBeanJobFactory} 在 Quartz 每次创建 Job 实例时自动装配。</p>
  */
 @Slf4j
-@Component
-public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationContextAware {
+public abstract class AbstractQuartzJob implements org.quartz.Job {
 
-    private static ApplicationContext applicationContext;
+    private static final int EXCEPTION_INFO_MAX_LENGTH = 8000;
+
     private static SysJobLogMapper jobLogMapper;
+    private static JobHandlerRegistry jobHandlerRegistry;
 
     @Autowired
     public void setJobLogMapper(SysJobLogMapper mapper) {
         AbstractQuartzJob.jobLogMapper = mapper;
     }
 
-    @Override
-    public void setApplicationContext(ApplicationContext context) throws BeansException {
-        AbstractQuartzJob.applicationContext = context;
+    @Autowired
+    public void setJobHandlerRegistry(JobHandlerRegistry registry) {
+        AbstractQuartzJob.jobHandlerRegistry = registry;
     }
 
     @Override
@@ -79,36 +82,26 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
 
     /**
      * 调用任务目标方法。
+     *
+     * <p>调用目标必须先通过 {@link JobHandlerRegistry} 的白名单解析：只有标注了
+     * {@code @JobHandler} / {@code @JobHandlerMethod} 并注册进容器的方法才允许执行。
+     * 历史脏数据或绕过管理端直接写库的调用目标会在这里被拒绝，不会落到反射调用。</p>
      */
     protected void invokeMethod(SysJobPo job) throws Exception {
-        String invokeTarget = job.getInvokeTarget();
-
-        int methodIndex = invokeTarget.indexOf('.');
-        if (methodIndex <= 0) {
-            throw new RuntimeException("调用目标格式错误: " + invokeTarget);
+        if (jobHandlerRegistry == null) {
+            throw new IllegalStateException("任务处理器注册表未初始化，拒绝执行调用目标: " + job.getInvokeTarget());
         }
 
-        String beanName = invokeTarget.substring(0, methodIndex);
-        String methodPart = invokeTarget.substring(methodIndex + 1);
-        String methodName;
-        String params = null;
-
-        int paramIndex = methodPart.indexOf('(');
-        if (paramIndex > 0) {
-            methodName = methodPart.substring(0, paramIndex);
-            params = methodPart.substring(paramIndex + 1, methodPart.length() - 1);
-        } else {
-            methodName = methodPart;
-        }
-
-        Object bean = applicationContext.getBean(beanName);
-        Method method;
-        if (params != null && !params.isEmpty()) {
-            method = bean.getClass().getDeclaredMethod(methodName, String.class);
-            method.invoke(bean, params);
-        } else {
-            method = bean.getClass().getDeclaredMethod(methodName);
-            method.invoke(bean);
+        JobHandlerRegistry.JobInvocation invocation = jobHandlerRegistry.resolve(job.getInvokeTarget());
+        try {
+            invocation.invoke();
+        } catch (InvocationTargetException e) {
+            // 反射包装层会掩盖真实异常，日志与 sys_job_log 需要看到业务侧的原始堆栈
+            Throwable cause = e.getTargetException();
+            if (cause instanceof Exception businessException) {
+                throw businessException;
+            }
+            throw e;
         }
     }
 
@@ -123,10 +116,13 @@ public abstract class AbstractQuartzJob implements org.quartz.Job, ApplicationCo
     }
 
     private String truncateException(Exception e) {
-        String message = e.toString();
-        if (message.length() > 2000) {
-            return message.substring(0, 2000);
+        StringWriter writer = new StringWriter();
+        e.printStackTrace(new PrintWriter(writer));
+        String stackTrace = writer.toString();
+        // sys_job_log.exception_info 是 TEXT 列，放得下完整堆栈；留出余量避免个别超长堆栈撑爆行
+        if (stackTrace.length() > EXCEPTION_INFO_MAX_LENGTH) {
+            return stackTrace.substring(0, EXCEPTION_INFO_MAX_LENGTH);
         }
-        return message;
+        return stackTrace;
     }
 }
