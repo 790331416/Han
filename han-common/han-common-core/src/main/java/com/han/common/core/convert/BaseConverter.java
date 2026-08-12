@@ -45,4 +45,9 @@ public interface BaseConverter<E, V, D> {
      * VO -> Entity
      */
     E voToEntity(V vo);
+
+    /**
+     * VO List -> Entity List
+     */
+    List<E> voToEntityList(List<V> vos);
 }

@@ -48,12 +48,14 @@ public final class HanCollUtil {
 
     /**
      * 转换为列表
+     * <p>无论入参是否为空，返回的都是可增删的 {@link ArrayList}。
      */
+    @SafeVarargs
     public static <T> List<T> toList(T... elements) {
         if (elements == null || elements.length == 0) {
             return new ArrayList<>();
         }
-        return Arrays.asList(elements);
+        return new ArrayList<>(Arrays.asList(elements));
     }
 
     /**
@@ -108,11 +110,12 @@ public final class HanCollUtil {
 
     /**
      * 连接
+     * <p>集合中的 {@code null} 元素输出为字面量 {@code "null"}，不抛 NPE。
      */
     public static String join(Collection<?> collection, String delimiter) {
         if (isEmpty(collection)) {
             return "";
         }
-        return collection.stream().map(Object::toString).collect(Collectors.joining(delimiter));
+        return collection.stream().map(String::valueOf).collect(Collectors.joining(delimiter));
     }
 }

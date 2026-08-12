@@ -3,6 +3,7 @@ package com.han.common.core.util;
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import com.han.common.core.exception.BusinessException;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -15,6 +16,9 @@ public final class PasswordUtil {
      * BCrypt加密密码
      */
     public static String encode(String rawPassword) {
+        if (rawPassword == null) {
+            throw new IllegalArgumentException("待加密的密码不能为 null");
+        }
         return BCrypt.withDefaults().hashToString(10, rawPassword.toCharArray());
     }
 
@@ -158,18 +162,32 @@ public final class PasswordUtil {
         return checkPasswordStrength(password) >= 50;
     }
 
+    /**
+     * Base64 编码（<b>不是加密</b>，完全可逆）
+     *
+     * @deprecated 名字与相邻的 {@link #encode(String)}（真正的 BCrypt 哈希）高度相似，
+     * 误用会把明文口令写进数据库。密码入库一律用 {@link #encode(String)}；
+     * 确需可逆编码请用 {@link HanSecureUtil#base64Encode(String)}。本方法零调用点，仅为兼容保留。
+     */
+    @Deprecated(since = "1.0.0")
     public static String encodePassword(String password) {
         if (password == null) {
             return null;
         }
-        return Base64.getEncoder().encodeToString(password.getBytes());
+        return Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Base64 解码
+     *
+     * @deprecated 见 {@link #encodePassword(String)}。
+     */
+    @Deprecated(since = "1.0.0")
     public static String decodePassword(String encodedPassword) {
         if (encodedPassword == null) {
             return null;
         }
         byte[] decodedBytes = Base64.getDecoder().decode(encodedPassword);
-        return new String(decodedBytes);
+        return new String(decodedBytes, StandardCharsets.UTF_8);
     }
 }

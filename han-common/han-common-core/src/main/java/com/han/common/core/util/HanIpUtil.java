@@ -1,10 +1,11 @@
 package com.han.common.core.util;
 
 import org.lionsoul.ip2region.xdb.Searcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Locale;
 
 /**
  * IP 归属地工具类 — 基于 ip2region 离线库
@@ -17,26 +18,24 @@ import java.util.logging.Logger;
  */
 public final class HanIpUtil {
 
-    private static final Logger log = Logger.getLogger(HanIpUtil.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(HanIpUtil.class);
 
     private static Searcher searcher;
     private static boolean initialized = false;
 
     static {
-        try {
-            InputStream is = HanIpUtil.class.getClassLoader().getResourceAsStream("ip2region.xdb");
+        try (InputStream is = HanIpUtil.class.getClassLoader().getResourceAsStream("ip2region.xdb")) {
             if (is != null) {
                 byte[] cBuff = is.readAllBytes();
-                is.close();
                 searcher = Searcher.newWithBuffer(cBuff);
                 initialized = true;
-                log.info("ip2region 离线库加载成功，大小: " + cBuff.length / 1024 + " KB");
+                log.info("ip2region 离线库加载成功，大小: {} KB", cBuff.length / 1024);
             } else {
-                log.warning("ip2region.xdb 未找到，IP 归属地解析将降级为简单判断。" +
-                        "请将 ip2region.xdb 放置到 classpath 下（如 han-auth/src/main/resources/）");
+                log.warn("ip2region.xdb 未找到，IP 归属地解析将降级为简单判断。"
+                        + "请将 ip2region.xdb 放置到 classpath 下（如 han-auth/src/main/resources/）");
             }
         } catch (Exception e) {
-            log.log(Level.SEVERE, "ip2region 离线库加载失败", e);
+            log.error("ip2region 离线库加载失败", e);
         }
     }
 
@@ -60,7 +59,7 @@ public final class HanIpUtil {
                 String region = searcher.search(ip);
                 return formatRegion(region);
             } catch (Exception e) {
-                log.fine("IP[" + ip + "]归属地查询失败: " + e.getMessage());
+                log.debug("IP[{}]归属地查询失败: {}", ip, e.getMessage());
             }
         }
 
@@ -69,24 +68,73 @@ public final class HanIpUtil {
 
     /**
      * 判断是否为内网 IP
+     * <p>覆盖 RFC1918 私网、回环、链路本地（169.254/16）以及运营商级 NAT（100.64/10，云环境常见）。
      */
     public static boolean isInternalIp(String ip) {
-        if (ip == null) return false;
-        return "127.0.0.1".equals(ip)
-                || "0:0:0:0:0:0:0:1".equals(ip)
-                || ip.startsWith("0:")
-                || ip.startsWith("10.")
-                || ip.startsWith("192.168.")
-                || (ip.startsWith("172.") && isIn172Range(ip));
+        if (ip == null || ip.isBlank()) return false;
+        String value = ip.trim();
+        int[] v4 = parseIpv4(value);
+        if (v4 != null) {
+            return v4[0] == 0
+                    || v4[0] == 10
+                    || v4[0] == 127
+                    || (v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127)
+                    || (v4[0] == 169 && v4[1] == 254)
+                    || (v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31)
+                    || (v4[0] == 192 && v4[1] == 168);
+        }
+        return isInternalIpv6(value);
     }
 
-    private static boolean isIn172Range(String ip) {
-        try {
-            int second = Integer.parseInt(ip.split("\\.")[1]);
-            return second >= 16 && second <= 31;
-        } catch (Exception e) {
+    /**
+     * 只解析点分十进制字面量，不做任何 DNS 解析 —— 入参来自 {@code X-Forwarded-For}
+     * 等客户端可控请求头，走 {@code InetAddress.getByName} 会被诱导发起域名解析。
+     *
+     * @return 四段无符号值；不是合法 IPv4 字面量时返回 {@code null}
+     */
+    private static int[] parseIpv4(String value) {
+        String[] parts = value.split("\\.", -1);
+        if (parts.length != 4) {
+            return null;
+        }
+        int[] segments = new int[4];
+        for (int i = 0; i < 4; i++) {
+            String part = parts[i];
+            if (part.isEmpty() || part.length() > 3) {
+                return null;
+            }
+            int segment = 0;
+            for (int j = 0; j < part.length(); j++) {
+                char c = part.charAt(j);
+                if (c < '0' || c > '9') {
+                    return null;
+                }
+                segment = segment * 10 + (c - '0');
+            }
+            if (segment > 255) {
+                return null;
+            }
+            segments[i] = segment;
+        }
+        return segments;
+    }
+
+    /**
+     * IPv6 内网判断：回环 {@code ::1}、唯一本地地址 {@code fc00::/7}、链路本地 {@code fe80::/10}。
+     */
+    private static boolean isInternalIpv6(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.indexOf(':') < 0) {
             return false;
         }
+        if ("::1".equals(lower) || "0:0:0:0:0:0:0:1".equals(lower) || "::".equals(lower)) {
+            return true;
+        }
+        if (lower.startsWith("fc") || lower.startsWith("fd")) {
+            return true;
+        }
+        return lower.startsWith("fe8") || lower.startsWith("fe9")
+                || lower.startsWith("fea") || lower.startsWith("feb");
     }
 
     /**

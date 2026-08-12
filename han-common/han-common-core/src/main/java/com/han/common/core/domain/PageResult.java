@@ -1,5 +1,6 @@
 package com.han.common.core.domain;
 
+import com.han.common.core.domain.query.BaseQuery;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -47,6 +48,9 @@ public class PageResult<T> implements Serializable {
 
     /**
      * 构建分页结果
+     * <p><b>注意</b>：本重载无法得知分页参数，{@code pageNum} / {@code pageSize} / {@code pages}
+     * 会保持为 0，前端分页控件算不出页数。已知分页参数时请改用
+     * {@link #of(List, long, int, int)} 或 {@link #of(List, long, BaseQuery)}。
      */
     public static <T> PageResult<T> of(List<T> rows, long total) {
         return new PageResult<>(rows, total);
@@ -57,6 +61,16 @@ public class PageResult<T> implements Serializable {
      */
     public static <T> PageResult<T> of(List<T> rows, long total, int pageNum, int pageSize) {
         return new PageResult<>(rows, total, pageNum, pageSize);
+    }
+
+    /**
+     * 构建分页结果（分页参数取自查询对象，已做上下限钳制）
+     */
+    public static <T> PageResult<T> of(List<T> rows, long total, BaseQuery query) {
+        if (query == null) {
+            return new PageResult<>(rows, total);
+        }
+        return new PageResult<>(rows, total, query.getSafePageNum(), query.getSafePageSize());
     }
 
     /**
