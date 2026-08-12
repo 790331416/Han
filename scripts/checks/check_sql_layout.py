@@ -88,6 +88,17 @@ def read_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def strip_sql_comments(text: str) -> str:
+    """去掉 SQL 注释后再做「禁用语法」判定。
+
+    方言禁用词检查必须只看真实语句：脚本头部本来就要用中文注释说明
+    「PostgreSQL 的 BIGSERIAL 对应 MySQL 的 BIGINT AUTO_INCREMENT」这类转换约定，
+    连注释一起搜会把这种说明文字判成违规，逼得写脚本的人不敢把约定写清楚。
+    """
+    without_block = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return "\n".join(re.sub(r"--.*$", "", line) for line in without_block.splitlines())
+
+
 def main() -> int:
     violations: list[str] = []
 
@@ -113,8 +124,9 @@ def main() -> int:
             violations.append(f"缺少 Nacos 导入 SQL: {nacos_file}")
         if init_file.exists():
             text = read_sql(init_file)
+            statements = strip_sql_comments(text)
             for token in FORBIDDEN_SQL_TOKENS:
-                if token in text:
+                if token in statements:
                     violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {init_file}")
             lowered = text.lower()
             for column in REQUIRED_SYS_USER_COLUMNS:
@@ -138,7 +150,7 @@ def main() -> int:
                 violations.append(f"缺少 MySQL small 初始化 SQL: {mysql_init_file}")
             else:
                 mysql_text = read_sql(mysql_init_file)
-                mysql_upper = mysql_text.upper()
+                mysql_upper = strip_sql_comments(mysql_text).upper()
                 for token in FORBIDDEN_MYSQL_TOKENS:
                     if token in mysql_upper:
                         violations.append(f"MySQL small SQL 包含 PostgreSQL 语法 {token!r}: {mysql_init_file}")

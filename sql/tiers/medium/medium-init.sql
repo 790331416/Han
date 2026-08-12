@@ -1,5 +1,5 @@
-﻿-- Han medium tier PostgreSQL init
--- generated from legacy modular SQL layout on 2026-04-15
+-- Han medium 档 PostgreSQL 全新初始化脚本
+-- 2026-04-15 由旧的分模块 SQL 目录结构合并生成
 
 -- ============================================================
 -- source: postgres\system\00-schema.sql
@@ -904,7 +904,7 @@ INSERT INTO sys_tenant_package (id, package_name, menu_ids, status, remark) VALU
 -- ============================================================
 -- source: postgres\tenant\90-fixup.sql
 -- ============================================================
--- PostgreSQL tenant billing extension tables.
+-- 租户计费扩展表（PostgreSQL）。
 
 CREATE TABLE IF NOT EXISTS sys_tenant_subscription (
     id BIGINT PRIMARY KEY,
@@ -1101,7 +1101,7 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 -- source: postgres\open\00-schema.sql
 -- ============================================================
--- PostgreSQL open-platform core tables.
+-- 开放平台核心表（PostgreSQL）。
 
 CREATE TABLE IF NOT EXISTS open_app (
     id BIGSERIAL PRIMARY KEY,

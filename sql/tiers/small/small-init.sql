@@ -1,5 +1,5 @@
-﻿-- Han small tier PostgreSQL init
--- generated from legacy modular SQL layout on 2026-04-15
+-- Han small 档 PostgreSQL 全新初始化脚本
+-- 2026-04-15 由旧的分模块 SQL 目录结构合并生成
 
 -- ============================================================
 -- source: postgres\system\00-schema.sql

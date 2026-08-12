@@ -1,17 +1,15 @@
--- Han small 档 MySQL 8.4 全新初始化脚本
--- PostgreSQL 仍为默认数据库；本文件是 small 档的正式 MySQL 入口。
+-- Han medium 档 MySQL 8.4 全新初始化脚本
+-- PostgreSQL 仍为默认数据库；本文件是 medium 档的正式 MySQL 入口。
 
--- 本文件与 sql/tiers/small/small-init.sql（PostgreSQL）表达同一套最终结构，
--- 表、字段、索引、种子数据必须逐项对等，只允许存在方言差异。
--- 两处必须成对修改，否则会出现「PostgreSQL 装出来能用、MySQL 装出来 403 或建不出同名记录」这类
--- 只有换库才踩得到的坑。
---
--- 已知的方言差异（详见对应位置注释）：
---   1. PostgreSQL 的部分唯一索引 `WHERE del_flag = 0` 在 MySQL 8.4 无对应语法，
---      统一改用函数式索引键（functional key part）模拟，见文件末尾「22. 唯一约束」段。
---   2. PostgreSQL 的 `BIGSERIAL` 对应 MySQL 的 `BIGINT AUTO_INCREMENT`。
---   3. PostgreSQL 的 `COMMENT ON COLUMN` 在本文件里改为 SQL 行注释，避免与仓库
---      「PostgreSQL 脚本禁止列内 COMMENT」的门禁口径互相污染。
+-- 用途：medium 档 MySQL 8.4 全新初始化脚本，覆盖 system、job、tenant、workflow、
+-- open、file 六个模块，是 sql/tiers/medium/medium-init.sql（PostgreSQL）的等价版本。
+-- 适用范围：只用于空库首次初始化，不承担存量库升级；MySQL 增量升级目录尚未建立。
+-- 转换约定沿用 sql/tiers/small/small-init-mysql.sql：
+--   1. 只改 MySQL 不接受的写法，其余类型、字段顺序、默认值、注释与 PostgreSQL 版逐行对齐；
+--   2. PostgreSQL 自增主键列改写为 BIGINT AUTO_INCREMENT；
+--   3. 表达式唯一索引改为 STORED 生成列 + 普通唯一索引；
+--   4. PostgreSQL 的 (VALUES ...) 派生表种子改写为普通 VALUES 批量插入，租户列取值保持一致。
+-- 与 PostgreSQL 版不能等价转换的点，均在对应位置就地标注。
 
 SET NAMES utf8mb4;
 
@@ -79,25 +77,15 @@ CREATE TABLE sys_user (
     del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
--- 用户名唯一性不再用建表内联 UNIQUE 表达：内联约束不认 del_flag，
--- 软删除一个账号后就再也建不出同名账号。改由「22. 唯一约束」段统一建
--- sys_user_username_tenant_uniq，与 small-init.sql 的部分唯一索引口径一致。
 
 -- =============================================
 -- 4.1 社交及外部身份绑定表
 -- =============================================
--- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
--- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
--- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
---
--- 注意：small-init.sql（PostgreSQL）把这张表写了两遍（第 4.1 段与第 21 段），
--- 本文件只声明一次。MySQL 重复 CREATE TABLE 会直接报错，且两段内容等价，
--- 这里取两段的并集（含第 21 段才有的 idx_user_social_provider_openid）。
---
--- tenant_scope 是 COALESCE(tenant_id, 0) 的生成列，用来模拟 PostgreSQL 的
--- 表达式唯一索引（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）。
--- 该列自 2026-08-11 首版 MySQL 初始化脚本起就已存在，存量库已经建好，
--- 这里不改成函数式索引键，避免为了统一写法制造一次破坏性迁移。
+-- PostgreSQL 版把本表建了两次（第 4.1 节和第 21 节），第二次在 PostgreSQL 里只是报错跳过；
+-- MySQL 遇到重复建表会直接中断导入，所以这里合并成唯一一份定义，
+-- 并把第 21 节额外补充的 idx_user_social_provider_openid 一并纳入。
+-- tenant_scope 是为唯一索引准备的生成列：MySQL 无法直接对 COALESCE(tenant_id, 0)
+-- 建唯一索引，用 STORED 生成列把空租户归一到 0，等价于 PostgreSQL 的表达式唯一索引。
 CREATE TABLE sys_user_social (
     id              BIGINT          NOT NULL PRIMARY KEY,
     user_id         BIGINT          NOT NULL,
@@ -120,9 +108,6 @@ CREATE TABLE sys_user_social (
 -- =============================================
 -- 5. 岗位表
 -- =============================================
--- 排序列必须叫 post_sort：SysPostPo.postSort 没有 @TableField 覆盖，
--- MyBatis-Plus 按驼峰转下划线映射到 post_sort。列名写成 sort 会让岗位模块整体报列不存在。
--- 口径与 sql/upgrades/postgres/20260415_system_post_sort_alignment.sql 的最终形态一致。
 CREATE TABLE sys_post (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
@@ -235,9 +220,11 @@ CREATE TABLE sys_role_dept (
 -- =============================================
 -- 12. 字典类型表
 -- =============================================
+-- tenant_scope 同 sys_user_social：为第 22 节的租户维度唯一索引提供归一后的租户列。
 CREATE TABLE sys_dict_type (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     dict_name       VARCHAR(100)    NOT NULL,
     dict_type       VARCHAR(100)    NOT NULL,
     status          SMALLINT        DEFAULT 0,
@@ -258,6 +245,7 @@ CREATE TABLE sys_dict_type (
 CREATE TABLE sys_dict_data (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     dict_type       VARCHAR(100)    NOT NULL,
     dict_label      VARCHAR(100)    NOT NULL,
     dict_value      VARCHAR(100)    NOT NULL,
@@ -283,6 +271,7 @@ CREATE TABLE sys_dict_data (
 CREATE TABLE sys_config (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     config_name     VARCHAR(100)    NOT NULL,
     config_key      VARCHAR(100)    NOT NULL,
     config_value    VARCHAR(2000)   DEFAULT '',
@@ -427,53 +416,44 @@ CREATE TABLE sys_client (
 );
 
 -- =============================================
--- 22. 唯一约束（与逻辑删除兼容）
+-- 21. 社交登录绑定表
 -- =============================================
--- del_flag 是逻辑删除标记（BaseEntity.delFlag 标了 @TableLogic）。唯一约束若不排除
--- 已删除行，软删除一条记录后就再也建不出同名记录。
---
--- PostgreSQL 用部分唯一索引表达这件事：
---     CREATE UNIQUE INDEX xxx ON t (a, b) WHERE del_flag = 0;
--- MySQL 8.4 不支持索引 WHERE 条件，这里改用函数式索引键模拟：
---     (IF(del_flag = 0, 0, NULL))
--- 未删除行该键为 0，参与唯一性判定；已删除行该键为 NULL。MySQL 官方文档明确
--- 「A UNIQUE index permits multiple NULL values for columns that can contain NULL」，
--- 因此已删除行之间、以及已删除行与存活行之间都不会再冲突，语义与 PostgreSQL 的
--- 部分唯一索引一致。del_flag IS NULL 的脏数据同样落在 NULL 分支，与 PostgreSQL 中
--- `NULL = 0` 不成立、行不进索引的结果相同。
---
--- 两点与 PostgreSQL 不完全等价，是 MySQL 的固有限制，不影响约束正确性：
---   1. PostgreSQL 的部分索引不收录已删除行，MySQL 仍然收录（只是判定为 NULL），
---      索引体积更大；
---   2. 索引名与列顺序必须与 sql/tiers/small/small-init.sql 及
---      sql/upgrades/mysql/20260812_unique_constraint_del_flag_alignment.sql 保持一致，
---      否则升级链会在同一张表上建出两个等价索引。
---
--- COALESCE(tenant_id, 0) 同样用函数式索引键表达：tenant_id 允许为空，
--- 不归一的话 NULL 会逃逸唯一约束。
+-- 本节在 PostgreSQL 版是 sys_user_social 的第二份重复定义，结构与第 4.1 节完全相同，
+-- 只多出 idx_user_social_provider_openid 一个索引。MySQL 不允许重复建表，
+-- 该表与四个索引已在第 4.1 节一次性建好，这里不再重复声明。
+
+-- =============================================
+-- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）
+-- =============================================
+-- 无法等价转换点：PostgreSQL 版这八个唯一索引都带 WHERE del_flag = 0，
+-- MySQL 8.4 不支持部分索引（也没有等价的条件唯一约束），因此这里只能建成全表唯一索引。
+-- 行为差异：软删除一条记录后，同名记录在 MySQL 上无法再次创建，需要先物理清理或改名，
+-- 业务侧的“删除后重建同名对象”路径在 MySQL 上会被唯一键拦下。
+-- 索引名与列顺序保持与 PostgreSQL 版一致，避免两边结构对照时被认成不同索引。
+-- COALESCE(tenant_id, 0) 一律改走各表的 tenant_scope 生成列。
 CREATE UNIQUE INDEX sys_user_username_tenant_uniq
-    ON sys_user (username, tenant_id, (IF(del_flag = 0, 0, NULL)));
+    ON sys_user (username, tenant_id);
 
 CREATE UNIQUE INDEX uk_sys_role_key_tenant
-    ON sys_role (tenant_id, role_key, (IF(del_flag = 0, 0, NULL)));
+    ON sys_role (tenant_id, role_key);
 
 CREATE UNIQUE INDEX uk_sys_role_name_tenant
-    ON sys_role (tenant_id, role_name, (IF(del_flag = 0, 0, NULL)));
+    ON sys_role (tenant_id, role_name);
 
 CREATE UNIQUE INDEX uk_sys_post_code_tenant
-    ON sys_post (tenant_id, post_code, (IF(del_flag = 0, 0, NULL)));
+    ON sys_post (tenant_id, post_code);
 
 CREATE UNIQUE INDEX uk_sys_dict_type_tenant
-    ON sys_dict_type ((COALESCE(tenant_id, 0)), dict_type, (IF(del_flag = 0, 0, NULL)));
+    ON sys_dict_type (tenant_scope, dict_type);
 
 CREATE UNIQUE INDEX uk_sys_dict_data_tenant
-    ON sys_dict_data ((COALESCE(tenant_id, 0)), dict_type, dict_value, (IF(del_flag = 0, 0, NULL)));
+    ON sys_dict_data (tenant_scope, dict_type, dict_value);
 
 CREATE UNIQUE INDEX uk_sys_config_key_tenant
-    ON sys_config ((COALESCE(tenant_id, 0)), config_key, (IF(del_flag = 0, 0, NULL)));
+    ON sys_config (tenant_scope, config_key);
 
 CREATE UNIQUE INDEX uk_sys_client_key
-    ON sys_client (client_key, (IF(del_flag = 0, 0, NULL)));
+    ON sys_client (client_key);
 
 
 -- ============================================================
@@ -497,7 +477,7 @@ INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phon
 (2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- 5. 岗位
-INSERT INTO sys_post (id, tenant_id, post_code, post_name, sort, status) VALUES
+INSERT INTO sys_post (id, tenant_id, post_code, post_name, post_sort, status) VALUES
 (1, 1, 'ceo', '董事长', 1, 0),
 (2, 1, 'cto', '技术总监', 2, 0),
 (3, 1, 'manager', '项目经理', 3, 0),
@@ -516,7 +496,9 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
 (3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
 (4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
-(5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0);
+(5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0),
+(6, 0, '0', '工作流', 'M', 'workflow', NULL, NULL, 'connection', 6, 0, 0),
+(7, 0, '0', '开放平台', 'M', 'open', NULL, NULL, 'platform', 7, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (100, 1, '0,1', '用户管理', 'C', 'user', 'system/user/index', 'system:user:list', 'user', 1, 0, 0),
@@ -527,7 +509,9 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (105, 1, '0,1', '字典管理', 'C', 'dict', 'system/dict/index', 'system:dict:list', 'dict', 6, 0, 0),
 (106, 1, '0,1', '参数设置', 'C', 'config', 'system/config/index', 'system:config:list', 'edit', 7, 0, 0),
 (107, 1, '0,1', '通知公告', 'C', 'notice', 'system/notice/index', 'system:notice:list', 'message', 8, 0, 0),
-(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0);
+(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0),
+(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0),
+(110, 1, '0,1', 'OSS配置', 'C', 'oss-config', 'system/oss-config/index', 'system:oss:list', 'upload', 11, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (200, 2, '0,2', '在线用户', 'C', 'online', 'monitor/online/index', 'monitor:online:list', 'online', 1, 0, 0),
@@ -542,7 +526,24 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
-(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0);
+(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0),
+(402, 4, '0,4', '资源配额', 'C', 'quota', 'tenant/quota/index', 'tenant:quota:query', 'pie-chart', 3, 0, 0);
+
+-- 7.1 任务调度 / 工作流 / 开放平台菜单
+-- 菜单 ID 与 sql/upgrades/postgres/phase9_base_menu_backfill.sql 保持同一套编号，
+-- 避免旧库回放 phase9 时重复插入或错挂父节点。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(210, 5, '0,5', '定时任务', 'C', 'list', 'job/index', 'job:list', 'clock', 1, 0, 0),
+(211, 5, '0,5', '调度日志', 'C', 'log', 'job/log', 'job:log:list', 'document', 2, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(310, 6, '0,6', '流程定义', 'C', 'definition', 'workflow/definition/index', 'workflow:definition:list', 'document', 1, 0, 0),
+(311, 6, '0,6', '流程实例', 'C', 'instance', 'workflow/instance/index', 'workflow:instance:list', 'histogram', 2, 0, 0),
+(312, 6, '0,6', '待办任务', 'C', 'todo', 'workflow/task/index', 'workflow:task:todo', 'bell', 3, 0, 0),
+(313, 6, '0,6', '已办任务', 'C', 'done', 'workflow/task/done', 'workflow:task:done', 'finished', 4, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(410, 7, '0,7', '应用管理', 'C', 'app', 'open/app/index', 'open:app:list', 'grid', 1, 0, 0);
 
 -- 按钮权限
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
@@ -584,18 +585,12 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1071, 107, '0,1,107', '公告查询', 'F', '', NULL, 'system:notice:query', '#', 1, 0, 0),
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
-(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0);
-
--- 7.1 任务调度菜单
--- 菜单 ID 与 PostgreSQL 版及 phase9_base_menu_backfill.sql 保持同一套编号，
--- 避免两种数据库的菜单编号出现分叉。
-INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
-(210, 5, '0,5', '定时任务', 'C', 'list', 'job/index', 'job:list', 'clock', 1, 0, 0),
-(211, 5, '0,5', '调度日志', 'C', 'log', 'job/log', 'job:log:list', 'document', 2, 0, 0);
+(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
+(1091, 109, '0,1,109', '文件查询', 'F', '', NULL, 'file:query', '#', 1, 0, 0),
+(1092, 109, '0,1,109', '文件删除', 'F', '', NULL, 'file:remove', '#', 2, 0, 0);
 
 -- 按钮权限（1100 段）：与后端 @PreAuthorize 声明的权限串一一对应
--- 这批权限点晚于本文件初版（2026-08-11），当时只有 PostgreSQL 侧同步，
--- 缺失会导致非超级管理员调用对应接口一律 403，这里补齐到与 small-init.sql 一致。
+-- 权限串以后端注解为准；1100 段之前的历史按钮权限保持原有编号不动。
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (1101, 100, '0,1,100', '社交解绑', 'F', '', NULL, 'system:user:unbind', '#', 8, 0, 0),
 (1111, 201, '0,2,201', '操作日志导出', 'F', '', NULL, 'monitor:operlog:export', '#', 1, 0, 0),
@@ -603,10 +598,30 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1113, 202, '0,2,202', '登录日志导出', 'F', '', NULL, 'monitor:loginlog:export', '#', 1, 0, 0),
 (1114, 202, '0,2,202', '登录日志删除', 'F', '', NULL, 'monitor:loginlog:remove', '#', 2, 0, 0),
 (1115, 200, '0,2,200', '强制下线', 'F', '', NULL, 'monitor:online:forceLogout', '#', 1, 0, 0),
+(1121, 110, '0,1,110', 'OSS配置查询', 'F', '', NULL, 'system:oss:query', '#', 1, 0, 0),
+(1122, 110, '0,1,110', 'OSS配置新增', 'F', '', NULL, 'system:oss:add', '#', 2, 0, 0),
+(1123, 110, '0,1,110', 'OSS配置修改', 'F', '', NULL, 'system:oss:edit', '#', 3, 0, 0),
+(1124, 110, '0,1,110', 'OSS配置删除', 'F', '', NULL, 'system:oss:remove', '#', 4, 0, 0),
 (1131, 210, '0,5,210', '任务新增', 'F', '', NULL, 'job:add', '#', 1, 0, 0),
 (1132, 210, '0,5,210', '任务修改', 'F', '', NULL, 'job:edit', '#', 2, 0, 0),
 (1133, 210, '0,5,210', '任务删除', 'F', '', NULL, 'job:remove', '#', 3, 0, 0),
-(1134, 211, '0,5,211', '调度日志删除', 'F', '', NULL, 'job:log:remove', '#', 1, 0, 0);
+(1134, 211, '0,5,211', '调度日志删除', 'F', '', NULL, 'job:log:remove', '#', 1, 0, 0),
+(1141, 400, '0,4,400', '租户查询', 'F', '', NULL, 'tenant:query', '#', 1, 0, 0),
+(1142, 400, '0,4,400', '租户新增', 'F', '', NULL, 'tenant:add', '#', 2, 0, 0),
+(1143, 400, '0,4,400', '租户修改', 'F', '', NULL, 'tenant:edit', '#', 3, 0, 0),
+(1144, 400, '0,4,400', '租户删除', 'F', '', NULL, 'tenant:remove', '#', 4, 0, 0),
+(1145, 400, '0,4,400', '租户计费查询', 'F', '', NULL, 'system:tenant:list', '#', 5, 0, 0),
+(1146, 400, '0,4,400', '租户计费变更', 'F', '', NULL, 'system:tenant:edit', '#', 6, 0, 0),
+(1151, 401, '0,4,401', '套餐查询', 'F', '', NULL, 'tenant:package:query', '#', 1, 0, 0),
+(1152, 401, '0,4,401', '套餐新增', 'F', '', NULL, 'tenant:package:add', '#', 2, 0, 0),
+(1153, 401, '0,4,401', '套餐修改', 'F', '', NULL, 'tenant:package:edit', '#', 3, 0, 0),
+(1154, 401, '0,4,401', '套餐删除', 'F', '', NULL, 'tenant:package:remove', '#', 4, 0, 0),
+(1155, 402, '0,4,402', '配额修改', 'F', '', NULL, 'tenant:quota:edit', '#', 1, 0, 0),
+(1161, 410, '0,7,410', '应用查询', 'F', '', NULL, 'open:app:query', '#', 1, 0, 0),
+(1162, 410, '0,7,410', '应用新增', 'F', '', NULL, 'open:app:add', '#', 2, 0, 0),
+(1163, 410, '0,7,410', '应用修改', 'F', '', NULL, 'open:app:edit', '#', 3, 0, 0),
+(1164, 410, '0,7,410', '应用删除', 'F', '', NULL, 'open:app:remove', '#', 4, 0, 0),
+(1165, 410, '0,7,410', '重置密钥', 'F', '', NULL, 'open:app:resetSecret', '#', 5, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);
@@ -618,69 +633,73 @@ INSERT INTO sys_user_post (user_id, post_id) VALUES (1, 1), (2, 4);
 INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE del_flag = 0;
 
 -- 11. 字典类型
-INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
-(1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
-(2, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
-(3, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
-(4, '系统是否', 'sys_yes_no', 0, '系统是否列表'),
-(5, '通知类型', 'sys_notice_type', 0, '通知类型列表'),
-(6, '通知状态', 'sys_notice_status', 0, '通知状态列表'),
-(7, '操作类型', 'sys_oper_type', 0, '操作类型列表'),
-(8, '系统状态', 'sys_common_status', 0, '登录状态列表'),
-(9, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
-(10, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
-(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表');
+-- 种子必须显式写 tenant_id：HanTenantLineHandler 会给 sys_dict_type / sys_dict_data /
+-- sys_config 注入 tenant_id = 当前租户，落库为 NULL 时 NULL = 1 恒为 UNKNOWN，
+-- 默认管理员（tenant_id = 1）一条内置字典和参数都读不到。
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark) VALUES
+(1, 1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
+(2, 1, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
+(3, 1, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
+(4, 1, '系统是否', 'sys_yes_no', 0, '系统是否列表'),
+(5, 1, '通知类型', 'sys_notice_type', 0, '通知类型列表'),
+(6, 1, '通知状态', 'sys_notice_status', 0, '通知状态列表'),
+(7, 1, '操作类型', 'sys_oper_type', 0, '操作类型列表'),
+(8, 1, '系统状态', 'sys_common_status', 0, '登录状态列表'),
+(9, 1, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
+(10, 1, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
+(11, 1, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表');
 
 -- 12. 字典数据
-INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
-(1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
-(2, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
-(3, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
-(4, 'sys_normal_disable', '正常', '0', 1, '', 'primary', 1, 0),
-(5, 'sys_normal_disable', '停用', '1', 2, '', 'danger', 0, 0),
-(6, 'sys_show_hide', '显示', '0', 1, '', 'primary', 1, 0),
-(7, 'sys_show_hide', '隐藏', '1', 2, '', 'danger', 0, 0),
-(8, 'sys_yes_no', '是', 'Y', 1, '', 'primary', 1, 0),
-(9, 'sys_yes_no', '否', 'N', 2, '', 'danger', 0, 0),
-(10, 'sys_notice_type', '通知', '1', 1, '', 'warning', 0, 0),
-(11, 'sys_notice_type', '公告', '2', 2, '', 'success', 0, 0),
-(12, 'sys_notice_status', '正常', '0', 1, '', 'primary', 1, 0),
-(13, 'sys_notice_status', '关闭', '1', 2, '', 'danger', 0, 0),
-(14, 'sys_oper_type', '其它', '0', 0, '', 'info', 0, 0),
-(15, 'sys_oper_type', '新增', '1', 1, '', 'info', 0, 0),
-(16, 'sys_oper_type', '修改', '2', 2, '', 'info', 0, 0),
-(17, 'sys_oper_type', '删除', '3', 3, '', 'danger', 0, 0),
-(18, 'sys_oper_type', '查询', '4', 4, '', 'primary', 0, 0),
-(19, 'sys_oper_type', '导出', '5', 5, '', 'warning', 0, 0),
-(20, 'sys_oper_type', '导入', '6', 6, '', 'warning', 0, 0),
-(21, 'sys_oper_type', '授权', '7', 7, '', 'primary', 0, 0),
-(22, 'sys_oper_type', '强退', '8', 8, '', 'danger', 0, 0),
-(23, 'sys_oper_type', '清空', '9', 9, '', 'danger', 0, 0),
-(24, 'sys_common_status', '成功', '0', 1, '', 'success', 0, 0),
-(25, 'sys_common_status', '失败', '1', 2, '', 'danger', 0, 0),
-(26, 'sys_client_type', 'PC端', 'pc', 1, '', 'primary', 1, 0),
-(27, 'sys_client_type', 'App端', 'app', 2, '', 'success', 0, 0),
-(28, 'sys_client_type', 'H5端', 'h5', 3, '', 'info', 0, 0),
-(29, 'sys_client_type', '微信小程序', 'wechat_mp', 4, '', 'success', 0, 0),
-(30, 'sys_client_type', '微信公众号', 'wechat_oa', 5, '', 'success', 0, 0),
-(31, 'sys_client_type', '开放API', 'api', 6, '', 'warning', 0, 0),
-(32, 'sys_data_scope', '全部数据', '1', 1, '', 'primary', 0, 0),
-(33, 'sys_data_scope', '自定义数据', '2', 2, '', 'info', 0, 0),
-(34, 'sys_data_scope', '本部门数据', '3', 3, '', 'info', 0, 0),
-(35, 'sys_data_scope', '本部门及以下', '4', 4, '', 'info', 0, 0),
-(36, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
-(37, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
-(38, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
-(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0);
+INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+(1, 1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
+(2, 1, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
+(3, 1, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
+(4, 1, 'sys_normal_disable', '正常', '0', 1, '', 'primary', 1, 0),
+(5, 1, 'sys_normal_disable', '停用', '1', 2, '', 'danger', 0, 0),
+(6, 1, 'sys_show_hide', '显示', '0', 1, '', 'primary', 1, 0),
+(7, 1, 'sys_show_hide', '隐藏', '1', 2, '', 'danger', 0, 0),
+(8, 1, 'sys_yes_no', '是', 'Y', 1, '', 'primary', 1, 0),
+(9, 1, 'sys_yes_no', '否', 'N', 2, '', 'danger', 0, 0),
+(10, 1, 'sys_notice_type', '通知', '1', 1, '', 'warning', 0, 0),
+(11, 1, 'sys_notice_type', '公告', '2', 2, '', 'success', 0, 0),
+(12, 1, 'sys_notice_status', '正常', '0', 1, '', 'primary', 1, 0),
+(13, 1, 'sys_notice_status', '关闭', '1', 2, '', 'danger', 0, 0),
+(14, 1, 'sys_oper_type', '其它', '0', 0, '', 'info', 0, 0),
+(15, 1, 'sys_oper_type', '新增', '1', 1, '', 'info', 0, 0),
+(16, 1, 'sys_oper_type', '修改', '2', 2, '', 'info', 0, 0),
+(17, 1, 'sys_oper_type', '删除', '3', 3, '', 'danger', 0, 0),
+(18, 1, 'sys_oper_type', '查询', '4', 4, '', 'primary', 0, 0),
+(19, 1, 'sys_oper_type', '导出', '5', 5, '', 'warning', 0, 0),
+(20, 1, 'sys_oper_type', '导入', '6', 6, '', 'warning', 0, 0),
+(21, 1, 'sys_oper_type', '授权', '7', 7, '', 'primary', 0, 0),
+(22, 1, 'sys_oper_type', '强退', '8', 8, '', 'danger', 0, 0),
+(23, 1, 'sys_oper_type', '清空', '9', 9, '', 'danger', 0, 0),
+(24, 1, 'sys_common_status', '成功', '0', 1, '', 'success', 0, 0),
+(25, 1, 'sys_common_status', '失败', '1', 2, '', 'danger', 0, 0),
+(26, 1, 'sys_client_type', 'PC端', 'pc', 1, '', 'primary', 1, 0),
+(27, 1, 'sys_client_type', 'App端', 'app', 2, '', 'success', 0, 0),
+(28, 1, 'sys_client_type', 'H5端', 'h5', 3, '', 'info', 0, 0),
+(29, 1, 'sys_client_type', '微信小程序', 'wechat_mp', 4, '', 'success', 0, 0),
+(30, 1, 'sys_client_type', '微信公众号', 'wechat_oa', 5, '', 'success', 0, 0),
+(31, 1, 'sys_client_type', '开放API', 'api', 6, '', 'warning', 0, 0),
+(32, 1, 'sys_data_scope', '全部数据', '1', 1, '', 'primary', 0, 0),
+(33, 1, 'sys_data_scope', '自定义数据', '2', 2, '', 'info', 0, 0),
+(34, 1, 'sys_data_scope', '本部门数据', '3', 3, '', 'info', 0, 0),
+(35, 1, 'sys_data_scope', '本部门及以下', '4', 4, '', 'info', 0, 0),
+(36, 1, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
+(37, 1, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
+(38, 1, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
+(39, 1, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0);
 
 -- 13. 参数配置
-INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, remark) VALUES
-(1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
-(2, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
-(3, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
-(4, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
-(5, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
-(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
+INSERT INTO sys_config (id, tenant_id, config_name, config_key, config_value, config_type, remark) VALUES
+(1, 1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
+(2, 1, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
+(3, 1, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
+(4, 1, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
+(5, 1, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
+(6, 1, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）'),
+(7, 1, '用户登录-微信扫码登录开关', 'sys.login.wechatEnabled', 'false', 'Y', '是否开启微信扫码登录（true开启，false关闭）；开启前需在服务端配置 WECHAT_OPEN_APP_ID/WECHAT_OPEN_APP_SECRET');
 
 -- 14. 客户端配置
 INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire, refresh_expire, max_online, kick_strategy, status, remark) VALUES
@@ -701,14 +720,16 @@ INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire
 -- =============================================
 -- 定时任务表
 -- =============================================
+-- service_name / handler 的列说明在 PostgreSQL 版是独立的列注释语句，
+-- MySQL 用建表内联 COMMENT 承载，信息不丢。
 CREATE TABLE sys_job (
     job_id          BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT,
     job_name        VARCHAR(100)    NOT NULL,
     job_group       VARCHAR(64)     DEFAULT 'DEFAULT',
     invoke_target   VARCHAR(500)    NOT NULL,
-    service_name    VARCHAR(100),
-    handler         VARCHAR(200),
+    service_name    VARCHAR(100)    COMMENT '执行器服务名（Nacos 中的服务名，远程调用时使用）',
+    handler         VARCHAR(200)    COMMENT '执行器处理方法（远程调用时的 handler 路径）',
     cron_expression VARCHAR(255)    NOT NULL,
     misfire_policy  CHAR(1)         DEFAULT '3',
     concurrent      CHAR(1)         DEFAULT '1',
@@ -760,7 +781,7 @@ INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status
 -- 执行环境：MySQL 8
 -- ============================================================
 
--- 1. JobFlow 字段已包含在上方 sys_job 建表语句中。
+-- 1. JobFlow 字段与列说明已包含在上方 sys_job 建表语句中。
 
 -- 2. 清理 Quartz 相关表（按依赖顺序删除）
 DROP TABLE IF EXISTS qrtz_fired_triggers;
@@ -779,3 +800,378 @@ DROP TABLE IF EXISTS qrtz_calendars;
 SELECT column_name, data_type, character_maximum_length
 FROM information_schema.columns
 WHERE table_name = 'sys_job' AND column_name IN ('service_name', 'handler');
+
+
+-- ============================================================
+-- source: postgres\tenant\00-schema.sql
+-- ============================================================
+-- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
+-- 如需调整结构，请同步更新 manifest 与 sql/README.md。
+
+CREATE TABLE sys_tenant (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    tenant_id       BIGINT,
+    tenant_name     VARCHAR(100)    NOT NULL,
+    contact_name    VARCHAR(50),
+    contact_phone   VARCHAR(20),
+    contact_email   VARCHAR(100),
+    package_id      BIGINT,
+    user_limit      INT             DEFAULT -1,
+    account_limit   INT             DEFAULT -1,
+    expire_time     TIMESTAMP,
+    isolation_type  VARCHAR(20)     DEFAULT 'logical',
+    domain          VARCHAR(200),
+    status          SMALLINT        DEFAULT 0,
+    remark          VARCHAR(500),
+    create_by       BIGINT,
+    create_name     VARCHAR(50),
+    create_dept     BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       BIGINT,
+    update_name     VARCHAR(50),
+    update_time     TIMESTAMP,
+    del_flag       SMALLINT        DEFAULT 0
+);
+
+-- =============================================
+-- 2. 租户套餐表
+-- =============================================
+CREATE TABLE sys_tenant_package (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    package_name    VARCHAR(100)    NOT NULL,
+    menu_ids        TEXT,
+    status          SMALLINT        DEFAULT 0,
+    remark          VARCHAR(500),
+    create_by       BIGINT,
+    create_name     VARCHAR(50),
+    create_dept     BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       BIGINT,
+    update_name     VARCHAR(50),
+    update_time     TIMESTAMP,
+    del_flag       SMALLINT        DEFAULT 0
+);
+
+-- =============================================
+-- 22. 租户资源配额表
+-- =============================================
+CREATE TABLE sys_tenant_quota (
+    quota_id        BIGINT          AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       BIGINT          NOT NULL,
+    user_limit      INT             DEFAULT -1,
+    storage_limit   BIGINT          DEFAULT -1,
+    api_limit       BIGINT          DEFAULT -1,
+    user_used       INT             DEFAULT 0,
+    storage_used    BIGINT          DEFAULT 0,
+    api_used        BIGINT          DEFAULT 0,
+    reset_cycle     VARCHAR(20)     DEFAULT 'monthly',
+    last_reset_time TIMESTAMP,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+) COMMENT='租户资源配额';
+CREATE UNIQUE INDEX idx_tenant_quota_tenant ON sys_tenant_quota(tenant_id);
+
+
+-- ============================================================
+-- source: postgres\tenant\10-seed.sql
+-- ============================================================
+-- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
+-- 如需调整结构，请同步更新 manifest 与 sql/README.md。
+
+-- 1. 租户
+INSERT INTO sys_tenant (id, tenant_name, contact_name, contact_phone, package_id, user_limit, status, remark) VALUES
+(1, '超级管理租户', '管理员', '13800000000', 1, -1, 0, '系统默认租户，拥有全部权限');
+
+-- 2. 租户套餐
+INSERT INTO sys_tenant_package (id, package_name, menu_ids, status, remark) VALUES
+(1, '企业标准版', '[]', 0, '默认套餐，包含全部功能');
+
+
+-- ============================================================
+-- source: postgres\tenant\90-fixup.sql
+-- ============================================================
+-- MySQL 版租户计费扩展表。
+-- PostgreSQL 版用独立的表注释与列注释语句，MySQL 改为建表内联 COMMENT，注释内容原样保留。
+-- PostgreSQL 版的 CREATE INDEX IF NOT EXISTS 在 MySQL 没有对应写法，
+-- 索引改为在建表语句内声明，配合 CREATE TABLE IF NOT EXISTS 达到同样的可重复执行效果。
+
+CREATE TABLE IF NOT EXISTS sys_tenant_subscription (
+    id BIGINT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT 'Tenant ID',
+    package_id BIGINT NOT NULL COMMENT 'Package ID',
+    start_time TIMESTAMP NOT NULL COMMENT 'Subscription start time',
+    end_time TIMESTAMP NOT NULL COMMENT 'Subscription end time',
+    status SMALLINT DEFAULT 0 COMMENT '0 active, 1 expired, 2 canceled',
+    amount NUMERIC(10,2) DEFAULT 0 COMMENT 'Subscription amount',
+    payment_method VARCHAR(32) DEFAULT NULL COMMENT 'Payment method',
+    payment_no VARCHAR(128) DEFAULT NULL COMMENT 'Payment order number',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP DEFAULT NULL,
+    INDEX idx_tenant_sub_tenant_id (tenant_id)
+) COMMENT='Tenant subscription record';
+
+CREATE TABLE IF NOT EXISTS sys_tenant_bill (
+    id BIGINT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL COMMENT 'Tenant ID',
+    subscription_id BIGINT DEFAULT NULL COMMENT 'Related subscription ID',
+    bill_type VARCHAR(32) NOT NULL COMMENT 'subscribe, renew, upgrade',
+    amount NUMERIC(10,2) NOT NULL COMMENT 'Bill amount',
+    status SMALLINT DEFAULT 0 COMMENT '0 pending, 1 paid, 2 canceled',
+    remark VARCHAR(500) DEFAULT NULL COMMENT 'Billing note',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pay_time TIMESTAMP DEFAULT NULL COMMENT 'Payment time',
+    INDEX idx_tenant_bill_tenant_id (tenant_id)
+) COMMENT='Tenant billing record';
+
+
+-- ============================================================
+-- source: postgres\workflow\00-schema.sql
+-- ============================================================
+-- MySQL 版工作流扩展表。
+-- Flowable 引擎运行时表由引擎自身维护，本文件只负责 Han 业务扩展表。
+-- 同上：PostgreSQL 版的 CREATE INDEX IF NOT EXISTS 改为建表内联索引。
+
+CREATE TABLE IF NOT EXISTS wf_category (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       BIGINT          NOT NULL,
+    category_code   VARCHAR(50)     NOT NULL,
+    category_name   VARCHAR(100)    NOT NULL,
+    parent_id       BIGINT          DEFAULT 0,
+    ancestors       VARCHAR(500)    DEFAULT '',
+    sort            INT             DEFAULT 0,
+    status          SMALLINT        DEFAULT 0,
+    create_by       BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       BIGINT,
+    update_time     TIMESTAMP,
+    del_flag        SMALLINT        DEFAULT 0,
+    remark          VARCHAR(500),
+    CONSTRAINT uk_wf_category_code UNIQUE (category_code, tenant_id),
+    INDEX idx_wf_category_tenant (tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS wf_form (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       BIGINT          NOT NULL,
+    form_name       VARCHAR(100)    NOT NULL,
+    form_key        VARCHAR(64)     NOT NULL,
+    form_type       VARCHAR(20)     DEFAULT 'custom',
+    form_content    TEXT,
+    external_url    VARCHAR(500),
+    status          SMALLINT        DEFAULT 0,
+    create_by       BIGINT,
+    create_name     VARCHAR(50),
+    create_dept     BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       BIGINT,
+    update_name     VARCHAR(50),
+    update_time     TIMESTAMP,
+    del_flag        SMALLINT        DEFAULT 0,
+    remark          VARCHAR(500),
+    CONSTRAINT uk_wf_form_key UNIQUE (form_key, tenant_id),
+    INDEX idx_wf_form_tenant (tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS wf_deploy_extend (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       BIGINT          NOT NULL,
+    deployment_id   VARCHAR(64)     NOT NULL,
+    process_key     VARCHAR(64)     NOT NULL,
+    process_name    VARCHAR(200),
+    category_id     BIGINT,
+    form_id         BIGINT,
+    icon            VARCHAR(500),
+    sort            INT             DEFAULT 0,
+    status          SMALLINT        DEFAULT 0,
+    create_by       BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by       BIGINT,
+    update_time     TIMESTAMP,
+    del_flag        SMALLINT        DEFAULT 0,
+    remark          VARCHAR(500),
+    INDEX idx_wf_deploy_extend_deployment (deployment_id),
+    INDEX idx_wf_deploy_extend_tenant (tenant_id),
+    INDEX idx_wf_deploy_extend_process_key (process_key)
+);
+
+CREATE TABLE IF NOT EXISTS wf_instance_extend (
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id           BIGINT          NOT NULL,
+    process_instance_id VARCHAR(64)     NOT NULL,
+    process_key         VARCHAR(64)     NOT NULL,
+    process_name        VARCHAR(200),
+    title               VARCHAR(200),
+    business_key        VARCHAR(64),
+    business_table      VARCHAR(100),
+    category_id         BIGINT,
+    start_user_id       BIGINT,
+    start_user_name     VARCHAR(50),
+    start_dept_id       BIGINT,
+    start_dept_name     VARCHAR(100),
+    current_task_name   VARCHAR(200),
+    current_assignee    VARCHAR(200),
+    status              SMALLINT        DEFAULT 0,
+    result              SMALLINT,
+    start_time          TIMESTAMP,
+    end_time            TIMESTAMP,
+    duration            BIGINT,
+    create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_time         TIMESTAMP,
+    del_flag            SMALLINT        DEFAULT 0,
+    CONSTRAINT uk_wf_instance_extend_pi UNIQUE (process_instance_id),
+    INDEX idx_wf_instance_extend_tenant (tenant_id),
+    INDEX idx_wf_instance_extend_business (business_key),
+    INDEX idx_wf_instance_extend_start_user (start_user_id),
+    INDEX idx_wf_instance_extend_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS wf_copy (
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id           BIGINT          NOT NULL,
+    process_instance_id VARCHAR(64)     NOT NULL,
+    task_id             VARCHAR(64),
+    task_name           VARCHAR(200),
+    title               VARCHAR(200),
+    user_id             BIGINT          NOT NULL,
+    user_name           VARCHAR(50),
+    origin_user_id      BIGINT,
+    origin_user_name    VARCHAR(50),
+    is_read             SMALLINT        DEFAULT 0,
+    read_time           TIMESTAMP,
+    create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    del_flag            SMALLINT        DEFAULT 0,
+    INDEX idx_wf_copy_process_instance (process_instance_id),
+    INDEX idx_wf_copy_user (user_id),
+    INDEX idx_wf_copy_tenant (tenant_id)
+);
+
+
+-- ============================================================
+-- source: postgres\workflow\10-seed.sql
+-- ============================================================
+-- PostgreSQL 版用冲突即跳过的插入写法保证可重复执行，MySQL 用
+-- ON DUPLICATE KEY UPDATE id = id 达到同样效果：命中 uk_wf_category_code 时不改任何数据。
+-- 这里不用 INSERT IGNORE，是为了避免把字符集截断之类的真实错误一起降级成告警。
+INSERT INTO wf_category (tenant_id, category_code, category_name, parent_id, sort, status)
+VALUES
+(1, 'oa', 'OA办公', 0, 1, 0),
+(1, 'hr', '人事管理', 0, 2, 0),
+(1, 'finance', '财务管理', 0, 3, 0),
+(1, 'leave', '请假申请', 1, 1, 0),
+(1, 'expense', '报销申请', 1, 2, 0),
+(1, 'business_trip', '出差申请', 1, 3, 0),
+(1, 'entry', '入职申请', 2, 1, 0),
+(1, 'resign', '离职申请', 2, 2, 0),
+(1, 'payment', '付款申请', 3, 1, 0),
+(1, 'invoice', '发票申请', 3, 2, 0)
+ON DUPLICATE KEY UPDATE id = id;
+
+
+-- ============================================================
+-- source: postgres\open\00-schema.sql
+-- ============================================================
+-- MySQL 版开放平台核心表。
+
+CREATE TABLE IF NOT EXISTS open_app (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT,
+    app_name VARCHAR(100) NOT NULL,
+    app_key VARCHAR(100) NOT NULL UNIQUE,
+    app_secret VARCHAR(200) NOT NULL,
+    app_icon VARCHAR(500),
+    app_desc VARCHAR(500),
+    app_type VARCHAR(20),
+    redirect_uris TEXT,
+    logout_uri VARCHAR(500),
+    scopes VARCHAR(500),
+    grant_types VARCHAR(200),
+    access_token_ttl INT,
+    refresh_token_ttl INT,
+    require_pkce INT DEFAULT 0,
+    auto_approve INT DEFAULT 0,
+    status INT DEFAULT 0,
+    contact_name VARCHAR(50),
+    contact_phone VARCHAR(20),
+    contact_email VARCHAR(100),
+    create_by BIGINT,
+    create_name VARCHAR(50),
+    update_by BIGINT,
+    update_name VARCHAR(50),
+    create_dept BIGINT,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP,
+    del_flag INT DEFAULT 0,
+    remark VARCHAR(500)
+) COMMENT='Open platform application';
+
+CREATE TABLE IF NOT EXISTS open_user_authorization (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT,
+    user_id BIGINT,
+    app_id BIGINT,
+    app_key VARCHAR(100),
+    scopes VARCHAR(500),
+    authorize_time TIMESTAMP,
+    last_access_time TIMESTAMP,
+    status INT DEFAULT 0,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP,
+    del_flag INT DEFAULT 0
+) COMMENT='User authorization record';
+
+
+-- ============================================================
+-- source: postgres\open\10-seed.sql
+-- ============================================================
+-- 当前模块暂无独立初始化种子。
+-- 如后续新增预置数据，请在本文件补充。
+
+
+-- ============================================================
+-- source: postgres\file\00-schema.sql
+-- ============================================================
+-- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
+-- 如需调整结构，请同步更新 manifest 与 sql/README.md。
+
+CREATE TABLE sys_file (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    tenant_id       BIGINT,
+    file_name       VARCHAR(200)    NOT NULL,
+    file_path       VARCHAR(500)    NOT NULL,
+    file_url        VARCHAR(500),
+    file_size       BIGINT          DEFAULT 0,
+    file_type       VARCHAR(50)     DEFAULT '',
+    mime_type       VARCHAR(100)    DEFAULT '',
+    storage_type    VARCHAR(20)     DEFAULT 'local',
+    bucket          VARCHAR(100)    DEFAULT '',
+    md5             VARCHAR(64)     DEFAULT '',
+    create_by       BIGINT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    del_flag       SMALLINT        DEFAULT 0
+);
+
+CREATE TABLE sys_oss_config (
+    oss_config_id  BIGINT          AUTO_INCREMENT PRIMARY KEY,
+    config_key     VARCHAR(100)    NOT NULL,
+    access_key     VARCHAR(500),
+    secret_key     VARCHAR(500),
+    bucket_name    VARCHAR(200),
+    prefix         VARCHAR(200)    DEFAULT '',
+    endpoint       VARCHAR(500),
+    region         VARCHAR(100),
+    is_https       CHAR(1)         DEFAULT '0',
+    status         CHAR(1)         DEFAULT '1',
+    remark         VARCHAR(500),
+    tenant_id      BIGINT,
+    create_by      VARCHAR(64),
+    create_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    update_by      VARCHAR(64),
+    update_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+) COMMENT='OSS存储配置';
+
+
+-- ============================================================
+-- source: postgres\file\10-seed.sql
+-- ============================================================
+-- 当前模块暂无独立初始化种子。
+-- 如后续新增预置数据，请在本文件补充。

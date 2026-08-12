@@ -1,5 +1,48 @@
--- Han full 档 PostgreSQL 全新初始化脚本
--- 2026-04-15 由旧的分模块 SQL 目录结构合并生成
+-- Han full 档 MySQL 8.4 全新初始化脚本
+-- PostgreSQL 仍为默认数据库；本文件是 full 档的正式 MySQL 入口。
+--
+-- 本文件是 sql/tiers/full/full-init.sql（PostgreSQL）的 MySQL 8.4 等价版本，
+-- 表结构、字段、索引、种子数据与 PostgreSQL 版逐项对齐。
+-- 转换约定沿用 sql/tiers/small/small-init-mysql.sql 已在真实 MySQL 8.4 验证过的口径：
+--   1. PostgreSQL 的序列自增主键统一写成 BIGINT AUTO_INCREMENT PRIMARY KEY；
+--   2. 表达式唯一索引（COALESCE(tenant_id, 0)）改用 STORED 生成列承载，再在生成列上建唯一键；
+--   3. PostgreSQL 版重复定义两次的 sys_user_social 合并为一处，索引取两处的并集；
+--   4. Quartz 清理语句去掉 PostgreSQL 的级联关键字；
+--   5. JobFlow 追加字段直接并入 sys_job 建表语句，不再保留 ALTER 补丁；
+--   6. 不写库级 / 表级字符集，统一依赖服务端参数 --character-set-server=utf8mb4，
+--      见 deploy/full/docker-compose-mysql.yml。
+--
+-- 适用范围：只用于 MySQL 全新初始化（clean init），不承担存量 MySQL 库的增量升级。
+--
+-- ============================================================
+-- MySQL 8.4 下无等价物、或语义与 PostgreSQL 不一致的点（落到具体位置时会再次注释）
+-- ============================================================
+--   A. 部分唯一索引：PostgreSQL 用 "WHERE del_flag = 0" 把唯一性限定在未删除记录上，
+--      MySQL 8.4 没有筛选索引。见「22. 唯一约束」段，改为全量唯一索引，
+--      软删记录仍占用唯一名字空间，**语义不等价**。
+--   B. 表达式索引：MySQL 8.0.13+ 虽然支持函数索引键，但 small 档已确立生成列口径，
+--      本文件沿用生成列，因此比 PostgreSQL 版多出 tenant_scope 列（只多不少，不影响读写）。
+--   C. PL/pgSQL 匿名块：MySQL 没有对应语法。文件末尾「AI 菜单归一化」段改写为
+--      等价的确定性幂等语句，处理方式见该段注释。
+--   D. TIMESTAMP 取值范围：MySQL 的 TIMESTAMP 只覆盖 1970-01-01 ~ 2038-01-19，
+--      窄于 PostgreSQL 的 TIMESTAMP。sys_tenant.expire_time、sys_tenant_subscription.end_time
+--      这类业务到期时间一旦超过 2038 年会直接写入失败，见对应表上的注释。
+--   E. 索引的 IF NOT EXISTS：MySQL 不支持 CREATE INDEX IF NOT EXISTS。凡 PostgreSQL 侧
+--      写了 IF NOT EXISTS 的索引，一律并入建表语句内联声明，保持脚本可重复执行；
+--      PostgreSQL 侧本来就没写 IF NOT EXISTS 的索引，仍保持独立 CREATE INDEX。
+--   F. 向量检索：本次转换未发现 PostgreSQL 侧使用 pgvector，ai_paragraph.embedding
+--      两边都是 TEXT，因此没有向量能力缺口。若将来 PostgreSQL 侧改用向量类型，
+--      MySQL 8.4 无等价类型（VECTOR 到 MySQL 9.0 才提供），届时无法平移。
+--   G. 表 / 列注释：PostgreSQL 用独立的注释语句，MySQL 只能内联 COMMENT。
+--      注释文本原样照搬 PostgreSQL 版（含其中的英文原文），保证两边库内注释一致。
+--   H. TEXT 默认值：MySQL 的 TEXT 默认值必须写成括号表达式，因此 DEFAULT '[]'
+--      在本文件里写作 DEFAULT ('[]')，语义等价。
+--
+-- 前置约定：MySQL 8.4 的 explicit_defaults_for_timestamp 默认为 ON，
+-- 未显式声明的 TIMESTAMP 列可空且不会被自动加上 ON UPDATE 行为，与 PostgreSQL 一致；
+-- 若目标实例把该参数关成 OFF，首个 TIMESTAMP 列的行为会与本文件预期不符。
+
+SET NAMES utf8mb4;
 
 -- ============================================================
 -- source: postgres\system\00-schema.sql
@@ -69,32 +112,36 @@ CREATE TABLE sys_user (
 -- =============================================
 -- 4.1 社交及外部身份绑定表
 -- =============================================
+-- PostgreSQL 版在「4.1」和「21」两处重复建了同一张 sys_user_social，
+-- 这里合并为一处，索引取两处的并集（4 个），避免 MySQL 报重复建表。
+-- tenant_scope 是【差异点 B】引入的生成列：PostgreSQL 的唯一索引直接建在
+-- COALESCE(tenant_id, 0) 表达式上，MySQL 侧用 STORED 生成列承载同一语义，
+-- 目的同样是"tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束"。
 CREATE TABLE sys_user_social (
     id              BIGINT          NOT NULL PRIMARY KEY,
     user_id         BIGINT          NOT NULL,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     provider        VARCHAR(32)     NOT NULL,
     open_id         VARCHAR(128)    NOT NULL,
     access_token    VARCHAR(512),
     nickname        VARCHAR(100),
     avatar          VARCHAR(500),
     extra           TEXT,
-    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_social_user_id (user_id),
+    INDEX idx_user_social_provider_openid (provider, open_id),
+    -- 租户内一个第三方身份只绑一个账号
+    UNIQUE KEY uq_user_social_tenant_provider_openid (tenant_scope, provider, open_id),
+    -- 一个账号同 provider 只绑一个第三方身份
+    UNIQUE KEY uq_user_social_user_provider (user_id, provider)
 );
-
-CREATE INDEX idx_user_social_user_id
-    ON sys_user_social (user_id);
-
-CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
-    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
-
-CREATE UNIQUE INDEX uq_user_social_user_provider
-    ON sys_user_social (user_id, provider);
-
 
 -- =============================================
 -- 5. 岗位表
 -- =============================================
+-- 列名保持 post_sort：SysPostPo.postSort 走驼峰下划线映射，
+-- 与 sql/upgrades/postgres/20260415_system_post_sort_alignment.sql 的口径一致。
 CREATE TABLE sys_post (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
@@ -207,9 +254,11 @@ CREATE TABLE sys_role_dept (
 -- =============================================
 -- 12. 字典类型表
 -- =============================================
+-- tenant_scope 见【差异点 B】：承载 PostgreSQL 侧 COALESCE(tenant_id, 0) 唯一索引语义。
 CREATE TABLE sys_dict_type (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     dict_name       VARCHAR(100)    NOT NULL,
     dict_type       VARCHAR(100)    NOT NULL,
     status          SMALLINT        DEFAULT 0,
@@ -230,6 +279,7 @@ CREATE TABLE sys_dict_type (
 CREATE TABLE sys_dict_data (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     dict_type       VARCHAR(100)    NOT NULL,
     dict_label      VARCHAR(100)    NOT NULL,
     dict_value      VARCHAR(100)    NOT NULL,
@@ -255,6 +305,7 @@ CREATE TABLE sys_dict_data (
 CREATE TABLE sys_config (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    tenant_scope    BIGINT          GENERATED ALWAYS AS (COALESCE(tenant_id, 0)) STORED,
     config_name     VARCHAR(100)    NOT NULL,
     config_key      VARCHAR(100)    NOT NULL,
     config_value    VARCHAR(2000)   DEFAULT '',
@@ -318,7 +369,7 @@ CREATE INDEX idx_sys_notice_read_notice
 -- 17. 操作日志表
 -- =============================================
 CREATE TABLE sys_oper_log (
-    id              BIGSERIAL       PRIMARY KEY,
+    id              BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT,
     module          VARCHAR(100)    DEFAULT '',
     oper_type       SMALLINT        DEFAULT 0,
@@ -341,7 +392,7 @@ CREATE TABLE sys_oper_log (
 -- 18. 登录日志表
 -- =============================================
 CREATE TABLE sys_login_log (
-    id              BIGSERIAL       PRIMARY KEY,
+    id              BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT,
     user_id         BIGINT,
     username        VARCHAR(50)     DEFAULT '',
@@ -359,6 +410,7 @@ CREATE TABLE sys_login_log (
 -- =============================================
 -- 18. 在线用户表
 -- =============================================
+-- expire_time 受【差异点 D】约束：会话过期时间不会超过 2038，风险可接受。
 CREATE TABLE sys_user_online (
     id              VARCHAR(64)     NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
@@ -401,63 +453,46 @@ CREATE TABLE sys_client (
 -- =============================================
 -- 21. 社交登录绑定表
 -- =============================================
--- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
--- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
--- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
-CREATE TABLE sys_user_social (
-    id              BIGINT          NOT NULL PRIMARY KEY,
-    user_id         BIGINT          NOT NULL,
-    tenant_id       BIGINT,
-    provider        VARCHAR(32)     NOT NULL,
-    open_id         VARCHAR(128)    NOT NULL,
-    access_token    VARCHAR(512),
-    nickname        VARCHAR(100),
-    avatar          VARCHAR(500),
-    extra           TEXT,
-    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_user_social_user_id ON sys_user_social (user_id);
-CREATE INDEX idx_user_social_provider_openid ON sys_user_social (provider, open_id);
-
--- 租户内一个第三方身份只绑一个账号（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）
-CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
-    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
-
--- 一个账号同 provider 只绑一个第三方身份
-CREATE UNIQUE INDEX uq_user_social_user_provider
-    ON sys_user_social (user_id, provider);
+-- PostgreSQL 版在这里第二次定义 sys_user_social，MySQL 侧已在「4.1」合并处理，
+-- 索引 idx_user_social_provider_openid / uq_user_social_tenant_provider_openid /
+-- uq_user_social_user_provider 全部并到上面那张表，本段无需再建表。
 
 -- =============================================
--- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）
+-- 22. 唯一约束（PostgreSQL 侧是与逻辑删除兼容的部分唯一索引）
 -- =============================================
--- del_flag 是逻辑删除标记，唯一约束若不带 WHERE del_flag = 0，
--- 软删除一条记录后就再也建不出同名记录。索引名与列顺序必须与
--- sql/upgrades/postgres/phase5_unique_constraint.sql 保持一致，
--- 否则升级链会在同一张表上建出两个等价索引。
+-- 【差异点 A：语义不等价，不是遗漏】
+-- PostgreSQL 版这几个索引都带 "WHERE del_flag = 0"，作用是让软删除过的记录
+-- 不占用唯一名字空间，删掉 admin 之后还能再建一个 admin。
+-- MySQL 8.4 没有筛选索引（partial / filtered index），这里只能建全量唯一索引：
+-- 同一条 (username, tenant_id) 被软删除后，MySQL 上**再也建不出同名记录**。
+-- 若业务依赖"软删后重建同名"，在 MySQL 上必须改走物理删除，或由应用层加后缀。
+-- 索引名与列顺序保持与 PostgreSQL 版一致，便于两边对照与后续升级链复用。
 CREATE UNIQUE INDEX sys_user_username_tenant_uniq
-    ON sys_user (username, tenant_id) WHERE del_flag = 0;
+    ON sys_user (username, tenant_id);
 
 CREATE UNIQUE INDEX uk_sys_role_key_tenant
-    ON sys_role (tenant_id, role_key) WHERE del_flag = 0;
+    ON sys_role (tenant_id, role_key);
 
 CREATE UNIQUE INDEX uk_sys_role_name_tenant
-    ON sys_role (tenant_id, role_name) WHERE del_flag = 0;
+    ON sys_role (tenant_id, role_name);
 
 CREATE UNIQUE INDEX uk_sys_post_code_tenant
-    ON sys_post (tenant_id, post_code) WHERE del_flag = 0;
+    ON sys_post (tenant_id, post_code);
 
+-- 下面三个在 PostgreSQL 上同时是"表达式索引 + 部分索引"，
+-- MySQL 侧用 tenant_scope 生成列还原 COALESCE(tenant_id, 0) 部分（等价），
+-- del_flag 过滤部分无法还原（同【差异点 A】）。
 CREATE UNIQUE INDEX uk_sys_dict_type_tenant
-    ON sys_dict_type (COALESCE(tenant_id, 0), dict_type) WHERE del_flag = 0;
+    ON sys_dict_type (tenant_scope, dict_type);
 
 CREATE UNIQUE INDEX uk_sys_dict_data_tenant
-    ON sys_dict_data (COALESCE(tenant_id, 0), dict_type, dict_value) WHERE del_flag = 0;
+    ON sys_dict_data (tenant_scope, dict_type, dict_value);
 
 CREATE UNIQUE INDEX uk_sys_config_key_tenant
-    ON sys_config (COALESCE(tenant_id, 0), config_key) WHERE del_flag = 0;
+    ON sys_config (tenant_scope, config_key);
 
 CREATE UNIQUE INDEX uk_sys_client_key
-    ON sys_client (client_key) WHERE del_flag = 0;
+    ON sys_client (client_key);
 
 
 -- ============================================================
@@ -675,129 +710,121 @@ INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE de
 -- 种子必须显式写 tenant_id：HanTenantLineHandler 会给 sys_dict_type / sys_dict_data /
 -- sys_config 注入 tenant_id = 当前租户，落库为 NULL 时 NULL = 1 恒为 UNKNOWN，
 -- 默认管理员（tenant_id = 1）一条内置字典和参数都读不到。
-INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark)
-SELECT v.id, 1, v.dict_name, v.dict_type, v.status, v.remark FROM (VALUES
-(1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
-(2, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
-(3, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
-(4, '系统是否', 'sys_yes_no', 0, '系统是否列表'),
-(5, '通知类型', 'sys_notice_type', 0, '通知类型列表'),
-(6, '通知状态', 'sys_notice_status', 0, '通知状态列表'),
-(7, '操作类型', 'sys_oper_type', 0, '操作类型列表'),
-(8, '系统状态', 'sys_common_status', 0, '登录状态列表'),
-(9, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
-(10, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
-(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表'),
-(12, 'AI模型类型', 'ai_model_type', 0, 'AI模型管理模型类型列表'),
-(13, 'AI模型供应商', 'ai_model_provider', 0, 'AI模型管理供应商列表'),
-(14, 'AI Prompt模板分类', 'ai_prompt_category', 0, 'AI Prompt模板分类列表')
-) AS v(id, dict_name, dict_type, status, remark);
+-- PostgreSQL 版用 "SELECT ... FROM (VALUES ...) AS v(...)" 拼这批常量，
+-- MySQL 不支持派生表列别名列表，改写成直接多行 VALUES，tenant_id 逐行写 1，数据完全一致。
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark) VALUES
+(1, 1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
+(2, 1, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
+(3, 1, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
+(4, 1, '系统是否', 'sys_yes_no', 0, '系统是否列表'),
+(5, 1, '通知类型', 'sys_notice_type', 0, '通知类型列表'),
+(6, 1, '通知状态', 'sys_notice_status', 0, '通知状态列表'),
+(7, 1, '操作类型', 'sys_oper_type', 0, '操作类型列表'),
+(8, 1, '系统状态', 'sys_common_status', 0, '登录状态列表'),
+(9, 1, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
+(10, 1, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
+(11, 1, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表'),
+(12, 1, 'AI模型类型', 'ai_model_type', 0, 'AI模型管理模型类型列表'),
+(13, 1, 'AI模型供应商', 'ai_model_provider', 0, 'AI模型管理供应商列表'),
+(14, 1, 'AI Prompt模板分类', 'ai_prompt_category', 0, 'AI Prompt模板分类列表');
 
 -- 12. 字典数据
-INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status)
-SELECT v.id, 1, v.dict_type, v.dict_label, v.dict_value, v.dict_sort, v.css_class, v.list_class, v.is_default, v.status FROM (VALUES
-(1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
-(2, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
-(3, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
-(4, 'sys_normal_disable', '正常', '0', 1, '', 'primary', 1, 0),
-(5, 'sys_normal_disable', '停用', '1', 2, '', 'danger', 0, 0),
-(6, 'sys_show_hide', '显示', '0', 1, '', 'primary', 1, 0),
-(7, 'sys_show_hide', '隐藏', '1', 2, '', 'danger', 0, 0),
-(8, 'sys_yes_no', '是', 'Y', 1, '', 'primary', 1, 0),
-(9, 'sys_yes_no', '否', 'N', 2, '', 'danger', 0, 0),
-(10, 'sys_notice_type', '通知', '1', 1, '', 'warning', 0, 0),
-(11, 'sys_notice_type', '公告', '2', 2, '', 'success', 0, 0),
-(12, 'sys_notice_status', '正常', '0', 1, '', 'primary', 1, 0),
-(13, 'sys_notice_status', '关闭', '1', 2, '', 'danger', 0, 0),
-(14, 'sys_oper_type', '其它', '0', 0, '', 'info', 0, 0),
-(15, 'sys_oper_type', '新增', '1', 1, '', 'info', 0, 0),
-(16, 'sys_oper_type', '修改', '2', 2, '', 'info', 0, 0),
-(17, 'sys_oper_type', '删除', '3', 3, '', 'danger', 0, 0),
-(18, 'sys_oper_type', '查询', '4', 4, '', 'primary', 0, 0),
-(19, 'sys_oper_type', '导出', '5', 5, '', 'warning', 0, 0),
-(20, 'sys_oper_type', '导入', '6', 6, '', 'warning', 0, 0),
-(21, 'sys_oper_type', '授权', '7', 7, '', 'primary', 0, 0),
-(22, 'sys_oper_type', '强退', '8', 8, '', 'danger', 0, 0),
-(23, 'sys_oper_type', '清空', '9', 9, '', 'danger', 0, 0),
-(24, 'sys_common_status', '成功', '0', 1, '', 'success', 0, 0),
-(25, 'sys_common_status', '失败', '1', 2, '', 'danger', 0, 0),
-(26, 'sys_client_type', 'PC端', 'pc', 1, '', 'primary', 1, 0),
-(27, 'sys_client_type', 'App端', 'app', 2, '', 'success', 0, 0),
-(28, 'sys_client_type', 'H5端', 'h5', 3, '', 'info', 0, 0),
-(29, 'sys_client_type', '微信小程序', 'wechat_mp', 4, '', 'success', 0, 0),
-(30, 'sys_client_type', '微信公众号', 'wechat_oa', 5, '', 'success', 0, 0),
-(31, 'sys_client_type', '开放API', 'api', 6, '', 'warning', 0, 0),
-(32, 'sys_data_scope', '全部数据', '1', 1, '', 'primary', 0, 0),
-(33, 'sys_data_scope', '自定义数据', '2', 2, '', 'info', 0, 0),
-(34, 'sys_data_scope', '本部门数据', '3', 3, '', 'info', 0, 0),
-(35, 'sys_data_scope', '本部门及以下', '4', 4, '', 'info', 0, 0),
-(36, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
-(37, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
-(38, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
-(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0),
-(40, 'ai_model_type', '大语言模型', 'LLM', 10, '', 'primary', 1, 0),
-(41, 'ai_model_type', '图片生成模型', 'IMAGE', 20, '', 'success', 0, 0),
-(42, 'ai_model_type', '视频生成模型', 'VIDEO', 30, '', 'warning', 0, 0),
-(43, 'ai_model_type', '视频剪辑合成', 'VIDEO_EDIT', 40, '', 'warning', 0, 0),
-(44, 'ai_model_type', '向量模型', 'EMBEDDING', 50, '', 'info', 0, 0),
-(45, 'ai_model_type', '重排模型', 'RERANK', 60, '', 'info', 0, 0),
-(46, 'ai_model_type', '语音合成', 'TTS', 70, '', 'success', 0, 0),
-(47, 'ai_model_type', '语音识别', 'STT', 80, '', 'info', 0, 0),
-(48, 'ai_model_provider', 'OpenAI', 'openai', 10, '', 'primary', 0, 0),
-(49, 'ai_model_provider', '火山引擎/方舟', 'volcengine', 20, '', 'warning', 1, 0),
-(50, 'ai_model_provider', 'DeepSeek', 'deepseek', 30, '', 'success', 0, 0),
-(51, 'ai_model_provider', '通义千问', 'qwen', 40, '', 'success', 0, 0),
-(52, 'ai_model_provider', '智谱AI', 'zhipu', 50, '', 'primary', 0, 0),
-(53, 'ai_model_provider', '百度千帆', 'baidu', 60, '', 'primary', 0, 0),
-(54, 'ai_model_provider', 'Ollama', 'ollama', 70, '', 'info', 0, 0),
-(55, 'ai_model_provider', 'Azure OpenAI', 'azure', 80, '', 'primary', 0, 0),
-(56, 'ai_model_provider', 'Anthropic', 'anthropic', 90, '', 'info', 0, 0),
-(57, 'ai_model_provider', 'SiliconFlow', 'siliconflow', 100, '', 'success', 0, 0),
-(58, 'ai_model_provider', 'Coze(扣子)', 'coze', 110, '', 'warning', 0, 0),
-(59, 'ai_model_provider', 'DIFY', 'dify', 120, '', 'info', 0, 0),
-(60, 'ai_model_provider', 'FastGPT', 'fastgpt', 130, '', 'info', 0, 0),
-(61, 'ai_prompt_category', '系统提示词', 'system', 10, '', 'primary', 1, 0),
-(62, 'ai_prompt_category', '用户模板', 'user', 20, '', 'success', 0, 0),
-(63, 'ai_prompt_category', '助手模板', 'assistant', 30, '', 'warning', 0, 0)
-) AS v(id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status);
+INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+(1, 1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
+(2, 1, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
+(3, 1, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
+(4, 1, 'sys_normal_disable', '正常', '0', 1, '', 'primary', 1, 0),
+(5, 1, 'sys_normal_disable', '停用', '1', 2, '', 'danger', 0, 0),
+(6, 1, 'sys_show_hide', '显示', '0', 1, '', 'primary', 1, 0),
+(7, 1, 'sys_show_hide', '隐藏', '1', 2, '', 'danger', 0, 0),
+(8, 1, 'sys_yes_no', '是', 'Y', 1, '', 'primary', 1, 0),
+(9, 1, 'sys_yes_no', '否', 'N', 2, '', 'danger', 0, 0),
+(10, 1, 'sys_notice_type', '通知', '1', 1, '', 'warning', 0, 0),
+(11, 1, 'sys_notice_type', '公告', '2', 2, '', 'success', 0, 0),
+(12, 1, 'sys_notice_status', '正常', '0', 1, '', 'primary', 1, 0),
+(13, 1, 'sys_notice_status', '关闭', '1', 2, '', 'danger', 0, 0),
+(14, 1, 'sys_oper_type', '其它', '0', 0, '', 'info', 0, 0),
+(15, 1, 'sys_oper_type', '新增', '1', 1, '', 'info', 0, 0),
+(16, 1, 'sys_oper_type', '修改', '2', 2, '', 'info', 0, 0),
+(17, 1, 'sys_oper_type', '删除', '3', 3, '', 'danger', 0, 0),
+(18, 1, 'sys_oper_type', '查询', '4', 4, '', 'primary', 0, 0),
+(19, 1, 'sys_oper_type', '导出', '5', 5, '', 'warning', 0, 0),
+(20, 1, 'sys_oper_type', '导入', '6', 6, '', 'warning', 0, 0),
+(21, 1, 'sys_oper_type', '授权', '7', 7, '', 'primary', 0, 0),
+(22, 1, 'sys_oper_type', '强退', '8', 8, '', 'danger', 0, 0),
+(23, 1, 'sys_oper_type', '清空', '9', 9, '', 'danger', 0, 0),
+(24, 1, 'sys_common_status', '成功', '0', 1, '', 'success', 0, 0),
+(25, 1, 'sys_common_status', '失败', '1', 2, '', 'danger', 0, 0),
+(26, 1, 'sys_client_type', 'PC端', 'pc', 1, '', 'primary', 1, 0),
+(27, 1, 'sys_client_type', 'App端', 'app', 2, '', 'success', 0, 0),
+(28, 1, 'sys_client_type', 'H5端', 'h5', 3, '', 'info', 0, 0),
+(29, 1, 'sys_client_type', '微信小程序', 'wechat_mp', 4, '', 'success', 0, 0),
+(30, 1, 'sys_client_type', '微信公众号', 'wechat_oa', 5, '', 'success', 0, 0),
+(31, 1, 'sys_client_type', '开放API', 'api', 6, '', 'warning', 0, 0),
+(32, 1, 'sys_data_scope', '全部数据', '1', 1, '', 'primary', 0, 0),
+(33, 1, 'sys_data_scope', '自定义数据', '2', 2, '', 'info', 0, 0),
+(34, 1, 'sys_data_scope', '本部门数据', '3', 3, '', 'info', 0, 0),
+(35, 1, 'sys_data_scope', '本部门及以下', '4', 4, '', 'info', 0, 0),
+(36, 1, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
+(37, 1, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
+(38, 1, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
+(39, 1, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0),
+(40, 1, 'ai_model_type', '大语言模型', 'LLM', 10, '', 'primary', 1, 0),
+(41, 1, 'ai_model_type', '图片生成模型', 'IMAGE', 20, '', 'success', 0, 0),
+(42, 1, 'ai_model_type', '视频生成模型', 'VIDEO', 30, '', 'warning', 0, 0),
+(43, 1, 'ai_model_type', '视频剪辑合成', 'VIDEO_EDIT', 40, '', 'warning', 0, 0),
+(44, 1, 'ai_model_type', '向量模型', 'EMBEDDING', 50, '', 'info', 0, 0),
+(45, 1, 'ai_model_type', '重排模型', 'RERANK', 60, '', 'info', 0, 0),
+(46, 1, 'ai_model_type', '语音合成', 'TTS', 70, '', 'success', 0, 0),
+(47, 1, 'ai_model_type', '语音识别', 'STT', 80, '', 'info', 0, 0),
+(48, 1, 'ai_model_provider', 'OpenAI', 'openai', 10, '', 'primary', 0, 0),
+(49, 1, 'ai_model_provider', '火山引擎/方舟', 'volcengine', 20, '', 'warning', 1, 0),
+(50, 1, 'ai_model_provider', 'DeepSeek', 'deepseek', 30, '', 'success', 0, 0),
+(51, 1, 'ai_model_provider', '通义千问', 'qwen', 40, '', 'success', 0, 0),
+(52, 1, 'ai_model_provider', '智谱AI', 'zhipu', 50, '', 'primary', 0, 0),
+(53, 1, 'ai_model_provider', '百度千帆', 'baidu', 60, '', 'primary', 0, 0),
+(54, 1, 'ai_model_provider', 'Ollama', 'ollama', 70, '', 'info', 0, 0),
+(55, 1, 'ai_model_provider', 'Azure OpenAI', 'azure', 80, '', 'primary', 0, 0),
+(56, 1, 'ai_model_provider', 'Anthropic', 'anthropic', 90, '', 'info', 0, 0),
+(57, 1, 'ai_model_provider', 'SiliconFlow', 'siliconflow', 100, '', 'success', 0, 0),
+(58, 1, 'ai_model_provider', 'Coze(扣子)', 'coze', 110, '', 'warning', 0, 0),
+(59, 1, 'ai_model_provider', 'DIFY', 'dify', 120, '', 'info', 0, 0),
+(60, 1, 'ai_model_provider', 'FastGPT', 'fastgpt', 130, '', 'info', 0, 0),
+(61, 1, 'ai_prompt_category', '系统提示词', 'system', 10, '', 'primary', 1, 0),
+(62, 1, 'ai_prompt_category', '用户模板', 'user', 20, '', 'success', 0, 0),
+(63, 1, 'ai_prompt_category', '助手模板', 'assistant', 30, '', 'warning', 0, 0);
 
 -- 12.1 AI 扩展字典类型
-INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark)
-SELECT v.id, 1, v.dict_name, v.dict_type, v.status, v.remark FROM (VALUES
-(15, 'AI知识库类型', 'ai_kb_type', 0, 'AI知识库类型列表'),
-(16, 'AI MCP传输类型', 'ai_mcp_transport_type', 0, 'AI MCP 传输类型列表'),
-(17, 'AI工作流类型', 'ai_workflow_type', 0, 'AI工作流类型列表'),
-(18, 'AI知识库索引状态', 'ai_knowledge_index_status', 0, 'AI知识库索引状态列表')
-) AS v(id, dict_name, dict_type, status, remark);
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark) VALUES
+(15, 1, 'AI知识库类型', 'ai_kb_type', 0, 'AI知识库类型列表'),
+(16, 1, 'AI MCP传输类型', 'ai_mcp_transport_type', 0, 'AI MCP 传输类型列表'),
+(17, 1, 'AI工作流类型', 'ai_workflow_type', 0, 'AI工作流类型列表'),
+(18, 1, 'AI知识库索引状态', 'ai_knowledge_index_status', 0, 'AI知识库索引状态列表');
 
 -- 12.2 AI 扩展字典数据
-INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status)
-SELECT v.id, 1, v.dict_type, v.dict_label, v.dict_value, v.dict_sort, v.css_class, v.list_class, v.is_default, v.status FROM (VALUES
-(71, 'ai_kb_type', '通用知识库', 'general', 10, '', 'primary', 1, 0),
-(72, 'ai_kb_type', 'QA问答库', 'qa', 20, '', 'success', 0, 0),
-(73, 'ai_kb_type', '网页爬取', 'web', 30, '', 'warning', 0, 0),
-(74, 'ai_mcp_transport_type', 'SSE', 'sse', 10, '', 'primary', 1, 0),
-(75, 'ai_mcp_transport_type', 'Streamable HTTP', 'streamable_http', 20, '', 'success', 0, 0),
-(76, 'ai_mcp_transport_type', 'Stdio', 'stdio', 30, '', 'info', 0, 0),
-(77, 'ai_workflow_type', '简单对话', 'simple', 10, '', 'primary', 1, 0),
-(78, 'ai_workflow_type', '高级编排', 'advanced', 20, '', 'success', 0, 0),
-(79, 'ai_knowledge_index_status', '待处理', 'pending', 10, '', 'info', 0, 0),
-(80, 'ai_knowledge_index_status', '索引中', 'indexing', 20, '', 'warning', 0, 0),
-(81, 'ai_knowledge_index_status', '已完成', 'completed', 30, '', 'success', 0, 0),
-(82, 'ai_knowledge_index_status', '失败', 'failed', 40, '', 'danger', 0, 0)
-) AS v(id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status);
+INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+(71, 1, 'ai_kb_type', '通用知识库', 'general', 10, '', 'primary', 1, 0),
+(72, 1, 'ai_kb_type', 'QA问答库', 'qa', 20, '', 'success', 0, 0),
+(73, 1, 'ai_kb_type', '网页爬取', 'web', 30, '', 'warning', 0, 0),
+(74, 1, 'ai_mcp_transport_type', 'SSE', 'sse', 10, '', 'primary', 1, 0),
+(75, 1, 'ai_mcp_transport_type', 'Streamable HTTP', 'streamable_http', 20, '', 'success', 0, 0),
+(76, 1, 'ai_mcp_transport_type', 'Stdio', 'stdio', 30, '', 'info', 0, 0),
+(77, 1, 'ai_workflow_type', '简单对话', 'simple', 10, '', 'primary', 1, 0),
+(78, 1, 'ai_workflow_type', '高级编排', 'advanced', 20, '', 'success', 0, 0),
+(79, 1, 'ai_knowledge_index_status', '待处理', 'pending', 10, '', 'info', 0, 0),
+(80, 1, 'ai_knowledge_index_status', '索引中', 'indexing', 20, '', 'warning', 0, 0),
+(81, 1, 'ai_knowledge_index_status', '已完成', 'completed', 30, '', 'success', 0, 0),
+(82, 1, 'ai_knowledge_index_status', '失败', 'failed', 40, '', 'danger', 0, 0);
 
 -- 13. 参数配置
-INSERT INTO sys_config (id, tenant_id, config_name, config_key, config_value, config_type, remark)
-SELECT v.id, 1, v.config_name, v.config_key, v.config_value, v.config_type, v.remark FROM (VALUES
-(1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
-(2, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
-(3, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
-(4, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
-(5, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
-(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）'),
-(7, '用户登录-微信扫码登录开关', 'sys.login.wechatEnabled', 'false', 'Y', '是否开启微信扫码登录（true开启，false关闭）；开启前需在服务端配置 WECHAT_OPEN_APP_ID/WECHAT_OPEN_APP_SECRET')
-) AS v(id, config_name, config_key, config_value, config_type, remark);
+INSERT INTO sys_config (id, tenant_id, config_name, config_key, config_value, config_type, remark) VALUES
+(1, 1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
+(2, 1, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
+(3, 1, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
+(4, 1, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
+(5, 1, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
+(6, 1, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）'),
+(7, 1, '用户登录-微信扫码登录开关', 'sys.login.wechatEnabled', 'false', 'Y', '是否开启微信扫码登录（true开启，false关闭）；开启前需在服务端配置 WECHAT_OPEN_APP_ID/WECHAT_OPEN_APP_SECRET');
 
 -- 14. 客户端配置
 INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire, refresh_expire, max_online, kick_strategy, status, remark) VALUES
@@ -819,13 +846,13 @@ INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire
 -- 定时任务表
 -- =============================================
 CREATE TABLE sys_job (
-    job_id          BIGSERIAL       PRIMARY KEY,
+    job_id          BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT,
     job_name        VARCHAR(100)    NOT NULL,
     job_group       VARCHAR(64)     DEFAULT 'DEFAULT',
     invoke_target   VARCHAR(500)    NOT NULL,
-    service_name    VARCHAR(100),
-    handler         VARCHAR(200),
+    service_name    VARCHAR(100)    COMMENT '执行器服务名（Nacos 中的服务名，远程调用时使用）',
+    handler         VARCHAR(200)    COMMENT '执行器处理方法（远程调用时的 handler 路径）',
     cron_expression VARCHAR(255)    NOT NULL,
     misfire_policy  CHAR(1)         DEFAULT '3',
     concurrent      CHAR(1)         DEFAULT '1',
@@ -838,7 +865,7 @@ CREATE TABLE sys_job (
 );
 
 CREATE TABLE sys_job_log (
-    job_log_id      BIGSERIAL       PRIMARY KEY,
+    job_log_id      BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT,
     job_name        VARCHAR(100)    NOT NULL,
     job_group       VARCHAR(64),
@@ -874,28 +901,23 @@ INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status
 -- ============================================================
 -- JobFlow 迁移 SQL 脚本
 -- 说明：将 Quartz 调度替换为 JobFlow 自研调度框架
--- 执行环境：PostgreSQL
+-- 执行环境：MySQL 8
 -- ============================================================
 
--- 1. 为 sys_job 表新增 JobFlow 所需字段
-ALTER TABLE sys_job ADD COLUMN IF NOT EXISTS service_name VARCHAR(100);
-ALTER TABLE sys_job ADD COLUMN IF NOT EXISTS handler VARCHAR(100);
-
-COMMENT ON COLUMN sys_job.service_name IS '执行器服务名（Nacos 中的服务名，远程调用时使用）';
-COMMENT ON COLUMN sys_job.handler IS '执行器处理方法（远程调用时的 handler 路径）';
+-- 1. JobFlow 字段（service_name / handler）及其列注释已包含在上方 sys_job 建表语句中。
 
 -- 2. 清理 Quartz 相关表（按依赖顺序删除）
-DROP TABLE IF EXISTS qrtz_fired_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_paused_trigger_grps CASCADE;
-DROP TABLE IF EXISTS qrtz_scheduler_state CASCADE;
-DROP TABLE IF EXISTS qrtz_locks CASCADE;
-DROP TABLE IF EXISTS qrtz_simprop_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_simple_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_cron_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_blob_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_triggers CASCADE;
-DROP TABLE IF EXISTS qrtz_job_details CASCADE;
-DROP TABLE IF EXISTS qrtz_calendars CASCADE;
+DROP TABLE IF EXISTS qrtz_fired_triggers;
+DROP TABLE IF EXISTS qrtz_paused_trigger_grps;
+DROP TABLE IF EXISTS qrtz_scheduler_state;
+DROP TABLE IF EXISTS qrtz_locks;
+DROP TABLE IF EXISTS qrtz_simprop_triggers;
+DROP TABLE IF EXISTS qrtz_simple_triggers;
+DROP TABLE IF EXISTS qrtz_cron_triggers;
+DROP TABLE IF EXISTS qrtz_blob_triggers;
+DROP TABLE IF EXISTS qrtz_triggers;
+DROP TABLE IF EXISTS qrtz_job_details;
+DROP TABLE IF EXISTS qrtz_calendars;
 
 -- 3. 验证变更
 SELECT column_name, data_type, character_maximum_length
@@ -909,6 +931,10 @@ WHERE table_name = 'sys_job' AND column_name IN ('service_name', 'handler');
 -- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
 -- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
+-- 【差异点 D】expire_time 是租户到期时间，MySQL 的 TIMESTAMP 上限是 2038-01-19，
+-- 超过该时间点的到期日在 MySQL 上会直接写入报错，PostgreSQL 上不会。
+-- 若业务确实需要 2038 年之后的到期日，需要把该列单独改成 DATETIME，
+-- 这属于跨档结构变更，需主控统一决策，本文件不擅自改动。
 CREATE TABLE sys_tenant (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
@@ -957,7 +983,7 @@ CREATE TABLE sys_tenant_package (
 -- 22. 租户资源配额表
 -- =============================================
 CREATE TABLE sys_tenant_quota (
-    quota_id        BIGSERIAL       PRIMARY KEY,
+    quota_id        BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
     user_limit      INT             DEFAULT -1,
     storage_limit   BIGINT          DEFAULT -1,
@@ -969,8 +995,7 @@ CREATE TABLE sys_tenant_quota (
     last_reset_time TIMESTAMP,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE sys_tenant_quota IS '租户资源配额';
+) COMMENT='租户资源配额';
 CREATE UNIQUE INDEX idx_tenant_quota_tenant ON sys_tenant_quota(tenant_id);
 
 
@@ -992,64 +1017,50 @@ INSERT INTO sys_tenant_package (id, package_name, menu_ids, status, remark) VALU
 -- ============================================================
 -- source: postgres\tenant\90-fixup.sql
 -- ============================================================
--- 租户计费扩展表（PostgreSQL）。
+-- 租户计费扩展表（MySQL）。
+-- 【差异点 E】PostgreSQL 侧这两张表的索引写的是 CREATE INDEX IF NOT EXISTS，
+-- MySQL 不支持该写法，索引改为并入建表语句内联声明，索引名保持一致。
+-- 【差异点 G】表 / 列注释文本原样照搬 PostgreSQL 版（含英文原文），保证两边库内注释一致。
+-- 【差异点 D】end_time 是订阅到期时间，超过 2038-01-19 在 MySQL 上会写入失败。
 
 CREATE TABLE IF NOT EXISTS sys_tenant_subscription (
     id BIGINT PRIMARY KEY,
-    tenant_id BIGINT NOT NULL,
-    package_id BIGINT NOT NULL,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
-    status SMALLINT DEFAULT 0,
-    amount NUMERIC(10,2) DEFAULT 0,
-    payment_method VARCHAR(32) DEFAULT NULL,
-    payment_no VARCHAR(128) DEFAULT NULL,
+    tenant_id BIGINT NOT NULL COMMENT 'Tenant ID',
+    package_id BIGINT NOT NULL COMMENT 'Package ID',
+    start_time TIMESTAMP NOT NULL COMMENT 'Subscription start time',
+    end_time TIMESTAMP NOT NULL COMMENT 'Subscription end time',
+    status SMALLINT DEFAULT 0 COMMENT '0 active, 1 expired, 2 canceled',
+    amount DECIMAL(10,2) DEFAULT 0 COMMENT 'Subscription amount',
+    payment_method VARCHAR(32) DEFAULT NULL COMMENT 'Payment method',
+    payment_no VARCHAR(128) DEFAULT NULL COMMENT 'Payment order number',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    update_time TIMESTAMP DEFAULT NULL
-);
-
-COMMENT ON TABLE sys_tenant_subscription IS 'Tenant subscription record';
-COMMENT ON COLUMN sys_tenant_subscription.tenant_id IS 'Tenant ID';
-COMMENT ON COLUMN sys_tenant_subscription.package_id IS 'Package ID';
-COMMENT ON COLUMN sys_tenant_subscription.start_time IS 'Subscription start time';
-COMMENT ON COLUMN sys_tenant_subscription.end_time IS 'Subscription end time';
-COMMENT ON COLUMN sys_tenant_subscription.status IS '0 active, 1 expired, 2 canceled';
-COMMENT ON COLUMN sys_tenant_subscription.amount IS 'Subscription amount';
-COMMENT ON COLUMN sys_tenant_subscription.payment_method IS 'Payment method';
-COMMENT ON COLUMN sys_tenant_subscription.payment_no IS 'Payment order number';
-CREATE INDEX IF NOT EXISTS idx_tenant_sub_tenant_id ON sys_tenant_subscription (tenant_id);
+    update_time TIMESTAMP DEFAULT NULL,
+    INDEX idx_tenant_sub_tenant_id (tenant_id)
+) COMMENT='Tenant subscription record';
 
 CREATE TABLE IF NOT EXISTS sys_tenant_bill (
     id BIGINT PRIMARY KEY,
-    tenant_id BIGINT NOT NULL,
-    subscription_id BIGINT DEFAULT NULL,
-    bill_type VARCHAR(32) NOT NULL,
-    amount NUMERIC(10,2) NOT NULL,
-    status SMALLINT DEFAULT 0,
-    remark VARCHAR(500) DEFAULT NULL,
+    tenant_id BIGINT NOT NULL COMMENT 'Tenant ID',
+    subscription_id BIGINT DEFAULT NULL COMMENT 'Related subscription ID',
+    bill_type VARCHAR(32) NOT NULL COMMENT 'subscribe, renew, upgrade',
+    amount DECIMAL(10,2) NOT NULL COMMENT 'Bill amount',
+    status SMALLINT DEFAULT 0 COMMENT '0 pending, 1 paid, 2 canceled',
+    remark VARCHAR(500) DEFAULT NULL COMMENT 'Billing note',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    pay_time TIMESTAMP DEFAULT NULL
-);
-
-COMMENT ON TABLE sys_tenant_bill IS 'Tenant billing record';
-COMMENT ON COLUMN sys_tenant_bill.tenant_id IS 'Tenant ID';
-COMMENT ON COLUMN sys_tenant_bill.subscription_id IS 'Related subscription ID';
-COMMENT ON COLUMN sys_tenant_bill.bill_type IS 'subscribe, renew, upgrade';
-COMMENT ON COLUMN sys_tenant_bill.amount IS 'Bill amount';
-COMMENT ON COLUMN sys_tenant_bill.status IS '0 pending, 1 paid, 2 canceled';
-COMMENT ON COLUMN sys_tenant_bill.remark IS 'Billing note';
-COMMENT ON COLUMN sys_tenant_bill.pay_time IS 'Payment time';
-CREATE INDEX IF NOT EXISTS idx_tenant_bill_tenant_id ON sys_tenant_bill (tenant_id);
+    pay_time TIMESTAMP DEFAULT NULL COMMENT 'Payment time',
+    INDEX idx_tenant_bill_tenant_id (tenant_id)
+) COMMENT='Tenant billing record';
 
 
 -- ============================================================
 -- source: postgres\workflow\00-schema.sql
 -- ============================================================
--- PostgreSQL 版工作流扩展表。
+-- MySQL 版工作流扩展表。
 -- Flowable 引擎运行时表由引擎自身维护，本文件只负责 Han 业务扩展表。
+-- 【差异点 E】PostgreSQL 侧的 CREATE INDEX IF NOT EXISTS 统一改为建表内联索引。
 
 CREATE TABLE IF NOT EXISTS wf_category (
-    id              BIGSERIAL PRIMARY KEY,
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
     category_code   VARCHAR(50)     NOT NULL,
     category_name   VARCHAR(100)    NOT NULL,
@@ -1063,13 +1074,12 @@ CREATE TABLE IF NOT EXISTS wf_category (
     update_time     TIMESTAMP,
     del_flag        SMALLINT        DEFAULT 0,
     remark          VARCHAR(500),
-    CONSTRAINT uk_wf_category_code UNIQUE (category_code, tenant_id)
+    CONSTRAINT uk_wf_category_code UNIQUE (category_code, tenant_id),
+    INDEX idx_wf_category_tenant (tenant_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wf_category_tenant ON wf_category(tenant_id);
-
 CREATE TABLE IF NOT EXISTS wf_form (
-    id              BIGSERIAL PRIMARY KEY,
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
     form_name       VARCHAR(100)    NOT NULL,
     form_key        VARCHAR(64)     NOT NULL,
@@ -1086,13 +1096,12 @@ CREATE TABLE IF NOT EXISTS wf_form (
     update_time     TIMESTAMP,
     del_flag        SMALLINT        DEFAULT 0,
     remark          VARCHAR(500),
-    CONSTRAINT uk_wf_form_key UNIQUE (form_key, tenant_id)
+    CONSTRAINT uk_wf_form_key UNIQUE (form_key, tenant_id),
+    INDEX idx_wf_form_tenant (tenant_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wf_form_tenant ON wf_form(tenant_id);
-
 CREATE TABLE IF NOT EXISTS wf_deploy_extend (
-    id              BIGSERIAL PRIMARY KEY,
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id       BIGINT          NOT NULL,
     deployment_id   VARCHAR(64)     NOT NULL,
     process_key     VARCHAR(64)     NOT NULL,
@@ -1107,15 +1116,14 @@ CREATE TABLE IF NOT EXISTS wf_deploy_extend (
     update_by       BIGINT,
     update_time     TIMESTAMP,
     del_flag        SMALLINT        DEFAULT 0,
-    remark          VARCHAR(500)
+    remark          VARCHAR(500),
+    INDEX idx_wf_deploy_extend_deployment (deployment_id),
+    INDEX idx_wf_deploy_extend_tenant (tenant_id),
+    INDEX idx_wf_deploy_extend_process_key (process_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wf_deploy_extend_deployment ON wf_deploy_extend(deployment_id);
-CREATE INDEX IF NOT EXISTS idx_wf_deploy_extend_tenant ON wf_deploy_extend(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_wf_deploy_extend_process_key ON wf_deploy_extend(process_key);
-
 CREATE TABLE IF NOT EXISTS wf_instance_extend (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id           BIGINT          NOT NULL,
     process_instance_id VARCHAR(64)     NOT NULL,
     process_key         VARCHAR(64)     NOT NULL,
@@ -1138,16 +1146,15 @@ CREATE TABLE IF NOT EXISTS wf_instance_extend (
     create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_time         TIMESTAMP,
     del_flag            SMALLINT        DEFAULT 0,
-    CONSTRAINT uk_wf_instance_extend_pi UNIQUE (process_instance_id)
+    CONSTRAINT uk_wf_instance_extend_pi UNIQUE (process_instance_id),
+    INDEX idx_wf_instance_extend_tenant (tenant_id),
+    INDEX idx_wf_instance_extend_business (business_key),
+    INDEX idx_wf_instance_extend_start_user (start_user_id),
+    INDEX idx_wf_instance_extend_status (status)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wf_instance_extend_tenant ON wf_instance_extend(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_wf_instance_extend_business ON wf_instance_extend(business_key);
-CREATE INDEX IF NOT EXISTS idx_wf_instance_extend_start_user ON wf_instance_extend(start_user_id);
-CREATE INDEX IF NOT EXISTS idx_wf_instance_extend_status ON wf_instance_extend(status);
-
 CREATE TABLE IF NOT EXISTS wf_copy (
-    id                  BIGSERIAL PRIMARY KEY,
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id           BIGINT          NOT NULL,
     process_instance_id VARCHAR(64)     NOT NULL,
     task_id             VARCHAR(64),
@@ -1160,18 +1167,19 @@ CREATE TABLE IF NOT EXISTS wf_copy (
     is_read             SMALLINT        DEFAULT 0,
     read_time           TIMESTAMP,
     create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
-    del_flag            SMALLINT        DEFAULT 0
+    del_flag            SMALLINT        DEFAULT 0,
+    INDEX idx_wf_copy_process_instance (process_instance_id),
+    INDEX idx_wf_copy_user (user_id),
+    INDEX idx_wf_copy_tenant (tenant_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_wf_copy_process_instance ON wf_copy(process_instance_id);
-CREATE INDEX IF NOT EXISTS idx_wf_copy_user ON wf_copy(user_id);
-CREATE INDEX IF NOT EXISTS idx_wf_copy_tenant ON wf_copy(tenant_id);
 
 
 -- ============================================================
 -- source: postgres\workflow\10-seed.sql
 -- ============================================================
-INSERT INTO wf_category (tenant_id, category_code, category_name, parent_id, sort, status)
+-- PostgreSQL 侧用"冲突时跳过"兜底重复执行，MySQL 用 INSERT IGNORE 表达同一语义
+-- （命中 uk_wf_category_code 时跳过该行，不报错）。
+INSERT IGNORE INTO wf_category (tenant_id, category_code, category_name, parent_id, sort, status)
 VALUES
 (1, 'oa', 'OA办公', 0, 1, 0),
 (1, 'hr', '人事管理', 0, 2, 0),
@@ -1182,17 +1190,16 @@ VALUES
 (1, 'entry', '入职申请', 2, 1, 0),
 (1, 'resign', '离职申请', 2, 2, 0),
 (1, 'payment', '付款申请', 3, 1, 0),
-(1, 'invoice', '发票申请', 3, 2, 0)
-ON CONFLICT DO NOTHING;
+(1, 'invoice', '发票申请', 3, 2, 0);
 
 
 -- ============================================================
 -- source: postgres\open\00-schema.sql
 -- ============================================================
--- 开放平台核心表（PostgreSQL）。
+-- 开放平台核心表（MySQL）。
 
 CREATE TABLE IF NOT EXISTS open_app (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id BIGINT,
     app_name VARCHAR(100) NOT NULL,
     app_key VARCHAR(100) NOT NULL UNIQUE,
@@ -1221,12 +1228,10 @@ CREATE TABLE IF NOT EXISTS open_app (
     update_time TIMESTAMP,
     del_flag INT DEFAULT 0,
     remark VARCHAR(500)
-);
-
-COMMENT ON TABLE open_app IS 'Open platform application';
+) COMMENT='Open platform application';
 
 CREATE TABLE IF NOT EXISTS open_user_authorization (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id BIGINT,
     user_id BIGINT,
     app_id BIGINT,
@@ -1238,9 +1243,7 @@ CREATE TABLE IF NOT EXISTS open_user_authorization (
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP,
     del_flag INT DEFAULT 0
-);
-
-COMMENT ON TABLE open_user_authorization IS 'User authorization record';
+) COMMENT='User authorization record';
 
 
 -- ============================================================
@@ -1274,7 +1277,7 @@ CREATE TABLE sys_file (
 );
 
 CREATE TABLE sys_oss_config (
-    oss_config_id  BIGSERIAL       PRIMARY KEY,
+    oss_config_id  BIGINT          AUTO_INCREMENT PRIMARY KEY,
     config_key     VARCHAR(100)    NOT NULL,
     access_key     VARCHAR(500),
     secret_key     VARCHAR(500),
@@ -1290,8 +1293,7 @@ CREATE TABLE sys_oss_config (
     create_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by      VARCHAR(64),
     update_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE sys_oss_config IS 'OSS存储配置';
+) COMMENT='OSS存储配置';
 
 
 -- ============================================================
@@ -1306,17 +1308,19 @@ COMMENT ON TABLE sys_oss_config IS 'OSS存储配置';
 -- ============================================================
 -- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
 -- 如需调整结构，请同步更新 manifest 与 sql/README.md。
+-- 类型映射：PostgreSQL 的 NUMERIC(p,s) 对应 MySQL 的 DECIMAL(p,s)（同一精度语义）；
+-- INTEGER 统一写作 INT；TEXT 的默认值按【差异点 H】写成括号表达式。
 
 CREATE TABLE ai_model (
-    model_id        BIGSERIAL       PRIMARY KEY,
+    model_id        BIGINT          AUTO_INCREMENT PRIMARY KEY,
     model_name      VARCHAR(100)    NOT NULL,
     model_type      VARCHAR(20)     NOT NULL DEFAULT 'LLM',
     provider        VARCHAR(50)     NOT NULL DEFAULT 'openai',
     model_code      VARCHAR(100)    NOT NULL,
     base_url        VARCHAR(500)    NOT NULL,
     api_key         VARCHAR(500)    DEFAULT '',
-    max_tokens      INTEGER         DEFAULT 2048,
-    temperature     NUMERIC(3,2)    DEFAULT 0.70,
+    max_tokens      INT             DEFAULT 2048,
+    temperature     DECIMAL(3,2)    DEFAULT 0.70,
     supports_vision CHAR(1)         DEFAULT '0',
     status          CHAR(1)         DEFAULT '0',
     remark          VARCHAR(500)    DEFAULT '',
@@ -1325,20 +1329,19 @@ CREATE TABLE ai_model (
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by       VARCHAR(64)     DEFAULT '',
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_model IS 'AI模型配置表';
+) COMMENT='AI模型配置表';
 
 -- =============================================
 -- 24. 知识库表
 -- =============================================
 CREATE TABLE ai_knowledge_base (
-    kb_id               BIGSERIAL       PRIMARY KEY,
+    kb_id               BIGINT          AUTO_INCREMENT PRIMARY KEY,
     kb_name             VARCHAR(200)    NOT NULL,
     description         VARCHAR(1000)   DEFAULT '',
     kb_type             VARCHAR(20)     NOT NULL DEFAULT 'general',
     embedding_model_id  BIGINT,
-    document_count      INTEGER         DEFAULT 0,
-    paragraph_count     INTEGER         DEFAULT 0,
+    document_count      INT             DEFAULT 0,
+    paragraph_count     INT             DEFAULT 0,
     char_count          BIGINT          DEFAULT 0,
     status              CHAR(1)         DEFAULT '0',
     tenant_id           BIGINT          DEFAULT 0,
@@ -1346,44 +1349,45 @@ CREATE TABLE ai_knowledge_base (
     create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by           VARCHAR(64)     DEFAULT '',
     update_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_knowledge_base IS '知识库表';
+) COMMENT='知识库表';
 
 -- =============================================
 -- 25. 知识库文档表
 -- =============================================
 CREATE TABLE ai_document (
-    doc_id          BIGSERIAL       PRIMARY KEY,
+    doc_id          BIGINT          AUTO_INCREMENT PRIMARY KEY,
     kb_id           BIGINT          NOT NULL,
     doc_name        VARCHAR(500)    NOT NULL,
     doc_type        VARCHAR(20)     DEFAULT 'txt',
     file_path       VARCHAR(1000)   DEFAULT '',
     file_size       BIGINT          DEFAULT 0,
     char_count      BIGINT          DEFAULT 0,
-    paragraph_count INTEGER         DEFAULT 0,
+    paragraph_count INT             DEFAULT 0,
     index_status    VARCHAR(20)     DEFAULT 'pending',
-    index_error     TEXT            DEFAULT '',
+    index_error     TEXT            DEFAULT (''),
     status          CHAR(1)         DEFAULT '0',
     tenant_id       BIGINT          DEFAULT 0,
     create_by       VARCHAR(64)     DEFAULT '',
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by       VARCHAR(64)     DEFAULT '',
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_document IS '知识库文档表';
+) COMMENT='知识库文档表';
 CREATE INDEX idx_ai_document_kb_id ON ai_document(kb_id);
 
 -- =============================================
 -- 26. 知识库段落表
 -- =============================================
+-- 【差异点 F】embedding 在 PostgreSQL 版就是 TEXT（没有用 pgvector 扩展），
+-- 所以这里 1:1 平移即可，不存在向量类型缺口；向量检索由应用层负责。
+-- 一旦 PostgreSQL 侧改用向量类型，MySQL 8.4 没有等价类型可对齐（VECTOR 是 9.0 才有的能力）。
 CREATE TABLE ai_paragraph (
-    paragraph_id    BIGSERIAL       PRIMARY KEY,
+    paragraph_id    BIGINT          AUTO_INCREMENT PRIMARY KEY,
     doc_id          BIGINT          NOT NULL,
     kb_id           BIGINT          NOT NULL,
     title           VARCHAR(500)    DEFAULT '',
     content         TEXT            NOT NULL,
-    char_count      INTEGER         DEFAULT 0,
-    hit_count       INTEGER         DEFAULT 0,
+    char_count      INT             DEFAULT 0,
+    hit_count       INT             DEFAULT 0,
     embedding       TEXT,
     status          CHAR(1)         DEFAULT '0',
     tenant_id       BIGINT          DEFAULT 0,
@@ -1391,9 +1395,8 @@ CREATE TABLE ai_paragraph (
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by       VARCHAR(64)     DEFAULT '',
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
-    del_flag       INTEGER         DEFAULT 0
-);
-COMMENT ON TABLE ai_paragraph IS '知识库段落表';
+    del_flag       INT             DEFAULT 0
+) COMMENT='知识库段落表';
 CREATE INDEX idx_ai_paragraph_doc ON ai_paragraph(doc_id);
 CREATE INDEX idx_ai_paragraph_kb ON ai_paragraph(kb_id);
 
@@ -1401,39 +1404,38 @@ CREATE INDEX idx_ai_paragraph_kb ON ai_paragraph(kb_id);
 -- 27. MCP服务器配置表
 -- =============================================
 CREATE TABLE ai_mcp_server (
-    mcp_id          BIGSERIAL       PRIMARY KEY,
+    mcp_id          BIGINT          AUTO_INCREMENT PRIMARY KEY,
     server_name     VARCHAR(200)    NOT NULL,
     description     VARCHAR(1000)   DEFAULT '',
     transport_type  VARCHAR(30)     NOT NULL DEFAULT 'sse',
     command         VARCHAR(500)    DEFAULT '',
-    args            TEXT            DEFAULT '[]',
-    env_vars        TEXT            DEFAULT '{}',
+    args            TEXT            DEFAULT ('[]'),
+    env_vars        TEXT            DEFAULT ('{}'),
     url             VARCHAR(500)    DEFAULT '',
-    tools           TEXT            DEFAULT '[]',
+    tools           TEXT            DEFAULT ('[]'),
     status          CHAR(1)         DEFAULT '0',
     tenant_id       BIGINT          DEFAULT 0,
     create_by       VARCHAR(64)     DEFAULT '',
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by       VARCHAR(64)     DEFAULT '',
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_mcp_server IS 'MCP服务器配置表';
+) COMMENT='MCP服务器配置表';
 
 -- =============================================
 -- 28. AI工作流表
 -- =============================================
 CREATE TABLE ai_workflow (
-    workflow_id         BIGSERIAL       PRIMARY KEY,
+    workflow_id         BIGINT          AUTO_INCREMENT PRIMARY KEY,
     workflow_name       VARCHAR(200)    NOT NULL,
     description         VARCHAR(1000)   DEFAULT '',
     workflow_type       VARCHAR(20)     NOT NULL DEFAULT 'simple',
     model_id            BIGINT,
-    knowledge_base_ids  TEXT            DEFAULT '[]',
-    mcp_server_ids      TEXT            DEFAULT '[]',
-    system_prompt       TEXT            DEFAULT '',
-    flow_config         TEXT            DEFAULT '{}',
+    knowledge_base_ids  TEXT            DEFAULT ('[]'),
+    mcp_server_ids      TEXT            DEFAULT ('[]'),
+    system_prompt       TEXT            DEFAULT (''),
+    flow_config         TEXT            DEFAULT ('{}'),
     prologue            VARCHAR(2000)   DEFAULT '',
-    suggested_questions TEXT            DEFAULT '[]',
+    suggested_questions TEXT            DEFAULT ('[]') COMMENT '开场推荐问题（JSON字符串数组，最多5条）',
     published           CHAR(1)         DEFAULT '0',
     status              CHAR(1)         DEFAULT '0',
     tenant_id           BIGINT          DEFAULT 0,
@@ -1441,43 +1443,39 @@ CREATE TABLE ai_workflow (
     create_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by           VARCHAR(64)     DEFAULT '',
     update_time         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_workflow IS 'AI工作流表';
-COMMENT ON COLUMN ai_workflow.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
+) COMMENT='AI工作流表';
 
 -- =============================================
 -- 29. AI对话会话表
 -- =============================================
 CREATE TABLE ai_conversation (
-    conversation_id BIGSERIAL       PRIMARY KEY,
+    conversation_id BIGINT          AUTO_INCREMENT PRIMARY KEY,
     title           VARCHAR(500)    DEFAULT '新对话',
     workflow_id     BIGINT,
     model_id        BIGINT,
     user_id         BIGINT          NOT NULL,
-    message_count   INTEGER         DEFAULT 0,
+    message_count   INT             DEFAULT 0,
     tenant_id       BIGINT          DEFAULT 0,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_conversation IS 'AI对话会话表';
+) COMMENT='AI对话会话表';
 CREATE INDEX idx_ai_conversation_user ON ai_conversation(user_id);
 
 -- =============================================
 -- 30. AI对话消息表
 -- =============================================
 CREATE TABLE ai_chat_message (
-    message_id      BIGSERIAL       PRIMARY KEY,
+    message_id      BIGINT          AUTO_INCREMENT PRIMARY KEY,
     conversation_id BIGINT          NOT NULL,
     role            VARCHAR(20)     NOT NULL DEFAULT 'user',
     content         TEXT            NOT NULL,
-    token_count     INTEGER         DEFAULT 0,
-    sort_order      INTEGER         DEFAULT 0,
+    token_count     INT             DEFAULT 0,
+    sort_order      INT             DEFAULT 0,
     images          TEXT,
     meta            TEXT,
     tenant_id       BIGINT          DEFAULT 0,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_chat_message IS 'AI对话消息表';
+) COMMENT='AI对话消息表';
 CREATE INDEX idx_ai_chat_message_conversation ON ai_chat_message(conversation_id);
 CREATE INDEX idx_ai_chat_message_tenant ON ai_chat_message(tenant_id);
 
@@ -1485,23 +1483,23 @@ CREATE INDEX idx_ai_chat_message_tenant ON ai_chat_message(tenant_id);
 -- 31. AI智能体表
 -- =============================================
 CREATE TABLE ai_agent (
-    agent_id       BIGSERIAL       PRIMARY KEY,
+    agent_id       BIGINT          AUTO_INCREMENT PRIMARY KEY,
     agent_name     VARCHAR(100)    NOT NULL,
     description    TEXT,
     avatar         VARCHAR(500),
     system_prompt  TEXT,
     prologue       TEXT,
-    suggested_questions TEXT,
+    suggested_questions TEXT       COMMENT '开场推荐问题（JSON字符串数组，最多5条）',
     model_id       BIGINT,
     knowledge_base_ids TEXT,
     mcp_server_ids TEXT,
-    temperature    NUMERIC(3,2)    DEFAULT 0.7,
+    temperature    DECIMAL(3,2)    DEFAULT 0.7,
     max_tokens     INT             DEFAULT 2048,
-    history_limit  INT,
-    retrieval_top_k INT,
-    similarity_threshold NUMERIC(4,3),
+    history_limit  INT             COMMENT '对话历史注入条数（NULL=默认12）',
+    retrieval_top_k INT            COMMENT '知识库检索返回条数（NULL=默认5）',
+    similarity_threshold DECIMAL(4,3) COMMENT '向量检索相似度阈值（NULL=默认0.30）',
     published      CHAR(1)         DEFAULT '0',
-    share_key      VARCHAR(64),
+    share_key      VARCHAR(64)     COMMENT '公开分享链接 key（发布时生成，重置后旧链接失效）',
     status         CHAR(1)         DEFAULT '0',
     tenant_id      BIGINT,
     create_by      VARCHAR(64),
@@ -1509,13 +1507,7 @@ CREATE TABLE ai_agent (
     update_by      VARCHAR(64),
     update_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     del_flag       INT             DEFAULT 0
-);
-COMMENT ON TABLE ai_agent IS 'AI智能体';
-COMMENT ON COLUMN ai_agent.share_key IS '公开分享链接 key（发布时生成，重置后旧链接失效）';
-COMMENT ON COLUMN ai_agent.history_limit IS '对话历史注入条数（NULL=默认12）';
-COMMENT ON COLUMN ai_agent.retrieval_top_k IS '知识库检索返回条数（NULL=默认5）';
-COMMENT ON COLUMN ai_agent.similarity_threshold IS '向量检索相似度阈值（NULL=默认0.30）';
-COMMENT ON COLUMN ai_agent.suggested_questions IS '开场推荐问题（JSON字符串数组，最多5条）';
+) COMMENT='AI智能体';
 
 -- =============================================
 -- 32. Prompt模板表
@@ -1523,7 +1515,7 @@ COMMENT ON COLUMN ai_agent.suggested_questions IS '开场推荐问题（JSON字�
 -- 列宽以 sql/upgrades/postgres/phase8_prompt_template_alignment.sql 为权威口径，
 -- 历史上 init 是 100/20/500、phase8 是 200/30/1000，两类环境结构长期分叉。
 CREATE TABLE ai_prompt_template (
-    template_id   BIGSERIAL       PRIMARY KEY,
+    template_id   BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id     BIGINT,
     template_name VARCHAR(200)    NOT NULL,
     category      VARCHAR(30)     NOT NULL DEFAULT 'system',
@@ -1536,15 +1528,14 @@ CREATE TABLE ai_prompt_template (
     create_time   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by     VARCHAR(64)     DEFAULT '',
     update_time   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_prompt_template IS 'Prompt模板表';
+) COMMENT='Prompt模板表';
 CREATE INDEX idx_prompt_tpl_tenant ON ai_prompt_template(tenant_id);
 
 -- =============================================
 -- 33. Token用量记录表
 -- =============================================
 CREATE TABLE ai_token_usage (
-    usage_id          BIGSERIAL       PRIMARY KEY,
+    usage_id          BIGINT          AUTO_INCREMENT PRIMARY KEY,
     tenant_id         BIGINT,
     user_id           BIGINT,
     conversation_id   BIGINT,
@@ -1554,8 +1545,7 @@ CREATE TABLE ai_token_usage (
     completion_tokens INT             DEFAULT 0,
     total_tokens      INT             DEFAULT 0,
     create_time       TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_token_usage IS 'AI Token用量记录表';
+) COMMENT='AI Token用量记录表';
 CREATE INDEX idx_token_usage_tenant ON ai_token_usage(tenant_id);
 CREATE INDEX idx_token_usage_user ON ai_token_usage(user_id);
 CREATE INDEX idx_token_usage_time ON ai_token_usage(create_time);
@@ -1564,15 +1554,14 @@ CREATE INDEX idx_token_usage_time ON ai_token_usage(create_time);
 -- 34. 知识图谱节点表
 -- =============================================
 CREATE TABLE ai_graph_node (
-    node_id        BIGSERIAL       PRIMARY KEY,
+    node_id        BIGINT          AUTO_INCREMENT PRIMARY KEY,
     kb_id          BIGINT,
     node_name      VARCHAR(200)    NOT NULL,
     node_type      VARCHAR(50)     NOT NULL,
     properties     TEXT,
     tenant_id      BIGINT,
     create_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_graph_node IS '知识图谱节点';
+) COMMENT='知识图谱节点';
 CREATE INDEX idx_graph_node_kb ON ai_graph_node(kb_id);
 CREATE INDEX idx_graph_node_type ON ai_graph_node(node_type);
 
@@ -1580,7 +1569,7 @@ CREATE INDEX idx_graph_node_type ON ai_graph_node(node_type);
 -- 35. 知识图谱关系表
 -- =============================================
 CREATE TABLE ai_graph_edge (
-    edge_id        BIGSERIAL       PRIMARY KEY,
+    edge_id        BIGINT          AUTO_INCREMENT PRIMARY KEY,
     kb_id          BIGINT,
     source_node_id BIGINT          NOT NULL,
     target_node_id BIGINT          NOT NULL,
@@ -1588,8 +1577,7 @@ CREATE TABLE ai_graph_edge (
     properties     TEXT,
     tenant_id      BIGINT,
     create_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE ai_graph_edge IS '知识图谱关系';
+) COMMENT='知识图谱关系';
 CREATE INDEX idx_graph_edge_kb ON ai_graph_edge(kb_id);
 CREATE INDEX idx_graph_edge_source ON ai_graph_edge(source_node_id);
 CREATE INDEX idx_graph_edge_target ON ai_graph_edge(target_node_id);
@@ -1623,88 +1611,49 @@ INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, var
 -- ============================================================
 -- source: postgres\gen\00-schema.sql
 -- ============================================================
--- 代码生成器元数据表迁移（PostgreSQL）。
+-- 代码生成器元数据表迁移（MySQL）。
+-- 【差异点 C/E】PostgreSQL 侧用匿名块补建外键、用 CREATE INDEX IF NOT EXISTS 补建索引，
+-- MySQL 两者都不支持，统一在建表语句里内联声明，约束名与索引名保持一致。
+-- 外键要求 gen_table 先于 gen_table_column 创建，本文件已保证该顺序。
 
 CREATE TABLE IF NOT EXISTS gen_table (
     id BIGINT PRIMARY KEY,
     tenant_id BIGINT DEFAULT 0,
-    table_name VARCHAR(200) NOT NULL DEFAULT '',
-    table_comment VARCHAR(500) DEFAULT '',
-    package_name VARCHAR(200) DEFAULT 'com.han.system',
-    module_name VARCHAR(50) DEFAULT '',
-    business_name VARCHAR(50) DEFAULT '',
-    function_name VARCHAR(50) DEFAULT '',
-    author VARCHAR(50) DEFAULT 'HanCloud',
-    parent_menu_id BIGINT DEFAULT NULL,
+    table_name VARCHAR(200) NOT NULL DEFAULT '' COMMENT 'Database table name',
+    table_comment VARCHAR(500) DEFAULT '' COMMENT 'Database table comment',
+    package_name VARCHAR(200) DEFAULT 'com.han.system' COMMENT 'Generated package name',
+    module_name VARCHAR(50) DEFAULT '' COMMENT 'Generated module name',
+    business_name VARCHAR(50) DEFAULT '' COMMENT 'Generated business name',
+    function_name VARCHAR(50) DEFAULT '' COMMENT 'Generated function label',
+    author VARCHAR(50) DEFAULT 'HanCloud' COMMENT 'Generated author',
+    parent_menu_id BIGINT DEFAULT NULL COMMENT 'Parent menu ID',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP DEFAULT NULL
-);
-
-COMMENT ON TABLE gen_table IS 'Code generator table metadata';
-COMMENT ON COLUMN gen_table.table_name IS 'Database table name';
-COMMENT ON COLUMN gen_table.table_comment IS 'Database table comment';
-COMMENT ON COLUMN gen_table.package_name IS 'Generated package name';
-COMMENT ON COLUMN gen_table.module_name IS 'Generated module name';
-COMMENT ON COLUMN gen_table.business_name IS 'Generated business name';
-COMMENT ON COLUMN gen_table.function_name IS 'Generated function label';
-COMMENT ON COLUMN gen_table.author IS 'Generated author';
-COMMENT ON COLUMN gen_table.parent_menu_id IS 'Parent menu ID';
+) COMMENT='Code generator table metadata';
 
 CREATE TABLE IF NOT EXISTS gen_table_column (
     id BIGINT PRIMARY KEY,
     tenant_id BIGINT DEFAULT 0,
-    table_id BIGINT NOT NULL,
-    column_name VARCHAR(200) NOT NULL,
-    column_comment VARCHAR(500) DEFAULT '',
-    column_type VARCHAR(100) DEFAULT '',
-    java_type VARCHAR(50) DEFAULT 'String',
-    java_field VARCHAR(200) DEFAULT '',
-    is_pk SMALLINT DEFAULT 0,
-    is_increment SMALLINT DEFAULT 0,
-    is_required SMALLINT DEFAULT 0,
-    is_insert SMALLINT DEFAULT 1,
-    is_edit SMALLINT DEFAULT 1,
-    is_list SMALLINT DEFAULT 1,
-    is_query SMALLINT DEFAULT 0,
-    query_type VARCHAR(20) DEFAULT 'EQ',
-    html_type VARCHAR(50) DEFAULT 'input',
-    dict_type VARCHAR(200) DEFAULT '',
-    sort INT DEFAULT 0
-);
-
-COMMENT ON TABLE gen_table_column IS 'Code generator column metadata';
-COMMENT ON COLUMN gen_table_column.table_id IS 'Related table ID';
-COMMENT ON COLUMN gen_table_column.column_name IS 'Database column name';
-COMMENT ON COLUMN gen_table_column.column_comment IS 'Database column comment';
-COMMENT ON COLUMN gen_table_column.column_type IS 'Database column type';
-COMMENT ON COLUMN gen_table_column.java_type IS 'Generated Java type';
-COMMENT ON COLUMN gen_table_column.java_field IS 'Generated Java field';
-COMMENT ON COLUMN gen_table_column.is_pk IS 'Whether the column is a primary key';
-COMMENT ON COLUMN gen_table_column.is_increment IS 'Whether the column is auto increment';
-COMMENT ON COLUMN gen_table_column.is_required IS 'Whether the column is required';
-COMMENT ON COLUMN gen_table_column.is_insert IS 'Whether the column is included on insert';
-COMMENT ON COLUMN gen_table_column.is_edit IS 'Whether the column is included on edit';
-COMMENT ON COLUMN gen_table_column.is_list IS 'Whether the column is included on list view';
-COMMENT ON COLUMN gen_table_column.is_query IS 'Whether the column is queryable';
-COMMENT ON COLUMN gen_table_column.query_type IS 'Query operator';
-COMMENT ON COLUMN gen_table_column.html_type IS 'Rendered form control';
-COMMENT ON COLUMN gen_table_column.dict_type IS 'Bound dictionary type';
-COMMENT ON COLUMN gen_table_column.sort IS 'Display order';
-
-CREATE INDEX IF NOT EXISTS idx_gen_table_column_table_id ON gen_table_column (table_id);
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'fk_gen_table_column_table_id'
-    ) THEN
-        ALTER TABLE gen_table_column
-            ADD CONSTRAINT fk_gen_table_column_table_id
-                FOREIGN KEY (table_id) REFERENCES gen_table(id) ON DELETE CASCADE;
-    END IF;
-END $$;
+    table_id BIGINT NOT NULL COMMENT 'Related table ID',
+    column_name VARCHAR(200) NOT NULL COMMENT 'Database column name',
+    column_comment VARCHAR(500) DEFAULT '' COMMENT 'Database column comment',
+    column_type VARCHAR(100) DEFAULT '' COMMENT 'Database column type',
+    java_type VARCHAR(50) DEFAULT 'String' COMMENT 'Generated Java type',
+    java_field VARCHAR(200) DEFAULT '' COMMENT 'Generated Java field',
+    is_pk SMALLINT DEFAULT 0 COMMENT 'Whether the column is a primary key',
+    is_increment SMALLINT DEFAULT 0 COMMENT 'Whether the column is auto increment',
+    is_required SMALLINT DEFAULT 0 COMMENT 'Whether the column is required',
+    is_insert SMALLINT DEFAULT 1 COMMENT 'Whether the column is included on insert',
+    is_edit SMALLINT DEFAULT 1 COMMENT 'Whether the column is included on edit',
+    is_list SMALLINT DEFAULT 1 COMMENT 'Whether the column is included on list view',
+    is_query SMALLINT DEFAULT 0 COMMENT 'Whether the column is queryable',
+    query_type VARCHAR(20) DEFAULT 'EQ' COMMENT 'Query operator',
+    html_type VARCHAR(50) DEFAULT 'input' COMMENT 'Rendered form control',
+    dict_type VARCHAR(200) DEFAULT '' COMMENT 'Bound dictionary type',
+    sort INT DEFAULT 0 COMMENT 'Display order',
+    INDEX idx_gen_table_column_table_id (table_id),
+    CONSTRAINT fk_gen_table_column_table_id FOREIGN KEY (table_id) REFERENCES gen_table (id) ON DELETE CASCADE
+) COMMENT='Code generator column metadata';
 
 
 -- ============================================================
@@ -1717,136 +1666,71 @@ END $$;
 -- ============================================================
 -- AI 菜单归一化
 -- ============================================================
--- 「AI智能」目录与「Prompt模板」菜单在前面的 sys_menu 种子里已经用固定 ID
--- （500 / 515 / 1221-1224）播过一遍，这里再按 perms 语义键归一一次，
--- 保证本文件与 sql/upgrades/postgres/ 下的菜单对齐脚本得到一致结果。
--- 在 clean 库上本段是空操作，只有 ID 被占用的历史库才会真正改动。
-DO $$
-DECLARE
-    v_ai_root_id BIGINT;
-    v_prompt_menu_id BIGINT;
-    v_next_id BIGINT;
-    v_action RECORD;
-BEGIN
-    SELECT id
-    INTO v_ai_root_id
-    FROM sys_menu
-    WHERE (path = 'ai' AND menu_type = 'M') OR menu_name = 'AI智能'
-    ORDER BY CASE WHEN id = 500 THEN 0 ELSE 1 END, id
-    LIMIT 1;
+-- 【差异点 C】PostgreSQL 版这里是一段 PL/pgSQL 匿名块：先按 perms 语义键找到
+-- 「AI智能」目录和「Prompt模板」菜单（找不到就补建、ID 冲突就顺延），再把 4 个
+-- Prompt 按钮权限挂到正确父节点上，最后给超管补授权。
+-- MySQL 8.4 没有匿名过程块，只能建存储过程再调用再删除，代价与风险都高于收益。
+--
+-- 本文件是 MySQL 全新初始化入口，上面的 sys_menu 种子已经用固定 ID
+-- （500 / 515 / 1221-1224）播出了同一份目标状态，sys_role_menu 也已把全部菜单
+-- 授给超管，因此这里改写成等价的确定性幂等语句：按 perms 语义键纠正父子关系，
+-- 再用忽略重复的方式补授权。在 clean 库上本段是空操作，只是把"目标状态"再确认一次。
+--
+-- 边界：语句里的父节点 ID（500 / 515）是全新初始化下的固定编号，不做动态探测；
+-- 存量 MySQL 库的菜单归一需要另写 MySQL 升级脚本，本文件不承担
+-- （MySQL 目前只支持 clean init，没有历史增量升级路径）。
 
-    IF v_ai_root_id IS NULL THEN
-        IF EXISTS (SELECT 1 FROM sys_menu WHERE id = 500) THEN
-            SELECT COALESCE(MAX(id), 0) + 1 INTO v_ai_root_id FROM sys_menu;
-        ELSE
-            v_ai_root_id := 500;
-        END IF;
+UPDATE sys_menu
+SET menu_name = 'Prompt模板',
+    parent_id = 500,
+    ancestors = '0,500',
+    sort = 6,
+    path = 'prompt',
+    component = 'ai/prompt/index',
+    query = NULL,
+    menu_type = 'C',
+    visible = 0,
+    status = 0,
+    icon = 'document',
+    is_frame = 1,
+    is_cache = 0
+WHERE perms = 'ai:prompt:list';
 
-        INSERT INTO sys_menu (
-            id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
-            query, menu_type, visible, status, perms, icon, is_frame, is_cache
-        )
-        VALUES (
-            v_ai_root_id, NULL, 'AI智能', 0, '0', 5, 'ai', NULL,
-            NULL, 'M', 0, 0, NULL, 'magic-stick', 1, 0
-        );
-    END IF;
+UPDATE sys_menu
+SET menu_name = 'Prompt模板查询', parent_id = 515, ancestors = '0,500,515', sort = 1,
+    path = '', component = NULL, query = NULL, menu_type = 'F',
+    visible = 0, status = 0, icon = '#', is_frame = 1, is_cache = 0
+WHERE perms = 'ai:prompt:query';
 
-    SELECT id
-    INTO v_prompt_menu_id
-    FROM sys_menu
-    WHERE perms = 'ai:prompt:list'
-       OR (path = 'prompt' AND component = 'ai/prompt/index')
-    ORDER BY CASE WHEN id = 515 THEN 0 ELSE 1 END, id
-    LIMIT 1;
+UPDATE sys_menu
+SET menu_name = 'Prompt模板新增', parent_id = 515, ancestors = '0,500,515', sort = 2,
+    path = '', component = NULL, query = NULL, menu_type = 'F',
+    visible = 0, status = 0, icon = '#', is_frame = 1, is_cache = 0
+WHERE perms = 'ai:prompt:add';
 
-    IF v_prompt_menu_id IS NULL THEN
-        IF EXISTS (SELECT 1 FROM sys_menu WHERE id = 515) THEN
-            SELECT COALESCE(MAX(id), 0) + 1 INTO v_prompt_menu_id FROM sys_menu;
-        ELSE
-            v_prompt_menu_id := 515;
-        END IF;
+UPDATE sys_menu
+SET menu_name = 'Prompt模板编辑', parent_id = 515, ancestors = '0,500,515', sort = 3,
+    path = '', component = NULL, query = NULL, menu_type = 'F',
+    visible = 0, status = 0, icon = '#', is_frame = 1, is_cache = 0
+WHERE perms = 'ai:prompt:edit';
 
-        INSERT INTO sys_menu (
-            id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
-            query, menu_type, visible, status, perms, icon, is_frame, is_cache
-        )
-        VALUES (
-            v_prompt_menu_id, NULL, 'Prompt模板', v_ai_root_id, '0,' || v_ai_root_id,
-            6, 'prompt', 'ai/prompt/index', NULL, 'C', 0, 0,
-            'ai:prompt:list', 'document', 1, 0
-        );
-    ELSE
-        UPDATE sys_menu
-        SET menu_name = 'Prompt模板',
-            parent_id = v_ai_root_id,
-            ancestors = '0,' || v_ai_root_id,
-            sort = 6,
-            path = 'prompt',
-            component = 'ai/prompt/index',
-            menu_type = 'C',
-            visible = 0,
-            status = 0,
-            perms = 'ai:prompt:list',
-            icon = 'document',
-            is_frame = 1,
-            is_cache = 0
-        WHERE id = v_prompt_menu_id;
-    END IF;
+UPDATE sys_menu
+SET menu_name = 'Prompt模板删除', parent_id = 515, ancestors = '0,500,515', sort = 4,
+    path = '', component = NULL, query = NULL, menu_type = 'F',
+    visible = 0, status = 0, icon = '#', is_frame = 1, is_cache = 0
+WHERE perms = 'ai:prompt:remove';
 
-    FOR v_action IN
-        SELECT * FROM (
-            VALUES
-                ('Prompt模板查询', 'ai:prompt:query', 1),
-                ('Prompt模板新增', 'ai:prompt:add', 2),
-                ('Prompt模板编辑', 'ai:prompt:edit', 3),
-                ('Prompt模板删除', 'ai:prompt:remove', 4)
-        ) AS action(menu_name, perms, sort_no)
-    LOOP
-        IF EXISTS (SELECT 1 FROM sys_menu WHERE perms = v_action.perms) THEN
-            UPDATE sys_menu
-            SET menu_name = v_action.menu_name,
-                parent_id = v_prompt_menu_id,
-                ancestors = '0,' || v_ai_root_id || ',' || v_prompt_menu_id,
-                sort = v_action.sort_no,
-                path = '',
-                component = NULL,
-                query = NULL,
-                menu_type = 'F',
-                visible = 0,
-                status = 0,
-                icon = '#',
-                is_frame = 1,
-                is_cache = 0
-            WHERE perms = v_action.perms;
-        ELSE
-            SELECT COALESCE(MAX(id), 0) + 1 INTO v_next_id FROM sys_menu;
-
-            INSERT INTO sys_menu (
-                id, tenant_id, menu_name, parent_id, ancestors, sort, path, component,
-                query, menu_type, visible, status, perms, icon, is_frame, is_cache
-            )
-            VALUES (
-                v_next_id, NULL, v_action.menu_name, v_prompt_menu_id,
-                '0,' || v_ai_root_id || ',' || v_prompt_menu_id,
-                v_action.sort_no, '', NULL, NULL, 'F', 0, 0,
-                v_action.perms, '#', 1, 0
-            );
-        END IF;
-    END LOOP;
-
-    INSERT INTO sys_role_menu (role_id, menu_id)
-    SELECT role.id, menu.id
-    FROM sys_role role
-    CROSS JOIN sys_menu menu
-    WHERE (role.id = 1 OR role.role_key IN ('admin', 'super_admin'))
-      AND (
-          menu.id IN (v_ai_root_id, v_prompt_menu_id)
-          OR menu.perms IN ('ai:prompt:list', 'ai:prompt:query', 'ai:prompt:add', 'ai:prompt:edit', 'ai:prompt:remove')
-      )
-    ON CONFLICT DO NOTHING;
-END $$;
+-- 超管补授权：AI 根目录 + Prompt 模板菜单及其按钮权限；
+-- 主键冲突时跳过，等价于 PostgreSQL 版的冲突忽略写法。
+INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id
+FROM sys_role r
+CROSS JOIN sys_menu m
+WHERE (r.id = 1 OR r.role_key IN ('admin', 'super_admin'))
+  AND (
+      (m.menu_type = 'M' AND m.path = 'ai')
+      OR m.perms IN ('ai:prompt:list', 'ai:prompt:query', 'ai:prompt:add', 'ai:prompt:edit', 'ai:prompt:remove')
+  );
 
 -- 当前模块暂无独立初始化种子。
 -- 如后续新增预置数据，请在本文件补充。
-
