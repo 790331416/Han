@@ -175,24 +175,24 @@
     </el-dialog>
 
     <!-- 流程图对话框 -->
-    <el-dialog v-model="diagramVisible" title="流程图" width="80%" class="dialog-xl">
-      <div class="diagram-content">
+    <el-dialog v-model="diagramVisible" title="流程图" width="80%" class="dialog-xl" @closed="releaseDiagram">
+      <div v-loading="diagramLoading" class="diagram-content">
         <img v-if="diagramUrl" :src="diagramUrl" alt="流程图" style="max-width: 100%;" />
-        <el-empty v-else description="暂无流程图" />
+        <el-empty v-else-if="!diagramLoading" :description="diagramError || '暂无流程图'" />
       </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Upload, View, Delete, VideoPlay, VideoPause, Picture, Promotion } from '@element-plus/icons-vue'
 import {
   listProcessDefinition, deployProcessDefinition, activateProcessDefinition,
   suspendProcessDefinition, deleteProcessDefinition, getProcessDefinitionXml,
-  startProcessInstance, categoryOptions,
+  fetchProcessDefinitionDiagram, startProcessInstance, categoryOptions,
   type ProcessDefinition, type ProcessDefinitionQuery
 } from '@/api/workflow'
 import { listUser, type User } from '@/api/system/user'
@@ -207,6 +207,8 @@ const xmlVisible = ref(false)
 const xmlContent = ref('')
 const diagramVisible = ref(false)
 const diagramUrl = ref('')
+const diagramLoading = ref(false)
+const diagramError = ref('')
 
 const queryFormRef = ref<FormInstance>()
 const deployFormRef = ref<FormInstance>()
@@ -316,10 +318,27 @@ const handleViewXml = async (row: ProcessDefinition) => {
   xmlVisible.value = true
 }
 
-const handleDiagram = (row: ProcessDefinition) => {
-  const baseUrl = import.meta.env.VITE_APP_BASE_API
-  diagramUrl.value = `${baseUrl}/workflow/definition/diagram/${row.processDefinitionId}`
+/** 释放上一张流程图的 object URL，避免 blob 常驻内存 */
+const releaseDiagram = () => {
+  if (diagramUrl.value) {
+    URL.revokeObjectURL(diagramUrl.value)
+    diagramUrl.value = ''
+  }
+}
+
+const handleDiagram = async (row: ProcessDefinition) => {
+  releaseDiagram()
+  diagramError.value = ''
   diagramVisible.value = true
+  diagramLoading.value = true
+  try {
+    const blob = await fetchProcessDefinitionDiagram(row.processDefinitionId)
+    diagramUrl.value = URL.createObjectURL(blob)
+  } catch (e: any) {
+    diagramError.value = e?.message || '流程图加载失败，请稍后重试'
+  } finally {
+    diagramLoading.value = false
+  }
 }
 
 // ==================== 发起流程（E-flowstart：UI 化流程发起入口） ====================
@@ -404,6 +423,10 @@ const handleStartSubmit = async () => {
 
 onMounted(() => {
   getList()
+})
+
+onBeforeUnmount(() => {
+  releaseDiagram()
 })
 </script>
 
