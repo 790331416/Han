@@ -1,31 +1,76 @@
-import { get, post } from '@/utils/request'
-import type { PageResult } from '@/types'
+import { get#if($hasDtoColumn || $hasPk), post#end } from '@/utils/request'
+import type { PageResult, PageQuery } from '@/types'
 
+/** ${tableComment} */
 export interface ${className} {
+#if($hasPk)
+  ${pkJavaField}: $fn.tsType($pkJavaType)
+#end
 #foreach($column in $columns)
-#if($column.isList == 1)
-  ${column.javaField}: #if($column.javaType == 'Long' || $column.javaType == 'Integer')string | number#elseif($column.javaType == 'Boolean')boolean#else string#end
-
+#if($column.isList == 1 && !($hasPk && $column.javaField == $pkJavaField))
+#if($column.columnComment)
+  /** ${column.columnComment} */
+#end
+  ${column.javaField}?: $fn.tsType($column.javaType)
 #end
 #end
 }
 
-export function list${className}(query: any) {
+/** ${tableComment} 查询参数 */
+export interface ${className}Query extends PageQuery {
+#foreach($column in $columns)
+#if($column.isQuery == 1)
+#if($fn.isBetween($column.queryType))
+  ${column.javaField}Begin?: $fn.tsType($column.javaType)
+  ${column.javaField}End?: $fn.tsType($column.javaType)
+#else
+  ${column.javaField}?: $fn.tsType($column.javaType)
+#end
+#end
+#end
+}
+#if($hasDtoColumn)
+
+/** ${tableComment} 表单 */
+export interface ${className}Form {
+#if($hasPk)
+  ${pkJavaField}?: $fn.tsType($pkJavaType)
+#end
+#foreach($column in $columns)
+#if(($column.isInsert == 1 || $column.isEdit == 1) && !($hasPk && $column.javaField == $pkJavaField))
+#if($column.columnComment)
+  /** ${column.columnComment} */
+#end
+  ${column.javaField}?: $fn.tsFormType($column.javaType)
+#end
+#end
+}
+#end
+
+export function list${className}(query: ${className}Query) {
   return get<PageResult<${className}>>('/${moduleName}/${businessName}/list', query)
 }
+#if($hasPk)
 
-export function get${className}(id: string | number) {
-  return get<${className}>(`/${moduleName}/${businessName}/${'$'}{id}`)
+export function get${className}(id: $fn.tsType($pkJavaType)) {
+  return get<#if($hasDtoColumn)${className} & ${className}Form#{else}${className}#end>(`/${moduleName}/${businessName}/#[[${id}]]#`)
 }
+#end
+#if($hasDtoColumn)
 
-export function add${className}(data: any) {
+export function add${className}(data: ${className}Form) {
   return post<void>('/${moduleName}/${businessName}', data)
 }
+#if($hasPk)
 
-export function update${className}(data: any) {
+export function update${className}(data: ${className}Form) {
   return post<void>('/${moduleName}/${businessName}/edit', data)
 }
+#end
+#end
+#if($hasPk)
 
-export function delete${className}(id: string | number) {
-  return post<void>(`/${moduleName}/${businessName}/remove/${'$'}{id}`)
+export function delete${className}(id: $fn.tsType($pkJavaType)) {
+  return post<void>(`/${moduleName}/${businessName}/remove/#[[${id}]]#`)
 }
+#end

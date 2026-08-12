@@ -1,11 +1,26 @@
 package ${packageName}.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.han.common.core.domain.PageResult;
+#if($hasDtoColumn && $hasPk)
+import com.han.common.core.exception.BusinessException;
+#end
+#if($hasDtoColumn)
+import ${packageName}.domain.dto.${className}Dto;
+#end
 import ${packageName}.domain.po.${className}Po;
+import ${packageName}.domain.query.${className}Query;
 import ${packageName}.mapper.${className}Mapper;
 import ${packageName}.service.I${className}Service;
-import lombok.RequiredArgsConstructor;
+#if($hasDtoColumn)
+import org.springframework.beans.BeanUtils;
+#end
 import org.springframework.stereotype.Service;
+#if($queryHasText)
+import org.springframework.util.StringUtils;
+#end
 
 /**
  * ${tableComment} 服务实现
@@ -14,6 +29,50 @@ import org.springframework.stereotype.Service;
  * @date ${date}
  */
 @Service
-@RequiredArgsConstructor
 public class ${className}ServiceImpl extends ServiceImpl<${className}Mapper, ${className}Po> implements I${className}Service {
+
+    @Override
+    public PageResult<${className}Po> select${className}Page(${className}Query query) {
+        LambdaQueryWrapper<${className}Po> wrapper = new LambdaQueryWrapper<>();
+#foreach($column in $columns)
+#if($column.isQuery == 1)
+#if($fn.isBetween($column.queryType))
+        wrapper.between(query.get$fn.cap($column.javaField)Begin() != null && query.get$fn.cap($column.javaField)End() != null,
+                ${className}Po::get$fn.cap($column.javaField), query.get$fn.cap($column.javaField)Begin(), query.get$fn.cap($column.javaField)End());
+#elseif($fn.isStringType($column.javaType))
+        wrapper.$fn.wrapperMethod($column.queryType)(StringUtils.hasText(query.get$fn.cap($column.javaField)()),
+                ${className}Po::get$fn.cap($column.javaField), query.get$fn.cap($column.javaField)());
+#else
+        wrapper.$fn.wrapperMethod($column.queryType)(query.get$fn.cap($column.javaField)() != null,
+                ${className}Po::get$fn.cap($column.javaField), query.get$fn.cap($column.javaField)());
+#end
+#end
+#end
+        Page<${className}Po> page = super.page(new Page<>(query.getPageNum(), query.getPageSize()), wrapper);
+        return new PageResult<>(page.getRecords(), page.getTotal());
+    }
+#if($hasDtoColumn)
+
+    @Override
+    public void insert${className}(${className}Dto dto) {
+        ${className}Po po = new ${className}Po();
+        BeanUtils.copyProperties(dto, po);
+        save(po);
+    }
+#if($hasPk)
+
+    @Override
+    public void update${className}(${className}Dto dto) {
+        if (dto.get$fn.cap($pkJavaField)() == null) {
+            throw new BusinessException("${tableComment}主键不能为空");
+        }
+        ${className}Po po = getById(dto.get$fn.cap($pkJavaField)());
+        if (po == null) {
+            throw new BusinessException("${tableComment}不存在");
+        }
+        BeanUtils.copyProperties(dto, po);
+        updateById(po);
+    }
+#end
+#end
 }

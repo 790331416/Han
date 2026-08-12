@@ -1,5 +1,76 @@
--- ${tableComment} 菜单 SQL
--- 请根据实际菜单ID调整 parent_id
+-- =============================================
+-- ${tableComment} 菜单与按钮权限（幂等，可重复执行）
+-- 由代码生成器产出，作者 ${author}，日期 ${date}
+--
+-- 父菜单 ID：${parentMenuId}（0 表示挂在根目录下）
+-- sys_menu.id 无默认值也无序列，脚本按当前最大 ID 顺延分配。
+--
+-- 回滚：
+--   DELETE FROM sys_role_menu WHERE menu_id IN (SELECT id FROM sys_menu WHERE perms LIKE '${moduleName}:${businessName}:%');
+--   DELETE FROM sys_menu WHERE perms LIKE '${moduleName}:${businessName}:%';
+-- =============================================
 
-INSERT INTO sys_menu (menu_name, parent_id, order_num, path, component, menu_type, perms, icon, status)
-VALUES ('${tableComment}管理', 0, 1, '${businessName}', '${moduleName}/${businessName}/index', 'C', '${moduleName}:${businessName}:list', 'list', 0);
+DO $$
+DECLARE
+    v_parent_id BIGINT := ${parentMenuId};
+    v_ancestors VARCHAR(500);
+    v_menu_id   BIGINT;
+    v_next_id   BIGINT;
+    v_action    RECORD;
+BEGIN
+    -- 父菜单的祖级链，根目录下固定为 '0'
+    IF v_parent_id = 0 THEN
+        v_ancestors := '0';
+    ELSE
+        SELECT ancestors || ',' || id INTO v_ancestors FROM sys_menu WHERE id = v_parent_id;
+        IF v_ancestors IS NULL THEN
+            RAISE EXCEPTION '父菜单 % 不存在，请先确认 parentMenuId', v_parent_id;
+        END IF;
+    END IF;
+
+    -- 主菜单
+    SELECT id INTO v_menu_id
+    FROM sys_menu
+    WHERE perms = '${moduleName}:${businessName}:list' AND menu_type = 'C'
+    LIMIT 1;
+
+    IF v_menu_id IS NULL THEN
+        SELECT COALESCE(MAX(id), 0) + 1 INTO v_menu_id FROM sys_menu;
+
+        INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status)
+        VALUES (v_menu_id, v_parent_id, v_ancestors, '$fn.sqlLiteral($tableComment)', 'C', '${businessName}',
+                '${moduleName}/${businessName}/index', '${moduleName}:${businessName}:list', 'list', 1, 0, 0);
+    END IF;
+
+    -- 按钮权限：与生成的控制器上的 @PreAuthorize 一一对应，缺任何一条写接口都无法授权给非超管
+    FOR v_action IN
+        SELECT * FROM (VALUES
+            ('$fn.sqlLiteral($tableComment)查询', '${moduleName}:${businessName}:query', 1),
+            ('$fn.sqlLiteral($tableComment)新增', '${moduleName}:${businessName}:add', 2),
+            ('$fn.sqlLiteral($tableComment)修改', '${moduleName}:${businessName}:edit', 3),
+            ('$fn.sqlLiteral($tableComment)删除', '${moduleName}:${businessName}:remove', 4)
+        ) AS action(menu_name, perms, sort_no)
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM sys_menu WHERE perms = v_action.perms) THEN
+            SELECT COALESCE(MAX(id), 0) + 1 INTO v_next_id FROM sys_menu;
+
+            INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status)
+            VALUES (v_next_id, v_menu_id, v_ancestors || ',' || v_menu_id, v_action.menu_name, 'F', '', NULL,
+                    v_action.perms, '#', v_action.sort_no, 0, 0);
+        END IF;
+    END LOOP;
+
+    -- 超管角色补挂新菜单
+    INSERT INTO sys_role_menu (role_id, menu_id)
+    SELECT 1, menu.id
+    FROM sys_menu menu
+    WHERE menu.perms IN (
+              '${moduleName}:${businessName}:list',
+              '${moduleName}:${businessName}:query',
+              '${moduleName}:${businessName}:add',
+              '${moduleName}:${businessName}:edit',
+              '${moduleName}:${businessName}:remove')
+      AND NOT EXISTS (
+          SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = 1 AND rm.menu_id = menu.id
+      );
+END $$;

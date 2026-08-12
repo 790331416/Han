@@ -1,7 +1,12 @@
 package ${packageName}.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.han.common.core.domain.PageResult;
+#if($hasDtoColumn)
+import ${packageName}.domain.dto.${className}Dto;
+#end
 import ${packageName}.domain.po.${className}Po;
+import ${packageName}.domain.query.${className}Query;
 
 /**
  * ${tableComment} 服务接口
@@ -10,4 +15,23 @@ import ${packageName}.domain.po.${className}Po;
  * @date ${date}
  */
 public interface I${className}Service extends IService<${className}Po> {
+
+    /**
+     * 分页查询 ${tableComment}
+     */
+    PageResult<${className}Po> select${className}Page(${className}Query query);
+#if($hasDtoColumn)
+
+    /**
+     * 新增 ${tableComment}
+     */
+    void insert${className}(${className}Dto dto);
+#if($hasPk)
+
+    /**
+     * 修改 ${tableComment}
+     */
+    void update${className}(${className}Dto dto);
+#end
+#end
 }
