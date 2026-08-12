@@ -12,8 +12,10 @@ import com.han.open.domain.vo.OAuth2UserInfoVO;
 import com.han.open.service.IOpenAppService;
 import com.han.open.service.IOAuth2Service;
 import com.han.open.store.IOAuth2TokenStore;
+import com.han.open.util.PkceUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +31,7 @@ import java.util.UUID;
 public class OAuth2ServiceImpl implements IOAuth2Service {
 
     private static final int STATUS_ENABLED = 0;
+    private static final int FLAG_ENABLED = 1;
     private static final long AUTHORIZATION_CODE_TTL_SECONDS = 300L;
     private static final long DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600L;
     private static final long DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 604800L;
@@ -42,14 +45,17 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         if (!openAppService.validateRedirectUri(dto.getClientId(), dto.getRedirectUri())) {
             throw new BusinessException("redirect_uri 不合法");
         }
+        String codeChallenge = StringUtils.hasText(dto.getCodeChallenge()) ? dto.getCodeChallenge().trim() : null;
+        String codeChallengeMethod = PkceUtil.normalizeMethod(dto.getCodeChallengeMethod());
+        requirePkceSatisfied(app, codeChallenge, codeChallengeMethod);
         String code = UUID.randomUUID().toString().replace("-", "");
         tokenStore.saveAuthorizationCode(code, AuthorizationCodeRecord.builder()
                 .userId(userId)
                 .clientId(app.getAppKey())
                 .redirectUri(dto.getRedirectUri())
                 .scope(dto.getScope())
-                .codeChallenge(dto.getCodeChallenge())
-                .codeChallengeMethod(dto.getCodeChallengeMethod())
+                .codeChallenge(codeChallenge)
+                .codeChallengeMethod(codeChallenge != null ? codeChallengeMethod : null)
                 .nonce(dto.getNonce())
                 .expiresAt(Instant.now().getEpochSecond() + AUTHORIZATION_CODE_TTL_SECONDS)
                 .build(), Duration.ofSeconds(AUTHORIZATION_CODE_TTL_SECONDS));
@@ -140,12 +146,29 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         if (!record.getClientId().equals(clientId) || !record.getRedirectUri().equals(redirectUri)) {
             return null;
         }
-        if (record.getCodeChallenge() != null && !record.getCodeChallenge().isBlank()) {
-            if (codeVerifier == null || codeVerifier.isBlank()) {
-                return null;
-            }
+        if (StringUtils.hasText(record.getCodeChallenge())
+                && !PkceUtil.matches(codeVerifier, record.getCodeChallenge(), record.getCodeChallengeMethod())) {
+            return null;
         }
         return record.getUserId();
+    }
+
+    /**
+     * 应用开启 {@code require_pkce} 时，授权阶段必须携带 S256 挑战。
+     *
+     * <p>RFC 7636 的 plain 方法不能抵御授权码拦截攻击，因此强制开关下只接受 S256。
+     */
+    private void requirePkceSatisfied(OpenAppVO app, String codeChallenge, String codeChallengeMethod) {
+        boolean requirePkce = app.getRequirePkce() != null && app.getRequirePkce() == FLAG_ENABLED;
+        if (!requirePkce) {
+            return;
+        }
+        if (codeChallenge == null) {
+            throw new BusinessException("该应用已强制启用 PKCE，必须提供 code_challenge");
+        }
+        if (!PkceUtil.METHOD_S256.equals(codeChallengeMethod)) {
+            throw new BusinessException("该应用已强制启用 PKCE，code_challenge_method 必须为 S256");
+        }
     }
 
     private AccessTokenRecord requireActiveAccessToken(String accessToken) {
