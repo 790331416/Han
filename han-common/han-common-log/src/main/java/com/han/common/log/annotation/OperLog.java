@@ -34,29 +34,62 @@ public @interface OperLog {
 
     /**
      * 操作类型枚举
+     * <p>
+     * {@code code} 是落库值，取值与历史 {@code ordinal()} 完全一致，因此存量数据含义不变。
+     * 定义显式 code 是为了摆脱对枚举声明顺序的依赖 —— 往中间插一个值就会让所有历史数据漂移。
+     * <p>
+     * <b>注意</b>：han-system 的导出映射与前端展示映射目前与本枚举对不上（也彼此对不上），
+     * 审计页面显示的操作类型是错的。那两处不在本模块内，需要 system 组与前端组一并订正。
      */
     enum OperType {
         /** 其他 */
-        OTHER,
+        OTHER(0),
         /** 新增 */
-        INSERT,
+        INSERT(1),
         /** 修改 */
-        UPDATE,
+        UPDATE(2),
         /** 删除 */
-        DELETE,
+        DELETE(3),
         /** 查询 */
-        SELECT,
+        SELECT(4),
         /** 列表查询 */
-        QUERY,
+        QUERY(5),
         /** 导出 */
-        EXPORT,
+        EXPORT(6),
         /** 导入 */
-        IMPORT,
+        IMPORT(7),
         /** 授权 */
-        GRANT,
+        GRANT(8),
         /** 强退 */
-        FORCE_LOGOUT,
+        FORCE_LOGOUT(9),
         /** 清空数据 */
-        CLEAN
+        CLEAN(10);
+
+        private final int code;
+
+        OperType(int code) {
+            this.code = code;
+        }
+
+        /**
+         * 落库值
+         */
+        public int getCode() {
+            return code;
+        }
+
+        /**
+         * 按落库值反查枚举，未知值归为 {@link #OTHER}。
+         */
+        public static OperType fromCode(Integer code) {
+            if (code != null) {
+                for (OperType type : values()) {
+                    if (type.code == code) {
+                        return type;
+                    }
+                }
+            }
+            return OTHER;
+        }
     }
 }

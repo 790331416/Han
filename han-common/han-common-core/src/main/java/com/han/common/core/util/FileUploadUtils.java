@@ -13,6 +13,10 @@ import java.util.UUID;
 
 /**
  * 文件上传工具类
+ * <p>
+ * <b>限制说明</b>：大小上限与扩展名白名单是编译期常量，无法按环境或租户调整；
+ * 校验只看扩展名、没有文件头魔数校验，扩展名与真实内容不符的文件能通过。
+ * 生产上传场景请走 {@code han-file} 模块，本类仅用于内部工具型场景。
  */
 public final class FileUploadUtils {
 
@@ -38,11 +42,16 @@ public final class FileUploadUtils {
         }
 
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IOException("文件大小超过限制: 10MB");
+            throw new IOException("文件大小超过限制: " + (MAX_FILE_SIZE / 1024 / 1024) + "MB");
         }
 
         String newFilename = generateFilename(originalFilename);
-        Path path = Paths.get(uploadPath, newFilename);
+        Path base = Paths.get(uploadPath).toAbsolutePath().normalize();
+        Path path = base.resolve(newFilename).normalize();
+        // 落位必须仍在 uploadPath 之下：uploadPath 由调用方传入，不能假定它是可信的
+        if (!path.startsWith(base)) {
+            throw new IOException("非法的上传路径");
+        }
         Files.createDirectories(path.getParent());
         file.transferTo(path.toFile());
 

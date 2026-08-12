@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -91,9 +92,16 @@ public final class HanSecureUtil {
         return new String(hexChars);
     }
 
+    /** 密码字符取样必须用密码学安全随机源 */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     /**
      * 生成随机密码
+     *
+     * @deprecated 请改用 {@link PasswordUtil#generatePassword(int)} —— 那一份保证四类字符齐全，
+     * 本方法只保证随机性，可能生成不满足强度规则的口令。
      */
+    @Deprecated(since = "1.0.0")
     public static String generatePassword(int length) {
         if (length < 8) {
             length = 8;
@@ -101,15 +109,18 @@ public final class HanSecureUtil {
         StringBuilder sb = new StringBuilder();
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
         for (int i = 0; i < length; i++) {
-            int index = (int) (Math.random() * chars.length());
-            sb.append(chars.charAt(index));
+            sb.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
         }
         return sb.toString();
     }
 
     /**
-     * 验证密码强度
+     * 验证密码强度（≥8 位且四类字符全部具备）
+     *
+     * @deprecated 平台密码策略的唯一入口是 {@link PasswordUtil#validate(String)}。
+     * 本方法的规则与之不同（这里要求四类全有，那边要求四选三），并存会让同一个口令在不同入口得到不同结论。
      */
+    @Deprecated(since = "1.0.0")
     public static boolean isStrongPassword(String password) {
         if (password == null || password.length() < 8) {
             return false;

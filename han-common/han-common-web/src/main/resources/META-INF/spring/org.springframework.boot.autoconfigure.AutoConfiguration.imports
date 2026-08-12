@@ -1,2 +1,3 @@
 com.han.common.web.config.JacksonAutoConfiguration
+com.han.common.web.config.WebExceptionAutoConfiguration
 com.han.common.web.http.HttpClientAutoConfiguration
