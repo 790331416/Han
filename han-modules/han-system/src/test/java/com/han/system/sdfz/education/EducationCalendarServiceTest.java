@@ -134,4 +134,46 @@ class EducationCalendarServiceTest {
         assertThatThrownBy(() -> service.saveRoom(form)).isInstanceOf(BusinessException.class);
         verify(roomMapper, never()).updateById(any(EduRoomPo.class));
     }
+
+    // 以下三条覆盖合并教育主数据返工线时并进来的删除能力。
+
+    @Test
+    @DisplayName("删除学期时不存在的 ID 直接跳过，保持幂等")
+    void deleteSemesterSkipsMissingIds() {
+        when(semesterMapper.selectById(1L)).thenReturn(new EduSemesterPo());
+        when(semesterMapper.selectById(2L)).thenReturn(null);
+        when(semesterMapper.deleteById(1L)).thenReturn(1);
+
+        assertThat(service.deleteSemesters(java.util.List.of(1L, 2L, 1L))).isEqualTo(1);
+        verify(semesterMapper, never()).deleteById(2L);
+    }
+
+    @Test
+    @DisplayName("数字校园同步来的教室不允许在管理端删")
+    void rejectsDeletingSyncedRoom() {
+        EduRoomPo synced = new EduRoomPo();
+        synced.setId(7L);
+        synced.setSourceSystem("DIGITAL_CAMPUS");
+        when(roomMapper.selectById(7L)).thenReturn(synced);
+
+        assertThatThrownBy(() -> service.deleteRooms(java.util.List.of(7L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("数字校园");
+        verify(roomMapper, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    @DisplayName("教室下还挂着设备时先拦下，不留孤儿设备")
+    void rejectsDeletingRoomWithDevices() {
+        EduRoomPo local = new EduRoomPo();
+        local.setId(8L);
+        local.setSourceSystem("HAN");
+        when(roomMapper.selectById(8L)).thenReturn(local);
+        when(deviceMapper.selectCount(any())).thenReturn(3L);
+
+        assertThatThrownBy(() -> service.deleteRooms(java.util.List.of(8L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("设备");
+        verify(roomMapper, never()).deleteById(any(Long.class));
+    }
 }
