@@ -76,11 +76,14 @@ logging:
     root: INFO
     com.han: INFO
 
+# 网关自身的 actuator 端点由 WebFluxEndpointHandlerMapping 抢在路由匹配之前接管，
+# 不经过 AuthFilter 白名单判断，等于对网关端口的访问者裸奔。因此默认收敛：
+# 不暴露 metrics（含各接口 QPS、错误率、JVM 内存等运营数据），health 不展开明细。
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: ${MANAGEMENT_ENDPOINTS_EXPOSURE:health,info}
   endpoint:
     health:
-      show-details: always
+      show-details: ${MANAGEMENT_HEALTH_SHOW_DETAILS:never}

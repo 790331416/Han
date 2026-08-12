@@ -7,12 +7,12 @@ import org.springframework.core.Ordered;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -49,13 +49,19 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        String ip = getClientIp(exchange.getRequest());
+        String ip = ClientIpResolver.resolve(exchange.getRequest());
         String key = RATE_LIMIT_PREFIX + ip;
 
         return redisTemplate.execute(RATE_LIMIT_SCRIPT, List.of(key), List.of(String.valueOf(WINDOW_SECONDS)))
                 .next()
                 // 脚本无返回（如 Redis 异常恢复期）按放行处理，避免误伤正常流量
                 .defaultIfEmpty(1L)
+                // defaultIfEmpty 只兜空信号；Redis 连接失败/超时发出的是 error，
+                // 不降级会让本过滤器（order 最靠前）把包括登录在内的全站请求打成 500
+                .onErrorResume(e -> {
+                    log.warn("限流计数失败，降级放行: ip={}", ip, e);
+                    return Mono.just(1L);
+                })
                 .flatMap(count -> {
                     if (count > MAX_REQUESTS_PER_SECOND) {
                         log.warn("IP[{}]请求过于频繁，已限流（{}次/秒）", ip, count);
@@ -65,30 +71,16 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
                 });
     }
 
-    private String getClientIp(ServerHttpRequest request) {
-        String ip = request.getHeaders().getFirst("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeaders().getFirst("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddress() != null ? request.getRemoteAddress().getAddress().getHostAddress() : "unknown";
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.substring(0, ip.indexOf(",")).trim();
-        }
-        return ip;
-    }
-
     private Mono<Void> tooManyRequests(ServerWebExchange exchange) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
         response.getHeaders().add("Content-Type", "application/json;charset=UTF-8");
         String body = "{\"code\":429,\"msg\":\"请求过于频繁，请稍后重试\"}";
-        return response.writeWith(Mono.just(response.bufferFactory().wrap(body.getBytes())));
+        return response.writeWith(Mono.just(response.bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8))));
     }
 
     @Override
     public int getOrder() {
-        return -300;
+        return GatewayFilterOrders.RATE_LIMIT;
     }
 }
