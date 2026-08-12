@@ -97,6 +97,19 @@ require_env_vars() {
     echo "[deploy-95] see deploy/${tier}/.env.example; the tier cannot start without them" >&2
     return 1
   fi
+
+  # Docker 对不存在的 bind mount 源会静默创建空目录，Postgres 于是初始化成一个
+  # 没有任何业务表的空库，且容器日志显示 database system is ready。宁可在这里断。
+  local sql_root init_sql
+  sql_root="$(grep -E '^HAN_SQL_ROOT=' "${env_file}" | tail -n 1 || true)"
+  sql_root="${sql_root#*=}"
+  init_sql="${sql_root}/tiers/${tier}/${tier}-init.sql"
+  if [[ -n "${sql_root}" && ! -f "${init_sql}" ]]; then
+    echo "[deploy-95] tier init SQL not found: ${init_sql}" >&2
+    echo "[deploy-95] HAN_SQL_ROOT in ${env_file} points at a path without the tier init SQL;" >&2
+    echo "[deploy-95] starting now would initialise an empty database" >&2
+    return 1
+  fi
 }
 
 sync_tier_dir() {
