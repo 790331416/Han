@@ -32,6 +32,8 @@ import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserPostMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysUserService;
+import com.han.system.service.SysOnlineSessionService;
+import com.han.system.service.SysOnlineSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -68,6 +70,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     private final SysUserPostMapper userPostMapper;
     private final SysRoleMapper roleMapper;
     private final SysPostMapper postMapper;
+    private final SysOnlineSessionService onlineSessionService;
     private final TenantServiceClient tenantServiceClient;
 
     @Override
@@ -221,6 +224,11 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
                 insertUserPost(existUser.getId(), dto.getPostIds());
             }
         }
+
+        // 角色或状态变了就撤销会话：Redis 里的权限快照只在登录时写入，不撤销等于改了不生效
+        if (dto.getRoleIds() != null || dto.getStatus() != null) {
+            onlineSessionService.revokeByUserId(existUser.getId());
+        }
         return 1;
     }
 
@@ -236,6 +244,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         deleteUserRole(id);
         deleteUserPost(id);
         removeById(id);
+        onlineSessionService.revokeByUserId(id);
         return 1;
     }
 
@@ -260,6 +269,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         po.setPwdUpdateTime(java.time.LocalDateTime.now());
         po.setPwdResetFlag(1);
         updateById(po);
+        onlineSessionService.revokeByUserId(userId);
     }
 
     @Override
@@ -272,6 +282,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         po.setId(userId);
         po.setStatus(status);
         updateById(po);
+        if (status != null && status == STATUS_DISABLED) {
+            onlineSessionService.revokeByUserId(userId);
+        }
     }
 
     @Override

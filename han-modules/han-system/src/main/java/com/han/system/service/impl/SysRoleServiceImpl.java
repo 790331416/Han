@@ -20,6 +20,8 @@ import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysMenuService;
 import com.han.system.service.ISysRoleService;
+import com.han.system.service.SysOnlineSessionService;
+import com.han.system.service.SysOnlineSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +47,8 @@ public class SysRoleServiceImpl implements ISysRoleService {
     private final SysUserMapper userMapper;
     private final SysRoleConverter roleConverter;
     private final ISysMenuService menuService;
+    private final SysOnlineSessionService onlineSessionService;
+    private final SysOnlineSessionService onlineSessionService;
 
     @Override
     public PageResult<SysRolePo> selectRolePage(SysRoleQuery query) {
@@ -128,6 +132,8 @@ public class SysRoleServiceImpl implements ISysRoleService {
                 new LambdaQueryWrapper<SysRoleMenuPo>().eq(SysRoleMenuPo::getRoleId, dto.getRoleId())
         );
         insertRoleMenu(dto.getRoleId(), dto.getMenuIds());
+
+        revokeSessionsOfRole(dto.getRoleId());
     }
 
     @Override
@@ -167,6 +173,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
         role.setId(roleId);
         role.setStatus(status);
         roleMapper.updateById(role);
+        revokeSessionsOfRole(roleId);
     }
 
     @Override
@@ -258,6 +265,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
                 userRoleMapper.insert(new SysUserRolePo(userId, roleId));
             }
         }
+        onlineSessionService.revokeByUserIds(userIds);
     }
 
     @Override
@@ -274,6 +282,7 @@ public class SysRoleServiceImpl implements ISysRoleService {
                         .eq(SysUserRolePo::getRoleId, roleId)
                         .in(SysUserRolePo::getUserId, userIds)
         );
+        onlineSessionService.revokeByUserIds(userIds);
     }
 
     // ==================== 私有方法 ====================
@@ -368,6 +377,18 @@ public class SysRoleServiceImpl implements ISysRoleService {
         if (visible == null || visible != distinctIds.size()) {
             throw new ForbiddenException("存在不属于当前租户的用户，无法授权");
         }
+    }
+
+    /**
+     * 角色的菜单集合或状态变化后，撤销所有挂着该角色的用户会话。
+     *
+     * <p>不撤销的话，「停用角色」「收回菜单」这些管理动作要等 Token 过期才生效。
+     */
+    private void revokeSessionsOfRole(Long roleId) {
+        List<Long> userIds = userRoleMapper.selectList(
+                        new LambdaQueryWrapper<SysUserRolePo>().eq(SysUserRolePo::getRoleId, roleId))
+                .stream().map(SysUserRolePo::getUserId).distinct().toList();
+        onlineSessionService.revokeByUserIds(userIds);
     }
 
     private void insertRoleMenu(Long roleId, Collection<Long> menuIds) {
