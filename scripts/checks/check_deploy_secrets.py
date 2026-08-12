@@ -51,6 +51,7 @@ SELF = Path(__file__).relative_to(ROOT).as_posix()
 LEAKED_LITERALS = [
     "han@2026",
     "han-cloud-inner-auth",
+    "admin123",
     "aGFuQDIwMjZoYW5AMjAyNmhhbkAyMDI2aGFuQDIwMjZoYW5AMjAyNg==",
 ]
 
