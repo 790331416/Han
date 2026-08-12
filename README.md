@@ -40,8 +40,8 @@ han Cloud 是一个基于 Spring Boot 4.1 + Spring Cloud 2025 的企业级多租
 | 服务治理 | Spring Cloud Alibaba | 2025.1.0.0 | Nacos 3.x |
 | 追踪 | Micrometer Tracing | BOM 管理 | OpenTelemetry 集成 |
 | 数据库 | PostgreSQL | 18.1 | 主数据库 |
-| 缓存 | Redis | 7 | 缓存与分布式锁 |
-| 对象存储 | RustFS | 1.0.0 | S3 兼容对象存储 |
+| 缓存 | Redis | 8.6.0 | 缓存与分布式锁 |
+| 对象存储 | RustFS | 1.0.0-alpha.81 | S3 兼容对象存储，上游仍为 alpha 版本 |
 | 消息队列 | RabbitMQ | 3.x | 中型部署默认使用 |
 | 可选中间件 | Kafka / Elasticsearch | 3.x / 8.x | full 建议外挂 |
 | 服务治理 | Nacos | 3.1 | 注册中心与配置中心 |
@@ -60,11 +60,14 @@ Han/
 ├── han-auth/            # 认证服务
 ├── han-api/             # API 接口定义
 ├── han-modules/         # 业务模块
+├── han-visual/          # 监控可视化模块，参与构建但不在三档部署入口内
 ├── han-ui/              # 前端项目
+├── docker/              # 后端服务镜像构建入口（Dockerfile）
 ├── docs/                # 正式文档入口
 ├── sql/                 # 正式 SQL 入口
 ├── deploy/              # 正式部署入口
-└── scripts/             # 校验与辅助脚本
+├── scripts/             # 校验与辅助脚本
+└── .github/             # CI 工作流，含 repo-guard 仓库结构门禁
 ```
 
 ### 模块说明
@@ -81,6 +84,14 @@ Han/
 | `han-file` | 文件与 OSS |
 | `han-ai` | 模型、知识库、Prompt、MCP、应用、对话 |
 | `han-gen` | 代码生成 |
+
+### 未纳入三档部署入口的模块
+
+| 模块 | 当前状态 |
+| --- | --- |
+| `han-visual/han-monitor` | Spring Boot Admin 监控中心，默认端口 `9100`。已由根 `pom.xml` 纳入聚合构建，但 `deploy/small`、`deploy/medium`、`deploy/full` 三档 compose 均未包含该服务，需要单独启动。模块去留尚未定论，此处仅记录现状。 |
+
+三档能力矩阵中的「基础监控」由 `han-system` 提供，与 `han-visual/han-monitor` 不是同一套能力，不要混淆。
 
 ## 部署方案
 
@@ -143,7 +154,7 @@ docker compose -f deploy/full/docker-compose.yml up -d
 | 文档 | 说明 |
 | --- | --- |
 | [01-产品与架构总览](docs/01-产品与架构总览.md) | 产品定位、拓扑、能力矩阵、A/I/B 架构、开放平台能力 |
-| [02-开发手册](docs/02-开发手册.md) | 本地开发、技术栈约束、开发规范、对接口径、安全与测试要求 |
+| [02-开发手册](docs/02-开发手册.md) | 本地开发、技术栈禁令与编码约束、开发规范、对接口径、安全与测试要求（版本号以本页技术栈表和根 `pom.xml` 为准） |
 | [03-部署手册](docs/03-部署手册.md) | 三档部署、本地开发部署、Kubernetes 说明、SQL/Nacos 初始化、回滚与排障 |
 | [04-测试与验收手册](docs/04-测试与验收手册.md) | 测试策略、手测清单、Playwright、当前通过状态 |
 | [05-运维与95环境手册](docs/05-运维与95环境手册.md) | 95 目录、发布链路、Nacos / PostgreSQL 运维、清理与排障 |
@@ -152,6 +163,7 @@ docker compose -f deploy/full/docker-compose.yml up -d
 | [08-AI短剧开发手册](docs/08-AI短剧开发手册.md) | AIVideo / AI 短剧开发入口、模块边界、发布门禁 |
 | [09-代码注释规范](docs/09-代码注释规范.md) | 前后端中文注释、JavaDoc、SQL/脚本注释规范 |
 | [10-系统枚举治理与公共能力落位](docs/10-系统枚举治理与公共能力落位.md) | 枚举治理与公共能力落位 |
+| [AI 短剧文档目录](docs/aivideo/README.md) | AI 短剧需求摘要、页面交互、模块边界、数据库与接口设计等细目 |
 | [docs/index.md](docs/index.md) | 正式文档索引页 |
 
 ## SQL 与部署入口
@@ -188,7 +200,7 @@ orderSyncTask.sync(100000,10)
 
 - JDK 21+
 - Maven 3.9+
-- Node.js 18+
+- Node.js 20+（本机工具链固定 24.14.0）
 - Docker 26+
 
 ### 本地开发
