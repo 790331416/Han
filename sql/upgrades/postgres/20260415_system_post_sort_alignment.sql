@@ -24,6 +24,6 @@ BEGIN
         ALTER TABLE sys_post ADD COLUMN post_sort INT DEFAULT 0;
     END IF;
 
-    UPDATE sys_post SET post_sort = COALESCE(post_sort, 0);
+    UPDATE sys_post SET post_sort = 0 WHERE post_sort IS NULL;
     ALTER TABLE sys_post ALTER COLUMN post_sort SET DEFAULT 0;
 END $$;
