@@ -425,35 +425,36 @@ CREATE TABLE sys_client (
 -- =============================================
 -- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）
 -- =============================================
--- 无法等价转换点：PostgreSQL 版这八个唯一索引都带 WHERE del_flag = 0，
--- MySQL 8.4 不支持部分索引（也没有等价的条件唯一约束），因此这里只能建成全表唯一索引。
--- 行为差异：软删除一条记录后，同名记录在 MySQL 上无法再次创建，需要先物理清理或改名，
--- 业务侧的“删除后重建同名对象”路径在 MySQL 上会被唯一键拦下。
+-- PostgreSQL 版这八个唯一索引都带 WHERE del_flag = 0。MySQL 8.4 确实没有部分索引，
+-- 但有函数式键部件（8.0.13 起支持）：追加一列 (IF(del_flag = 0, 0, NULL))，
+-- 未删除行取 0 参与唯一性判定，已删除行取 NULL —— NULL 在唯一索引里互不冲突，
+-- 于是「软删后可以重建同名对象」这个语义被完整复现。写法与 small-init-mysql.sql 一致。
+-- 与 PostgreSQL 的差异只剩索引体积：MySQL 仍然收录已删除行，只是键值判为 NULL。
 -- 索引名与列顺序保持与 PostgreSQL 版一致，避免两边结构对照时被认成不同索引。
 -- COALESCE(tenant_id, 0) 一律改走各表的 tenant_scope 生成列。
 CREATE UNIQUE INDEX sys_user_username_tenant_uniq
-    ON sys_user (username, tenant_id);
+    ON sys_user (username, tenant_id, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_role_key_tenant
-    ON sys_role (tenant_id, role_key);
+    ON sys_role (tenant_id, role_key, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_role_name_tenant
-    ON sys_role (tenant_id, role_name);
+    ON sys_role (tenant_id, role_name, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_post_code_tenant
-    ON sys_post (tenant_id, post_code);
+    ON sys_post (tenant_id, post_code, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_dict_type_tenant
-    ON sys_dict_type (tenant_scope, dict_type);
+    ON sys_dict_type (tenant_scope, dict_type, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_dict_data_tenant
-    ON sys_dict_data (tenant_scope, dict_type, dict_value);
+    ON sys_dict_data (tenant_scope, dict_type, dict_value, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_config_key_tenant
-    ON sys_config (tenant_scope, config_key);
+    ON sys_config (tenant_scope, config_key, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_client_key
-    ON sys_client (client_key);
+    ON sys_client (client_key, (IF(del_flag = 0, 0, NULL)));
 
 
 -- ============================================================

@@ -460,39 +460,40 @@ CREATE TABLE sys_client (
 -- =============================================
 -- 22. 唯一约束（PostgreSQL 侧是与逻辑删除兼容的部分唯一索引）
 -- =============================================
--- 【差异点 A：语义不等价，不是遗漏】
 -- PostgreSQL 版这几个索引都带 "WHERE del_flag = 0"，作用是让软删除过的记录
 -- 不占用唯一名字空间，删掉 admin 之后还能再建一个 admin。
--- MySQL 8.4 没有筛选索引（partial / filtered index），这里只能建全量唯一索引：
--- 同一条 (username, tenant_id) 被软删除后，MySQL 上**再也建不出同名记录**。
--- 若业务依赖"软删后重建同名"，在 MySQL 上必须改走物理删除，或由应用层加后缀。
+-- MySQL 8.4 确实没有筛选索引，但有函数式键部件（8.0.13 起支持）：
+-- 追加一列 (IF(del_flag = 0, 0, NULL))，未删除行取 0 参与唯一性判定，
+-- 已删除行取 NULL —— NULL 在唯一索引里互不冲突，语义被完整复现。
+-- 写法与 small-init-mysql.sql 一致，三档保持同一口径。
+-- 与 PostgreSQL 的差异只剩索引体积：MySQL 仍收录已删除行，只是键值判为 NULL。
 -- 索引名与列顺序保持与 PostgreSQL 版一致，便于两边对照与后续升级链复用。
 CREATE UNIQUE INDEX sys_user_username_tenant_uniq
-    ON sys_user (username, tenant_id);
+    ON sys_user (username, tenant_id, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_role_key_tenant
-    ON sys_role (tenant_id, role_key);
+    ON sys_role (tenant_id, role_key, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_role_name_tenant
-    ON sys_role (tenant_id, role_name);
+    ON sys_role (tenant_id, role_name, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_post_code_tenant
-    ON sys_post (tenant_id, post_code);
+    ON sys_post (tenant_id, post_code, (IF(del_flag = 0, 0, NULL)));
 
 -- 下面三个在 PostgreSQL 上同时是"表达式索引 + 部分索引"，
--- MySQL 侧用 tenant_scope 生成列还原 COALESCE(tenant_id, 0) 部分（等价），
--- del_flag 过滤部分无法还原（同【差异点 A】）。
+-- MySQL 侧用 tenant_scope 生成列还原 COALESCE(tenant_id, 0)，
+-- 用 IF(del_flag...) 函数式键部件还原 del_flag 过滤，两部分都等价。
 CREATE UNIQUE INDEX uk_sys_dict_type_tenant
-    ON sys_dict_type (tenant_scope, dict_type);
+    ON sys_dict_type (tenant_scope, dict_type, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_dict_data_tenant
-    ON sys_dict_data (tenant_scope, dict_type, dict_value);
+    ON sys_dict_data (tenant_scope, dict_type, dict_value, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_config_key_tenant
-    ON sys_config (tenant_scope, config_key);
+    ON sys_config (tenant_scope, config_key, (IF(del_flag = 0, 0, NULL)));
 
 CREATE UNIQUE INDEX uk_sys_client_key
-    ON sys_client (client_key);
+    ON sys_client (client_key, (IF(del_flag = 0, 0, NULL)));
 
 
 -- ============================================================
