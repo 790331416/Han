@@ -10,11 +10,13 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.mybatis.util.PageHelper;
+import com.han.tenant.converter.TenantApiConverter;
 import com.han.tenant.converter.TenantConverter;
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.po.TenantPackagePo;
 import com.han.tenant.domain.po.TenantPo;
 import com.han.tenant.domain.query.TenantQuery;
+import com.han.tenant.domain.vo.TenantOptionVO;
 import com.han.tenant.domain.vo.TenantVO;
 import com.han.tenant.mapper.TenantMapper;
 import com.han.tenant.mapper.TenantPackageMapper;
@@ -49,6 +51,7 @@ public class TenantServiceImpl implements ITenantService {
     private final TenantMapper tenantMapper;
     private final TenantPackageMapper packageMapper;
     private final TenantConverter tenantConverter;
+    private final TenantApiConverter tenantApiConverter;
     private final SystemClient systemClient;
 
     @Override
@@ -170,12 +173,7 @@ public class TenantServiceImpl implements ITenantService {
 
     @Override
     public TenantVO getTenantByDomain(String domain) {
-        TenantPo po = TenantHelper.ignore(() ->
-                tenantMapper.selectOne(new LambdaQueryWrapper<TenantPo>()
-                        .eq(TenantPo::getDomain, domain)
-                        .eq(TenantPo::getStatus, STATUS_ENABLED)
-                        .last("LIMIT 1"))
-        );
+        TenantPo po = findEnabledByDomain(domain);
         List<TenantPo> singleTenant = wrapSingle(po);
         return enrichTenantVo(po, loadPackageNameMap(singleTenant), loadUserCountMap(singleTenant));
     }
@@ -218,16 +216,38 @@ public class TenantServiceImpl implements ITenantService {
 
     @Override
     public List<TenantVO> listAllValidTenants() {
-        List<TenantPo> list = TenantHelper.ignore(() ->
-                tenantMapper.selectList(new LambdaQueryWrapper<TenantPo>()
-                        .eq(TenantPo::getStatus, STATUS_ENABLED)
-                        .orderByDesc(TenantPo::getCreateTime))
-        );
+        List<TenantPo> list = selectEnabledTenants();
         Map<Long, String> packageNameMap = loadPackageNameMap(list);
         Map<Long, Integer> userCountMap = loadUserCountMap(list);
         return list.stream()
                 .map(po -> enrichTenantVo(po, packageNameMap, userCountMap))
                 .toList();
+    }
+
+    @Override
+    public List<TenantOptionVO> listTenantOptions() {
+        // 匿名场景：不加载套餐名与用户数，既避免暴露经营信息，也避免按租户逐个远程调用
+        return tenantConverter.toOptionVOList(selectEnabledTenants());
+    }
+
+    @Override
+    public TenantOptionVO getTenantOptionByDomain(String domain) {
+        return tenantConverter.toOptionVO(findEnabledByDomain(domain));
+    }
+
+    @Override
+    public com.han.api.tenant.domain.TenantVO getApiTenantById(Long tenantId) {
+        if (tenantId == null) {
+            return null;
+        }
+        TenantPo po = TenantHelper.ignore(() -> tenantMapper.selectById(tenantId));
+        return tenantApiConverter.toApiVO(po);
+    }
+
+    @Override
+    public List<com.han.api.tenant.domain.TenantVO> listApiValidTenants() {
+        // 内部调用方（han-auth 的租户下拉与租户名解析）只需要租户主数据，不触发用户数远程调用
+        return tenantApiConverter.toApiVOList(selectEnabledTenants());
     }
 
     @Override
@@ -277,6 +297,26 @@ public class TenantServiceImpl implements ITenantService {
 
         TenantHelper.ignore(() -> tenantMapper.deleteById(tenantId));
         log.info("租户安全删除完成: tenantId={}, tenantName={}", tenantId, tenant.getTenantName());
+    }
+
+    private List<TenantPo> selectEnabledTenants() {
+        return TenantHelper.ignore(() ->
+                tenantMapper.selectList(new LambdaQueryWrapper<TenantPo>()
+                        .eq(TenantPo::getStatus, STATUS_ENABLED)
+                        .orderByDesc(TenantPo::getCreateTime))
+        );
+    }
+
+    private TenantPo findEnabledByDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return null;
+        }
+        return TenantHelper.ignore(() ->
+                tenantMapper.selectOne(new LambdaQueryWrapper<TenantPo>()
+                        .eq(TenantPo::getDomain, domain)
+                        .eq(TenantPo::getStatus, STATUS_ENABLED)
+                        .last("LIMIT 1"))
+        );
     }
 
     private void applyTenantDefaults(TenantPo po) {
