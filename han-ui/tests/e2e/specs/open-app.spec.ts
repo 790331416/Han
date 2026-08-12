@@ -73,7 +73,7 @@ test.describe('开放平台应用管理', () => {
       await expect(updatedRow).toBeVisible()
       await expect(updatedRow).toContainText(updatedContactName)
 
-      // 停用会立即切断接入方调用，现在需要二次确认
+      // 停用会立刻让所有使用该 AppKey 的接入方鉴权失败，页面对此加了二次确认
       await authenticatedPage.getByTestId(`open-app-status-switch-${createdAppId}`).click()
       const disableDialog = authenticatedPage.locator('.el-message-box').last()
       await expect(disableDialog).toContainText('确认停用吗')
@@ -92,7 +92,8 @@ test.describe('开放平台应用管理', () => {
       const secretDialog = authenticatedPage.getByTestId('open-app-secret-dialog')
       await expect(secretDialog).toBeVisible()
       await expect(secretDialog).toContainText('新密钥仅本次可见')
-      const secretValue = await authenticatedPage.getByTestId('open-app-secret-value').locator('input').inputValue()
+      // el-input 的 inheritAttrs 为 false，data-testid 直接落在内层 <input> 上，不能再往下找 input
+      const secretValue = await authenticatedPage.getByTestId('open-app-secret-value').inputValue()
       expect(secretValue).toMatch(/\S+/)
       await authenticatedPage.getByTestId('open-app-secret-close').click()
 
