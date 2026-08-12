@@ -25,6 +25,11 @@ public class StorageProperties {
      */
     private int providerCacheSize = 16;
 
+    /**
+     * 桶不存在时是否自动创建；生产环境建议关闭并按最小权限授予服务账号。
+     */
+    private boolean autoCreateBucket = true;
+
     public String getType() {
         return type;
     }
@@ -55,6 +60,14 @@ public class StorageProperties {
 
     public void setProviderCacheSize(int providerCacheSize) {
         this.providerCacheSize = providerCacheSize;
+    }
+
+    public boolean isAutoCreateBucket() {
+        return autoCreateBucket;
+    }
+
+    public void setAutoCreateBucket(boolean autoCreateBucket) {
+        this.autoCreateBucket = autoCreateBucket;
     }
 
     public static class RustFS {

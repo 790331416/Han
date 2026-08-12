@@ -3,6 +3,7 @@ package com.han.starter.storage.impl;
 import com.han.starter.storage.StorageProvider;
 import com.han.starter.storage.config.StorageProperties;
 import com.han.starter.storage.config.StorageRuntimeConfig;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -22,6 +23,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 
+@Slf4j
 public class RustFSStorageProvider implements StorageProvider, Closeable {
 
     /**
@@ -39,6 +41,10 @@ public class RustFSStorageProvider implements StorageProvider, Closeable {
     }
 
     public RustFSStorageProvider(StorageRuntimeConfig config) {
+        this(config, true);
+    }
+
+    public RustFSStorageProvider(StorageRuntimeConfig config, boolean autoCreateBucket) {
         this.bucket = requireConfigured(config.getBucketName(), "bucket");
         this.endpoint = normalizeEndpoint(config.getEndpoint(), config.getIsHttps());
         this.prefix = normalizePrefix(config.getPrefix());
@@ -52,12 +58,38 @@ public class RustFSStorageProvider implements StorageProvider, Closeable {
                 .forcePathStyle(true)
                 .build();
 
-        // Ensure bucket exists
+        ensureBucket(autoCreateBucket);
+    }
+
+    /**
+     * 先探测再建桶。凭据错误、endpoint 不通、权限不足这些问题必须在这里就留下日志，
+     * 否则要等到第一次上传失败才暴露，届时只剩一句 {@code RustFS upload failed} 看不出根因。
+     * 日志只打 endpoint 与 bucket，绝不打凭据。
+     */
+    private void ensureBucket(boolean autoCreateBucket) {
+        try {
+            s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+            return;
+        } catch (NoSuchBucketException e) {
+            if (!autoCreateBucket) {
+                log.warn("Storage bucket does not exist and auto-create is disabled, endpoint={}, bucket={}", endpoint, bucket);
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("Storage bucket probe failed, endpoint={}, bucket={}, cause={}: {}",
+                    endpoint, bucket, e.getClass().getSimpleName(), e.getMessage());
+            if (!autoCreateBucket) {
+                return;
+            }
+        }
         try {
             s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+            log.info("Storage bucket created, endpoint={}, bucket={}", endpoint, bucket);
         } catch (BucketAlreadyExistsException | BucketAlreadyOwnedByYouException ignored) {
+            // 并发启动时另一个实例已经建好，属正常竞态
         } catch (Exception e) {
-            // Log or handle other exceptions
+            log.warn("Storage bucket create failed, endpoint={}, bucket={}, cause={}: {}",
+                    endpoint, bucket, e.getClass().getSimpleName(), e.getMessage());
         }
     }
 
@@ -194,11 +226,14 @@ public class RustFSStorageProvider implements StorageProvider, Closeable {
         try {
             s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(buildObjectKey(path)).build());
             return true;
-        } catch (NoSuchKeyException e) {
+        } catch (NoSuchKeyException | NoSuchBucketException e) {
             return false;
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
+            // 权限不足 / 网络不可达也会走到这里，返回 false 会被误读成「对象不存在」，至少留痕
+            log.warn("Storage object probe failed, bucket={}, path={}, cause={}: {}",
+                    bucket, path, e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
     }

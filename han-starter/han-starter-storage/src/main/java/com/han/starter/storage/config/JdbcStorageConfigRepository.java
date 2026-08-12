@@ -121,7 +121,10 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
         try {
             value = loader.load();
         } catch (SQLException ex) {
-            log.debug("Skipping database-backed storage config lookup: {}", ex.getMessage());
+            // 查库失败与「确实没配」是两回事：前者会让调用方静默退回兜底配置、把文件写进别的桶，
+            // 必须打到 warn（生产日志级别是 INFO，debug 等于没记）。查询失败不进缓存，下次重试。
+            log.warn("Storage config lookup failed, falling back to static configuration, key={}, cause={}: {}",
+                    key, ex.getClass().getSimpleName(), ex.getMessage());
             return Optional.empty();
         }
         if (cacheTtlMillis > 0) {
