@@ -413,7 +413,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1, 0, '0', '系统管理', 'M', 'system', NULL, NULL, 'system', 1, 0, 0),
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
 (3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
-(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0);
+(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
+(5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (100, 1, '0,1', '用户管理', 'C', 'user', 'system/user/index', 'system:user:list', 'user', 1, 0, 0),
@@ -440,6 +441,13 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
 (401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0);
+
+-- 7.1 任务调度菜单
+-- 菜单 ID 与 sql/upgrades/postgres/phase9_base_menu_backfill.sql 保持同一套编号，
+-- 避免旧库回放 phase9 时重复插入或错挂父节点。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(210, 5, '0,5', '定时任务', 'C', 'list', 'job/index', 'job:list', 'clock', 1, 0, 0),
+(211, 5, '0,5', '调度日志', 'C', 'log', 'job/log', 'job:log:list', 'document', 2, 0, 0);
 
 -- 按钮权限
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
@@ -482,6 +490,20 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
 (1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0);
+
+-- 按钮权限（1100 段）：与后端 @PreAuthorize 声明的权限串一一对应
+-- 权限串以后端注解为准；1100 段之前的历史按钮权限保持原有编号不动。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(1101, 100, '0,1,100', '社交解绑', 'F', '', NULL, 'system:user:unbind', '#', 8, 0, 0),
+(1111, 201, '0,2,201', '操作日志导出', 'F', '', NULL, 'monitor:operlog:export', '#', 1, 0, 0),
+(1112, 201, '0,2,201', '操作日志删除', 'F', '', NULL, 'monitor:operlog:remove', '#', 2, 0, 0),
+(1113, 202, '0,2,202', '登录日志导出', 'F', '', NULL, 'monitor:loginlog:export', '#', 1, 0, 0),
+(1114, 202, '0,2,202', '登录日志删除', 'F', '', NULL, 'monitor:loginlog:remove', '#', 2, 0, 0),
+(1115, 200, '0,2,200', '强制下线', 'F', '', NULL, 'monitor:online:forceLogout', '#', 1, 0, 0),
+(1131, 210, '0,5,210', '任务新增', 'F', '', NULL, 'job:add', '#', 1, 0, 0),
+(1132, 210, '0,5,210', '任务修改', 'F', '', NULL, 'job:edit', '#', 2, 0, 0),
+(1133, 210, '0,5,210', '任务删除', 'F', '', NULL, 'job:remove', '#', 3, 0, 0),
+(1134, 211, '0,5,211', '调度日志删除', 'F', '', NULL, 'job:log:remove', '#', 1, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);

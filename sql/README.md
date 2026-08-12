@@ -38,6 +38,7 @@
 - `20260703_file_manage_menu.sql`：系统管理新增「文件管理」菜单与 `file:query`/`file:remove` 按钮权限，配套 han-file `/file/list`、`/file/remove` 管理接口
 - `20260703_ai_agent_share_key.sql`：`ai_agent` 增 `share_key` 分享链接 key，配套应用发布公开对话接口与免登录分享页
 - `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除同租户、同类型且名称/状态/备注完全一致的重复字典类型，保留最小 ID；内容冲突的重复继续由升级演练拦截
+- `20260812_permission_seed_alignment.sql`：补齐 AI / job / tenant / OSS / 开放平台 / 日志与在线用户的权限点种子，并把日志与监控权限串统一到后端 `monitor:*` 口径；按模块表是否存在做档位裁剪
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 

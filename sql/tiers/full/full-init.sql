@@ -413,7 +413,11 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1, 0, '0', '系统管理', 'M', 'system', NULL, NULL, 'system', 1, 0, 0),
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
 (3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
-(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0);
+(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
+(5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0),
+(6, 0, '0', '工作流', 'M', 'workflow', NULL, NULL, 'connection', 6, 0, 0),
+(7, 0, '0', '开放平台', 'M', 'open', NULL, NULL, 'platform', 7, 0, 0),
+(500, 0, '0', 'AI智能', 'M', 'ai', NULL, NULL, 'magic-stick', 8, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (100, 1, '0,1', '用户管理', 'C', 'user', 'system/user/index', 'system:user:list', 'user', 1, 0, 0),
@@ -425,7 +429,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (106, 1, '0,1', '参数设置', 'C', 'config', 'system/config/index', 'system:config:list', 'edit', 7, 0, 0),
 (107, 1, '0,1', '通知公告', 'C', 'notice', 'system/notice/index', 'system:notice:list', 'message', 8, 0, 0),
 (108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0),
-(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0);
+(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0),
+(110, 1, '0,1', 'OSS配置', 'C', 'oss-config', 'system/oss-config/index', 'system:oss:list', 'upload', 11, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (200, 2, '0,2', '在线用户', 'C', 'online', 'monitor/online/index', 'monitor:online:list', 'online', 1, 0, 0),
@@ -440,7 +445,34 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
-(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0);
+(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0),
+(402, 4, '0,4', '资源配额', 'C', 'quota', 'tenant/quota/index', 'tenant:quota:query', 'pie-chart', 3, 0, 0);
+
+-- 7.1 任务调度 / 工作流 / 开放平台 / AI 智能菜单
+-- 菜单 ID 与 sql/upgrades/postgres/phase9_base_menu_backfill.sql 保持同一套编号，
+-- 避免旧库回放 phase9 时重复插入或错挂父节点。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(210, 5, '0,5', '定时任务', 'C', 'list', 'job/index', 'job:list', 'clock', 1, 0, 0),
+(211, 5, '0,5', '调度日志', 'C', 'log', 'job/log', 'job:log:list', 'document', 2, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(310, 6, '0,6', '流程定义', 'C', 'definition', 'workflow/definition/index', 'workflow:definition:list', 'document', 1, 0, 0),
+(311, 6, '0,6', '流程实例', 'C', 'instance', 'workflow/instance/index', 'workflow:instance:list', 'histogram', 2, 0, 0),
+(312, 6, '0,6', '待办任务', 'C', 'todo', 'workflow/task/index', 'workflow:task:todo', 'bell', 3, 0, 0),
+(313, 6, '0,6', '已办任务', 'C', 'done', 'workflow/task/done', 'workflow:task:done', 'finished', 4, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(410, 7, '0,7', '应用管理', 'C', 'app', 'open/app/index', 'open:app:list', 'grid', 1, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(510, 500, '0,500', 'AI模型管理', 'C', 'model', 'ai/model/index', 'ai:model:list', 'cpu', 1, 0, 0),
+(511, 500, '0,500', '知识库', 'C', 'knowledge', 'ai/knowledge/index', 'ai:kb:list', 'collection', 2, 0, 0),
+(512, 500, '0,500', 'MCP管理', 'C', 'mcp', 'ai/mcp/index', 'ai:mcp:list', 'link', 3, 0, 0),
+(513, 500, '0,500', '智能体', 'C', 'agent', 'ai/agent/index', 'ai:agent:list', 'user-filled', 4, 0, 0),
+(514, 500, '0,500', 'AI工作流', 'C', 'workflow', 'ai/workflow/index', 'ai:workflow:list', 'chat-dot-round', 5, 0, 0),
+(515, 500, '0,500', 'Prompt模板', 'C', 'prompt', 'ai/prompt/index', 'ai:prompt:list', 'document', 6, 0, 0),
+(516, 500, '0,500', 'Token统计', 'C', 'token', 'ai/token/index', 'ai:token:stats', 'data-analysis', 7, 0, 0),
+(517, 500, '0,500', 'AI对话', 'C', 'chat', 'ai/chat/index', 'ai:chat:list', 'chat-line-square', 8, 0, 0);
 
 -- 按钮权限
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
@@ -485,6 +517,64 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
 (1091, 109, '0,1,109', '文件查询', 'F', '', NULL, 'file:query', '#', 1, 0, 0),
 (1092, 109, '0,1,109', '文件删除', 'F', '', NULL, 'file:remove', '#', 2, 0, 0);
+
+-- 按钮权限（1100 段）：与后端 @PreAuthorize 声明的权限串一一对应
+-- 权限串以后端注解为准；1100 段之前的历史按钮权限保持原有编号不动。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(1101, 100, '0,1,100', '社交解绑', 'F', '', NULL, 'system:user:unbind', '#', 8, 0, 0),
+(1111, 201, '0,2,201', '操作日志导出', 'F', '', NULL, 'monitor:operlog:export', '#', 1, 0, 0),
+(1112, 201, '0,2,201', '操作日志删除', 'F', '', NULL, 'monitor:operlog:remove', '#', 2, 0, 0),
+(1113, 202, '0,2,202', '登录日志导出', 'F', '', NULL, 'monitor:loginlog:export', '#', 1, 0, 0),
+(1114, 202, '0,2,202', '登录日志删除', 'F', '', NULL, 'monitor:loginlog:remove', '#', 2, 0, 0),
+(1115, 200, '0,2,200', '强制下线', 'F', '', NULL, 'monitor:online:forceLogout', '#', 1, 0, 0),
+(1121, 110, '0,1,110', 'OSS配置查询', 'F', '', NULL, 'system:oss:query', '#', 1, 0, 0),
+(1122, 110, '0,1,110', 'OSS配置新增', 'F', '', NULL, 'system:oss:add', '#', 2, 0, 0),
+(1123, 110, '0,1,110', 'OSS配置修改', 'F', '', NULL, 'system:oss:edit', '#', 3, 0, 0),
+(1124, 110, '0,1,110', 'OSS配置删除', 'F', '', NULL, 'system:oss:remove', '#', 4, 0, 0),
+(1131, 210, '0,5,210', '任务新增', 'F', '', NULL, 'job:add', '#', 1, 0, 0),
+(1132, 210, '0,5,210', '任务修改', 'F', '', NULL, 'job:edit', '#', 2, 0, 0),
+(1133, 210, '0,5,210', '任务删除', 'F', '', NULL, 'job:remove', '#', 3, 0, 0),
+(1134, 211, '0,5,211', '调度日志删除', 'F', '', NULL, 'job:log:remove', '#', 1, 0, 0),
+(1141, 400, '0,4,400', '租户查询', 'F', '', NULL, 'tenant:query', '#', 1, 0, 0),
+(1142, 400, '0,4,400', '租户新增', 'F', '', NULL, 'tenant:add', '#', 2, 0, 0),
+(1143, 400, '0,4,400', '租户修改', 'F', '', NULL, 'tenant:edit', '#', 3, 0, 0),
+(1144, 400, '0,4,400', '租户删除', 'F', '', NULL, 'tenant:remove', '#', 4, 0, 0),
+(1145, 400, '0,4,400', '租户计费查询', 'F', '', NULL, 'system:tenant:list', '#', 5, 0, 0),
+(1146, 400, '0,4,400', '租户计费变更', 'F', '', NULL, 'system:tenant:edit', '#', 6, 0, 0),
+(1151, 401, '0,4,401', '套餐查询', 'F', '', NULL, 'tenant:package:query', '#', 1, 0, 0),
+(1152, 401, '0,4,401', '套餐新增', 'F', '', NULL, 'tenant:package:add', '#', 2, 0, 0),
+(1153, 401, '0,4,401', '套餐修改', 'F', '', NULL, 'tenant:package:edit', '#', 3, 0, 0),
+(1154, 401, '0,4,401', '套餐删除', 'F', '', NULL, 'tenant:package:remove', '#', 4, 0, 0),
+(1155, 402, '0,4,402', '配额修改', 'F', '', NULL, 'tenant:quota:edit', '#', 1, 0, 0),
+(1161, 410, '0,7,410', '应用查询', 'F', '', NULL, 'open:app:query', '#', 1, 0, 0),
+(1162, 410, '0,7,410', '应用新增', 'F', '', NULL, 'open:app:add', '#', 2, 0, 0),
+(1163, 410, '0,7,410', '应用修改', 'F', '', NULL, 'open:app:edit', '#', 3, 0, 0),
+(1164, 410, '0,7,410', '应用删除', 'F', '', NULL, 'open:app:remove', '#', 4, 0, 0),
+(1165, 410, '0,7,410', '重置密钥', 'F', '', NULL, 'open:app:resetSecret', '#', 5, 0, 0),
+(1171, 510, '0,500,510', 'AI模型查询', 'F', '', NULL, 'ai:model:query', '#', 1, 0, 0),
+(1172, 510, '0,500,510', 'AI模型新增', 'F', '', NULL, 'ai:model:add', '#', 2, 0, 0),
+(1173, 510, '0,500,510', 'AI模型修改', 'F', '', NULL, 'ai:model:edit', '#', 3, 0, 0),
+(1174, 510, '0,500,510', 'AI模型删除', 'F', '', NULL, 'ai:model:remove', '#', 4, 0, 0),
+(1175, 510, '0,500,510', 'AI模型连通性测试', 'F', '', NULL, 'ai:model:test', '#', 5, 0, 0),
+(1181, 511, '0,500,511', '知识库查询', 'F', '', NULL, 'ai:kb:query', '#', 1, 0, 0),
+(1182, 511, '0,500,511', '知识库新增', 'F', '', NULL, 'ai:kb:add', '#', 2, 0, 0),
+(1183, 511, '0,500,511', '知识库修改', 'F', '', NULL, 'ai:kb:edit', '#', 3, 0, 0),
+(1184, 511, '0,500,511', '知识库删除', 'F', '', NULL, 'ai:kb:remove', '#', 4, 0, 0),
+(1185, 511, '0,500,511', '知识库文档上传', 'F', '', NULL, 'ai:kb:upload', '#', 5, 0, 0),
+(1191, 512, '0,500,512', 'MCP查询', 'F', '', NULL, 'ai:mcp:query', '#', 1, 0, 0),
+(1192, 512, '0,500,512', 'MCP新增', 'F', '', NULL, 'ai:mcp:add', '#', 2, 0, 0),
+(1193, 512, '0,500,512', 'MCP修改', 'F', '', NULL, 'ai:mcp:edit', '#', 3, 0, 0),
+(1194, 512, '0,500,512', 'MCP删除', 'F', '', NULL, 'ai:mcp:remove', '#', 4, 0, 0),
+(1201, 513, '0,500,513', '智能体新增', 'F', '', NULL, 'ai:agent:add', '#', 1, 0, 0),
+(1202, 513, '0,500,513', '智能体修改', 'F', '', NULL, 'ai:agent:edit', '#', 2, 0, 0),
+(1203, 513, '0,500,513', '智能体删除', 'F', '', NULL, 'ai:agent:remove', '#', 3, 0, 0),
+(1211, 514, '0,500,514', 'AI工作流新增', 'F', '', NULL, 'ai:workflow:add', '#', 1, 0, 0),
+(1212, 514, '0,500,514', 'AI工作流修改', 'F', '', NULL, 'ai:workflow:edit', '#', 2, 0, 0),
+(1213, 514, '0,500,514', 'AI工作流删除', 'F', '', NULL, 'ai:workflow:remove', '#', 3, 0, 0),
+(1221, 515, '0,500,515', 'Prompt模板查询', 'F', '', NULL, 'ai:prompt:query', '#', 1, 0, 0),
+(1222, 515, '0,500,515', 'Prompt模板新增', 'F', '', NULL, 'ai:prompt:add', '#', 2, 0, 0),
+(1223, 515, '0,500,515', 'Prompt模板编辑', 'F', '', NULL, 'ai:prompt:edit', '#', 3, 0, 0),
+(1224, 515, '0,500,515', 'Prompt模板删除', 'F', '', NULL, 'ai:prompt:remove', '#', 4, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);
