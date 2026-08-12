@@ -1,6 +1,7 @@
 package com.han.ai.service.impl;
 
 import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +64,7 @@ class AiOpenAiCompatibleClientStreamTest {
         ));
         List<String> deltas = new ArrayList<>();
 
-        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
+        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient(new AiUrlSecurityValidator(true, true, ""));
         String content = client.chatCompletionStream(model(), "test-key",
                 List.of(AiOpenAiCompatibleClient.ProviderMessage.user("hi")), null, deltas::add);
 
@@ -91,7 +92,7 @@ class AiOpenAiCompatibleClientStreamTest {
         List<String> executedToolNames = new ArrayList<>();
         List<String> executedToolArgs = new ArrayList<>();
 
-        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
+        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient(new AiUrlSecurityValidator(true, true, ""));
         AiOpenAiCompatibleClient.ToolLoopResult result = client.chatCompletionStreamWithTools(
                 model(), "test-key",
                 List.of(AiOpenAiCompatibleClient.ProviderMessage.user("杭州天气")),

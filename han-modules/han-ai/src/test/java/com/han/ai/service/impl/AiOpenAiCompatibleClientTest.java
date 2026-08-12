@@ -1,6 +1,7 @@
 package com.han.ai.service.impl;
 
 import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.security.AiUrlSecurityValidator;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -121,7 +122,7 @@ class AiOpenAiCompatibleClientTest {
     private Object buildVideoRequest(String modelCode, List<String> referenceImageUrls, String referenceVideoUrl,
                                      String referenceAudioUrl, Boolean generateAudio,
                                      Boolean referenceImageAsFirstFrame) throws Exception {
-        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
+        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient(new AiUrlSecurityValidator(true, true, ""));
         Method method = AiOpenAiCompatibleClient.class.getDeclaredMethod("buildVideoRequest",
                 AiModelPo.class, String.class, List.class, String.class, List.class,
                 Integer.class, String.class, String.class, Boolean.class, Boolean.class, Boolean.class);
@@ -134,7 +135,7 @@ class AiOpenAiCompatibleClientTest {
     private Object buildVideoRequest(String modelCode, List<String> referenceImageUrls, String referenceVideoUrl,
                                      List<String> referenceAudioUrls, Boolean generateAudio,
                                      Boolean referenceImageAsFirstFrame) throws Exception {
-        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient();
+        AiOpenAiCompatibleClient client = new AiOpenAiCompatibleClient(new AiUrlSecurityValidator(true, true, ""));
         Method method = AiOpenAiCompatibleClient.class.getDeclaredMethod("buildVideoRequest",
                 AiModelPo.class, String.class, List.class, String.class, List.class,
                 Integer.class, String.class, String.class, Boolean.class, Boolean.class, Boolean.class);

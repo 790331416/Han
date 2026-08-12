@@ -1,7 +1,9 @@
 package com.han.ai.service.impl;
 
 import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.security.AiCredentialMaskDetector;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -9,11 +11,11 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * Resolve model credentials from environment variables or persisted config.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 class AiModelCredentialResolver {
@@ -21,8 +23,6 @@ class AiModelCredentialResolver {
     static final String CREDENTIAL_SOURCE_ENV = "env";
     static final String CREDENTIAL_SOURCE_DATABASE = "database";
     static final String CREDENTIAL_SOURCE_NONE = "none";
-
-    private static final Pattern MASKED_VALUE_PATTERN = Pattern.compile("^[*]+$");
 
     private final Environment environment;
 
@@ -51,12 +51,22 @@ class AiModelCredentialResolver {
         }
 
         String persisted = trimToNull(model.getApiKey());
-        if (persisted == null || isMaskedValue(persisted)) {
+        if (persisted == null) {
+            return new CredentialBinding(null, CREDENTIAL_SOURCE_NONE);
+        }
+        if (isMaskedValue(persisted)) {
+            // 存量污染数据：历史版本把脱敏掩码当新 Key 写了库。
+            // 这里必须判为「未配置」而不是照发给供应商，否则会用一串星号去请求鉴权。
+            log.warn("Model apiKey in database is a masked placeholder, treated as unconfigured. modelId={}, provider={}",
+                    model.getModelId(), model.getProvider());
             return new CredentialBinding(null, CREDENTIAL_SOURCE_NONE);
         }
         return new CredentialBinding(persisted, CREDENTIAL_SOURCE_DATABASE);
     }
 
+    /**
+     * 编辑保存时是否保留库内原有 API Key：留空或回传掩码串都保留原值。
+     */
     boolean shouldKeepExistingApiKey(String incomingApiKey) {
         String normalized = trimToNull(incomingApiKey);
         return normalized == null || isMaskedValue(normalized);
@@ -92,7 +102,7 @@ class AiModelCredentialResolver {
     }
 
     private boolean isMaskedValue(String value) {
-        return MASKED_VALUE_PATTERN.matcher(value).matches();
+        return AiCredentialMaskDetector.isMasked(value);
     }
 
     private String normalizeToken(String value) {
