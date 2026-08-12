@@ -131,8 +131,8 @@ services:
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
       JAVA_OPTS: -Xms128m -Xmx256m
       TZ: ${TZ:-Asia/Shanghai}
-    ports:
-      - "${HAN_AUTH_HOST_PORT:-19200}:9200"
+    # 不映射宿主机端口：业务服务只在 han-network 内可达，一律经网关进入。
+    # 服务层当前是 permitAll + 依赖网关下发的身份头，直连业务端口可绕过认证。
     depends_on:
       redis:
         condition: service_healthy
@@ -145,8 +145,7 @@ services:
     image: ${HAN_SYSTEM_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest}
     environment:
       <<: *service-env
-    ports:
-      - "${HAN_SYSTEM_HOST_PORT:-19201}:9201"
+    # 同上：不对宿主机暴露，调试请走网关或 docker exec。
     depends_on:
       mysql:
         condition: service_healthy
@@ -161,8 +160,7 @@ services:
     image: ${HAN_JOB_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/han-job:latest}
     environment:
       <<: *service-env
-    ports:
-      - "${HAN_JOB_HOST_PORT:-19204}:9204"
+    # 同上：不对宿主机暴露。
     depends_on:
       mysql:
         condition: service_healthy
