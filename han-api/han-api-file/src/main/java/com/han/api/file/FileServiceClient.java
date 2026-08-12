@@ -24,6 +24,11 @@ import org.springframework.web.service.annotation.PostExchange;
  * 待上下文透传（S-08）落地后，这里会改成以内部签名覆盖的 {@code X-Tenant-Id} 请求头为准，
  * 不再接受调用方以参数自报。
  *
+ * <p>{@code tenantId} 上的 {@code required = false} 不能去掉：HTTP interface 的
+ * {@code @RequestParam} 默认必填，参数为 {@code null} 时会直接抛 IllegalArgumentException，
+ * 下面几个不带租户的便捷重载正是传 {@code null} 调进来的。服务端 {@code IFileController}
+ * 同样声明为非必填，两边保持一致。
+ *
  * <p><b>幂等性与重试</b>：{@link #loadInfo}、{@link #loadBase64}、{@link #download} 是只读 GET，
  * 幂等可重试；{@link #upload} 非幂等（每次调用产生一条新的 {@code sys_file} 记录与一个新对象），
  * <b>禁止自动重试</b>，否则会留下孤儿文件并把租户存储配额算重。
@@ -44,13 +49,15 @@ public interface FileServiceClient {
      * 文件上传并声明归属租户
      */
     @PostExchange(value = "/inner/file/upload", contentType = MediaType.MULTIPART_FORM_DATA_VALUE)
-    R<FileDTO> upload(@RequestPart("file") Resource file, @RequestParam("tenantId") Long tenantId);
+    R<FileDTO> upload(@RequestPart("file") Resource file,
+                      @RequestParam(name = "tenantId", required = false) Long tenantId);
 
     /**
      * 按文件ID读取元信息（内部接口）
      */
     @GetExchange("/inner/file/info/{fileId}")
-    R<FileInfoDTO> loadInfo(@PathVariable("fileId") Long fileId, @RequestParam("tenantId") Long tenantId);
+    R<FileInfoDTO> loadInfo(@PathVariable("fileId") Long fileId,
+                            @RequestParam(name = "tenantId", required = false) Long tenantId);
 
     /**
      * 按文件ID读取 Base64 内容（不声明租户，<b>跳过跨租户校验</b>，仅限平台级文件）。
@@ -70,11 +77,13 @@ public interface FileServiceClient {
      * 按文件ID读取 Base64 内容并声明归属租户（内部接口，多模态图片注入等场景）。
      */
     @GetExchange("/inner/file/base64/{fileId}")
-    R<FileBase64DTO> loadBase64(@PathVariable("fileId") Long fileId, @RequestParam("tenantId") Long tenantId);
+    R<FileBase64DTO> loadBase64(@PathVariable("fileId") Long fileId,
+                                @RequestParam(name = "tenantId", required = false) Long tenantId);
 
     /**
      * 按文件ID取回原文（内部接口，知识库原文取回等大文件场景，不受 Base64 上限约束）
      */
     @GetExchange("/inner/file/download/{fileId}")
-    Resource download(@PathVariable("fileId") Long fileId, @RequestParam("tenantId") Long tenantId);
+    Resource download(@PathVariable("fileId") Long fileId,
+                      @RequestParam(name = "tenantId", required = false) Long tenantId);
 }

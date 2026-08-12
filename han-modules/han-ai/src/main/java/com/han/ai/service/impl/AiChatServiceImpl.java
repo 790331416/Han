@@ -352,7 +352,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 }
             };
             try {
-                R<FileDTO> uploaded = fileServiceClient.upload(resource);
+                R<FileDTO> uploaded = fileServiceClient.upload(resource, resolveTenantIdForWrite());
                 if (uploaded != null && uploaded.getData() != null && StringUtils.hasText(uploaded.getData().getUrl())) {
                     images.add(new AiChatImageVo(uploaded.getData().getId(), uploaded.getData().getUrl(), fileName));
                 } else {
@@ -454,7 +454,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             }
             R<FileBase64DTO> result;
             try {
-                result = fileServiceClient.loadBase64(fileId);
+                result = fileServiceClient.loadBase64(fileId, tenantId);
             } catch (RuntimeException ex) {
                 log.warn("Load chat image failed, fileId={}", fileId, ex);
                 throw new BusinessException("图片读取失败，请重新上传");
@@ -476,6 +476,9 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     /**
      * 图片附件租户归属校验：非管理员只能引用本租户或平台级（tenantId=0）文件，防止伪造 fileId 跨租户读图。
+     *
+     * <p>读取时已把租户传给文件服务、由提供方同口径拦截，这里保留一道调用方校验作纵深防御，
+     * 不要因为「服务端已经查过了」把它删掉。
      */
     private void requireImageTenantAccess(Long tenantId, FileBase64DTO file, Long fileId) {
         if (tenantId == null) {
