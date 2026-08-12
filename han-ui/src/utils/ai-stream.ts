@@ -15,12 +15,34 @@ export interface AiStreamRequestOptions {
   onDelta?: (payload: { chunk: string; fullContent: string }) => void
   onError?: (message: string) => void
   onMeta?: (payload: AiStreamMetaPayload) => void
+  onNodeEvent?: (event: AiStreamNodeEvent) => void
 }
 
 export interface AiStreamConsumeOptions {
   onDelta?: (payload: { chunk: string; fullContent: string }) => void
   onError?: (message: string) => void
   onMeta?: (payload: AiStreamMetaPayload) => void
+  onNodeEvent?: (event: AiStreamNodeEvent) => void
+}
+
+/**
+ * 编排节点级流式事件（advanced 工作流）：
+ * node_start 节点开始、node_delta llm 节点逐 token 增量、node_end 节点结束（content 为节点轨迹）。
+ */
+export interface AiStreamNodeEvent {
+  type: 'node_start' | 'node_delta' | 'node_end'
+  content: {
+    nodeId?: string
+    nodeType?: string
+    nodeName?: string
+    delta?: string
+    status?: string
+    input?: string
+    output?: string
+    costMs?: number
+    error?: string
+    [key: string]: unknown
+  }
 }
 
 interface ParsedAiStreamEvent {
@@ -28,6 +50,7 @@ interface ParsedAiStreamEvent {
   delta?: string
   error?: string
   meta?: AiStreamMetaPayload
+  nodeEvent?: AiStreamNodeEvent
 }
 
 export interface AiStreamMetaPayload {
@@ -130,6 +153,10 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
         options.onMeta?.(event.meta)
         continue
       }
+      if (event.nodeEvent) {
+        options.onNodeEvent?.(event.nodeEvent)
+        continue
+      }
       if (event.delta) {
         fullContent += event.delta
         options.onDelta?.({ chunk: event.delta, fullContent })
@@ -146,6 +173,9 @@ export async function consumeAiStreamResponse(response: Response, options: AiStr
         }
         if (tailEvent?.meta) {
           options.onMeta?.(tailEvent.meta)
+        }
+        if (tailEvent?.nodeEvent) {
+          options.onNodeEvent?.(tailEvent.nodeEvent)
         }
         if (tailEvent?.delta) {
           fullContent += tailEvent.delta
@@ -208,6 +238,15 @@ function parseAiStreamEvent(segment: string): ParsedAiStreamEvent | null {
       return {
         done: false,
         meta: (parsed as { content?: AiStreamMetaPayload }).content || (parsed as AiStreamMetaPayload)
+      }
+    }
+    if (parsed.type === 'node_start' || parsed.type === 'node_delta' || parsed.type === 'node_end') {
+      return {
+        done: false,
+        nodeEvent: {
+          type: parsed.type,
+          content: ((parsed as { content?: AiStreamNodeEvent['content'] }).content || {})
+        }
       }
     }
   } catch {

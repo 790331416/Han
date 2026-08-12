@@ -37,12 +37,14 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -69,7 +71,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private static final String ROLE_SYSTEM = "system";
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
-    private static final long SSE_TIMEOUT = 60_000L;
+    /** 真流式 SSE 超时：需覆盖编排单流 5 分钟上限 + 收尾余量 */
+    private static final long SSE_TIMEOUT = 330_000L;
     private static final int HISTORY_MESSAGE_LIMIT = 12;
     private static final int MAX_CHAT_IMAGES = 4;
     private static final int MAX_TOOL_CALL_ROUNDS = 5;
@@ -87,6 +90,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private final FileServiceClient fileServiceClient;
     private final AiFlowEngine aiFlowEngine;
     private final AiMcpClientService aiMcpClientService;
+    /** 长执行治理：会话/消息落库拆为前后两个短事务，模型与编排调用不占写事务 */
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public PageResult<AiConversationPo> selectConversationPage(AiConversationQuery query) {
@@ -119,31 +124,27 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public AiChatMessagePo send(AiChatRequest request) {
-        GeneratedReply reply = createGenericReply(request);
-        return reply.assistantMessage();
+        StreamSession session = prepareGenericSession(request);
+        return generateReply(session, null).assistantMessage();
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public SseEmitter stream(AiChatRequest request) {
-        GeneratedReply reply = createGenericReply(request);
-        return buildEmitter(reply.assistantMessage());
+        StreamSession session = prepareGenericSession(request);
+        return streamReply(session);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public SseEmitter regenerate(Long conversationId) {
-        GeneratedReply reply = regenerateReply(conversationId);
-        return buildEmitter(reply.assistantMessage());
+        StreamSession session = prepareRegenerateSession(conversationId);
+        return streamReply(session);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public SseEmitter editRegenerate(AiMessageEditRequest request) {
-        GeneratedReply reply = editAndRegenerate(request);
-        return buildEmitter(reply.assistantMessage());
+        StreamSession session = prepareEditRegenerateSession(request);
+        return streamReply(session);
     }
 
     @Override
@@ -179,7 +180,6 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public String chatWithAgent(Long agentId, String message, Long conversationId) {
         AiAgentPo agent = requireAgent(agentId);
         if (!"1".equals(agent.getPublishedRaw())) {
@@ -236,7 +236,6 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public String chatWithWorkflow(Long workflowId, String message, Long conversationId) {
         AiWorkflowPo workflow = requireWorkflow(workflowId);
         if (!"1".equals(workflow.getPublished())) {
@@ -395,7 +394,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         };
     }
 
-    private GeneratedReply createGenericReply(AiChatRequest request) {
+    private StreamSession prepareGenericSession(AiChatRequest request) {
         if (request == null) {
             throw new BusinessException("对话请求不能为空");
         }
@@ -416,7 +415,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             requireVisionSupport(context.modelId());
             images = loadImages(request.getImageFileIds());
         }
-        return appendReply(context, request.getMessage(), images);
+        return prepareSession(context, request.getMessage(), images);
     }
 
     /**
@@ -483,26 +482,32 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         }
     }
 
-    private GeneratedReply regenerateReply(Long conversationId) {
+    private StreamSession prepareRegenerateSession(Long conversationId) {
         AiConversationPo conversation = requireConversation(conversationId);
         List<AiChatMessagePo> messages = selectMessages(conversationId);
         if (messages.isEmpty()) {
             throw new BusinessException("当前会话暂无可重新生成的消息");
         }
         AiChatMessagePo lastMessage = messages.get(messages.size() - 1);
-        if (ROLE_ASSISTANT.equals(lastMessage.getRole())) {
-            aiChatMessageMapper.deleteById(lastMessage.getMessageId());
+        boolean removeLastAssistant = ROLE_ASSISTANT.equals(lastMessage.getRole());
+        if (removeLastAssistant) {
             messages.remove(messages.size() - 1);
         }
         AiChatMessagePo lastUserMessage = findLastUserMessage(messages);
         if (lastUserMessage == null) {
             throw new BusinessException("当前会话缺少用户消息，无法重新生成");
         }
-        refreshConversationCount(conversation);
-        return appendAssistantMessage(conversation, buildContextFromConversation(conversation), lastUserMessage.getContent());
+        transactionTemplate.executeWithoutResult(status -> {
+            if (removeLastAssistant) {
+                aiChatMessageMapper.deleteById(lastMessage.getMessageId());
+            }
+            refreshConversationCount(conversation);
+        });
+        return new StreamSession(conversation, buildContextFromConversation(conversation),
+                lastUserMessage.getContent(), null);
     }
 
-    private GeneratedReply editAndRegenerate(AiMessageEditRequest request) {
+    private StreamSession prepareEditRegenerateSession(AiMessageEditRequest request) {
         if (request == null || request.getConversationId() == null || request.getMessageId() == null) {
             throw new BusinessException("编辑重新生成参数不完整");
         }
@@ -517,59 +522,137 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         if (!StringUtils.hasText(request.getContent())) {
             throw new BusinessException("编辑后的消息内容不能为空");
         }
-        aiChatMessageMapper.delete(new LambdaQueryWrapper<AiChatMessagePo>()
-                .eq(AiChatMessagePo::getConversationId, conversation.getConversationId())
-                .ge(AiChatMessagePo::getSortOrder, targetMessage.getSortOrder()));
-        refreshConversationCount(conversation);
-
-        AiChatMessagePo userMessage = appendUserMessage(conversation.getConversationId(), request.getContent().trim());
-        refreshConversationCount(conversation);
-        return appendAssistantMessage(conversation, buildContextFromConversation(conversation), userMessage.getContent());
+        String editedContent = request.getContent().trim();
+        transactionTemplate.executeWithoutResult(status -> {
+            aiChatMessageMapper.delete(new LambdaQueryWrapper<AiChatMessagePo>()
+                    .eq(AiChatMessagePo::getConversationId, conversation.getConversationId())
+                    .ge(AiChatMessagePo::getSortOrder, targetMessage.getSortOrder()));
+            refreshConversationCount(conversation);
+            appendUserMessage(conversation.getConversationId(), editedContent);
+            refreshConversationCount(conversation);
+        });
+        return new StreamSession(conversation, buildContextFromConversation(conversation), editedContent, null);
     }
 
     private GeneratedReply appendReply(ChatContext context, String message) {
-        return appendReply(context, message, null);
+        return generateReply(prepareSession(context, message, null), null);
     }
 
-    private GeneratedReply appendReply(ChatContext context, String message, LoadedImages images) {
+    /**
+     * 生成前的会话准备：会话创建、用户消息落库、消息计数刷新在一个短事务内完成，
+     * 之后的模型/编排长执行不再占用写事务（先落用户消息，回复完成后另起事务落库）。
+     */
+    private StreamSession prepareSession(ChatContext context, String message, LoadedImages images) {
         String normalizedMessage = normalizeMessage(message);
-        AiConversationPo conversation = prepareConversation(context, normalizedMessage);
-        ChatContext effectiveContext = context.conversationId() != null ? buildContextFromConversation(conversation) : context;
-        appendUserMessage(conversation.getConversationId(), normalizedMessage, images != null ? images.items() : null);
-        refreshConversationCount(conversation);
-        return appendAssistantMessage(conversation, effectiveContext, normalizedMessage,
-                images != null ? images.dataUrls() : null);
+        return transactionTemplate.execute(status -> {
+            AiConversationPo conversation = prepareConversation(context, normalizedMessage);
+            ChatContext effectiveContext = context.conversationId() != null
+                    ? buildContextFromConversation(conversation) : context;
+            appendUserMessage(conversation.getConversationId(), normalizedMessage, images != null ? images.items() : null);
+            refreshConversationCount(conversation);
+            return new StreamSession(conversation, effectiveContext, normalizedMessage,
+                    images != null ? images.dataUrls() : null);
+        });
     }
 
-    private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage) {
-        return appendAssistantMessage(conversation, context, userMessage, (List<String>) null);
-    }
-
-    private GeneratedReply appendAssistantMessage(AiConversationPo conversation, ChatContext context, String userMessage,
-                                                  List<String> pendingImageDataUrls) {
-        AiWorkflowPo advancedWorkflow = resolveAdvancedWorkflow(context.workflowId());
+    /**
+     * 生成 assistant 回复（同步与流式共用）：callbacks 非空时走真流式（增量实时回调），
+     * 为空时保持原有一次性补全路径。
+     */
+    private GeneratedReply generateReply(StreamSession session, StreamCallbacks callbacks) {
+        AiWorkflowPo advancedWorkflow = resolveAdvancedWorkflow(session.context().workflowId());
         if (advancedWorkflow != null) {
-            return appendFlowAssistantMessage(conversation, advancedWorkflow, userMessage);
+            return generateFlowReply(session, advancedWorkflow, callbacks);
         }
-        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), userMessage);
-        ModelReply reply = buildAssistantReply(conversation, context, userMessage, hitParagraphs, pendingImageDataUrls);
+        return generateModelReply(session, callbacks);
+    }
+
+    private GeneratedReply generateModelReply(StreamSession session, StreamCallbacks callbacks) {
+        ChatContext context = session.context();
+        List<ScoredParagraph> hitParagraphs = searchKnowledgeParagraphs(context.knowledgeBaseIds(), session.userMessage());
+        ModelReply reply = buildModelReply(session, hitParagraphs, callbacks);
+        Map<String, Object> meta = reply.toolTraces().isEmpty()
+                ? null
+                : Map.of("toolCalls", reply.toolTraces());
+        AiChatMessagePo assistantMessage = persistAssistantMessage(session.conversation(), reply.content(), meta);
+        if (!reply.toolTraces().isEmpty()) {
+            assistantMessage.setToolExecutions(reply.toolTraces());
+        }
+        enrichAssistantMessage(assistantMessage, context, session.userMessage(), hitParagraphs);
+        return new GeneratedReply(session.conversation(), assistantMessage);
+    }
+
+    /**
+     * 模型回复（含流式）：优先真流式；首 token 前失败降级为一次性补全，
+     * 中途断流则保留已推送增量并追加断点说明（保证前端所见与落库一致），
+     * 模型不可用时维持原兜底文案路径。
+     */
+    private ModelReply buildModelReply(StreamSession session, List<ScoredParagraph> hitParagraphs,
+                                       StreamCallbacks callbacks) {
+        AiConversationPo conversation = session.conversation();
+        ChatContext context = session.context();
+        AiModelPo model = resolveModel(context.modelId());
+        if (model != null) {
+            String apiKey = credentialResolver.resolveApiKey(model);
+            if (StringUtils.hasText(apiKey)) {
+                List<AiOpenAiCompatibleClient.ProviderMessage> messages =
+                        buildProviderMessages(conversation, context, hitParagraphs, session.pendingImageDataUrls());
+                List<McpToolBinding> toolBindings = resolveMcpToolBindings(context.mcpServerIds());
+                StringBuilder streamed = new StringBuilder();
+                try {
+                    if (!toolBindings.isEmpty()) {
+                        return runToolCallChat(model, apiKey, messages, toolBindings,
+                                callbacks == null ? null : delta -> {
+                                    streamed.append(delta);
+                                    callbacks.onDelta(delta);
+                                });
+                    }
+                    if (callbacks != null) {
+                        String content = openAiCompatibleClient.chatCompletionStream(model, apiKey, messages,
+                                model.getMaxTokens(), delta -> {
+                                    streamed.append(delta);
+                                    callbacks.onDelta(delta);
+                                });
+                        return new ModelReply(content, List.of());
+                    }
+                    String content = openAiCompatibleClient.chatCompletion(model, apiKey, messages, model.getMaxTokens());
+                    return new ModelReply(content, List.of());
+                } catch (BusinessException ex) {
+                    if (!streamed.isEmpty()) {
+                        log.warn("AI streaming interrupted mid-reply, provider={}, modelCode={}, conversationId={}, reason={}",
+                                model.getProvider(), model.getModelCode(), conversation.getConversationId(), ex.getMessage());
+                        String suffix = "\n\n[回复中断] " + ex.getMessage();
+                        callbacks.onDelta(suffix);
+                        return new ModelReply(streamed + suffix, List.of());
+                    }
+                    log.warn("AI provider fallback triggered, provider={}, modelCode={}, conversationId={}, reason={}",
+                            model.getProvider(), model.getModelCode(), conversation.getConversationId(), ex.getMessage());
+                }
+            }
+        }
+        return new ModelReply(buildFallbackAssistantReply(context, model, session.userMessage(), hitParagraphs), List.of());
+    }
+
+    /**
+     * assistant 消息落库：插入与消息计数刷新独立短事务，避免生成耗时拖长写事务。
+     */
+    private AiChatMessagePo persistAssistantMessage(AiConversationPo conversation, String content,
+                                                    Map<String, Object> meta) {
         AiChatMessagePo assistantMessage = new AiChatMessagePo();
         assistantMessage.setConversationId(conversation.getConversationId());
         assistantMessage.setRole(ROLE_ASSISTANT);
-        assistantMessage.setContent(reply.content());
-        assistantMessage.setTokenCount(estimateTokenCount(reply.content()));
-        assistantMessage.setSortOrder(nextSortOrder(conversation.getConversationId()));
-        if (!reply.toolTraces().isEmpty()) {
-            // 真实工具调用轨迹随消息落库（回显）并直接作为本次 toolExecutions
-            assistantMessage.setMeta(XuJsonUtil.toJsonString(Map.of("toolCalls", reply.toolTraces())));
-            assistantMessage.setToolExecutions(reply.toolTraces());
-        }
+        assistantMessage.setContent(content);
+        assistantMessage.setTokenCount(estimateTokenCount(content));
         assistantMessage.setCreateTime(now());
-        aiChatMessageMapper.insert(assistantMessage);
-
-        refreshConversationCount(conversation);
-        enrichAssistantMessage(assistantMessage, context, userMessage, hitParagraphs);
-        return new GeneratedReply(conversation, assistantMessage);
+        if (meta != null && !meta.isEmpty()) {
+            assistantMessage.setMeta(XuJsonUtil.toJsonString(meta));
+        }
+        transactionTemplate.executeWithoutResult(status -> {
+            assistantMessage.setSortOrder(nextSortOrder(conversation.getConversationId()));
+            aiChatMessageMapper.insert(assistantMessage);
+            refreshConversationCount(conversation);
+        });
+        return assistantMessage;
     }
 
     /**
@@ -593,28 +676,38 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     /**
      * advanced 编排回复：执行引擎产出最终文本与节点轨迹，轨迹随消息 meta 落库。
      * 引擎失败时消息内容为失败说明（已执行节点轨迹保留），会话可继续。
+     * callbacks 非空时节点事件（node_start/node_delta/node_end）实时下发。
      */
-    private GeneratedReply appendFlowAssistantMessage(AiConversationPo conversation, AiWorkflowPo workflow,
-                                                      String userMessage) {
-        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), userMessage);
+    private GeneratedReply generateFlowReply(StreamSession session, AiWorkflowPo workflow, StreamCallbacks callbacks) {
+        AiFlowEngine.FlowEventListener listener = callbacks == null ? null : new AiFlowEngine.FlowEventListener() {
+            @Override
+            public void onNodeStart(AiFlowGraph.FlowNode node) {
+                callbacks.onNodeStart(node.id(), node.type(), node.label());
+            }
+
+            @Override
+            public void onNodeDelta(String nodeId, String delta) {
+                callbacks.onNodeDelta(nodeId, delta);
+            }
+
+            @Override
+            public void onNodeEnd(AiFlowNodeTraceVo trace) {
+                callbacks.onNodeEnd(trace);
+            }
+        };
+        AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), session.userMessage(), listener);
         String content = result.success()
                 ? result.finalText()
                 : "编排执行失败：" + result.errorMessage() + "\n可在右侧「执行信息」查看节点轨迹后重试。";
 
-        AiChatMessagePo assistantMessage = new AiChatMessagePo();
-        assistantMessage.setConversationId(conversation.getConversationId());
-        assistantMessage.setRole(ROLE_ASSISTANT);
-        assistantMessage.setContent(content);
-        assistantMessage.setTokenCount(estimateTokenCount(content));
-        assistantMessage.setSortOrder(nextSortOrder(conversation.getConversationId()));
+        Map<String, Object> meta = result.traces().isEmpty()
+                ? null
+                : Map.of("nodeTraces", result.traces());
+        AiChatMessagePo assistantMessage = persistAssistantMessage(session.conversation(), content, meta);
         if (!result.traces().isEmpty()) {
-            assistantMessage.setMeta(XuJsonUtil.toJsonString(Map.of("nodeTraces", result.traces())));
             assistantMessage.setNodeTraces(result.traces());
         }
-        assistantMessage.setCreateTime(now());
-        aiChatMessageMapper.insert(assistantMessage);
-        refreshConversationCount(conversation);
-        return new GeneratedReply(conversation, assistantMessage);
+        return new GeneratedReply(session.conversation(), assistantMessage);
     }
 
     private AiConversationPo prepareConversation(ChatContext context, String firstMessage) {
@@ -654,48 +747,15 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         return userMessage;
     }
 
-    private ModelReply buildAssistantReply(AiConversationPo conversation, ChatContext context, String userMessage,
-                                           List<ScoredParagraph> hitParagraphs, List<String> pendingImageDataUrls) {
-        AiModelPo model = resolveModel(context.modelId());
-        ModelReply modelReply = tryBuildModelReply(conversation, context, model, hitParagraphs, pendingImageDataUrls);
-        if (modelReply != null && StringUtils.hasText(modelReply.content())) {
-            return modelReply;
-        }
-        return new ModelReply(buildFallbackAssistantReply(context, model, userMessage, hitParagraphs), List.of());
-    }
-
-    private ModelReply tryBuildModelReply(AiConversationPo conversation, ChatContext context, AiModelPo model,
-                                          List<ScoredParagraph> hitParagraphs, List<String> pendingImageDataUrls) {
-        if (model == null) {
-            return null;
-        }
-        String apiKey = credentialResolver.resolveApiKey(model);
-        if (!StringUtils.hasText(apiKey)) {
-            return null;
-        }
-        List<AiOpenAiCompatibleClient.ProviderMessage> messages =
-                buildProviderMessages(conversation, context, hitParagraphs, pendingImageDataUrls);
-        try {
-            List<McpToolBinding> toolBindings = resolveMcpToolBindings(context.mcpServerIds());
-            if (!toolBindings.isEmpty()) {
-                return runToolCallChat(model, apiKey, messages, toolBindings);
-            }
-            String content = openAiCompatibleClient.chatCompletion(model, apiKey, messages, model.getMaxTokens());
-            return new ModelReply(content, List.of());
-        } catch (BusinessException ex) {
-            log.warn("AI provider fallback triggered, provider={}, modelCode={}, conversationId={}, reason={}",
-                    model.getProvider(), model.getModelCode(), conversation.getConversationId(), ex.getMessage());
-            return null;
-        }
-    }
-
     /**
      * MCP 工具真实调用（function calling）：模型触发 tool_calls 时经 MCP 客户端执行，
      * 结果回填后二次请求，循环上限 {@link #MAX_TOOL_CALL_ROUNDS} 轮。
+     * deltaConsumer 非空时走真流式工具循环（文本增量实时下发）。
      */
     private ModelReply runToolCallChat(AiModelPo model, String apiKey,
                                        List<AiOpenAiCompatibleClient.ProviderMessage> messages,
-                                       List<McpToolBinding> toolBindings) {
+                                       List<McpToolBinding> toolBindings,
+                                       java.util.function.Consumer<String> deltaConsumer) {
         Map<String, McpToolBinding> bindingMap = new HashMap<>();
         List<AiOpenAiCompatibleClient.ToolSpec> toolSpecs = new ArrayList<>();
         for (McpToolBinding binding : toolBindings) {
@@ -703,10 +763,13 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             toolSpecs.add(new AiOpenAiCompatibleClient.ToolSpec(
                     binding.functionName(), binding.description(), binding.inputSchema()));
         }
-        AiOpenAiCompatibleClient.ToolLoopResult loopResult = openAiCompatibleClient.chatCompletionWithTools(
-                model, apiKey, messages, model.getMaxTokens(), toolSpecs,
-                (functionName, argumentsJson) -> executeMcpTool(bindingMap.get(functionName), argumentsJson),
-                MAX_TOOL_CALL_ROUNDS);
+        AiOpenAiCompatibleClient.ToolExecutor executor =
+                (functionName, argumentsJson) -> executeMcpTool(bindingMap.get(functionName), argumentsJson);
+        AiOpenAiCompatibleClient.ToolLoopResult loopResult = deltaConsumer != null
+                ? openAiCompatibleClient.chatCompletionStreamWithTools(model, apiKey, messages, model.getMaxTokens(),
+                        toolSpecs, executor, MAX_TOOL_CALL_ROUNDS, deltaConsumer)
+                : openAiCompatibleClient.chatCompletionWithTools(model, apiKey, messages, model.getMaxTokens(),
+                        toolSpecs, executor, MAX_TOOL_CALL_ROUNDS);
         List<AiChatToolTraceVo> traces = new ArrayList<>();
         for (AiOpenAiCompatibleClient.ExecutedToolCall call : loopResult.executedCalls()) {
             McpToolBinding binding = bindingMap.get(call.toolName());
@@ -1204,39 +1267,86 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
         }
     }
 
-    private SseEmitter buildEmitter(AiChatMessagePo assistantMessage) {
-        String content = assistantMessage != null ? assistantMessage.getContent() : "";
+    /**
+     * 流式会话上下文：prepareSession 短事务产出，供生成阶段（无事务）使用。
+     */
+    private record StreamSession(AiConversationPo conversation, ChatContext context, String userMessage,
+                                 List<String> pendingImageDataUrls) {
+    }
+
+    /**
+     * SSE 下发回调：文本增量走旧 message/delta 事件（向后兼容），
+     * 编排节点事件为 D2 决策新增的 node_start / node_delta / node_end 类型。
+     */
+    private interface StreamCallbacks {
+
+        void onDelta(String delta);
+
+        default void onNodeStart(String nodeId, String nodeType, String nodeName) {
+        }
+
+        default void onNodeDelta(String nodeId, String delta) {
+        }
+
+        default void onNodeEnd(AiFlowNodeTraceVo trace) {
+        }
+    }
+
+    /**
+     * 真流式回复：立即返回 SseEmitter，生成在异步线程执行（登录上下文显式透传），
+     * 增量实时下发；完成后 assistant 消息短事务落库并补发 meta 与 [DONE]。
+     */
+    private SseEmitter streamReply(StreamSession session) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
+        AiSseChannel channel = new AiSseChannel(emitter);
+        LoginUser loginUser = SecurityContextHolder.getLoginUser();
         CompletableFuture.runAsync(() -> {
+            SecurityContextHolder.setLoginUser(loginUser);
             try {
-                for (String chunk : splitChunks(content)) {
-                    emitter.send(SseEmitter.event()
-                            .name("message")
-                            .data(XuJsonUtil.toJsonString(Map.of("type", "delta", "content", chunk)), MediaType.APPLICATION_JSON));
-                    Thread.sleep(25L);
+                StreamCallbacks callbacks = new StreamCallbacks() {
+                    @Override
+                    public void onDelta(String delta) {
+                        channel.sendEvent("delta", delta);
+                    }
+
+                    @Override
+                    public void onNodeStart(String nodeId, String nodeType, String nodeName) {
+                        channel.sendEvent("node_start", Map.of(
+                                "nodeId", nodeId,
+                                "nodeType", nodeType == null ? "" : nodeType,
+                                "nodeName", nodeName == null ? "" : nodeName));
+                    }
+
+                    @Override
+                    public void onNodeDelta(String nodeId, String delta) {
+                        channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
+                    }
+
+                    @Override
+                    public void onNodeEnd(AiFlowNodeTraceVo trace) {
+                        channel.sendEvent("node_end", trace);
+                    }
+                };
+                boolean flowPath = resolveAdvancedWorkflow(session.context().workflowId()) != null;
+                GeneratedReply reply = generateReply(session, callbacks);
+                AiChatMessagePo assistantMessage = reply.assistantMessage();
+                if (flowPath) {
+                    // 编排最终文本以一次完整 delta 兜底下发（node_delta 为过程增量，模板渲染后文本以此为准）
+                    channel.sendEvent("delta", assistantMessage.getContent());
                 }
                 Map<String, Object> metaPayload = buildStreamMeta(assistantMessage);
                 if (!metaPayload.isEmpty()) {
-                    emitter.send(SseEmitter.event()
-                            .name("message")
-                            .data(XuJsonUtil.toJsonString(Map.of("type", "meta", "content", metaPayload)),
-                                    MediaType.APPLICATION_JSON));
+                    channel.sendEvent("meta", metaPayload);
                 }
-                emitter.send(SseEmitter.event().name("message").data("[DONE]"));
-                emitter.complete();
-            } catch (IOException | InterruptedException ex) {
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("message")
-                            .data(XuJsonUtil.toJsonString(Map.of("type", "error",
-                                    "content", ex.getMessage() == null ? "AI响应异常" : ex.getMessage())), MediaType.APPLICATION_JSON));
-                } catch (IOException ignored) {
-                    // Ignore secondary SSE send failures.
-                }
-                emitter.complete();
-                if (ex instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
+                channel.sendDone();
+                channel.complete();
+            } catch (Exception ex) {
+                log.warn("AI stream reply failed, conversationId={}",
+                        session.conversation().getConversationId(), ex);
+                channel.sendEvent("error", ex.getMessage() == null ? "AI响应异常" : ex.getMessage());
+                channel.complete();
+            } finally {
+                SecurityContextHolder.clear();
             }
         });
         return emitter;
@@ -1266,20 +1376,6 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             meta.put("nodeTraces", assistantMessage.getNodeTraces());
         }
         return meta;
-    }
-
-    private List<String> splitChunks(String content) {
-        if (!StringUtils.hasText(content)) {
-            return List.of("");
-        }
-        List<String> chunks = new ArrayList<>();
-        int start = 0;
-        while (start < content.length()) {
-            int end = Math.min(start + 48, content.length());
-            chunks.add(content.substring(start, end));
-            start = end;
-        }
-        return chunks;
     }
 
     private String excerpt(String content, int maxLength) {

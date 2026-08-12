@@ -191,8 +191,12 @@
               </div>
               <div class="message-content">
                 <div class="message-role">AI 助手</div>
+                <div v-if="streamRunningNode" class="stream-node-indicator" data-testid="ai-chat-running-node">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  正在执行节点：{{ streamRunningNode }}
+                </div>
                 <div class="message-text">
-                  <span v-html="renderMarkdown(streamContent)"></span>
+                  <span v-html="renderMarkdown(streamContent || streamNodeContent)"></span>
                   <span class="cursor-blink">|</span>
                 </div>
               </div>
@@ -616,7 +620,7 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, watch } from 'vue'
-import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause, Picture, Close, Download } from '@element-plus/icons-vue'
+import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause, Picture, Close, Download, Loading } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
@@ -652,7 +656,7 @@ import {
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
-import { requestAiStream, type AiStreamMetaPayload } from '@/utils/ai-stream'
+import { requestAiStream, type AiStreamMetaPayload, type AiStreamNodeEvent } from '@/utils/ai-stream'
 
 // marked 配置：启用代码高亮
 marked.setOptions({
@@ -675,6 +679,10 @@ const sending = ref(false)
 const streaming = ref(false)
 const streamContent = ref('')
 const streamMeta = ref<AiStreamMetaPayload | null>(null)
+// 编排节点级流式状态（advanced 工作流）：过程增量、实时时间线、当前执行节点
+const streamNodeContent = ref('')
+const streamNodeTraces = ref<AiFlowNodeTrace[]>([])
+const streamRunningNode = ref('')
 const selectedModelId = ref<string | number>()
 const currentConversationId = ref<string | number>()
 const currentConversation = ref<AiConversation>()
@@ -881,14 +889,20 @@ const latestToolExecutions = computed<AiChatToolTrace[]>(() => {
   return assistantTraces || streamTraces || []
 })
 
-/** 编排节点执行时间线（advanced 工作流消息专有）：流式 meta 优先，历史消息回显兜底。 */
+/** 编排节点执行时间线（advanced 工作流消息专有）：生成中实时事件优先，流式 meta 次之，历史消息回显兜底。 */
 const latestNodeTraces = computed<AiFlowNodeTrace[]>(() => {
+  if (streaming.value && streamNodeTraces.value.length > 0) {
+    return streamNodeTraces.value
+  }
   const streamTraces = streamMeta.value?.nodeTraces as AiFlowNodeTrace[] | undefined
   if (Array.isArray(streamTraces) && streamTraces.length > 0) {
     return streamTraces
   }
   const assistantTraces = latestAssistantMessage.value?.nodeTraces
-  return Array.isArray(assistantTraces) ? assistantTraces : []
+  if (Array.isArray(assistantTraces) && assistantTraces.length > 0) {
+    return assistantTraces
+  }
+  return streamNodeTraces.value
 })
 
 const knowledgeInsightItems = computed<KnowledgeInsightItem[]>(() => {
@@ -1554,16 +1568,20 @@ function handleStopGenerate() {
   streaming.value = false
   sending.value = false
   streamMeta.value = null
-  if (streamContent.value) {
+  const partialContent = streamContent.value || streamNodeContent.value
+  if (partialContent) {
     messages.value.push({
       messageId: Date.now() + 1,
       conversationId: currentConversationId.value || 0,
       role: 'assistant',
-      content: streamContent.value + '\n\n*[已停止生成]*',
+      content: partialContent + '\n\n*[已停止生成]*',
       sortOrder: messages.value.length + 1,
     })
     streamContent.value = ''
   }
+  streamNodeContent.value = ''
+  streamNodeTraces.value = []
+  streamRunningNode.value = ''
   scrollToBottom()
 }
 
@@ -1680,6 +1698,9 @@ async function processStreamRequest(options: { path: string; body?: unknown }) {
   const userStore = useUserStore()
   const baseUrl = import.meta.env.VITE_APP_BASE_API || ''
   streamMeta.value = null
+  streamNodeContent.value = ''
+  streamNodeTraces.value = []
+  streamRunningNode.value = ''
   let responseMeta: AiStreamMetaPayload | null = null
   abortController.value = new AbortController()
   const fullContent = await requestAiStream({
@@ -1693,6 +1714,7 @@ async function processStreamRequest(options: { path: string; body?: unknown }) {
       streamContent.value = fullContent
       scrollToBottom()
     },
+    onNodeEvent: handleStreamNodeEvent,
     onMeta: (meta) => {
       responseMeta = meta
       streamMeta.value = meta
@@ -1702,10 +1724,31 @@ async function processStreamRequest(options: { path: string; body?: unknown }) {
     }
   })
   streaming.value = false
+  streamRunningNode.value = ''
   if (fullContent) {
     messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
   }
   await syncCurrentConversationState()
+}
+
+/**
+ * 编排节点事件消费：node_delta 为 llm 逐 token 过程增量（气泡先行展示），
+ * 最终文本以后端 delta 事件为准；node_start/node_end 实时点亮时间线。
+ */
+function handleStreamNodeEvent(event: AiStreamNodeEvent) {
+  if (event.type === 'node_start') {
+    streamRunningNode.value = event.content.nodeName || event.content.nodeId || ''
+    return
+  }
+  if (event.type === 'node_delta') {
+    streamNodeContent.value += event.content.delta || ''
+    scrollToBottom()
+    return
+  }
+  if (event.type === 'node_end') {
+    streamRunningNode.value = ''
+    streamNodeTraces.value = [...streamNodeTraces.value, event.content as unknown as AiFlowNodeTrace]
+  }
 }
 
 function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload | null): AiChatMessage {
@@ -1727,6 +1770,9 @@ function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload 
   }
   if (meta?.images) {
     assistantMessage.imageList = meta.images as AiChatImage[]
+  }
+  if (meta?.nodeTraces) {
+    assistantMessage.nodeTraces = meta.nodeTraces as AiFlowNodeTrace[]
   }
   return assistantMessage
 }
@@ -2664,6 +2710,18 @@ function restoreSelectedModelId() {
 .cursor-blink {
   animation: blink 0.8s infinite;
   font-weight: bold;
+}
+
+.stream-node-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 12px;
 }
 
 @media (max-width: 1280px) {

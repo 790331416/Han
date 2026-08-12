@@ -54,9 +54,32 @@ class AiFlowEngine {
     }
 
     /**
+     * 编排执行事件监听（SSE node_start / node_delta / node_end 协议来源）：
+     * onNodeDelta 仅 llm 节点逐 token 触发；回调异常不得中断编排（由调用方自行兜底）。
+     */
+    interface FlowEventListener {
+
+        default void onNodeStart(AiFlowGraph.FlowNode node) {
+        }
+
+        default void onNodeDelta(String nodeId, String delta) {
+        }
+
+        default void onNodeEnd(AiFlowNodeTraceVo trace) {
+        }
+    }
+
+    /**
      * 执行编排；本方法不抛业务异常，解析/执行失败均折叠进 FlowResult。
      */
     FlowResult execute(String flowConfig, String userMessage) {
+        return execute(flowConfig, userMessage, null);
+    }
+
+    /**
+     * 执行编排（带事件监听）：节点开始/llm 逐 token/节点结束实时回调 listener。
+     */
+    FlowResult execute(String flowConfig, String userMessage, FlowEventListener listener) {
         AiFlowGraph graph;
         try {
             graph = AiFlowGraph.parse(flowConfig);
@@ -79,23 +102,24 @@ class AiFlowEngine {
 
         for (AiFlowGraph.FlowNode node : graph.topologicalOrder()) {
             if (!reachable.contains(node.id())) {
-                traces.add(buildTrace(node, "skipped", null, "未命中执行分支", 0L, null));
+                recordTrace(traces, listener, buildTrace(node, "skipped", null, "未命中执行分支", 0L, null));
                 continue;
             }
             if (failure != null) {
-                traces.add(buildTrace(node, "skipped", null, "前序节点失败，已中断", 0L, null));
+                recordTrace(traces, listener, buildTrace(node, "skipped", null, "前序节点失败，已中断", 0L, null));
                 continue;
             }
             if (System.currentTimeMillis() - startedAt > MAX_FLOW_MILLIS) {
                 failure = "编排执行超时（超过 5 分钟）";
-                traces.add(buildTrace(node, "failed", null, null, 0L, failure));
+                recordTrace(traces, listener, buildTrace(node, "failed", null, null, 0L, failure));
                 continue;
             }
+            notifyNodeStart(listener, node);
             long nodeStart = System.currentTimeMillis();
             try {
-                NodeOutcome outcome = executeNode(node, vars);
+                NodeOutcome outcome = executeNode(node, vars, listener);
                 long cost = System.currentTimeMillis() - nodeStart;
-                traces.add(buildTrace(node, outcome.status(), outcome.input(), outcome.output(), cost, null));
+                recordTrace(traces, listener, buildTrace(node, outcome.status(), outcome.input(), outcome.output(), cost, null));
                 if (StringUtils.hasText(outcome.varValue())) {
                     vars.put(node.id(), outcome.varValue());
                 }
@@ -113,12 +137,12 @@ class AiFlowEngine {
             } catch (BusinessException ex) {
                 long cost = System.currentTimeMillis() - nodeStart;
                 failure = "节点「" + node.label() + "」执行失败：" + ex.getMessage();
-                traces.add(buildTrace(node, "failed", null, null, cost, ex.getMessage()));
+                recordTrace(traces, listener, buildTrace(node, "failed", null, null, cost, ex.getMessage()));
             } catch (RuntimeException ex) {
                 long cost = System.currentTimeMillis() - nodeStart;
                 log.warn("Flow node execution error, nodeId={}, type={}", node.id(), node.type(), ex);
                 failure = "节点「" + node.label() + "」执行异常";
-                traces.add(buildTrace(node, "failed", null, null, cost, "执行异常：" + ex.getClass().getSimpleName()));
+                recordTrace(traces, listener, buildTrace(node, "failed", null, null, cost, "执行异常：" + ex.getClass().getSimpleName()));
             }
         }
 
@@ -150,17 +174,40 @@ class AiFlowEngine {
         }
     }
 
-    private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+    private NodeOutcome executeNode(AiFlowGraph.FlowNode node, Map<String, String> vars, FlowEventListener listener) {
         return switch (node.type()) {
             case "start" -> NodeOutcome.succeeded(null, vars.get("message"), vars.get("message"));
             case "knowledge" -> executeKnowledge(node, vars);
-            case "llm" -> executeLlm(node, vars);
+            case "llm" -> executeLlm(node, vars, listener);
             case "condition" -> executeCondition(node, vars);
             case "tool" -> executeTool(node, vars);
             case "output" -> executeOutput(node, vars);
             case "end" -> NodeOutcome.succeeded(null, "流程结束", "");
             default -> throw new BusinessException("不支持的节点类型：" + node.type());
         };
+    }
+
+    private void notifyNodeStart(FlowEventListener listener, AiFlowGraph.FlowNode node) {
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.onNodeStart(node);
+        } catch (RuntimeException ex) {
+            log.debug("Flow node start listener error, nodeId={}", node.id(), ex);
+        }
+    }
+
+    private void recordTrace(List<AiFlowNodeTraceVo> traces, FlowEventListener listener, AiFlowNodeTraceVo trace) {
+        traces.add(trace);
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.onNodeEnd(trace);
+        } catch (RuntimeException ex) {
+            log.debug("Flow node end listener error, nodeId={}", trace.getNodeId(), ex);
+        }
     }
 
     private NodeOutcome executeKnowledge(AiFlowGraph.FlowNode node, Map<String, String> vars) {
@@ -183,7 +230,7 @@ class AiFlowEngine {
                 knowledgeText);
     }
 
-    private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars) {
+    private NodeOutcome executeLlm(AiFlowGraph.FlowNode node, Map<String, String> vars, FlowEventListener listener) {
         AiModelPo model = resolveLlmModel(node.dataLong("modelId"));
         String apiKey = credentialResolver.resolveApiKey(model);
         if (!StringUtils.hasText(apiKey)) {
@@ -210,9 +257,40 @@ class AiFlowEngine {
         String userInput = StringUtils.hasText(vars.get("result")) ? vars.get("result") : vars.get("message");
         messages.add(AiOpenAiCompatibleClient.ProviderMessage.user(userInput));
 
-        String reply = openAiCompatibleClient.chatCompletion(effectiveModel, apiKey, messages, effectiveModel.getMaxTokens());
+        String reply = requestLlmReply(node, effectiveModel, apiKey, messages, listener);
         return NodeOutcome.succeeded("模型：" + model.getModelName() + "；输入：" + truncate(userInput),
                 truncate(reply), reply);
+    }
+
+    /**
+     * llm 节点模型调用：有监听时走真流式（逐 token 回调 onNodeDelta），
+     * 未产出任何增量即失败时降级为一次性补全，保留原有非流式路径。
+     */
+    private String requestLlmReply(AiFlowGraph.FlowNode node, AiModelPo model, String apiKey,
+                                   List<AiOpenAiCompatibleClient.ProviderMessage> messages,
+                                   FlowEventListener listener) {
+        if (listener == null) {
+            return openAiCompatibleClient.chatCompletion(model, apiKey, messages, model.getMaxTokens());
+        }
+        StringBuilder streamed = new StringBuilder();
+        try {
+            return openAiCompatibleClient.chatCompletionStream(model, apiKey, messages, model.getMaxTokens(),
+                    delta -> {
+                        streamed.append(delta);
+                        try {
+                            listener.onNodeDelta(node.id(), delta);
+                        } catch (RuntimeException ex) {
+                            log.debug("Flow node delta listener error, nodeId={}", node.id(), ex);
+                        }
+                    });
+        } catch (BusinessException ex) {
+            if (!streamed.isEmpty()) {
+                throw ex;
+            }
+            log.warn("Flow llm node stream failed before first token, fallback to non-stream, nodeId={}, reason={}",
+                    node.id(), ex.getMessage());
+            return openAiCompatibleClient.chatCompletion(model, apiKey, messages, model.getMaxTokens());
+        }
     }
     private NodeOutcome executeTool(AiFlowGraph.FlowNode node, Map<String, String> vars) {
         Long mcpId = node.dataLong("mcpId");

@@ -11,6 +11,7 @@ import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * AI workflow controller.
@@ -99,5 +101,16 @@ public class AiWorkflowController {
     @PreAuthorize("@ss.hasAuthority('ai:workflow:edit')")
     public R<AiFlowDebugVo> debug(@PathVariable Long workflowId, @RequestBody AiChatRequest request) {
         return R.ok(aiWorkflowService.debug(workflowId, request != null ? request.getMessage() : null));
+    }
+
+    /**
+     * 编排调试流式运行：SSE 实时下发 node_start / node_delta / node_end 节点事件
+     * 与最终回复；语义同 /debug（不要求已发布、不落会话消息）。
+     */
+    @RepeatSubmit
+    @PostMapping(value = "/debug-stream/{workflowId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PreAuthorize("@ss.hasAuthority('ai:workflow:edit')")
+    public SseEmitter debugStream(@PathVariable Long workflowId, @RequestBody AiChatRequest request) {
+        return aiWorkflowService.debugStream(workflowId, request != null ? request.getMessage() : null);
     }
 }

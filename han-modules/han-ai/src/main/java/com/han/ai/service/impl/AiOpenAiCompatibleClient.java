@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
@@ -151,21 +152,7 @@ class AiOpenAiCompatibleClient {
                 return new ToolLoopResult(assistantMessage.content.trim(), executedCalls);
             }
             appendAssistantToolCallMessage(payload, assistantMessage);
-            for (ResponseToolCall toolCall : assistantMessage.toolCalls) {
-                if (toolCall == null || toolCall.function == null || !StringUtils.hasText(toolCall.function.name)) {
-                    continue;
-                }
-                String argumentsJson = toolCall.function.arguments;
-                long startedAt = System.currentTimeMillis();
-                ToolExecution execution = executor.execute(toolCall.function.name, argumentsJson);
-                long costMs = System.currentTimeMillis() - startedAt;
-                executedCalls.add(new ExecutedToolCall(toolCall.function.name, argumentsJson,
-                        execution.result(), execution.success(), costMs));
-                ChatRequestMessage toolMessage = new ChatRequestMessage("tool",
-                        execution.success() ? execution.result() : "工具执行失败：" + execution.result());
-                toolMessage.toolCallId = toolCall.id;
-                payload.messages.add(toolMessage);
-            }
+            executeToolCallsAndAppendResults(payload, assistantMessage.toolCalls, executor, executedCalls);
         }
 
         // 熔断：去掉工具做最后一次收敛请求，让模型基于已有工具结果直接作答
@@ -175,6 +162,86 @@ class AiOpenAiCompatibleClient {
                 ? finalMessage.content.trim()
                 : "工具调用轮次超过上限（" + maxRounds + " 轮），已中止。";
         return new ToolLoopResult(content, executedCalls);
+    }
+
+    /**
+     * 带工具的真流式对话补全：每轮以 stream=true 请求，文本增量实时回调 deltaConsumer；
+     * 流内的 tool_calls 增量按 index 聚合，收流后真实执行并回填，循环语义与
+     * {@link #chatCompletionWithTools} 一致。最终回复内容 = 全部已推送增量的拼接，
+     * 保证前端所见与落库文本一致。
+     */
+    ToolLoopResult chatCompletionStreamWithTools(AiModelPo model, String apiKey, List<ProviderMessage> messages,
+                                                 Integer maxTokensOverride, List<ToolSpec> tools,
+                                                 ToolExecutor executor, int maxRounds,
+                                                 Consumer<String> deltaConsumer) {
+        validateArguments(model, apiKey, messages);
+        ChatCompletionRequest payload = buildRequest(model, messages, maxTokensOverride);
+        payload.stream = true;
+        payload.tools = buildToolPayload(tools);
+        List<ExecutedToolCall> executedCalls = new ArrayList<>();
+        StringBuilder streamedContent = new StringBuilder();
+        Consumer<String> accumulatingConsumer = delta -> {
+            streamedContent.append(delta);
+            if (deltaConsumer != null) {
+                deltaConsumer.accept(delta);
+            }
+        };
+
+        for (int round = 0; round < Math.max(maxRounds, 1); round++) {
+            StreamedChatMessage assistantMessage = requestStreamedChatMessage(model, apiKey, payload, accumulatingConsumer);
+            if (assistantMessage.toolCalls().isEmpty()) {
+                if (streamedContent.isEmpty()) {
+                    throw new BusinessException("模型未返回有效文本内容");
+                }
+                return new ToolLoopResult(streamedContent.toString().trim(), executedCalls);
+            }
+            ChatMessage roundMessage = new ChatMessage("assistant", assistantMessage.content());
+            roundMessage.toolCalls = assistantMessage.toolCalls();
+            appendAssistantToolCallMessage(payload, roundMessage);
+            executeToolCallsAndAppendResults(payload, assistantMessage.toolCalls(), executor, executedCalls);
+        }
+
+        // 熔断：去掉工具做最后一次流式收敛请求
+        payload.tools = null;
+        requestStreamedChatMessage(model, apiKey, payload, accumulatingConsumer);
+        if (streamedContent.isEmpty()) {
+            String fallback = "工具调用轮次超过上限（" + maxRounds + " 轮），已中止。";
+            accumulatingConsumer.accept(fallback);
+        }
+        return new ToolLoopResult(streamedContent.toString().trim(), executedCalls);
+    }
+
+    private void executeToolCallsAndAppendResults(ChatCompletionRequest payload, List<ResponseToolCall> toolCalls,
+                                                  ToolExecutor executor, List<ExecutedToolCall> executedCalls) {
+        for (ResponseToolCall toolCall : toolCalls) {
+            if (toolCall == null || toolCall.function == null || !StringUtils.hasText(toolCall.function.name)) {
+                continue;
+            }
+            String argumentsJson = toolCall.function.arguments;
+            long startedAt = System.currentTimeMillis();
+            ToolExecution execution = executor.execute(toolCall.function.name, argumentsJson);
+            long costMs = System.currentTimeMillis() - startedAt;
+            executedCalls.add(new ExecutedToolCall(toolCall.function.name, argumentsJson,
+                    execution.result(), execution.success(), costMs));
+            ChatRequestMessage toolMessage = new ChatRequestMessage("tool",
+                    execution.success() ? execution.result() : "工具执行失败：" + execution.result());
+            toolMessage.toolCallId = toolCall.id;
+            payload.messages.add(toolMessage);
+        }
+    }
+
+    private StreamedChatMessage requestStreamedChatMessage(AiModelPo model, String apiKey,
+                                                           ChatCompletionRequest payload,
+                                                           Consumer<String> deltaConsumer) {
+        URI requestUri = buildChatCompletionUri(model.getBaseUrl());
+        String requestBody = XuJsonUtil.toJsonString(payload);
+        try {
+            return executeStreamingChatRequest(requestUri, apiKey, requestBody, deltaConsumer);
+        } catch (IOException e) {
+            log.warn("AI provider streaming tool-call request IO error, provider={}, modelCode={}",
+                    model.getProvider(), model.getModelCode(), e);
+            throw new BusinessException("模型流式调用失败: " + e.getMessage());
+        }
     }
 
     private List<Map<String, Object>> buildToolPayload(List<ToolSpec> tools) {
@@ -687,6 +754,17 @@ class AiOpenAiCompatibleClient {
 
     private String executeStreamingRequest(URI requestUri, String apiKey, String requestBody,
                                            Consumer<String> deltaConsumer) throws IOException {
+        return executeStreamingChatRequest(requestUri, apiKey, requestBody, deltaConsumer).content();
+    }
+
+    /**
+     * 流式补全消息：content 为全部文本增量拼接，toolCalls 为按 index 聚合完成的工具调用。
+     */
+    record StreamedChatMessage(String content, List<ResponseToolCall> toolCalls) {
+    }
+
+    private StreamedChatMessage executeStreamingChatRequest(URI requestUri, String apiKey, String requestBody,
+                                                            Consumer<String> deltaConsumer) throws IOException {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) requestUri.toURL().openConnection();
@@ -710,23 +788,17 @@ class AiOpenAiCompatibleClient {
             }
 
             StringBuilder content = new StringBuilder();
+            Map<Integer, PendingStreamToolCall> pendingToolCalls = new TreeMap<>();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (isStreamDoneLine(line)) {
                         break;
                     }
-                    String delta = parseStreamLine(line);
-                    if (delta == null) {
-                        continue;
-                    }
-                    content.append(delta);
-                    if (deltaConsumer != null) {
-                        deltaConsumer.accept(delta);
-                    }
+                    processStreamLine(line, content, pendingToolCalls, deltaConsumer);
                 }
             }
-            return content.toString();
+            return new StreamedChatMessage(content.toString(), materializeToolCalls(pendingToolCalls));
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -742,25 +814,96 @@ class AiOpenAiCompatibleClient {
         return trimmed.startsWith("data:") && "[DONE]".equals(trimmed.substring("data:".length()).trim());
     }
 
-    private String parseStreamLine(String line) {
+    private void processStreamLine(String line, StringBuilder content,
+                                   Map<Integer, PendingStreamToolCall> pendingToolCalls,
+                                   Consumer<String> deltaConsumer) {
         if (!StringUtils.hasText(line)) {
-            return null;
+            return;
         }
         String trimmed = line.trim();
         if (!trimmed.startsWith("data:")) {
-            return null;
+            return;
         }
         String payload = trimmed.substring("data:".length()).trim();
         if (!StringUtils.hasText(payload) || "[DONE]".equals(payload)) {
-            return null;
+            return;
         }
+        ChatCompletionStreamResponse response;
         try {
-            ChatCompletionStreamResponse response = XuJsonUtil.parseObject(payload, ChatCompletionStreamResponse.class);
-            return extractDelta(response);
+            response = XuJsonUtil.parseObject(payload, ChatCompletionStreamResponse.class);
         } catch (RuntimeException exception) {
             log.debug("Ignore unparsable provider stream chunk: {}", payload, exception);
-            return null;
+            return;
         }
+        if (response == null || response.choices == null) {
+            return;
+        }
+        for (StreamChoice choice : response.choices) {
+            if (choice == null || choice.delta == null) {
+                continue;
+            }
+            if (StringUtils.hasText(choice.delta.content)) {
+                content.append(choice.delta.content);
+                if (deltaConsumer != null) {
+                    deltaConsumer.accept(choice.delta.content);
+                }
+            }
+            mergeStreamToolCallDeltas(pendingToolCalls, choice.delta.toolCalls);
+        }
+    }
+
+    /**
+     * 聚合流式 tool_calls 增量：同一 index 的 id/name 只落一次，arguments 分片拼接。
+     */
+    private void mergeStreamToolCallDeltas(Map<Integer, PendingStreamToolCall> pendingToolCalls,
+                                           List<StreamToolCallDelta> deltas) {
+        if (deltas == null || deltas.isEmpty()) {
+            return;
+        }
+        for (StreamToolCallDelta delta : deltas) {
+            if (delta == null) {
+                continue;
+            }
+            int index = delta.index != null ? delta.index : 0;
+            PendingStreamToolCall pending = pendingToolCalls.computeIfAbsent(index, key -> new PendingStreamToolCall());
+            if (StringUtils.hasText(delta.id)) {
+                pending.id = delta.id;
+            }
+            if (delta.function != null) {
+                if (StringUtils.hasText(delta.function.name)) {
+                    pending.name = delta.function.name;
+                }
+                if (delta.function.arguments != null) {
+                    pending.arguments.append(delta.function.arguments);
+                }
+            }
+        }
+    }
+
+    private List<ResponseToolCall> materializeToolCalls(Map<Integer, PendingStreamToolCall> pendingToolCalls) {
+        if (pendingToolCalls.isEmpty()) {
+            return List.of();
+        }
+        List<ResponseToolCall> toolCalls = new ArrayList<>();
+        for (PendingStreamToolCall pending : pendingToolCalls.values()) {
+            if (!StringUtils.hasText(pending.name)) {
+                continue;
+            }
+            ResponseToolCall call = new ResponseToolCall();
+            call.id = pending.id;
+            call.type = "function";
+            call.function = new ResponseToolFunction();
+            call.function.name = pending.name;
+            call.function.arguments = pending.arguments.isEmpty() ? "{}" : pending.arguments.toString();
+            toolCalls.add(call);
+        }
+        return toolCalls;
+    }
+
+    private static final class PendingStreamToolCall {
+        private String id;
+        private String name;
+        private final StringBuilder arguments = new StringBuilder();
     }
 
     private HttpResponsePayload executeWithCurl(URI requestUri, String apiKey, String requestBody,
@@ -868,21 +1011,6 @@ class AiOpenAiCompatibleClient {
             }
             if (StringUtils.hasText(choice.message.content)) {
                 return choice.message.content;
-            }
-        }
-        return null;
-    }
-
-    private String extractDelta(ChatCompletionStreamResponse response) {
-        if (response == null || response.choices == null || response.choices.isEmpty()) {
-            return null;
-        }
-        for (StreamChoice choice : response.choices) {
-            if (choice == null || choice.delta == null) {
-                continue;
-            }
-            if (StringUtils.hasText(choice.delta.content)) {
-                return choice.delta.content;
             }
         }
         return null;
@@ -1319,7 +1447,43 @@ class AiOpenAiCompatibleClient {
     @JsonIgnoreProperties(ignoreUnknown = true)
     static class StreamChoice {
         @JsonProperty("delta")
-        public ChatMessage delta;
+        public StreamDelta delta;
+    }
+
+    /**
+     * 流式增量：content 为文本分片；tool_calls 为带 index 的工具调用分片（需聚合）。
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class StreamDelta {
+        @JsonProperty("content")
+        public String content;
+
+        @JsonProperty("tool_calls")
+        public List<StreamToolCallDelta> toolCalls;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class StreamToolCallDelta {
+        @JsonProperty("index")
+        public Integer index;
+
+        @JsonProperty("id")
+        public String id;
+
+        @JsonProperty("type")
+        public String type;
+
+        @JsonProperty("function")
+        public StreamToolFunctionDelta function;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class StreamToolFunctionDelta {
+        @JsonProperty("name")
+        public String name;
+
+        @JsonProperty("arguments")
+        public String arguments;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
