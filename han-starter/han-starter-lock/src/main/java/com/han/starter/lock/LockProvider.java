@@ -5,7 +5,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
- * 分布式锁提供者接口（可插拔）
+ * 分布式锁提供者接口（可插拔）。
+ *
+ * <p><b>当前没有任何实现，容器里不会有本类型的 Bean</b>，直接注入会以
+ * {@code NoSuchBeanDefinitionException} 启动失败。依赖 han-starter-lock 不等于获得了
+ * 分布式互斥能力，详见 {@code package-info}。
  */
 public interface LockProvider {
 

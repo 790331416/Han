@@ -4,7 +4,10 @@ import java.time.Duration;
 import java.util.function.Consumer;
 
 /**
- * 消息队列提供者接口（可插拔）
+ * 消息队列提供者接口（可插拔）。
+ *
+ * <p><b>当前没有任何实现，容器里不会有本类型的 Bean</b>，直接注入会以
+ * {@code NoSuchBeanDefinitionException} 启动失败，详见 {@code package-info}。
  */
 public interface MQProvider {
 

@@ -10,7 +10,8 @@
     </parent>
 
     <artifactId>han-starter-lock</artifactId>
-    <description>分布式锁Starter - 支持Redis/数据库锁可插拔</description>
+    <!-- 状态：仅有接口定义，尚无实现与自动装配，详见 com.han.starter.lock 的 package-info -->
+    <description>分布式锁Starter - 规划支持Redis/数据库锁可插拔（当前仅接口）</description>
 
     <dependencies>
         <dependency>
