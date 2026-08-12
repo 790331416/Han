@@ -130,4 +130,18 @@ public class TenantPackageController {
         tenantPackageService.updatePackageMenus(packageId, menuIds);
         return R.ok();
     }
+
+    /**
+     * 把套餐当前菜单重新下发给所有存量租户。
+     * <p>
+     * 套餐菜单变更默认不自动回灌（见 {@code han.tenant.package-sync.auto-resync-on-menu-shrink}），
+     * 平台管理员通过本接口显式下发。返回成功下发的租户数。
+     */
+    @RequiresPermission("tenant:package:edit")
+    @PostMapping("/resync/{packageId}")
+    @OperLog(module = "租户套餐", type = OperLog.OperType.GRANT)
+    public R<Integer> resync(@PathVariable Long packageId) {
+        platformTenantGuard.assertPlatformTenant();
+        return R.ok(tenantPackageService.resyncPackageToTenants(packageId));
+    }
 }

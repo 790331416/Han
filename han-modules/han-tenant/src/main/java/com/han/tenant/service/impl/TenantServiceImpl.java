@@ -21,6 +21,7 @@ import com.han.tenant.domain.vo.TenantVO;
 import com.han.tenant.mapper.TenantMapper;
 import com.han.tenant.mapper.TenantPackageMapper;
 import com.han.tenant.service.ITenantService;
+import com.han.tenant.service.support.TenantRoleMenuSynchronizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ public class TenantServiceImpl implements ITenantService {
     private final TenantPackageMapper packageMapper;
     private final TenantConverter tenantConverter;
     private final TenantApiConverter tenantApiConverter;
+    private final TenantRoleMenuSynchronizer roleMenuSynchronizer;
     private final SystemClient systemClient;
 
     @Override
@@ -116,7 +118,7 @@ public class TenantServiceImpl implements ITenantService {
                     .adminUsername(dto.getAdminUsername())
                     .adminPassword(dto.getAdminPassword())
                     .build();
-            initDTO.setMenuIds(parseMenuIds(pkg));
+            initDTO.setMenuIds(requireMenuIds(pkg));
             // R.fail 不抛异常，必须显式检查返回值，否则初始化失败时租户事务照常提交产生空壳租户
             R<Void> initResult = systemClient.initTenantData(initDTO);
             if (initResult == null || initResult.isFail()) {
@@ -149,7 +151,7 @@ public class TenantServiceImpl implements ITenantService {
         }
 
         Long previousPackageId = existing.getPackageId();
-        TenantPackagePo nextPackage = requireEnabledPackage(source.getPackageId());
+        TenantPackagePo nextPackage = findEnabledPackage(source.getPackageId());
 
         tenantConverter.updateFromBase(source, existing);
         applyTenantDefaults(existing);
@@ -342,7 +344,23 @@ public class TenantServiceImpl implements ITenantService {
         return po;
     }
 
+    /**
+     * 解析套餐，套餐必须存在且启用。
+     * <p>
+     * 原实现在 packageId 为空时直接返回 null，租户会被创建成「一个菜单都没有」的空白后台，
+     * 与「租户初始化失败要响亮失败」的既定口径相悖，这里改为拒绝。
+     */
     private TenantPackagePo requireEnabledPackage(Long packageId) {
+        if (packageId == null) {
+            throw new BusinessException("租户套餐不能为空");
+        }
+        return findEnabledPackage(packageId);
+    }
+
+    /**
+     * 解析套餐；packageId 为空表示本次不涉及套餐变更，返回 null。
+     */
+    private TenantPackagePo findEnabledPackage(Long packageId) {
         if (packageId == null) {
             return null;
         }
@@ -357,24 +375,33 @@ public class TenantServiceImpl implements ITenantService {
     }
 
     private void syncTenantRoleMenus(Long tenantId, TenantPackagePo pkg) {
-        try {
-            systemClient.syncRoleMenusByTenantId(tenantId, parseMenuIds(pkg));
-        } catch (Exception ex) {
-            log.error("同步租户[{}]角色菜单失败", tenantId, ex);
-            throw new BusinessException("同步租户套餐菜单失败: " + ex.getMessage());
-        }
+        roleMenuSynchronizer.sync(tenantId, requireMenuIds(pkg));
     }
 
-    private Set<Long> parseMenuIds(TenantPackagePo pkg) {
-        if (pkg == null || pkg.getMenuIds() == null || pkg.getMenuIds().isBlank()) {
-            return Set.of();
+    /**
+     * 解析套餐菜单，并要求结果非空。
+     * <p>
+     * 原实现在 JSON 解析失败时只打 warn 并返回空集，而空集会经 syncRoleMenus 把租户下
+     * 所有角色的菜单清空（远端是先删后插），属于静默的破坏性降级，这里改为响亮失败。
+     */
+    private Set<Long> requireMenuIds(TenantPackagePo pkg) {
+        if (pkg == null) {
+            throw new BusinessException("租户套餐不存在，无法确定菜单范围");
         }
+        if (pkg.getMenuIds() == null || pkg.getMenuIds().isBlank()) {
+            throw new BusinessException("租户套餐[" + pkg.getId() + "]未配置菜单，拒绝下发");
+        }
+        Set<Long> menuIds;
         try {
-            return new HashSet<>(XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
+            menuIds = new HashSet<>(XuJsonUtil.parseList(pkg.getMenuIds(), Long.class));
         } catch (Exception ex) {
-            log.warn("解析租户套餐菜单失败: packageId={}", pkg.getId(), ex);
-            return Set.of();
+            log.error("解析租户套餐菜单失败: packageId={}", pkg.getId(), ex);
+            throw new BusinessException("租户套餐[" + pkg.getId() + "]菜单数据已损坏，拒绝下发");
         }
+        if (menuIds.isEmpty()) {
+            throw new BusinessException("租户套餐[" + pkg.getId() + "]未配置菜单，拒绝下发");
+        }
+        return menuIds;
     }
 
     private TenantDTO enrichTenantDto(TenantPo po, Map<Long, String> packageNameMap, Map<Long, Integer> userCountMap) {
