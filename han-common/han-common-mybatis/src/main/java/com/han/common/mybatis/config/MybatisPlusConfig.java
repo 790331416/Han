@@ -10,6 +10,8 @@ import com.han.common.core.context.SecurityContext;
 import com.han.common.mybatis.handler.HanMetaObjectHandler;
 import com.han.common.mybatis.handler.HanTenantLineHandler;
 import com.han.common.mybatis.helper.TenantHelper;
+import com.han.common.mybatis.interceptor.HanTenantLineInnerInterceptor;
+import com.han.common.tenant.observe.MissingTenantContextRecorder;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.mybatis.spring.annotation.MapperScan;
@@ -39,12 +41,13 @@ public class MybatisPlusConfig {
     }
 
     @Bean
-    public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties) {
+    public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties,
+                                                         HanTenantLineHandler hanTenantLineHandler) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
 
         // 多租户插件（必须放在第一位）
         if (Boolean.TRUE.equals(tenantProperties.getEnable())) {
-            interceptor.addInnerInterceptor(tenantLineInnerInterceptor(tenantProperties, securityContext));
+            interceptor.addInnerInterceptor(tenantLineInnerInterceptor(hanTenantLineHandler));
         }
 
         // 分页插件
@@ -57,12 +60,33 @@ public class MybatisPlusConfig {
     }
 
     /**
+     * 无租户上下文观测器（默认只记录不改变行为）
+     */
+    @Bean
+    public MissingTenantContextRecorder missingTenantContextRecorder(TenantProperties tenantProperties) {
+        long interval = tenantProperties.getObserveLogIntervalMillis() == null
+                ? 60_000L
+                : tenantProperties.getObserveLogIntervalMillis();
+        return new MissingTenantContextRecorder(
+                !Boolean.FALSE.equals(tenantProperties.getObserveMissingContext()), interval);
+    }
+
+    /**
+     * 多租户过滤处理器
+     */
+    @Bean
+    public HanTenantLineHandler hanTenantLineHandler(TenantProperties tenantProperties,
+                                                     MissingTenantContextRecorder missingTenantContextRecorder) {
+        return new HanTenantLineHandler(tenantProperties, securityContext, missingTenantContextRecorder);
+    }
+
+    /**
      * 多租户拦截器
      */
     @Bean
     @ConditionalOnProperty(prefix = "tenant", name = "enable", havingValue = "true", matchIfMissing = true)
-    public TenantLineInnerInterceptor tenantLineInnerInterceptor(TenantProperties tenantProperties, SecurityContext securityContext) {
-        return new TenantLineInnerInterceptor(new HanTenantLineHandler(tenantProperties, securityContext));
+    public TenantLineInnerInterceptor tenantLineInnerInterceptor(HanTenantLineHandler hanTenantLineHandler) {
+        return new HanTenantLineInnerInterceptor(hanTenantLineHandler);
     }
 
     /**
@@ -81,7 +105,10 @@ public class MybatisPlusConfig {
      * 审计字段自动填充
      */
     @Bean
-    public MetaObjectHandler metaObjectHandler() {
-        return new HanMetaObjectHandler(securityContext);
+    public MetaObjectHandler metaObjectHandler(TenantProperties tenantProperties,
+                                               HanTenantLineHandler hanTenantLineHandler,
+                                               MissingTenantContextRecorder missingTenantContextRecorder) {
+        return new HanMetaObjectHandler(securityContext, tenantProperties, hanTenantLineHandler,
+                missingTenantContextRecorder);
     }
 }
