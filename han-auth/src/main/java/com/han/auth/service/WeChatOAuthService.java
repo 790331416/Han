@@ -4,6 +4,7 @@ import com.han.auth.domain.SocialUser;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -39,6 +40,11 @@ public class WeChatOAuthService implements SocialOAuthProvider {
     private final Environment environment;
     private final RestClient restClient;
 
+    /**
+     * 类中存在双构造函数（下方包私有构造供测试注入 RestClient），
+     * Spring 多构造场景必须显式指定主构造，否则回退找无参构造导致启动失败。
+     */
+    @Autowired
     public WeChatOAuthService(Environment environment) {
         this(environment, RestClient.create());
     }
