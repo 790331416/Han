@@ -53,7 +53,7 @@ export function list${className}(query: ${className}Query) {
 #if($hasPk)
 
 export function get${className}(id: $fn.tsType($pkJavaType)) {
-  return get<#if($hasDtoColumn)${className} & ${className}Form#{else}${className}#end>(`/${moduleName}/${businessName}/${'$'}{id}`)
+  return get<#if($hasDtoColumn)${className} & ${className}Form#{else}${className}#end>(`/${moduleName}/${businessName}/#[[${id}]]#`)
 }
 #end
 #if($hasDtoColumn)
@@ -71,6 +71,6 @@ export function update${className}(data: ${className}Form) {
 #if($hasPk)
 
 export function delete${className}(id: $fn.tsType($pkJavaType)) {
-  return post<void>(`/${moduleName}/${businessName}/remove/${'$'}{id}`)
+  return post<void>(`/${moduleName}/${businessName}/remove/#[[${id}]]#`)
 }
 #end

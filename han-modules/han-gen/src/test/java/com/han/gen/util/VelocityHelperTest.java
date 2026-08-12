@@ -226,6 +226,17 @@ class VelocityHelperTest {
     }
 
     @Test
+    @DisplayName("生成的 api.ts 里 TS 模板字面量必须真的插值，而不是漏出 Velocity 转义写法")
+    void shouldEmitRealTemplateLiteralInApi() {
+        String api = fileEndingWith(render(GenFixtures.sysNotice()), "notice.ts");
+
+        // ${'$'} 不是合法的 Velocity 引用，会被原样输出，导致请求打到字面量 URL 上
+        assertFalse(api.contains("$'"), api);
+        assertTrue(api.contains("`/demo/notice/${id}`"), api);
+        assertTrue(api.contains("`/demo/notice/remove/${id}`"), api);
+    }
+
+    @Test
     @DisplayName("模板渲染失败必须抛出并带上失败模板名，不能静默少文件")
     void shouldFailLoudlyWhenColumnsMissing() {
         GenTable table = GenFixtures.sysNotice();
