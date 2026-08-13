@@ -55,13 +55,16 @@ def check_required_env_coverage(violations: List[str], compose: Path, env_exampl
 
 
 def check_generic_base_boundary(violations: List[str]) -> None:
-    compose = DEPLOY / "full" / "docker-compose.yml"
-    if compose.exists():
-        text = compose.read_text(encoding="utf-8")
-        if AIVIDEO_SERVICE.search(text) and not AIVIDEO_PROFILE.search(text):
-            violations.append(
-                f"{compose} defines an aivideo service outside the 'aivideo' compose profile"
-            )
+    # PostgreSQL 与 MySQL 两个 full 入口都要守同一条边界：
+    # 通用底座不含 han-modules/han-aivideo，aivideo 服务只能挂在 aivideo profile 下按需拉起。
+    for name in ("docker-compose.yml", "docker-compose-mysql.yml"):
+        compose = DEPLOY / "full" / name
+        if compose.exists():
+            text = compose.read_text(encoding="utf-8")
+            if AIVIDEO_SERVICE.search(text) and not AIVIDEO_PROFILE.search(text):
+                violations.append(
+                    f"{compose} defines an aivideo service outside the 'aivideo' compose profile"
+                )
 
     env_example = DEPLOY / "full" / ".env.example"
     if env_example.exists():
