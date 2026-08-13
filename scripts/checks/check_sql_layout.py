@@ -88,6 +88,39 @@ def read_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def check_insert_columns_exist(violations: list, path: Path) -> None:
+    """校验每条 INSERT 的列清单都能在同一文件的 CREATE TABLE 里找到。
+
+    这类错位（建表写 post_sort、种子 INSERT 写 sort）在纯文本比对下完全看不出来，
+    只有真正导入数据库才会以 "Unknown column" 报错并中断整个初始化，
+    后果是建了一半的库。静态拦住它，避免依赖实库导入才能发现。
+    """
+    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
+
+    # 建表列：取 CREATE TABLE 到配对右括号之间，每个「行首标识符」视为列名
+    tables: dict[str, set[str]] = {}
+    for m in re.finditer(r"(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?(\w+)[`\"]?\s*\((.*?)\n\s*\)", statements):
+        cols = set()
+        for line in m.group(2).splitlines():
+            cm = re.match(r"\s*[`\"]?([a-z_][a-z0-9_]*)[`\"]?\s+", line, re.I)
+            if cm and cm.group(1).lower() not in {
+                "primary", "unique", "key", "constraint", "index", "foreign", "check",
+            }:
+                cols.add(cm.group(1).lower())
+        tables[m.group(1).lower()] = cols
+
+    for m in re.finditer(r"(?is)INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)", statements):
+        table = m.group(1).lower()
+        if table not in tables or not tables[table]:
+            continue
+        for raw in m.group(2).split(","):
+            col = raw.strip().strip('`"').lower()
+            if col and re.fullmatch(r"[a-z_][a-z0-9_]*", col) and col not in tables[table]:
+                violations.append(
+                    f"{path}: INSERT INTO {table} 引用了建表语句里不存在的列 {col!r}"
+                )
+
+
 def strip_sql_comments(text: str) -> str:
     """去掉 SQL 注释后再做「禁用语法」判定。
 
@@ -125,6 +158,7 @@ def main() -> int:
         if init_file.exists():
             text = read_sql(init_file)
             statements = strip_sql_comments(text)
+            check_insert_columns_exist(violations, init_file)
             for token in FORBIDDEN_SQL_TOKENS:
                 if token in statements:
                     violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {init_file}")
@@ -150,6 +184,7 @@ def main() -> int:
                 violations.append(f"缺少 MySQL small 初始化 SQL: {mysql_init_file}")
             else:
                 mysql_text = read_sql(mysql_init_file)
+                check_insert_columns_exist(violations, mysql_init_file)
                 mysql_upper = strip_sql_comments(mysql_text).upper()
                 for token in FORBIDDEN_MYSQL_TOKENS:
                     if token in mysql_upper:

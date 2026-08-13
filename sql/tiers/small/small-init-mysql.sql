@@ -497,7 +497,7 @@ INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phon
 (2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- 5. 岗位
-INSERT INTO sys_post (id, tenant_id, post_code, post_name, sort, status) VALUES
+INSERT INTO sys_post (id, tenant_id, post_code, post_name, post_sort, status) VALUES
 (1, 1, 'ceo', '董事长', 1, 0),
 (2, 1, 'cto', '技术总监', 2, 0),
 (3, 1, 'manager', '项目经理', 3, 0),
