@@ -88,6 +88,82 @@ def read_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _split_sql_values(segment: str) -> list:
+    """按逗号分列，忽略单引号内的逗号（ancestors 形如 '0,1'）。"""
+    out, buf, in_quote = [], [], False
+    for ch in segment:
+        if ch == "'":
+            in_quote = not in_quote
+            buf.append(ch)
+        elif ch == "," and not in_quote:
+            out.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    out.append("".join(buf).strip())
+    return out
+
+
+def collect_seed_menus(path: Path) -> dict:
+    """取出 init 脚本里静态播种的 sys_menu 行：{菜单ID: (菜单名, 权限串)}。
+
+    DO $$ 块里用变量做 ID 的动态插入不参与静态比对。
+    """
+    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
+    menus: dict = {}
+    for stmt in re.finditer(r"(?is)INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*?);", statements):
+        cols = [c.strip().strip('`"') for c in stmt.group(1).split(",")]
+        if not {"id", "menu_name", "perms"} <= set(cols):
+            continue
+        i_id, i_name, i_perms = cols.index("id"), cols.index("menu_name"), cols.index("perms")
+        for row in re.finditer(r"\(((?:[^()']|'[^']*')*)\)", stmt.group(2)):
+            vals = _split_sql_values(row.group(1))
+            if len(vals) != len(cols) or not re.fullmatch(r"\d+", vals[i_id]):
+                continue
+            perms = vals[i_perms].strip("'")
+            menus[int(vals[i_id])] = (
+                vals[i_name].strip("'"),
+                "" if perms.upper() == "NULL" else perms,
+            )
+    return menus
+
+
+def check_tier_menu_division(violations: list) -> None:
+    """档位菜单划分必须自洽：同档两种数据库完全一致，且 small ⊆ medium ⊆ full。
+
+    档位之间菜单本来就该不同（small 只播系统/监控/任务调度，medium 追加租户等，
+    AI 与代码生成只进 full），但必须是「逐级追加」而不是各写各的：
+    一旦某档漏播或多播，登录后看到的菜单就和该档实际部署的模块对不上。
+    同一档位的 PostgreSQL 与 MySQL 更必须逐条相同，否则换数据库就换了一套菜单。
+    """
+    seeds = {}
+    for tier in ("small", "medium", "full"):
+        for label, name in (("PG", f"{tier}-init.sql"), ("MySQL", f"{tier}-init-mysql.sql")):
+            path = SQL / "tiers" / tier / name
+            seeds[(tier, label)] = collect_seed_menus(path) if path.exists() else None
+
+    for tier in ("small", "medium", "full"):
+        pg, my = seeds[(tier, "PG")], seeds[(tier, "MySQL")]
+        if pg is None or my is None:
+            continue
+        if pg != my:
+            only_pg = sorted(set(pg) - set(my))
+            only_my = sorted(set(my) - set(pg))
+            differ = sorted(i for i in set(pg) & set(my) if pg[i] != my[i])
+            violations.append(
+                f"{tier} 档 PostgreSQL 与 MySQL 播种菜单不一致："
+                f"PG 独有={only_pg} MySQL 独有={only_my} 同 ID 内容不同={differ}"
+            )
+
+    for lower, upper in (("small", "medium"), ("medium", "full")):
+        low, up = seeds[(lower, "PG")], seeds[(upper, "PG")]
+        if low is None or up is None:
+            continue
+        missing = sorted(set(low) - set(up))
+        if missing:
+            violations.append(f"档位菜单划分不是逐级追加：{lower} 有而 {upper} 没有的菜单 ID={missing}")
+
+
 def check_no_duplicate_create_table(violations: list, path: Path) -> None:
     """同一份初始化脚本里同一张表只能建一次。
 
@@ -244,6 +320,8 @@ def main() -> int:
                 violations.append(f"升级演练脚本引用不存在的 SQL: {script}: {listed_path}")
         for missing_path in sorted(tracked_upgrade_paths - listed_paths):
             violations.append(f"升级演练脚本未覆盖 PostgreSQL upgrade SQL: {script}: {missing_path}")
+
+    check_tier_menu_division(violations)
 
     if violations:
         print("\n".join(violations))

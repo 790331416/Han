@@ -162,8 +162,28 @@ PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库，三档全�
 MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-mysql.sql` 里，不回港。
 口径与边界以 [PostgreSQL/MySQL 兼容与切换手册](../docs/11-PostgreSQL-MySQL兼容与切换手册.md) 为准。
 
-菜单与权限点按档位裁剪：small 只播系统、监控与任务调度；medium 追加 OSS 配置、工作流、开放平台与租户配额；
-AI 相关菜单与权限点只进 full。
+### 菜单与权限点的档位划分
+
+划分遵循两条硬规则，已由 `scripts/checks/check_sql_layout.py` 的
+`check_tier_menu_division` 静态门禁保证，破坏任意一条都会导致门禁失败：
+
+1. **同一档位的 PostgreSQL 与 MySQL 播种菜单逐条相同**（菜单 ID、名称、权限串全等），
+   换数据库不会换出另一套菜单。
+2. **逐级追加**：small ⊆ medium ⊆ full，上层档位只允许在下层基础上增加，不允许删改。
+
+当前实际划分（数量为静态播种的菜单条数，已在真实库导入核对）：
+
+| 档位 | 菜单数 | 相对下一档新增的内容 |
+| --- | --- | --- |
+| `small` | 70 | 基线：系统管理、系统监控、系统接口、任务调度 |
+| `medium` | 105 | +35：租户管理与套餐配额、工作流、开放平台、文件管理、OSS 配置 |
+| `full` | 139 | +34：代码生成，以及 AI 模型/知识库/MCP/智能体/编排/Prompt/Token 统计/对话 |
+
+**只播该档实际部署了模块的菜单。** 判据是该功能依赖的业务表在本档 init 里建没建：
+`tool:gen:*` 依赖 `gen_table`（只在 full）、`tenant:*` 依赖 `sys_tenant`（medium 起）、
+`ai:*` 依赖 `ai_model`（只在 full）。播了模块表不存在的父菜单，
+升级脚本 `20260812_permission_seed_alignment.sql` 会顺着父菜单继续补子权限点，
+最终在登录后显示一批点不开的死菜单。
 
 ## 归档说明
 
