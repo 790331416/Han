@@ -199,6 +199,46 @@ class LegacyDirectoryServiceTest {
                 .containsEntry("deviceName", "主讲设备");
     }
 
+    /**
+     * DEF-004：离校教师必须从排课下拉里消失。
+     *
+     * <p>原实现只按 personType + status 过滤。status 管的是账号启停，
+     * leave_flag 管的才是教育身份是否在校，两者独立（EduPersonPo#leaveFlag）。
+     * 只看 status 的话，「账号还开着但人已经离校」的教师照样能被排进新课程。
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void teacherSelectorExcludesPeopleWhoHaveLeftTheSchool() {
+        Page<EduPersonPo> page = new Page<>(1, 20);
+        page.setRecords(List.of(teacher(11L, 100L, 7L, 0)));
+        page.setTotal(1);
+        when(personMapper.selectPage(any(), any())).thenReturn(page);
+        when(schoolMapper.selectList(any())).thenReturn(List.of(school(7L, "附中", "620100")));
+
+        service.teachers(request(Map.of("orgId", "7")));
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduPersonPo>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(personMapper).selectPage(any(), captor.capture());
+        assertThat(captor.getValue().getSqlSegment())
+                .as("教师选择器必须带 leave_flag 条件，否则离校教师仍出现在排课下拉里")
+                .contains("leave_flag");
+    }
+
+    /** 与上一条成对：按 ID 查身份不能过滤离校，否则历史课程显示不出授课教师姓名。 */
+    @Test
+    void identityLookupStillResolvesTeachersWhoHaveLeftSoHistoryKeepsTheirName() {
+        EduPersonPo left = teacher(11L, 100L, 7L, 0);
+        left.setLeaveFlag(1);
+        when(personMapper.selectOne(any())).thenReturn(left);
+        when(schoolMapper.selectOne(any())).thenReturn(school(7L, "附中", "620100"));
+        when(personClassMapper.selectList(any())).thenReturn(List.of());
+
+        assertThat(asMap(service.identity(request(Map.of("pkId", "11"))).value()))
+                .as("离校教师仍要能按 ID 查到，历史课程要显示他的姓名")
+                .containsEntry("userId", "100");
+    }
+
     @Test
     void teacherListStaysAPagedObjectBecauseTheFrontendReadsRecordsAndTotal() {
         Page<EduPersonPo> page = new Page<>(1, 20);

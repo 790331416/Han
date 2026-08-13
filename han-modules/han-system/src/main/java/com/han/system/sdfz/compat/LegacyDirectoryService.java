@@ -195,7 +195,15 @@ public class LegacyDirectoryService {
         LambdaQueryWrapper<EduPersonPo> query = tenantScoped(new LambdaQueryWrapper<EduPersonPo>())
                 .eq(EduPersonPo::getPersonType, TEACHER)
                 // 这里过滤的是 Han 自己的启用状态，与旧侧的 state 不是同一个概念，不要合并。
-                .eq(EduPersonPo::getStatus, 0);
+                .eq(EduPersonPo::getStatus, 0)
+                // 离校的人不能再出现在排课下拉里。leave_flag 与 status 是两件事：
+                // status 管账号启停，leave_flag 管教育身份是否在校，可以独立变化
+                // （见 EduPersonPo#leaveFlag）。只按 status 过滤的话，
+                // 一个「账号还开着但人已经离校」的教师照样能被排进新课程。
+                //
+                // 只在**选择器**里排除；按 ID 查身份（B1/B3）不加这个条件，
+                // 历史课程要能继续显示离校教师的姓名。
+                .eq(EduPersonPo::getLeaveFlag, 0);
         Long orgId = request.number("orgId");
         if (orgId != null) {
             query.eq(EduPersonPo::getSchoolId, orgId);
