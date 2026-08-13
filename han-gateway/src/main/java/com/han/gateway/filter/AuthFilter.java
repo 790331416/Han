@@ -50,9 +50,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
      * 其余条目要求「完全相等」或「后接 {@code /}」，避免 {@code /tenant/all} 意外放行
      * {@code /tenant/allExport} 这类新增接口。
      *
-     * <p>已知待收敛项（有前置依赖，不在本次处理）：{@code /tenant/all}、{@code /tenant/listAllValid}、
-     * {@code /tenant/domain/} 三条会导致未认证枚举租户 PII，但它们进白名单是因为跨服务契约指向了 A 层
-     * 而非 {@code /inner/**}；契约与 I 层接口两侧就位后才能摘除，现在摘会打断内部调用。
+     * <p>租户相关条目的收敛已完成：{@code /tenant/all}、{@code /tenant/listAllValid}、
+     * {@code /tenant/domain/} 当初进白名单，是因为跨服务契约指向了 A 层管理端路径、且客户端不带鉴权头。
+     * 契约现已迁到 {@code /inner/tenant}（带 {@code @InnerAuth} 签名校验，由
+     * {@code TenantServiceClientContractTest} 守住），三条 A 层路径不再需要免认证，已摘除。
+     * 登录页所需的未认证租户信息改由 {@code /tenant/public/} 提供，返回体只含租户 ID 与名称。
      */
     private static final List<String> WHITE_LIST = List.of(
             "/auth/login",
@@ -64,9 +66,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/auth/captcha",
             "/auth/publicKey",
             "/auth/social/",
-            "/tenant/all",
-            "/tenant/listAllValid",
-            "/tenant/domain/",
+            "/tenant/public/",
             "/oauth2/authorize",
             "/oauth2/token",
             "/oauth2/revoke",

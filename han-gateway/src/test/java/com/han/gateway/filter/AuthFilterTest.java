@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -77,11 +78,40 @@ class AuthFilterTest {
     @Test
     @DisplayName("精确条目不再前缀放行同名开头的新接口")
     void shouldNotLeakPathsSharingWhitelistPrefix() {
-        MockServerWebExchange exchange = exchange(MockServerHttpRequest.get("/tenant/allExport"));
+        MockServerWebExchange exchange = exchange(MockServerHttpRequest.post("/auth/loginByCode"));
 
         filter.filter(exchange, chain).block();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
+    @DisplayName("登录页所需的 /tenant/public/ 免认证放行")
+    void shouldPassTenantPublicPaths() {
+        for (String path : new String[]{"/tenant/public/options", "/tenant/public/domain/demo.example.com"}) {
+            MockServerWebExchange exchange = exchange(MockServerHttpRequest.get(path));
+
+            filter.filter(exchange, chain).block();
+        }
+
+        verify(chain, times(2)).filter(any());
+    }
+
+    @Test
+    @DisplayName("租户管理端路径已移出白名单，需认证")
+    void shouldRequireAuthForTenantAdminPaths() {
+        // 契约已迁到 /inner/tenant，这三条 A 层路径不再需要免认证；
+        // 放回白名单会让未认证方绕过 @RequiresPermission 直达管理端接口。
+        for (String path : new String[]{"/tenant/all", "/tenant/listAllValid", "/tenant/domain/demo.example.com"}) {
+            MockServerWebExchange exchange = exchange(MockServerHttpRequest.get(path));
+
+            filter.filter(exchange, chain).block();
+
+            assertThat(exchange.getResponse().getStatusCode())
+                    .as("%s 必须要求认证", path)
+                    .isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
         verify(chain, never()).filter(any());
     }
 

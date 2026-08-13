@@ -327,7 +327,7 @@ const loadBindSupports = () => {
 const loadTenantList = async () => {
   tenantLoading.value = true
   try {
-    const res = await get<TenantSimple[]>('/tenant/all', undefined, { silentError: true })
+    const res = await get<TenantSimple[]>('/tenant/public/options', undefined, { silentError: true })
     tenantList.value = (res as any).data || []
   } catch { /* tenant list not available */ } finally {
     tenantLoading.value = false
