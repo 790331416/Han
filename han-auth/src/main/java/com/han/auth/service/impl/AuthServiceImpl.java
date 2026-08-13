@@ -18,6 +18,7 @@ import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.UnauthorizedException;
+import com.han.common.core.util.ClassroomTokenCodec;
 import com.han.common.core.util.HanIpUtil;
 import com.han.common.core.util.HanSecureUtil;
 import com.han.common.core.util.PasswordUtil;
@@ -257,10 +258,54 @@ public class AuthServiceImpl implements IAuthService {
             LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
             String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
             redisTemplate.delete(userKey);
+            revokeClassroomSession(loginUser.getUserId());
         }
 
         redisTemplate.delete(tokenKey);
         log.info("用户登出成功");
+    }
+
+    /**
+     * 登出时一并作废这个人的三课堂兼容凭证。
+     *
+     * <p>兼容凭证是自包含 JWS、有效期一小时，光删 Han 的登录态撤销不了它：
+     * 只要 Redis 里的会话键还在，Han 网关就会继续放行，用户「登出」之后
+     * 拿旧凭证仍能读三课堂业务数据。撤销的唯一兑现点就是删这个会话键。
+     *
+     * <p>索引键由 han-system 的 {@code LegacyTokenIssuer} 按人写入，这里按同样的约定读回，
+     * 两个服务共用同一个 Redis。取不到就什么都不做——这个人本来就没换过兼容凭证。
+     */
+    private void revokeClassroomSession(Long hanUserId) {
+        if (hanUserId == null) {
+            return;
+        }
+        String activeKey = ClassroomTokenCodec.ACTIVE_KEY_PREFIX + hanUserId;
+        String classroomToken = redisTemplate.opsForValue().get(activeKey);
+        redisTemplate.delete(activeKey);
+        if (XuStrUtil.isBlank(classroomToken)) {
+            return;
+        }
+        String tokenId = classroomTokenId(classroomToken);
+        if (tokenId != null) {
+            redisTemplate.delete(ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId);
+            log.info("登出同时作废三课堂兼容凭证, userId={}", hanUserId);
+        }
+    }
+
+    /** 只读 payload 里的 jti，不验签：这里是撤销，拿不准就多删一个键，不存在误放行风险。 */
+    private static String classroomTokenId(String token) {
+        try {
+            String[] parts = token.split("\\.", -1);
+            if (parts.length != 3) {
+                return null;
+            }
+            String json = new String(java.util.Base64.getUrlDecoder().decode(parts[1]),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            Object jti = XuJsonUtil.parseObject(json, java.util.Map.class).get("jti");
+            return jti instanceof String text && !text.isBlank() ? text : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     @Override
