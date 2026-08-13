@@ -196,7 +196,7 @@ class AiKnowledgeBaseServiceImplTest {
                 try {
                     Files.deleteIfExists(path);
                 } catch (Exception ignored) {
-                    // best effort cleanup
+                    // 尽力清理，失败不阻断主流程
                 }
             });
         }

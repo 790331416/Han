@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP server service implementation.
+ * MCP 服务管理服务实现。
  */
 @Service
 @RequiredArgsConstructor

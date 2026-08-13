@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Image generation request for internal AI service.
+ * AI 内部服务的图像生成请求。
  */
 @Data
 public class AiImageGenerateRequest implements Serializable {

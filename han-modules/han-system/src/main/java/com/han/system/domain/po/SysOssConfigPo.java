@@ -8,7 +8,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * OSS storage configuration.
+ * 对象存储配置。
  */
 @Data
 @TableName("sys_oss_config")

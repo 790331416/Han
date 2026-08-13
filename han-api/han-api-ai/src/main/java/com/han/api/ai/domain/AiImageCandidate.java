@@ -7,7 +7,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * One image candidate returned by a provider.
+ * 供应商返回的单张候选图片。
  */
 @Data
 public class AiImageCandidate implements Serializable {

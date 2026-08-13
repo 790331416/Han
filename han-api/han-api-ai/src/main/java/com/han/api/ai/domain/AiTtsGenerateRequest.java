@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 /**
- * Text-to-speech generation request.
+ * 语音合成请求。
  */
 @Data
 public class AiTtsGenerateRequest implements Serializable {

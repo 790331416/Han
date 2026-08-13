@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Admin dashboard controller.
+ * 管理端首页仪表盘控制器。
  */
 @Slf4j
 @AdminAuth

@@ -7,7 +7,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Video generation task query response.
+ * 视频生成任务查询响应。
  */
 @Data
 public class AiVideoTaskQueryResponse implements Serializable {

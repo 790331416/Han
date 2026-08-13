@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Video generation request for internal AI service.
+ * AI 内部服务的视频生成请求。
  */
 @Data
 public class AiVideoGenerateRequest implements Serializable {

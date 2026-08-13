@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AI text-to-speech internal controller.
+ * AI 语音合成内部控制器。
  */
 @InnerAuth
 @RestController("innerAiTtsController")

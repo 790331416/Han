@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * OpenAI-compatible image generation implementation.
+ * OpenAI 兼容协议的图像生成实现。
  */
 @Service
 @RequiredArgsConstructor

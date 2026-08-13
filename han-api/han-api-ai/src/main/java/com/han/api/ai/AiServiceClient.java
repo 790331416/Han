@@ -70,7 +70,7 @@ import org.springframework.web.service.annotation.PostExchange;
 public interface AiServiceClient {
 
     /**
-     * Generate text with a configured model.
+     * 用已配置的模型生成文本。
      *
      * <p>非幂等、计费。
      */
@@ -78,7 +78,7 @@ public interface AiServiceClient {
     R<AiTextGenerateResponse> generateText(@RequestBody AiTextGenerateRequest request);
 
     /**
-     * Render the effective user prompt with a configured prompt template.
+     * 用已配置的提示词模板渲染出最终的用户提示词。
      *
      * <p>幂等、不计费。
      */
@@ -86,7 +86,7 @@ public interface AiServiceClient {
     R<String> renderTextPrompt(@RequestBody AiTextGenerateRequest request);
 
     /**
-     * Generate image candidates with a configured image model.
+     * 用已配置的图像模型生成候选图片。
      *
      * <p>非幂等、计费。
      */
@@ -94,7 +94,7 @@ public interface AiServiceClient {
     R<AiImageGenerateResponse> generateImage(@RequestBody AiImageGenerateRequest request);
 
     /**
-     * Render the effective image prompt with a configured prompt template.
+     * 用已配置的提示词模板渲染出最终的绘图提示词。
      *
      * <p>幂等、不计费。对应服务端 {@code IAiImageController#renderImagePrompt}。
      */
@@ -102,7 +102,7 @@ public interface AiServiceClient {
     R<String> renderImagePrompt(@RequestBody AiImageGenerateRequest request);
 
     /**
-     * Submit an async video generation task with a configured video model.
+     * 用已配置的视频模型提交异步视频生成任务。
      *
      * <p>非幂等、计费。
      */
@@ -110,7 +110,7 @@ public interface AiServiceClient {
     R<AiVideoGenerateResponse> generateVideo(@RequestBody AiVideoGenerateRequest request);
 
     /**
-     * Render the effective video prompt with a configured prompt template.
+     * 用已配置的提示词模板渲染出最终的视频提示词。
      *
      * <p>幂等、不计费。对应服务端 {@code IAiVideoController#renderVideoPrompt}。
      */
@@ -118,7 +118,7 @@ public interface AiServiceClient {
     R<String> renderVideoPrompt(@RequestBody AiVideoGenerateRequest request);
 
     /**
-     * Query a provider video generation task.
+     * 查询供应商侧的视频生成任务。
      *
      * <p>幂等、不计费（HTTP 动词是 POST 只因为入参是对象，语义上是查询）。
      */
@@ -126,7 +126,7 @@ public interface AiServiceClient {
     R<AiVideoTaskQueryResponse> queryVideoTask(@RequestBody AiVideoTaskQueryRequest request);
 
     /**
-     * Synthesize speech audio with a configured TTS model.
+     * 用已配置的 TTS 模型合成语音音频。
      *
      * <p>非幂等、计费。
      */

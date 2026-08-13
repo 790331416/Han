@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AI video internal controller.
+ * AI 视频内部控制器。
  */
 @InnerAuth
 @RestController("innerAiVideoController")

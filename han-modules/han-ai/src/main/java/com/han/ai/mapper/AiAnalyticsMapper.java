@@ -9,13 +9,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI token statistics mapper.
+ * AI Token 用量统计 Mapper。
  */
 @Mapper
 public interface AiAnalyticsMapper {
 
     /**
-     * Aggregate token usage by model.
+     * 按模型维度汇总 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time
@@ -38,7 +38,7 @@ public interface AiAnalyticsMapper {
                                            @Param("endTime") LocalDateTime endTime);
 
     /**
-     * Aggregate token usage by user.
+     * 按用户维度汇总 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time
@@ -59,7 +59,7 @@ public interface AiAnalyticsMapper {
                                           @Param("endTime") LocalDateTime endTime);
 
     /**
-     * Aggregate token usage by day.
+     * 按天维度汇总 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time

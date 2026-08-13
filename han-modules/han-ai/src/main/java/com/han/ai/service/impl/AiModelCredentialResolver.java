@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Resolve model credentials from environment variables or persisted config.
+ * 从环境变量或已持久化的配置中解析模型凭据。
  */
 @Slf4j
 @Component

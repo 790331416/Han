@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Prompt template service implementation.
+ * 提示词模板服务实现。
  */
 @Service
 @RequiredArgsConstructor

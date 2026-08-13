@@ -13,7 +13,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * MCP server config.
+ * MCP 服务配置。
  */
 @Data
 @TableName("ai_mcp_server")

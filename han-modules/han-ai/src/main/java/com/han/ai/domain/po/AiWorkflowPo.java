@@ -11,7 +11,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * AI workflow entity.
+ * AI 编排实体。
  */
 @Data
 @TableName("ai_workflow")

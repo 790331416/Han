@@ -11,7 +11,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Prompt template.
+ * 提示词模板。
  */
 @Data
 @TableName("ai_prompt_template")

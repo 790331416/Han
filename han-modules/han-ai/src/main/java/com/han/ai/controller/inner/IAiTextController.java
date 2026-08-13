@@ -25,7 +25,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * AI text internal controller.
+ * AI 文本内部控制器。
  */
 @Slf4j
 @InnerAuth
@@ -130,7 +130,7 @@ public class IAiTextController {
         try {
             emitter.complete();
         } catch (IllegalStateException ignored) {
-            // Emitter already completed or timed out.
+            // SSE 发射器已完成或已超时。
         }
     }
 

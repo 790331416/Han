@@ -4,7 +4,7 @@ import com.han.api.ai.domain.AiImageGenerateRequest;
 import com.han.api.ai.domain.AiImageGenerateResponse;
 
 /**
- * Internal image generation service.
+ * 内部图像生成服务。
  */
 public interface IAiImageGenerationService {
 

@@ -5,7 +5,7 @@ import com.han.ai.domain.query.AiAgentQuery;
 import com.han.common.core.domain.PageResult;
 
 /**
- * AI agent service.
+ * AI 智能体服务。
  */
 public interface IAiAgentService {
 

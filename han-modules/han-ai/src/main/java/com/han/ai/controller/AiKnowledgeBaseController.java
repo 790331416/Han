@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Knowledge base controller.
+ * 知识库控制器。
  */
 @AdminAuth
 @RestController
@@ -37,7 +37,7 @@ public class AiKnowledgeBaseController {
     private final IAiKnowledgeBaseService aiKnowledgeBaseService;
 
     /**
-     * Query paged knowledge base list.
+     * 分页查询知识库列表。
      *
      * @param query query params
      * @return page result
@@ -49,7 +49,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Query knowledge base detail.
+     * 查询知识库详情。
      *
      * @param kbId knowledge base id
      * @return detail
@@ -61,7 +61,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Query all enabled knowledge bases.
+     * 查询全部已启用的知识库。
      *
      * @return knowledge base list
      */
@@ -72,7 +72,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Create knowledge base.
+     * 新增知识库。
      *
      * @param knowledgeBase knowledge base data
      * @return result
@@ -86,7 +86,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Update knowledge base.
+     * 修改知识库。
      *
      * @param knowledgeBase knowledge base data
      * @return result
@@ -100,7 +100,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Delete knowledge base.
+     * 删除知识库。
      *
      * @param kbId knowledge base id
      * @return result
@@ -114,7 +114,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Query document list under a knowledge base.
+     * 查询指定知识库下的文档列表。
      *
      * @param kbId knowledge base id
      * @param query query params
@@ -127,7 +127,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Upload document to a knowledge base.
+     * 上传文档到知识库。
      *
      * @param kbId knowledge base id
      * @param file file
@@ -142,7 +142,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Reindex document.
+     * 重建文档索引。
      *
      * @param docId document id
      * @return result
@@ -156,7 +156,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Delete document.
+     * 删除文档。
      *
      * @param docId document id
      * @return result
@@ -170,7 +170,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Run hit test on a knowledge base.
+     * 对知识库执行命中测试。
      *
      * @param kbId knowledge base id
      * @param request query payload
@@ -183,7 +183,7 @@ public class AiKnowledgeBaseController {
     }
 
     /**
-     * Query paragraph detail (citation click-through).
+     * 查询段落详情（引用来源点击跳转用）。
      *
      * @param paragraphId paragraph id
      * @return paragraph detail

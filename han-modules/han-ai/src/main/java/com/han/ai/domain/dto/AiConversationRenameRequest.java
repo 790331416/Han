@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * Conversation rename request.
+ * 会话重命名请求。
  */
 @Data
 public class AiConversationRenameRequest {

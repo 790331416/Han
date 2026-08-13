@@ -36,7 +36,7 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
- * Minimal OpenAI-compatible client used for model connectivity checks and chat requests.
+ * 最小化的 OpenAI 兼容客户端，用于模型连通性检查与对话请求。
  */
 @Slf4j
 @Component
@@ -1207,7 +1207,7 @@ class AiOpenAiCompatibleClient {
                 return "模型调用失败(" + statusCode + "): " + envelope.error.message;
             }
         } catch (RuntimeException ignored) {
-            // Provider error bodies are not guaranteed to be JSON.
+            // 供应商返回的错误体不保证是 JSON。
         }
         String excerpt = body == null ? "" : body.replaceAll("\\s+", " ").trim();
         if (excerpt.length() > 180) {

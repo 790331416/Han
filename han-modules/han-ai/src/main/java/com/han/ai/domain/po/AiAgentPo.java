@@ -23,7 +23,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * AI agent entity.
+ * AI 智能体实体。
  */
 @Data
 @TableName("ai_agent")

@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * PostgreSQL-based storage configuration lookup.
+ * 基于 PostgreSQL 的存储配置查询。
  *
  * <p>优先复用应用的 {@link DataSource}（连接池 / 监控 / 超时都能生效），
  * 仅在应用未提供数据源时才退回 {@link DriverManager} 直连。

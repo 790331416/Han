@@ -3,7 +3,7 @@ package com.han.ai.domain.query;
 import lombok.Data;
 
 /**
- * AI conversation query.
+ * AI 会话查询条件。
  */
 @Data
 public class AiConversationQuery {

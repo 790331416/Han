@@ -4,12 +4,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Token statistics service.
+ * Token 用量统计服务。
  */
 public interface IAiTokenStatsService {
 
     /**
-     * Aggregate token usage by model.
+     * 按模型维度汇总 Token 用量。
      *
      * @param startTime start time text
      * @param endTime end time text
@@ -18,7 +18,7 @@ public interface IAiTokenStatsService {
     List<Map<String, Object>> statsByModel(String startTime, String endTime);
 
     /**
-     * Aggregate token usage by user.
+     * 按用户维度汇总 Token 用量。
      *
      * @param startTime start time text
      * @param endTime end time text
@@ -27,7 +27,7 @@ public interface IAiTokenStatsService {
     List<Map<String, Object>> statsByUser(String startTime, String endTime);
 
     /**
-     * Aggregate token usage by day.
+     * 按天维度汇总 Token 用量。
      *
      * @param startTime start time text
      * @param endTime end time text

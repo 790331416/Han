@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI chat service.
+ * AI 对话服务。
  */
 public interface IAiChatService {
 

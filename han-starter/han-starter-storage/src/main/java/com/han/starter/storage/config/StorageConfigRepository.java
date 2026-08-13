@@ -3,19 +3,19 @@ package com.han.starter.storage.config;
 import java.util.Optional;
 
 /**
- * Repository for resolving runtime storage configuration.
+ * 运行期存储配置的解析仓储。
  */
 public interface StorageConfigRepository {
 
     /**
-     * Resolve active storage configuration record.
+     * 解析当前启用的存储配置记录。
      *
      * @return active record
      */
     Optional<StorageConfigRecord> findActiveRecord();
 
     /**
-     * Resolve a storage configuration record by locator.
+     * 按定位符解析存储配置记录。
      *
      * @param locator record locator
      * @return matched record
@@ -23,7 +23,7 @@ public interface StorageConfigRepository {
     Optional<StorageConfigRecord> findRecord(String locator);
 
     /**
-     * Resolve active runtime configuration.
+     * 解析当前生效的运行期配置。
      *
      * @return active runtime configuration
      */

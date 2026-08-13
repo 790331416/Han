@@ -4,7 +4,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.system.domain.po.SysOssConfigPo;
 
 /**
- * OSS storage configuration service.
+ * 对象存储配置服务。
  */
 public interface ISysOssConfigService {
 

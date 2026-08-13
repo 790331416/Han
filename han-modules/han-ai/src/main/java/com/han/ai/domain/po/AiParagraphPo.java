@@ -8,7 +8,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Indexed paragraph.
+ * 已建索引的段落。
  */
 @Data
 @TableName("ai_paragraph")

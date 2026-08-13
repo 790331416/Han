@@ -11,7 +11,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Knowledge base.
+ * 知识库。
  * <p>
  * 约束长度与 {@code ai_knowledge_base} 的列宽对齐：超长时回可读的业务提示，
  * 而不是把数据库原生的约束冲突抛给用户。

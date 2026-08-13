@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * AI model service implementation.
+ * AI 模型服务实现。
  */
 @Service
 @RequiredArgsConstructor
@@ -64,7 +64,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
             return enabledModels;
         }
 
-        // Compatibility fallback for historical seed data that contains only disabled defaults.
+        // 兼容历史种子数据只有「已停用默认项」的情况，做一次回退。
         LambdaQueryWrapper<AiModelPo> fallbackWrapper = new LambdaQueryWrapper<AiModelPo>()
                 .eq(StringUtils.hasText(modelType), AiModelPo::getModelType, modelType)
                 .orderByAsc(AiModelPo::getStatus)

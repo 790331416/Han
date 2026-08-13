@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * Knowledge hit test request.
+ * 知识库命中测试请求。
  */
 @Data
 public class HitTestRequest {

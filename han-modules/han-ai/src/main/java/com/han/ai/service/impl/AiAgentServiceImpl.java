@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 
 /**
- * AI agent service implementation.
+ * AI 智能体服务实现。
  */
 @Service
 @RequiredArgsConstructor

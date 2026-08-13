@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Knowledge base service implementation.
+ * 知识库服务实现。
  */
 @Slf4j
 @Service
@@ -686,7 +686,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         try {
             Files.deleteIfExists(Paths.get(filePath));
         } catch (IOException ignored) {
-            // Ignore file cleanup failure and keep database state consistent.
+            // 忽略文件清理失败，优先保证数据库状态一致。
         }
     }
 
@@ -700,11 +700,11 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException ignored) {
-                    // Ignore cleanup failure.
+                    // 清理失败不影响主流程，忽略。
                 }
             });
         } catch (IOException ignored) {
-            // Ignore cleanup failure.
+            // 清理失败不影响主流程，忽略。
         }
     }
 

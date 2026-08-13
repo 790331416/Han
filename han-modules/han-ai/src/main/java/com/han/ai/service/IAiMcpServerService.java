@@ -8,12 +8,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP server service.
+ * MCP 服务管理服务。
  */
 public interface IAiMcpServerService {
 
     /**
-     * Query paged MCP server list.
+     * 分页查询 MCP 服务列表。
      *
      * @param query query params
      * @return page result
@@ -21,7 +21,7 @@ public interface IAiMcpServerService {
     PageResult<AiMcpServerPo> selectPage(AiMcpServerQuery query);
 
     /**
-     * Query MCP server detail.
+     * 查询 MCP 服务详情。
      *
      * @param mcpId server id
      * @return detail
@@ -29,35 +29,35 @@ public interface IAiMcpServerService {
     AiMcpServerPo selectById(Long mcpId);
 
     /**
-     * Query all enabled MCP servers.
+     * 查询全部已启用的 MCP 服务。
      *
      * @return enabled list
      */
     List<AiMcpServerPo> selectAll();
 
     /**
-     * Insert MCP server.
+     * 新增 MCP 服务。
      *
      * @param server server data
      */
     void insert(AiMcpServerPo server);
 
     /**
-     * Update MCP server.
+     * 修改 MCP 服务。
      *
      * @param server server data
      */
     void update(AiMcpServerPo server);
 
     /**
-     * Delete MCP server.
+     * 删除 MCP 服务。
      *
      * @param mcpId server id
      */
     void deleteById(Long mcpId);
 
     /**
-     * Refresh MCP tool metadata.
+     * 刷新 MCP 工具元数据。
      *
      * @param mcpId server id
      * @return refresh summary
@@ -73,7 +73,7 @@ public interface IAiMcpServerService {
     String testConnection(Long mcpId);
 
     /**
-     * Query stored tool metadata list (name/description/inputSchema).
+     * 查询已存储的工具元数据列表（名称 / 描述 / inputSchema）。
      *
      * @param mcpId server id
      * @return tool metadata list

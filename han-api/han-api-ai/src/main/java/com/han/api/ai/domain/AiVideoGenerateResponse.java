@@ -7,7 +7,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Video generation response from internal AI service.
+ * AI 内部服务的视频生成响应。
  */
 @Data
 public class AiVideoGenerateResponse implements Serializable {

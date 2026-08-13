@@ -7,7 +7,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Text-to-speech generation response. Audio bytes are Base64-encoded for service-to-service transport.
+ * 语音合成响应。音频字节以 Base64 编码，便于服务间传输。
  */
 @Data
 public class AiTtsGenerateResponse implements Serializable {

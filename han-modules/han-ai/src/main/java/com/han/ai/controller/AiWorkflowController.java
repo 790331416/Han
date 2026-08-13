@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * AI workflow controller.
+ * AI 编排控制器。
  */
 @AdminAuth
 @RestController

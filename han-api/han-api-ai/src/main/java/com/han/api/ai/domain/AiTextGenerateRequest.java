@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.util.Map;
 
 /**
- * Text generation request.
+ * 文本生成请求。
  */
 @Data
 public class AiTextGenerateRequest implements Serializable {

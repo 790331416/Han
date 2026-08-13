@@ -3,7 +3,7 @@ package com.han.ai.domain.vo;
 import lombok.Data;
 
 /**
- * Structured knowledge source for chat message insight.
+ * 对话消息洞察用的结构化知识来源。
  */
 @Data
 public class AiChatKnowledgeSourceVo {

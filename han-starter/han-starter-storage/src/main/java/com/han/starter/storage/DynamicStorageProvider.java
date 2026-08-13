@@ -7,7 +7,7 @@ import java.io.Closeable;
 import java.io.InputStream;
 
 /**
- * Storage provider that prefers database-backed active config and falls back to static config.
+ * 存储提供方：优先使用数据库里启用的配置，取不到时回退静态配置。
  */
 public class DynamicStorageProvider implements StorageProvider, Closeable {
 

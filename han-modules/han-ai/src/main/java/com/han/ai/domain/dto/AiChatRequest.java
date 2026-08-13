@@ -6,7 +6,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * AI chat request.
+ * AI 对话请求。
  */
 @Data
 public class AiChatRequest {

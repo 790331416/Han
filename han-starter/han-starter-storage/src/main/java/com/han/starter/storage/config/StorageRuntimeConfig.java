@@ -3,7 +3,7 @@ package com.han.starter.storage.config;
 import org.springframework.util.StringUtils;
 
 /**
- * Resolved runtime storage configuration.
+ * 解析后的运行期存储配置。
  */
 public final class StorageRuntimeConfig {
 

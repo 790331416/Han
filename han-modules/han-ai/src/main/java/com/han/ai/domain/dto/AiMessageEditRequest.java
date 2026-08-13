@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * Edit and regenerate request.
+ * 编辑并重新生成请求。
  */
 @Data
 public class AiMessageEditRequest {

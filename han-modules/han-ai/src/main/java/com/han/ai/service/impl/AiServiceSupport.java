@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.util.function.Consumer;
 
 /**
- * Shared support methods for AI services.
+ * AI 各服务共用的支撑方法。
  */
 abstract class AiServiceSupport {
 

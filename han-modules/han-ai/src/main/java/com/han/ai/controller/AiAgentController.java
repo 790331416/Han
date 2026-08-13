@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AI agent controller.
+ * AI 智能体控制器。
  */
 @AdminAuth
 @RestController

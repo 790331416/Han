@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * Image generation response from internal AI service.
+ * AI 内部服务的图像生成响应。
  */
 @Data
 public class AiImageGenerateResponse implements Serializable {

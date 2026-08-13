@@ -57,7 +57,7 @@ final class AiSseChannel {
         try {
             emitter.complete();
         } catch (IllegalStateException ignored) {
-            // Emitter already completed/timed out.
+            // SSE 发射器已完成或已超时。
         }
     }
 }

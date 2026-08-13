@@ -3,7 +3,7 @@ package com.han.ai.domain.query;
 import lombok.Data;
 
 /**
- * Prompt template query.
+ * 提示词模板查询条件。
  */
 @Data
 public class AiPromptTemplateQuery {

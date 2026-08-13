@@ -19,7 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * AI model config.
+ * AI 模型配置。
  */
 @Data
 @TableName("ai_model")

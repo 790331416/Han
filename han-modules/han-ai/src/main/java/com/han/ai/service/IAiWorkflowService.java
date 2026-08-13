@@ -9,7 +9,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.Map;
 
 /**
- * AI workflow service.
+ * AI 编排服务。
  */
 public interface IAiWorkflowService {
 

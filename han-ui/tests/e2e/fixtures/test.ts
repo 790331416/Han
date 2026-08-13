@@ -30,7 +30,7 @@ async function createAuthSession(): Promise<AuthSession> {
 }
 
 /**
- * Shared Playwright fixtures for Han UI.
+ * Han UI 共用的 Playwright 夹具。
  *
  * Provides:
  * - worker-scoped API login for stable authenticated sessions

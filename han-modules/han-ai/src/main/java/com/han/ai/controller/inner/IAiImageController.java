@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AI image internal controller.
+ * AI 图像内部控制器。
  */
 @InnerAuth
 @RestController("innerAiImageController")

@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * AI workflow service implementation.
+ * AI 编排服务实现。
  */
 @Slf4j
 @Service

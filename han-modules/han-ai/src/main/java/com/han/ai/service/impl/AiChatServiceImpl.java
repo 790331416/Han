@@ -62,7 +62,7 @@ import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * AI chat service implementation.
+ * AI 对话服务实现。
  */
 @Slf4j
 @Service
@@ -1380,7 +1380,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                     try {
                         result.add(Long.valueOf(trimmed));
                     } catch (NumberFormatException ignoredNumber) {
-                        // Ignore illegal ids and keep remaining values.
+                        // 跳过非法 ID，保留其余取值继续处理。
                     }
                 }
             }

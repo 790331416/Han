@@ -8,7 +8,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Knowledge base document.
+ * 知识库文档。
  */
 @Data
 @TableName("ai_document")

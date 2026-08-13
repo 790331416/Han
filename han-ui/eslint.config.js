@@ -49,7 +49,10 @@ export default [
       // public/ 是原样投递的静态资源，不进构建管线；embed.js 刻意用 ES5 写法保证嵌入侧兼容性
       'public/**',
       'src/types/auto-imports.d.ts',
-      'src/types/components.d.ts'
+      'src/types/components.d.ts',
+      // vite.config.js 是历史遗留的构建产物，已在 .gitignore 第 413 行忽略；
+      // ESLint 不读 .gitignore，本地留有该文件的机器会因为它报 no-var 而红掉门禁。
+      'vite.config.js'
     ]
   },
   {
