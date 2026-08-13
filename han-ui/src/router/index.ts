@@ -226,13 +226,13 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'operlog',
         name: 'OperLog',
         component: () => import('@/views/system/operlog/index.vue'),
-        meta: { title: '操作日志', icon: 'Document', permission: 'system:operlog:list' }
+        meta: { title: '操作日志', icon: 'Document', permission: 'monitor:operlog:list' }
       },
       {
         path: 'loginlog',
         name: 'LoginLog',
         component: () => import('@/views/system/loginlog/index.vue'),
-        meta: { title: '登录日志', icon: 'Tickets', permission: 'system:loginlog:list' }
+        meta: { title: '登录日志', icon: 'Tickets', permission: 'monitor:loginlog:list' }
       },
       {
         path: 'online',
@@ -244,13 +244,13 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'server',
         name: 'Server',
         component: () => import('@/views/system/server/index.vue'),
-        meta: { title: '服务监控', icon: 'Monitor', permission: 'system:monitor:server' }
+        meta: { title: '服务监控', icon: 'Monitor', permission: 'monitor:server:list' }
       },
       {
         path: 'cache-monitor',
         name: 'CacheMonitor',
         component: () => import('@/views/system/cache-monitor/index.vue'),
-        meta: { title: '缓存监控', icon: 'Coin', permission: 'system:monitor:cache' }
+        meta: { title: '缓存监控', icon: 'Coin', permission: 'monitor:cache:list' }
       },
       {
         path: 'oss-config',
@@ -343,7 +343,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'chat',
         name: 'AiChat',
         component: () => import('@/views/ai/chat/index.vue'),
-        meta: { title: 'AI对话', icon: 'ChatLineSquare' }
+        meta: { title: 'AI对话', icon: 'ChatLineSquare', permission: 'ai:chat:list' }
       }
     ]
   },
