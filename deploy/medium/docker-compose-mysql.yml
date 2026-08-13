@@ -4,7 +4,7 @@ x-db-env: &db-env
   DB_NAME: han
   DB_USER: han
   DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-  # 不要再写 driver-class-name，Spring Boot 按 URL 与 classpath 驱动自动选择
+  # 不要再写 driver-class-name，Spring Boot 按 URL 与 classpath 上的驱动自动选择
   DB_URL: "jdbc:mysql://mysql:3306/han?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
 
 x-redis-env: &redis-env
@@ -34,7 +34,7 @@ x-service-env: &service-env
 
 services:
   mysql:
-    image: ${HAN_MYSQL_IMAGE:-mysql:8.4.10}
+    image: ${HAN_MYSQL_IMAGE:-docker.m.daocloud.io/library/mysql:8.4.10}
     restart: always
     mem_limit: ${HAN_MYSQL_MEM_LIMIT:-1g}
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
@@ -55,7 +55,10 @@ services:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      # 首次启动要执行初始化脚本，full 档一千多行，没有宽限期会在导入期间被判 unhealthy，
+      # 依赖 service_healthy 的 system/job 会因此直接启动失败。
+      start_period: 180s
+      retries: 10
 
   redis:
     image: ${HAN_REDIS_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6.0}
