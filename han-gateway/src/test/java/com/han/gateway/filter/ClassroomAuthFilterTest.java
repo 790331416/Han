@@ -26,6 +26,47 @@ class ClassroomAuthFilterTest {
 
     private static final String SECRET = "0123456789abcdef0123456789abcdef";
 
+    /**
+     * 旧前端标了 {@code noAuth} 的两条业务接口必须无凭证可达。
+     *
+     * <p>2026-08-13 把 /ktapi/ 业务流量改走 Han 网关之后，本过滤器成了这条链路的入口鉴权。
+     * 这两条接口旧前端本来就不带 access-token 发（教室大屏按教室号取课、分享页未登录访问），
+     * 一刀切要求凭证会直接把它们打成 401。
+     */
+    @Test
+    void letsThroughTheTwoBusinessPathsTheLegacyFrontEndCallsWithoutAToken() {
+        for (String path : new String[]{
+                "/ysfz-tcapi/tb-course-info/getCourseInfoByRoomId",
+                "/ysfz-tcapi/live/userCourseSharingInfo",
+                "/tcapi/tb-course-info/getCourseInfoByRoomId"}) {
+            MockServerWebExchange exchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.get(path).build());
+            AtomicBoolean forwarded = new AtomicBoolean();
+            new ClassroomAuthFilter(mock(ReactiveStringRedisTemplate.class), WebClient.builder(),
+                    true, SECRET, "http://127.0.0.1:1/exchange")
+                    .filter(exchange, ignored -> {
+                        forwarded.set(true);
+                        return Mono.empty();
+                    }).block();
+
+            assertThat(forwarded).as("%s 应当无凭证放行", path).isTrue();
+            assertThat(exchange.getResponse().getStatusCode()).as("%s 不应被拒", path).isNull();
+        }
+    }
+
+    /** 免认证清单是逐条精确匹配，不能让同目录下的其它接口跟着裸奔。 */
+    @Test
+    void doesNotLetThroughNeighbouringPathsUnderTheSameController() {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/ysfz-tcapi/tb-course-info/getCourseInfoList").build());
+
+        new ClassroomAuthFilter(mock(ReactiveStringRedisTemplate.class), WebClient.builder(),
+                true, SECRET, "http://127.0.0.1:1/exchange")
+                .filter(exchange, ignored -> Mono.empty()).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     @Test
     void validatesCachedExchangeAndRelaysExternalTokenWithoutQueryLeak() {
         long now = Instant.now().getEpochSecond();

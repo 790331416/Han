@@ -60,7 +60,8 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
-        if (!isClassroomPath(path) || isLegacyPartnerPath(path) || isSingleLogin(path)) {
+        if (!isClassroomPath(path) || isLegacyPartnerPath(path) || isSingleLogin(path)
+                || isAnonymousBusinessPath(path)) {
             return chain.filter(exchange);
         }
         if (!enabled || secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
@@ -186,6 +187,29 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
 
     private static boolean isClassroomPath(String path) {
         return path.startsWith("/tcapi/") || path.startsWith("/ysfz-tcapi/");
+    }
+
+    /**
+     * 旧前端显式标注 {@code noAuth: true} 的业务接口，逐条列举、不使用通配。
+     *
+     * <p>这两条在旧前端里就是不带 {@code access-token} 发出的（见 `api/http/request.ts`
+     * 的 {@code config.noAuth} 分支），要求凭证会直接把它们打成 401：
+     * <ul>
+     *   <li>{@code tb-course-info/getCourseInfoByRoomId}：按教室号取当前课程，
+     *       教室大屏/录播设备在没有用户登录态的情况下调用；</li>
+     *   <li>{@code live/userCourseSharingInfo}：课程分享页，收到分享链接的人尚未登录。</li>
+     * </ul>
+     *
+     * <p>新增条目前请先确认调用方**确实拿不到凭证**，而不是图省事。
+     * 这两条同时也必须留在旧网关的 {@code param-filter.ignoreUrls} 里，
+     * 否则请求过了这里、会在旧网关因缺 token 被拒。
+     */
+    private static final java.util.List<String> ANONYMOUS_BUSINESS_SUFFIXES = java.util.List.of(
+            "/tb-course-info/getCourseInfoByRoomId",
+            "/live/userCourseSharingInfo");
+
+    private static boolean isAnonymousBusinessPath(String path) {
+        return ANONYMOUS_BUSINESS_SUFFIXES.stream().anyMatch(path::endsWith);
     }
 
     private static boolean isSingleLogin(String path) {
