@@ -16,6 +16,16 @@ public class EduPersonPo extends BizEntity {
     private String personNo;
     private String personName;
     private String personType;
+
+    /**
+     * 校内岗位（{@link EduDuty} 的名字，为空按普通教师处理）。
+     *
+     * <p>与 {@code personType} 是两个维度：{@code personType} 是身份类型（教师/学生），
+     * 本字段是职务。旧三课堂的控制台菜单按岗位授权，只有显式授予校级管理岗的人
+     * 才拿得到课程预约这类校级页面，不能靠身份类型推导。</p>
+     */
+    private String dutyCode;
+
     private String phone;
     private String sourceSystem;
     private String externalUserId;

@@ -138,13 +138,23 @@ public class LegacyDirectoryService {
     /**
      * C3 的 {@code roles[]} 元素。
      *
+     * <p><b>两个维度、两套编码，都叫 roleType，不要合并</b>：
+     * 顶层 {@code roleType} 是身份类型（教师 2 / 学生 4），旧前端 {@code store/user.ts}
+     * 用它做登录过滤；{@code dutyType[].roleType} 是岗位码，控制台菜单用
+     * {@code isSchool + '-' + 岗位码} 做授权。岗位取自 {@code edu_person.duty_code}，
+     * 映射见 {@link LegacyCompatProperties#getDutyType()}。
+     *
      * <p>{@code dutyType} 与 {@code classes} 不能是 {@code undefined} 或空数组：
-     * 旧 api 的操作日志有 {@code getDutyType().get(0)}，Han 无岗位与教育局层级模型，这里返回占位元素。
+     * 旧 api 的操作日志有 {@code getDutyType().get(0)}，前端也有
+     * {@code userInfo.dutyType.some(...)}，空数组即抛错。{@code dutyCodeOf} 对未配置的岗位
+     * 会回落到默认岗位而不是空串，正是为了保证这个元素恒有意义。
      */
     public Map<String, Object> roleOf(EduPersonPo person) {
         EduSchoolPo school = schoolById(person.getSchoolId());
         String roleType = properties.roleTypeOf(person.getPersonType());
         String identityName = properties.identityNameOf(person.getPersonType());
+        String dutyCode = properties.dutyCodeOf(person.getDutyCode());
+        String dutyName = properties.dutyNameOf(person.getDutyCode());
         List<EduClassPo> classes = classesOf(person.getId());
         EduClassPo firstClass = classes.isEmpty() ? null : classes.getFirst();
         String schoolId = string(person.getSchoolId());
@@ -153,9 +163,9 @@ public class LegacyDirectoryService {
 
         Map<String, Object> duty = new LinkedHashMap<>();
         duty.put("pkId", string(person.getId()));
-        duty.put("roleType", roleType);
-        duty.put("positionName", identityName);
-        duty.put("itemText", identityName);
+        duty.put("roleType", dutyCode);
+        duty.put("positionName", dutyName);
+        duty.put("itemText", dutyName);
 
         Map<String, Object> membership = new LinkedHashMap<>();
         membership.put("branchId", firstClass != null ? string(firstClass.getId()) : "");

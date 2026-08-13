@@ -49,6 +49,11 @@ public final class EducationForms {
             @NotBlank @Size(max = 64) String personNo,
             @NotBlank @Size(max = 128) String personName,
             @NotBlank @Size(max = 16) String personType,
+            /**
+             * 校内岗位（{@link EduDuty}）。缺省按普通教师处理，校级管理岗必须显式选择。
+             * 与 personType 是两个维度：一个是身份类型，一个是职务。
+             */
+            @Size(max = 32) String dutyCode,
             @Size(max = 20) String phone,
             @NotNull Integer status,
             @Size(max = 500) String remark,

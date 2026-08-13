@@ -166,7 +166,7 @@ class EducationPersonServiceTest {
         when(roleMapper.selectById(1L)).thenReturn(role("admin"));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER",
-                null, 0, null, null, true, "t.zhang", "Teacher@2026", List.of(1L), null, null, null, null);
+                null, null, 0, null, null, true, "t.zhang", "Teacher@2026", List.of(1L), null, null, null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
@@ -185,7 +185,7 @@ class EducationPersonServiceTest {
         }).when(personMapper).insert(any(EduPersonPo.class));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T002", "李老师", "TEACHER",
-                null, 0, null, null, false, null, null, null, null, null, null, null);
+                null, null, 0, null, null, false, null, null, null, null, null, null, null);
 
         EducationForms.PersonResult result = service.save(form);
 
@@ -208,11 +208,11 @@ class EducationPersonServiceTest {
         when(userMapper.selectById(9010L)).thenReturn(user);
 
         EducationForms.Person emptyArray = new EducationForms.Person(5010L, SCHOOL_ID, "T001", "张老师",
-                "TEACHER", "13900000001", 0, null, null, true, "t.zhang", null, List.of(), null, null, null, null);
+                "TEACHER", null, "13900000001", 0, null, null, true, "t.zhang", null, List.of(), null, null, null, null);
         service.save(emptyArray);
 
         EducationForms.Person omitted = new EducationForms.Person(5010L, SCHOOL_ID, "T001", "张老师",
-                "TEACHER", "13900000001", 0, null, null, true, "t.zhang", null, null, null, null, null, null);
+                "TEACHER", null, "13900000001", 0, null, null, true, "t.zhang", null, null, null, null, null, null);
         service.save(omitted);
 
         verify(userRoleMapper, never()).delete(any());
@@ -233,7 +233,7 @@ class EducationPersonServiceTest {
         when(userMapper.selectById(9011L)).thenReturn(user);
 
         EducationForms.Person form = new EducationForms.Person(5011L, SCHOOL_ID, "T001", "张老师", "TEACHER",
-                null, 0, null, null, true, "t.zhang", null, List.of(), true, null, null, null);
+                null, null, 0, null, null, true, "t.zhang", null, List.of(), true, null, null, null);
         service.save(form);
 
         verify(userRoleMapper).delete(any());
@@ -251,7 +251,7 @@ class EducationPersonServiceTest {
         }).when(personMapper).insert(any(EduPersonPo.class));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S001", "王同学", "STUDENT",
-                null, 0, null, null, false, null, null, null, null, List.of(21L, 22L), null, null);
+                null, null, 0, null, null, false, null, null, null, null, List.of(21L, 22L), null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
@@ -275,7 +275,7 @@ class EducationPersonServiceTest {
         when(classMapper.selectById(21L)).thenReturn(other);
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S002", "赵同学", "STUDENT",
-                null, 0, null, null, false, null, null, null, null, List.of(21L), null, null);
+                null, null, 0, null, null, false, null, null, null, null, List.of(21L), null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
@@ -381,7 +381,7 @@ class EducationPersonServiceTest {
         when(userMapper.selectById(9014L)).thenReturn(user);
 
         EducationForms.Person form = new EducationForms.Person(5014L, SCHOOL_ID, "S001", "王同学", "STUDENT",
-                null, 0, null, 1, true, "s.wang", null, null, null, null, null, null);
+                null, null, 0, null, 1, true, "s.wang", null, null, null, null, null, null);
         service.save(form);
 
         assertThat(person.getLeaveFlag()).isEqualTo(1);
@@ -402,10 +402,73 @@ class EducationPersonServiceTest {
         stubNoDuplicatePersonNo();
 
         service.save(new EducationForms.Person(5015L, SCHOOL_ID, "S002", "李同学", "STUDENT",
-                null, 0, null, 0, false, null, null, null, null, null, null, null));
+                null, null, 0, null, 0, false, null, null, null, null, null, null, null));
 
         assertThat(person.getLeaveFlag()).isZero();
         assertThat(person.getLeaveTime()).isNull();
+    }
+
+    // ------------------------------------------------------------ 校内岗位
+
+    /**
+     * 岗位维度的核心约束：不选就是普通教师。
+     *
+     * <p>缺省回落成管理岗，等于给每一个新建教师默认发校级管理权限——
+     * 这正是"给所有教师发 2-9"那条被否掉的做法。
+     */
+    @Test
+    void defaultsToPlainTeacherWhenNoDutyIsChosen() {
+        stubSchool();
+        stubNoDuplicatePersonNo();
+        when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
+        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("teacher"));
+        stubGeneratedIds(9020L, 5020L);
+
+        service.save(teacherForm("t.zhang", "Teacher@2026", null));
+
+        ArgumentCaptor<EduPersonPo> captor = ArgumentCaptor.forClass(EduPersonPo.class);
+        verify(personMapper).insert(captor.capture());
+        assertThat(captor.getValue().getDutyCode()).isEqualTo("TEACHER");
+    }
+
+    @Test
+    void storesSchoolAdminDutyWhenExplicitlyGranted() {
+        stubSchool();
+        stubNoDuplicatePersonNo();
+        when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
+        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("teacher"));
+        stubGeneratedIds(9021L, 5021L);
+
+        service.save(teacherForm("t.zhang", "Teacher@2026", "SCHOOL_ADMIN"));
+
+        ArgumentCaptor<EduPersonPo> captor = ArgumentCaptor.forClass(EduPersonPo.class);
+        verify(personMapper).insert(captor.capture());
+        assertThat(captor.getValue().getDutyCode()).isEqualTo("SCHOOL_ADMIN");
+    }
+
+    /** 写错的岗位要报错，不能静默降级——静默降级会让管理员以为授权成功。 */
+    @Test
+    void rejectsUnknownDutyInsteadOfSilentlyDowngrading() {
+        stubSchool();
+
+        assertThatThrownBy(() -> service.save(teacherForm("t.zhang", "Teacher@2026", "SUPER_ADMIN")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("校内岗位");
+        verify(personMapper, never()).insert(any(EduPersonPo.class));
+        verify(userMapper, never()).insert(any(SysUserPo.class));
+    }
+
+    @Test
+    void rejectsGrantingSchoolAdminDutyToStudent() {
+        stubSchool();
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S003", "钱同学", "STUDENT",
+                "SCHOOL_ADMIN", null, 0, null, null, false, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("学生不能配置校内岗位");
+        verify(personMapper, never()).insert(any(EduPersonPo.class));
     }
 
     @Test
@@ -429,8 +492,23 @@ class EducationPersonServiceTest {
         when(personMapper.selectCount(any())).thenReturn(0L);
     }
 
+    private void stubGeneratedIds(Long userId, Long personId) {
+        doAnswer(invocation -> {
+            ((SysUserPo) invocation.getArgument(0)).setId(userId);
+            return 1;
+        }).when(userMapper).insert(any(SysUserPo.class));
+        doAnswer(invocation -> {
+            ((EduPersonPo) invocation.getArgument(0)).setId(personId);
+            return 1;
+        }).when(personMapper).insert(any(EduPersonPo.class));
+    }
+
     private static EducationForms.Person teacherForm(String username, String password) {
-        return new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER", null, 0, null, null,
+        return teacherForm(username, password, null);
+    }
+
+    private static EducationForms.Person teacherForm(String username, String password, String dutyCode) {
+        return new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER", dutyCode, null, 0, null, null,
                 true, username, password, password == null ? null : List.of(TEACHER_ROLE_ID), null,
                 null, null, null);
     }

@@ -187,6 +187,29 @@ class EducationPersonTransactionIT {
         assertThat(rawPersonNo(personId)).as("墓碑行保留，工号保持原值不被改写").isEqualTo("IT-T-003");
     }
 
+    /**
+     * 岗位真的落到了 edu_person.duty_code 这一列上。
+     *
+     * <p>Mockito 单测只能证明 service 调了 {@code setDutyCode}，证明不了这个字段有没有列可落——
+     * {@code dutyCode} 走的是 MyBatis 驼峰自动映射，没有 {@code @TableField} 兜底，
+     * 列名写错或迁移脚本没执行时，单测照样全绿，直到线上读出来永远是 null。
+     * 因此这里既读回 PO，也直接读原始列。
+     */
+    @Test
+    void persistsDutyCodeIntoItsOwnColumn() throws Exception {
+        Long adminId = txGet(() -> personService.save(
+                teacher("IT-T-DUTY-1", "管理岗老师", "it.duty.admin", null, null, "SCHOOL_ADMIN"))).personId();
+        Long plainId = txGet(() -> personService.save(
+                teacher("IT-T-DUTY-2", "普通老师", "it.duty.plain", null, null, null))).personId();
+
+        assertThat(personMapper.selectById(adminId).getDutyCode())
+                .as("显式授予的校级管理岗必须读得回来").isEqualTo("SCHOOL_ADMIN");
+        assertThat(rawDutyCode(adminId))
+                .as("必须落在 duty_code 列上，而不是只活在 Java 对象里").isEqualTo("SCHOOL_ADMIN");
+        assertThat(rawDutyCode(plainId))
+                .as("没选岗位就是普通教师，绝不能默认成管理岗").isEqualTo("TEACHER");
+    }
+
     /** 转班 1 → 2 → 1：验证关系表墓碑行不再占用唯一键。 */
     @Test
     void allowsMovingBackToPreviousClass() {
@@ -226,6 +249,16 @@ class EducationPersonTransactionIT {
         }
     }
 
+    private String rawDutyCode(Long personId) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("SELECT duty_code FROM edu_person WHERE id = ?")) {
+            statement.setLong(1, personId);
+            try (var rs = statement.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
     private static boolean isIdentifiableConflict(Throwable error) {
         for (Throwable current = error; current != null; current = current.getCause()) {
             if (current instanceof com.han.common.core.exception.ConflictException) {
@@ -243,13 +276,18 @@ class EducationPersonTransactionIT {
 
     private static EducationForms.Person teacher(String personNo, String name, String username,
                                                  List<Long> roleIds, List<Long> classIds) {
+        return teacher(personNo, name, username, roleIds, classIds, null);
+    }
+
+    private static EducationForms.Person teacher(String personNo, String name, String username,
+                                                 List<Long> roleIds, List<Long> classIds, String dutyCode) {
         return new EducationForms.Person(null, SCHOOL_ID, personNo, name, "TEACHER",
-                null, 0, null, null, true, username, "Teacher@2026", roleIds, null, classIds, null, null);
+                dutyCode, null, 0, null, null, true, username, "Teacher@2026", roleIds, null, classIds, null, null);
     }
 
     private static EducationForms.Person student(String personNo, String name, List<Long> classIds) {
         return new EducationForms.Person(null, SCHOOL_ID, personNo, name, "STUDENT",
-                null, 0, null, null, false, null, null, null, null, classIds, null, null);
+                null, null, 0, null, null, false, null, null, null, null, classIds, null, null);
     }
 
     @Configuration

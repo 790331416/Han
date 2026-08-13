@@ -125,6 +125,71 @@ class LegacyDirectoryServiceTest {
                 .containsEntry("userName", "李同学");
     }
 
+    // ------------------------------------------------------------ 岗位维度
+
+    /**
+     * 身份类型与岗位是两套编码，同名不同义。
+     *
+     * <p>顶层 roleType 必须留 2：旧前端 store/user.ts 的登录过滤只放行 2 或 5，改了教师登不进去。
+     * dutyType[].roleType 才是菜单授权用的岗位码，普通教师是 3，拼出 2-3，不命中任何校级菜单。
+     */
+    @Test
+    void plainTeacherGetsTheTeacherDutyCodeWhileIdentityTypeStaysTwo() {
+        Map<String, Object> role = service.roleOf(teacher(11L, 100L, 7L, 0));
+
+        assertThat(role).containsEntry("roleType", 2);
+        assertThat(firstDuty(role))
+                .containsEntry("roleType", "3")
+                .containsEntry("positionName", "普通教师");
+    }
+
+    /** 显式授予校级管理岗后才拿到 2-1，也就是课程预约那批菜单要的角色串。 */
+    @Test
+    void schoolAdminDutyIsTheOneThatUnlocksSchoolLevelMenus() {
+        EduPersonPo admin = teacher(12L, 101L, 7L, 0);
+        admin.setDutyCode("SCHOOL_ADMIN");
+
+        Map<String, Object> role = service.roleOf(admin);
+
+        assertThat(role).containsEntry("roleType", 2).containsEntry("isSchool", "2");
+        assertThat(firstDuty(role))
+                .containsEntry("roleType", "1")
+                .containsEntry("positionName", "校级管理员");
+    }
+
+    /**
+     * 存量人员的 duty_code 是空的，必须落在普通教师上。
+     *
+     * <p>回落成空串会拼出 {@code 2-}（谁也不匹配，但排查时看不出是没配还是配错），
+     * 回落成管理岗则是把校级权限默认发给全校，两者都不行。
+     */
+    @Test
+    void personWithoutDutyCodeFallsBackToPlainTeacherNotToAdmin() {
+        EduPersonPo legacy = teacher(13L, 102L, 7L, 0);
+        legacy.setDutyCode(null);
+
+        assertThat(firstDuty(service.roleOf(legacy))).containsEntry("roleType", "3");
+    }
+
+    /** 岗位码是对端契约，配置改了就跟着改，不写死在代码里。 */
+    @Test
+    void dutyCodeMappingComesFromConfiguration() {
+        properties.getDutyType().put("SCHOOL_ADMIN", "9");
+        EduPersonPo admin = teacher(14L, 103L, 7L, 0);
+        admin.setDutyCode("SCHOOL_ADMIN");
+
+        assertThat(firstDuty(service.roleOf(admin))).containsEntry("roleType", "9");
+    }
+
+    /** dutyType 恒为非空数组：旧 api 有 getDutyType().get(0)，前端有 dutyType.some(...)。 */
+    @Test
+    void dutyTypeIsNeverAnEmptyArray() {
+        EduPersonPo unknown = teacher(15L, 104L, 7L, 0);
+        unknown.setDutyCode("NOT_A_DUTY");
+
+        assertThat((List<?>) service.roleOf(unknown).get("dutyType")).hasSize(1);
+    }
+
     // ------------------------------------------------------------ status 语义
 
     @Test
@@ -342,6 +407,10 @@ class LegacyDirectoryServiceTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object value) {
         return (Map<String, Object>) value;
+    }
+
+    private static Map<String, Object> firstDuty(Map<String, Object> role) {
+        return asMap(((List<?>) role.get("dutyType")).getFirst());
     }
 
     private static EduPersonPo teacher(Long id, Long userId, Long schoolId, Integer status) {

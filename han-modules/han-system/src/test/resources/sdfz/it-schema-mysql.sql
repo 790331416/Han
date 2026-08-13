@@ -142,6 +142,7 @@ CREATE TABLE edu_person (
     person_no VARCHAR(64) NOT NULL,
     person_name VARCHAR(128) NOT NULL,
     person_type VARCHAR(16) NOT NULL,
+    duty_code VARCHAR(32),
     phone VARCHAR(20),
     source_system VARCHAR(32) NOT NULL DEFAULT 'HAN',
     external_user_id VARCHAR(128),

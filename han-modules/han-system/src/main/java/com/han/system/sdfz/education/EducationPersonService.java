@@ -13,6 +13,7 @@ import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.sdfz.education.domain.EduClassPo;
+import com.han.system.sdfz.education.domain.EduDuty;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduPersonSubjectPo;
@@ -123,6 +124,8 @@ public class EducationPersonService {
         requireSchool(form.schoolId());
 
         String personType = form.personType().trim().toUpperCase(Locale.ROOT);
+        // 纯入参校验放在建号之前：岗位写错属于请求不合法，不该先把账号建出来再靠事务回滚。
+        EduDuty duty = resolveDuty(form.dutyCode(), personType);
         String personNo = form.personNo().trim();
         EduPersonPo person = form.id() == null ? new EduPersonPo() : requirePerson(form.id());
         if (form.id() != null) {
@@ -151,6 +154,7 @@ public class EducationPersonService {
         person.setPersonNo(personNo);
         person.setPersonName(form.personName().trim());
         person.setPersonType(personType);
+        person.setDutyCode(duty.name());
         person.setPhone(trimToNull(form.phone()));
         person.setStatus(normalStatus(form.status()));
         person.setRemark(trimToNull(form.remark()));
@@ -208,6 +212,31 @@ public class EducationPersonService {
         EduPersonPo person = requirePerson(form.personId());
         requireLocalSource(person.getSourceSystem(), "人员");
         return applyAssignments(person, form.subjectIds(), form.classId());
+    }
+
+    /**
+     * 解析校内岗位。
+     *
+     * <p>缺省回落成普通教师，<b>不回落成管理岗</b>：调用方漏传一次就把校级管理权发出去，
+     * 与"校级管理员由管理员显式授予"直接冲突。取值写错则拒绝，不静默降级——
+     * 静默降级会让管理员以为授权成功，实际上什么也没变。</p>
+     *
+     * <p>学生不参与岗位授权：岗位是教职工的职务，给学生挂管理岗没有业务含义，
+     * 而且会让他在旧前端拿到校级菜单。</p>
+     */
+    private static EduDuty resolveDuty(String requested, String personType) {
+        String value = trimToNull(requested);
+        if (value == null) {
+            return EduDuty.TEACHER;
+        }
+        EduDuty duty = EduDuty.of(value);
+        if (duty == null) {
+            throw new BusinessException("校内岗位取值不合法: " + value);
+        }
+        if (STUDENT_TYPE.equals(personType) && duty != EduDuty.TEACHER) {
+            throw new BusinessException("学生不能配置校内岗位");
+        }
+        return duty;
     }
 
     /**

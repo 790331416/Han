@@ -56,16 +56,52 @@ public class LegacyCompatProperties {
     private String isSchool = "2";
 
     /**
-     * person_type 到旧 roleType 的映射，仅用于兼容目录的数据展示。
+     * <b>身份类型</b>：person_type 到旧 roleType 的映射。
      *
-     * <p>教师固定 {@code 2}，与旧前端现有的 {@code roleType == 2 || roleType == 5} 过滤天然相容。
+     * <p>教师固定 {@code 2}，与旧前端现有的 {@code roleType == 2 || roleType == 5} 过滤天然相容——
+     * 这个过滤在 {@code store/user.ts} 的登录链路上，取值改成别的教师<b>直接登不进去</b>。
      * 学生取值只影响名册、课程参与这类目录响应，本期不进 {@code roles[]}，
      * 因此 {@code 4} 只是沿用旧系统注释里的取值、本期不需要冻结；
      * 登录能力由 {@link #loginPersonTypes} 单独控制。
+     *
+     * <p><b>这一项只喂身份维度。</b>控制台菜单看的是岗位维度，见 {@link #dutyType}——
+     * 旧前端把两者都叫 {@code roleType}，但它们是两个不同的编码空间，一个值不能同时喂两边。
      */
     private Map<String, String> roleType = new LinkedHashMap<>(Map.of(
             "TEACHER", "2",
             "STUDENT", "4"));
+
+    /**
+     * <b>岗位</b>：{@code edu_person.duty_code} 到旧岗位码的映射，喂 {@code roles[].dutyType[].roleType}。
+     *
+     * <p>旧前端的控制台菜单按 {@code isSchool + '-' + dutyType[].roleType} 匹配 {@code meta.role}
+     * （见 {@code consolr-menu/index.vue}），路由表注释给出的编码空间是：
+     * 教师 3/4/5、校级管理员 1/9、教育局管理员 1/2/5/9。
+     * 因此普通教师取 {@code 3}（拼出 {@code 2-3}，不命中任何校级菜单），
+     * 校级管理员取 {@code 1}（拼出 {@code 2-1}，命中课程预约、授课统计、学校设置、学校直播间、学校结对）。
+     *
+     * <p>没选 {@code 1} 之外的 {@code 9}：{@code 2-9} 会额外让前端把课程列表切成"全校口径"
+     * （{@code roleType.includes('2-9')} 分支走 {@code getCourseInfoList}），
+     * 那是一次数据可见范围的扩大，与"打通建课入口"是两件事，需要单独决策。
+     */
+    private Map<String, String> dutyType = new LinkedHashMap<>(Map.of(
+            "TEACHER", "3",
+            "SCHOOL_ADMIN", "1"));
+
+    /**
+     * 岗位到岗位名称的映射，喂 {@code dutyType[].positionName} 与 {@code itemText}（回看设置页会直接显示它）。
+     */
+    private Map<String, String> dutyName = new LinkedHashMap<>(Map.of(
+            "TEACHER", "普通教师",
+            "SCHOOL_ADMIN", "校级管理员"));
+
+    /**
+     * {@code duty_code} 为空时的兜底岗位。
+     *
+     * <p><b>必须是普通教师。</b>存量人员在引入岗位维度之前没有这个字段，
+     * 兜底成管理岗等于给全校教师默认发校级管理权限——那不是补映射，是放权。
+     */
+    private String defaultDuty = "TEACHER";
 
     /**
      * 允许换取三课堂兼容凭证的 person_type。
@@ -107,6 +143,30 @@ public class LegacyCompatProperties {
     public String roleTypeOf(String personType) {
         String mapped = personType == null ? null : roleType.get(normalize(personType));
         return mapped != null ? mapped : "";
+    }
+
+    /**
+     * 岗位码。
+     *
+     * <p>取不到映射时回落到默认岗位（普通教师）而不是空串：空串会拼出 {@code 2-}，
+     * 既匹配不上任何菜单，也让排查时看不出是"没配岗位"还是"配错了岗位"。
+     */
+    public String dutyCodeOf(String duty) {
+        String mapped = duty == null ? null : dutyType.get(normalize(duty));
+        if (mapped != null) {
+            return mapped;
+        }
+        String fallback = defaultDuty == null ? null : dutyType.get(normalize(defaultDuty));
+        return fallback != null ? fallback : "";
+    }
+
+    public String dutyNameOf(String duty) {
+        String mapped = duty == null ? null : dutyName.get(normalize(duty));
+        if (mapped != null) {
+            return mapped;
+        }
+        String fallback = defaultDuty == null ? null : dutyName.get(normalize(defaultDuty));
+        return fallback != null ? fallback : "";
     }
 
     public String identityNameOf(String personType) {
