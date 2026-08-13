@@ -1,11 +1,13 @@
 -- Han small 档 PostgreSQL 全新初始化脚本
 -- 2026-04-15 由旧的分模块 SQL 目录结构合并生成
 
+-- 下方 "-- source: xxx" 标记记录该段内容的历史来源，
+-- 指向 2026-04-15 合并前的分模块 SQL 目录，那套目录已不再存在。
+-- 本文件即是权威定义，直接改这里，不需要回改任何来源文件。
+
 -- ============================================================
 -- source: postgres\system\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- =============================================
 -- 3. 部门表
@@ -438,8 +440,6 @@ CREATE UNIQUE INDEX uk_sys_client_key
 -- ============================================================
 -- source: postgres\system\10-seed.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 3. 部门
 INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code, post_sort, status) VALUES
@@ -654,8 +654,6 @@ INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire
 -- ============================================================
 -- source: postgres\job\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- =============================================
 -- 定时任务表
@@ -698,8 +696,6 @@ CREATE TABLE sys_job_log (
 -- ============================================================
 -- source: postgres\job\10-seed.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 15. 示例任务
 INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status, remark) VALUES
@@ -710,8 +706,6 @@ INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status
 -- ============================================================
 -- source: postgres\job\90-fixup.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- ============================================================
 -- JobFlow 迁移 SQL 脚本
@@ -739,8 +733,4 @@ DROP TABLE IF EXISTS qrtz_triggers CASCADE;
 DROP TABLE IF EXISTS qrtz_job_details CASCADE;
 DROP TABLE IF EXISTS qrtz_calendars CASCADE;
 
--- 3. 验证变更
-SELECT column_name, data_type, character_maximum_length
-FROM information_schema.columns
-WHERE table_name = 'sys_job' AND column_name IN ('service_name', 'handler');
 
