@@ -94,6 +94,48 @@ class LegacyCompatSupportTest {
         assertThat(plaintext).startsWith("[").contains("\"deviceCode\":\"DEV-1\"");
     }
 
+    /**
+     * 全部 list 形态路径都必须解成裸数组，逐条列举而不是只验一条。
+     *
+     * <p>这六条正是校端 {@code /common/*} 的排课与预约下拉。DEF-008 之前校端一律按 JSON 对象解析，
+     * 这一侧返回数组、那一侧消费不了，四条接口全 500。消费侧的另一半锁在校端
+     * {@code CommonServiceCompatShapeTest}——只在一侧断言挡不住这类"两侧对不上"的缺陷。
+     *
+     * <p>要改成统一信封必须两侧同时改：旧前端对这几条是
+     * {@code state.classRoomList = res.result} 直接当数组用的。
+     */
+    @Test
+    void channelBListShapesStayBareArrays() {
+        List<String> listShapedPaths = List.of(
+                LegacyPaths.MANAGER_ORG_BRANCH_TREE,
+                LegacyPaths.SELECT_PLACE,
+                LegacyPaths.DEVICE_LIST,
+                LegacyPaths.MANAGER_LAZY_ORG_TREE,
+                LegacyPaths.ORG_CHILD_LIST,
+                LegacyPaths.PINYIN_ORG_RESULT);
+
+        for (String path : listShapedPaths) {
+            LegacyPayload list = LegacyPayload.list(List.of(Map.of("branchCode", "CLS-01")));
+
+            String ciphertext = (String) support.handle(get(path), path, ignored -> list).get("result");
+            String plaintext = ClassroomAesCodec.decrypt(ciphertext, ANON_KEY, ANON_IV);
+
+            assertThat(plaintext).as("path=%s", path)
+                    .startsWith("[")
+                    .endsWith("]")
+                    .contains("\"branchCode\":\"CLS-01\"");
+        }
+    }
+
+    /** 空集合也走同一条形态：没有设备时给 {@code []}，不能退化成 {@code {}}。 */
+    @Test
+    void channelBEmptyListsAreStillArrays() {
+        String ciphertext = (String) support.handle(get(LegacyPaths.SELECT_PLACE), LegacyPaths.SELECT_PLACE,
+                ignored -> LegacyPayload.list(List.of())).get("result");
+
+        assertThat(ClassroomAesCodec.decrypt(ciphertext, ANON_KEY, ANON_IV)).isEqualTo("[]");
+    }
+
     @Test
     void channelBPagedResultsDecryptToRecordsAndTotalAtTheTopLevel() {
         LegacyPayload page = LegacyPayload.page(List.of(Map.of("userId", "100")), 1, 1, 20);
