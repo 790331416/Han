@@ -48,7 +48,9 @@ BEGIN
             EXECUTE format('ALTER TABLE %I ADD COLUMN del_flag SMALLINT DEFAULT 0', v_table_name);
         END IF;
 
-        EXECUTE format('UPDATE %I SET del_flag = COALESCE(del_flag, 0)', v_table_name);
+        -- 必须带 WHERE：无条件 UPDATE 会在每次重放时重写整表，
+        -- 对 sys_notice / sys_client 这类长期增长的表就是一次全表 rewrite + 表膨胀。
+        EXECUTE format('UPDATE %I SET del_flag = 0 WHERE del_flag IS NULL', v_table_name);
         EXECUTE format('ALTER TABLE %I ALTER COLUMN del_flag SET DEFAULT 0', v_table_name);
     END LOOP;
 END $$;

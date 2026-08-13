@@ -33,25 +33,6 @@ export const AI_WORKFLOW_TYPE_DICT = 'ai_workflow_type'
 export const AI_KNOWLEDGE_INDEX_STATUS_DICT = 'ai_knowledge_index_status'
 
 /**
- * AIVideo 公共策略字典。
- */
-export const AIVIDEO_PROJECT_STAGE_DICT = 'aivideo_project_stage'
-export const AIVIDEO_PROJECT_STATUS_DICT = 'aivideo_project_status'
-export const AIVIDEO_TASK_STATUS_DICT = 'aivideo_task_status'
-export const AIVIDEO_RATIO_DICT = 'aivideo_ratio'
-export const AIVIDEO_RESOLUTION_DICT = 'aivideo_resolution'
-export const AIVIDEO_VISUAL_STYLE_DICT = 'aivideo_visual_style'
-export const AIVIDEO_GENERATION_STRATEGY_DICT = 'aivideo_generation_strategy'
-export const AIVIDEO_AUDIO_MODE_DICT = 'aivideo_audio_mode'
-export const AIVIDEO_SUBTITLE_MODE_DICT = 'aivideo_subtitle_mode'
-export const AIVIDEO_REFERENCE_STRATEGY_DICT = 'aivideo_reference_strategy'
-export const AIVIDEO_ACTION_INTENSITY_DICT = 'aivideo_action_intensity'
-export const AIVIDEO_CONTINUITY_LEVEL_DICT = 'aivideo_continuity_level'
-export const AIVIDEO_MULTI_ROLE_STRATEGY_DICT = 'aivideo_multi_role_strategy'
-export const AIVIDEO_CHARACTER_DESIGN_TYPE_DICT = 'aivideo_character_design_type'
-export const AIVIDEO_MEDIA_ACCESS_POLICY_DICT = 'aivideo_media_access_policy'
-
-/**
  * 一组字典加载任务定义。
  */
 export interface DictOptionRequest {

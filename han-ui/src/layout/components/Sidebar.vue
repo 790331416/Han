@@ -54,15 +54,23 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, type RouteRecordRaw } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import { useUserStore } from '@/stores/user'
 import { constantRoutes } from '@/router'
+import {
+  hasRoutePermission,
+  isFeatureAvailable,
+  isModuleEnabled,
+  isRouteRecordAccessible,
+  isTierAvailable
+} from '@/utils/route-access'
 
 const route = useRoute()
 const appStore = useAppStore()
-const userStore = useUserStore()
 
-const TIER_LEVEL: Record<string, number> = { small: 0, medium: 1, full: 2 }
-const currentTierLevel = computed(() => TIER_LEVEL[appStore.deployTier || import.meta.env.VITE_DEPLOY_TIER || 'full'] ?? 2)
+/**
+ * 菜单可见性与路由守卫共用 `utils/route-access.ts` 的判定，
+ * 避免「菜单藏起来但 URL 还能进」这类两处逻辑漂移。
+ */
+const NON_MENU_PATHS = ['/login', '/404', '/403', '/500']
 
 onMounted(() => {
   if (!appStore.capabilitiesLoaded) {
@@ -70,28 +78,8 @@ onMounted(() => {
   }
 })
 
-function isTierAvailable(tier?: string): boolean {
-  return (TIER_LEVEL[tier || 'small'] ?? 0) <= currentTierLevel.value
-}
-
-function isModuleEnabled(moduleName?: string): boolean {
-  if (!moduleName) {
-    return true
-  }
-  if (!appStore.capabilitiesLoaded || appStore.enabledModules.length === 0) {
-    return true
-  }
-  return appStore.enabledModules.includes(moduleName)
-}
-
-function isFeatureAvailable(featureName?: string): boolean {
-  if (!featureName) {
-    return true
-  }
-  if (!appStore.capabilitiesLoaded) {
-    return true
-  }
-  return appStore.isFeatureEnabled(featureName)
+function hasPermission(route: RouteRecordRaw): boolean {
+  return hasRoutePermission(route.meta?.permission as string | undefined)
 }
 
 function isRuntimeAvailable(route: RouteRecordRaw): boolean {
@@ -99,15 +87,10 @@ function isRuntimeAvailable(route: RouteRecordRaw): boolean {
     isFeatureAvailable(route.meta?.feature as string | undefined)
 }
 
-function hasPermission(route: RouteRecordRaw): boolean {
-  if (!route.meta?.permission) return true
-  return userStore.hasPermission(route.meta.permission as string)
-}
-
 function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
   return routes
     .filter((r) => {
-      if (r.path === '/login' || r.path === '/404') return false
+      if (NON_MENU_PATHS.includes(r.path)) return false
       if (!isTierAvailable(r.meta?.tier as string)) return false
       if (!isRuntimeAvailable(r)) return false
       if (!hasPermission(r) && !r.children?.some((c) => hasPermission(c))) return false
@@ -117,11 +100,7 @@ function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
       if (r.children) {
         return {
           ...r,
-          children: r.children.filter((c) =>
-            isTierAvailable(c.meta?.tier as string) &&
-            isRuntimeAvailable(c) &&
-            hasPermission(c)
-          )
+          children: r.children.filter((c) => isRouteRecordAccessible(c))
         }
       }
       return r

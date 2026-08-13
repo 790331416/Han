@@ -31,13 +31,13 @@ public class ProcessInstanceController {
         return R.ok(processInstanceService.listMyStartedProcess(dto));
     }
 
-    @RequiresPermission("workflow:instance:list")
+    @RequiresPermission("workflow:instance:start")
     @PostMapping("/start")
     public R<ProcessInstanceVO> start(@Valid @RequestBody ProcessStartDTO dto) {
         return R.ok(processInstanceService.startProcess(dto));
     }
 
-    @RequiresPermission("workflow:instance:list")
+    @RequiresPermission("workflow:instance:stop")
     @PostMapping("/stop/{processInstanceId}")
     public R<Void> stop(@PathVariable String processInstanceId,
                         @RequestBody(required = false) Map<String, Object> payload) {
@@ -45,21 +45,21 @@ public class ProcessInstanceController {
         return R.ok();
     }
 
-    @RequiresPermission("workflow:instance:list")
+    @RequiresPermission("workflow:instance:suspend")
     @PostMapping("/suspend/{processInstanceId}")
     public R<Void> suspend(@PathVariable String processInstanceId) {
         processInstanceService.suspendProcess(processInstanceId);
         return R.ok();
     }
 
-    @RequiresPermission("workflow:instance:list")
+    @RequiresPermission("workflow:instance:suspend")
     @PostMapping("/activate/{processInstanceId}")
     public R<Void> activate(@PathVariable String processInstanceId) {
         processInstanceService.activateProcess(processInstanceId);
         return R.ok();
     }
 
-    @RequiresPermission("workflow:instance:list")
+    @RequiresPermission("workflow:instance:remove")
     @PostMapping("/delete/{processInstanceId}")
     public R<Void> delete(@PathVariable String processInstanceId,
                           @RequestBody(required = false) Map<String, Object> payload) {

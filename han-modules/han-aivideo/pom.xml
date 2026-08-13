@@ -69,6 +69,14 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
+        <!-- 与其余模块保持一致的双驱动配置：镜像必须两种驱动都带，
+             否则配上 DB_URL=jdbc:mysql://... 后会拿 PostgreSQL 驱动去连 MySQL，
+             在 SSL 协商阶段直接失败。注意 ai_video_* 建表脚本目前只有 PostgreSQL 版，
+             带驱动只保证进程能起来，不代表 aivideo 已支持 MySQL，见 docs/11。 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.volcengine</groupId>
             <artifactId>volc-sdk-java</artifactId>

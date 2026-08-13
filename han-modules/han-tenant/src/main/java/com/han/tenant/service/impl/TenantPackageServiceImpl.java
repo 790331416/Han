@@ -6,6 +6,7 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.core.domain.PageResult;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.mybatis.util.PageHelper;
+import com.han.tenant.config.HanTenantProperties;
 import com.han.tenant.converter.TenantPackageConverter;
 import com.han.tenant.domain.dto.TenantPackageDTO;
 import com.han.tenant.domain.po.TenantPackagePo;
@@ -14,10 +15,14 @@ import com.han.tenant.domain.vo.TenantPackageVO;
 import com.han.tenant.mapper.TenantPackageMapper;
 import com.han.tenant.mapper.TenantMapper;
 import com.han.tenant.service.ITenantPackageService;
+import com.han.tenant.service.support.TenantRoleMenuSynchronizer;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,6 +31,7 @@ import java.util.Set;
 /**
  * 租户套餐服务实现
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TenantPackageServiceImpl implements ITenantPackageService {
@@ -38,6 +44,8 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
     private final TenantPackageMapper packageMapper;
     private final TenantMapper tenantMapper;
     private final TenantPackageConverter packageConverter;
+    private final TenantRoleMenuSynchronizer roleMenuSynchronizer;
+    private final HanTenantProperties tenantProperties;
 
     @Override
     public PageResult<TenantPackageVO> listPackages(String packageName, Integer status, Integer pageNum, Integer pageSize) {
@@ -66,9 +74,8 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
 
     @Override
     public TenantPackageVO getPackageById(Long packageId) {
-        TenantPackagePo po = packageMapper.selectById(packageId);
-        List<TenantPackagePo> singlePackage = po == null ? List.of() : List.of(po);
-        return enrichPackageVo(po, loadTenantCountMap(singlePackage));
+        TenantPackagePo po = requirePackage(packageId);
+        return enrichPackageVo(po, loadTenantCountMap(List.of(po)));
     }
 
     @Override
@@ -80,11 +87,14 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
 
     @Override
     public void updatePackage(TenantPackageDTO dto) {
-        TenantPackagePo po = packageMapper.selectById(dto.getPackageId());
-        if (po != null) {
-            packageConverter.updatePo(dto, po);
-            packageMapper.updateById(po);
+        if (dto == null || dto.getPackageId() == null) {
+            throw new BusinessException("套餐ID不能为空");
         }
+        TenantPackagePo po = requirePackage(dto.getPackageId());
+        Set<Long> previousMenuIds = packageConverter.jsonToSet(po.getMenuIds());
+        packageConverter.updatePo(dto, po);
+        packageMapper.updateById(po);
+        afterMenuChanged(po, previousMenuIds);
     }
 
     @Override
@@ -92,6 +102,7 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
         if (Objects.equals(packageId, PLATFORM_DEFAULT_PACKAGE_ID)) {
             throw new BusinessException("默认套餐不允许删除");
         }
+        requirePackage(packageId);
         int tenantCount = countTenantsByPackageId(packageId);
         if (tenantCount > 0) {
             throw new BusinessException("当前套餐下仍有关联租户，无法删除");
@@ -101,29 +112,98 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
 
     @Override
     public void updateStatus(Long packageId, Integer status) {
-        TenantPackagePo po = packageMapper.selectById(packageId);
-        if (po != null) {
-            po.setStatus(status);
-            packageMapper.updateById(po);
+        if (status == null || (status != 0 && status != 1)) {
+            throw new BusinessException("套餐状态只能是 0（正常）或 1（停用）");
         }
+        TenantPackagePo po = requirePackage(packageId);
+        po.setStatus(status);
+        packageMapper.updateById(po);
     }
 
     @Override
     public Set<Long> getPackageMenuIds(Long packageId) {
-        TenantPackagePo po = packageMapper.selectById(packageId);
-        if (po != null) {
-            return packageConverter.toVO(po).getMenuIds();
-        }
-        return Set.of();
+        return packageConverter.toVO(requirePackage(packageId)).getMenuIds();
     }
 
     @Override
     public void updatePackageMenus(Long packageId, Set<Long> menuIds) {
-        TenantPackagePo po = packageMapper.selectById(packageId);
-        if (po != null) {
-            po.setMenuIds(packageConverter.setToJson(menuIds));
-            packageMapper.updateById(po);
+        TenantPackagePo po = requirePackage(packageId);
+        Set<Long> previousMenuIds = packageConverter.jsonToSet(po.getMenuIds());
+        po.setMenuIds(packageConverter.setToJson(menuIds));
+        packageMapper.updateById(po);
+        afterMenuChanged(po, previousMenuIds);
+    }
+
+    @Override
+    public int resyncPackageToTenants(Long packageId) {
+        TenantPackagePo po = requirePackage(packageId);
+        Set<Long> menuIds = packageConverter.jsonToSet(po.getMenuIds());
+        return resync(po.getId(), menuIds);
+    }
+
+    /**
+     * 套餐菜单变更后的存量租户处置。
+     * <p>
+     * 菜单被裁剪时，存量租户仍然持有已移出套餐的菜单，属于「降级不生效」的越权面，需要回灌；
+     * 菜单只是新增时不自动下发——远端 syncRoleMenus 目前是「所有角色覆盖为套餐全集」，
+     * 自动下发会把租户内的权限分级一并抹平。默认只记录待办、由管理员显式触发回灌，
+     * 打开 {@code han.tenant.package-sync.auto-resync-on-menu-shrink} 后才自动执行。
+     */
+    private void afterMenuChanged(TenantPackagePo po, Set<Long> previousMenuIds) {
+        Set<Long> currentMenuIds = packageConverter.jsonToSet(po.getMenuIds());
+        Set<Long> removed = new LinkedHashSet<>(previousMenuIds);
+        removed.removeAll(currentMenuIds);
+        if (removed.isEmpty()) {
+            return;
         }
+
+        int affected = countTenantsByPackageId(po.getId());
+        if (affected == 0) {
+            return;
+        }
+        if (!tenantProperties.getPackageSync().isAutoResyncOnMenuShrink()) {
+            log.warn("套餐[{}]移除了 {} 个菜单，但有 {} 个存量租户未回灌，移除的菜单在这些租户内仍然可用；"
+                            + "请调用 /tenant/package/resync/{} 显式下发",
+                    po.getId(), removed.size(), affected, po.getId());
+            return;
+        }
+        resync(po.getId(), currentMenuIds);
+    }
+
+    private int resync(Long packageId, Set<Long> menuIds) {
+        List<TenantPo> tenants = selectTenantsByPackageId(packageId);
+        if (tenants.isEmpty()) {
+            return 0;
+        }
+
+        List<Long> failed = new ArrayList<>();
+        int succeeded = 0;
+        for (TenantPo tenant : tenants) {
+            try {
+                roleMenuSynchronizer.sync(tenant.getId(), menuIds);
+                succeeded++;
+            } catch (Exception ex) {
+                log.error("回灌套餐[{}]到租户[{}]失败", packageId, tenant.getId(), ex);
+                failed.add(tenant.getId());
+            }
+        }
+        if (!failed.isEmpty()) {
+            throw new BusinessException("套餐菜单回灌部分失败，成功 " + succeeded
+                    + " 个，失败租户: " + failed);
+        }
+        log.info("套餐[{}]菜单已回灌到 {} 个租户", packageId, succeeded);
+        return succeeded;
+    }
+
+    private TenantPackagePo requirePackage(Long packageId) {
+        if (packageId == null) {
+            throw new BusinessException("套餐ID不能为空");
+        }
+        TenantPackagePo po = packageMapper.selectById(packageId);
+        if (po == null) {
+            throw new BusinessException("租户套餐不存在");
+        }
+        return po;
     }
 
     private TenantPackageVO enrichPackageVo(TenantPackagePo po, Map<Long, Integer> tenantCountMap) {
@@ -158,6 +238,16 @@ public class TenantPackageServiceImpl implements ITenantPackageService {
             tenantCountMap.merge(tenant.getPackageId(), 1, Integer::sum);
         }
         return tenantCountMap;
+    }
+
+    private List<TenantPo> selectTenantsByPackageId(Long packageId) {
+        if (packageId == null) {
+            return List.of();
+        }
+        return TenantHelper.ignore(() -> tenantMapper.selectList(
+                new LambdaQueryWrapper<TenantPo>()
+                        .eq(TenantPo::getPackageId, packageId)
+        ));
     }
 
     private int countTenantsByPackageId(Long packageId) {

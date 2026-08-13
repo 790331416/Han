@@ -117,7 +117,7 @@ export async function assertPageHealthy(page: Page, apiBaseUrl: string, target: 
         })
       }
     } catch {
-      // ignore malformed JSON payloads here; request failures are covered separately
+      // 这里忽略格式错误的 JSON 载荷；请求失败由另外的用例覆盖
     }
   }
 

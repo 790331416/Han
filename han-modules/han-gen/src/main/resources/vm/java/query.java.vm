@@ -1,6 +1,9 @@
 package ${packageName}.domain.query;
 
 import lombok.Data;
+#foreach($type in $queryImportTypes)
+import ${type};
+#end
 
 /**
  * ${tableComment} 查询对象
@@ -12,14 +15,30 @@ import lombok.Data;
 public class ${className}Query {
 #foreach($column in $columns)
 #if($column.isQuery == 1)
+#if($fn.isBetween($column.queryType))
 
 #if($column.columnComment)
-    /** ${column.columnComment} */
+    /** ${column.columnComment}（区间起） */
+#end
+    private ${column.javaType} ${column.javaField}Begin;
+
+#if($column.columnComment)
+    /** ${column.columnComment}（区间止） */
+#end
+    private ${column.javaType} ${column.javaField}End;
+#else
+
+#if($column.columnComment)
+    /** ${column.columnComment}（${column.queryType}） */
 #end
     private ${column.javaType} ${column.javaField};
 #end
 #end
+#end
 
+    /** 页码 */
     private Integer pageNum = 1;
+
+    /** 每页条数 */
     private Integer pageSize = 10;
 }

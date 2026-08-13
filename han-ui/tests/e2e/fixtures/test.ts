@@ -30,13 +30,13 @@ async function createAuthSession(): Promise<AuthSession> {
 }
 
 /**
- * Shared Playwright fixtures for Han UI.
+ * Han UI 共用的 Playwright 夹具。
  *
- * Provides:
- * - worker-scoped API login for stable authenticated sessions
- * - localStorage bootstrap for frontend auth state
- * - an authenticated page without implicit navigation side effects
- * - test-scoped isolated sessions for destructive auth flows such as logout
+ * 提供四项能力：
+ * - worker 级的接口登录，保证同一 worker 内的会话稳定复用
+ * - 把登录态写进 localStorage，供前端读取
+ * - 已登录的 page，且不附带任何隐式跳转副作用
+ * - test 级的独立会话，供退出登录这类会销毁会话的用例使用
  */
 export const test = base.extend<E2EFixtures>({
   authSession: [async ({}, use) => {

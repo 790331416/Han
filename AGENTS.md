@@ -19,6 +19,7 @@
 
 - 默认全程使用中文回复、中文说明、中文文档。
 - 默认所有新增或重写文档使用 UTF-8 编码，禁止乱码。
+- 回复默认结论先行、尽量精简：第一句先给结果，过程和证据放后面；靠删内容做短而不是压缩句子；简单问题直接用散文答，不套标题分节。完整口径见 `docs/06-牛马协作总规则.md` 第 17 节。
 - 默认启用 `Protection mode`、`Design first`、`Evidence mode`。
 - 未验证、未执行、未确认的内容，不得表述为已完成。
 - 未经明确授权，不得删除、合并、降级、关闭或弱化已有功能和边界处理。
@@ -30,9 +31,11 @@
 - 正式规则文档只有一份：`docs/06-牛马协作总规则.md`。
 - SQL 只能使用当前正式结构：
   - `sql/tiers/small/small-init.sql`
+  - `sql/tiers/small/small-init-mysql.sql`
   - `sql/tiers/medium/medium-init.sql`
   - `sql/tiers/full/full-init.sql`
   - `sql/upgrades/postgres/`
+- PostgreSQL 是兼容默认值；MySQL 8.4 是正式可选数据库。当前一键部署支持矩阵为 `small=PostgreSQL/MySQL`、`medium/full=PostgreSQL`，不得把尚未实库验证的 medium/full MySQL 表述为已支持。
 - 三档正式部署入口固定为：
   - `deploy/small`
   - `deploy/medium`
@@ -63,6 +66,7 @@
 | 方案设计、任务拆解 | `D:\code\Han\.codex\rules\10-design-and-workflow.md` |
 | 日常开发与改代码 | `D:\code\Han\.codex\rules\20-engineering-baseline.md` |
 | 测试、验收、汇报 | `D:\code\Han\.codex\rules\30-verification-and-delivery.md` |
+| 回复的组织与精简 | `D:\code\Han\docs\06-牛马协作总规则.md` 第 17 节 |
 | 安全、部署、发布、高风险操作 | `D:\code\Han\.codex\rules\40-security-and-release.md` |
 | 文档维护、规则沉淀 | `D:\code\Han\.codex\rules\50-doc-governance.md` |
 | Han 专项执行规则 | `D:\code\Han\.codex\rules\60-han-execution.md` |

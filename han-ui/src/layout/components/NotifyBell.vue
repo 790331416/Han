@@ -77,11 +77,14 @@ import { Bell, Loading } from '@element-plus/icons-vue'
 import { getLatestNotices, getUnreadCount, markAllNoticeRead, markNoticeRead } from '@/api/system/notice'
 import type { Notice } from '@/api/system/notice'
 import { getToken } from '@/utils/auth'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 import { tryRefreshSession } from '@/utils/session-refresh'
 import { sanitizeHtml } from '@/utils/sanitize-html'
 import { useUserStore } from '@/stores/user'
 
 const NOTICE_POLL_INTERVAL_MS = 60000
+/** SSE 因 401 重连的次数上限，超出后降级为轮询。 */
+const MAX_SSE_RETRY = 2
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -228,7 +231,7 @@ const consumeNoticeStream = async (body: ReadableStream<Uint8Array>, signal: Abo
   }
 }
 
-const connectSse = async (accessToken = getToken() || '') => {
+const connectSse = async (accessToken = getToken() || '', retryCount = 0) => {
   if (!accessToken || isComponentUnmounted) {
     startPolling()
     return
@@ -254,10 +257,16 @@ const connectSse = async (accessToken = getToken() || '') => {
     }
 
     if (response.status === 401) {
+      /**
+       * 刷新成功就重连，但必须限次。
+       * `tryRefreshSession` 的共享 Promise 在 finally 里就被置空，每次递归都会真的再发一次
+       * 刷新请求；若后端处于「刷新接口正常返回新 token、但 SSE 端点持续 401」的状态
+       * （例如 SSE 端点鉴权配置与网关不一致），这里会变成无上限的死循环持续打后端。
+       */
       const refreshResult = await tryRefreshSession(baseUrl)
-      if (refreshResult.status === 'success' && refreshResult.accessToken) {
+      if (refreshResult.status === 'success' && refreshResult.accessToken && retryCount < MAX_SSE_RETRY) {
         shouldFallbackToPolling = false
-        await connectSse(refreshResult.accessToken)
+        await connectSse(refreshResult.accessToken, retryCount + 1)
         return
       }
       startPolling()

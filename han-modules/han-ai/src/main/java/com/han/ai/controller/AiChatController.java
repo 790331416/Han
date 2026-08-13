@@ -26,7 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 
 /**
- * AI chat controller.
+ * AI 对话控制器。
  */
 @AdminAuth
 @RestController

@@ -1,16 +1,17 @@
 package com.han.system.controller.admin;
 
-import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
-import com.han.common.core.util.HanJsonUtil;
+import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.system.domain.vo.OnlineUserVo;
+import com.han.system.service.SysOnlineSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 在线用户管理 - A层（管理端控制器）
@@ -22,53 +23,39 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ASysOnlineController {
 
-    private final StringRedisTemplate redisTemplate;
+    private final SysOnlineSessionService onlineSessionService;
 
+    /**
+     * 在线会话列表。
+     *
+     * <p>只返回当前租户的会话（超管看全平台），扫描走 SCAN 而不是阻塞式 KEYS。
+     * Redis 异常不再吞掉——把故障伪装成「无人在线」比直接报错更危险。
+     */
     @GetMapping("/list")
     @PreAuthorize("@ss.hasAuthority('monitor:online:list')")
-    public R<List<Map<String, Object>>> list(
+    public R<List<OnlineUserVo>> list(
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String ipAddr) {
-        List<Map<String, Object>> list = new ArrayList<>();
-        try {
-            Set<String> keys = redisTemplate.keys(CacheConstants.TOKEN_KEY + "*");
-            if (keys != null) {
-                for (String key : keys) {
-                    String json = redisTemplate.opsForValue().get(key);
-                    if (json == null) continue;
-                    Map<String, Object> user = HanJsonUtil.parseMap(json);
-                    String uname = String.valueOf(user.getOrDefault("username", ""));
-                    String ip = String.valueOf(user.getOrDefault("loginIp", ""));
-
-                    if (username != null && !username.isEmpty() && !uname.contains(username)) continue;
-                    if (ipAddr != null && !ipAddr.isEmpty() && !ip.contains(ipAddr)) continue;
-
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("tokenId", key.replace(CacheConstants.TOKEN_KEY, ""));
-                    item.put("userId", user.get("userId"));
-                    item.put("username", uname);
-                    item.put("nickname", String.valueOf(user.getOrDefault("nickname", "")));
-                    item.put("ipAddr", ip);
-                    item.put("clientType", String.valueOf(user.getOrDefault("clientType", "")));
-                    item.put("loginTime", user.get("loginTime"));
-                    list.add(item);
-                }
-            }
-        } catch (Exception e) {
-            log.error("获取在线用户列表失败", e);
-        }
-        list.sort((a, b) -> Long.compare(
-                b.get("loginTime") != null ? (Long) b.get("loginTime") : 0,
-                a.get("loginTime") != null ? (Long) a.get("loginTime") : 0));
+        List<OnlineUserVo> list = onlineSessionService.listVisibleSessions(username, ipAddr).stream()
+                .map(s -> OnlineUserVo.builder()
+                        .tokenId(s.tokenId())
+                        .userId(s.userId())
+                        .username(s.username())
+                        .nickname(s.nickname())
+                        .ipAddr(s.ipAddr())
+                        .clientType(s.clientType())
+                        .loginTime(s.loginTime())
+                        .build())
+                .toList();
         return R.ok(list);
     }
 
     @PostMapping("/forceLogout")
     @PreAuthorize("@ss.hasAuthority('monitor:online:forceLogout')")
+    @OperLog(module = "在线用户", type = OperLog.OperType.FORCE_LOGOUT)
     public R<Void> forceLogout(@RequestBody Map<String, String> body) {
-        String tokenId = body.get("tokenId");
-        if (tokenId != null && !tokenId.isEmpty()) {
-            redisTemplate.delete(CacheConstants.TOKEN_KEY + tokenId);
+        if (!onlineSessionService.forceLogout(body.get("tokenId"))) {
+            return R.fail("该会话已不存在或已过期");
         }
         return R.ok();
     }

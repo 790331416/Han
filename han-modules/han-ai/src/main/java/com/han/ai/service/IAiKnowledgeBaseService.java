@@ -11,12 +11,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Knowledge base service.
+ * 知识库服务。
  */
 public interface IAiKnowledgeBaseService {
 
     /**
-     * Query knowledge bases.
+     * 查询知识库。
      *
      * @param query query params
      * @return page result
@@ -24,7 +24,7 @@ public interface IAiKnowledgeBaseService {
     PageResult<AiKnowledgeBasePo> selectPage(AiKnowledgeBaseQuery query);
 
     /**
-     * Query knowledge base detail.
+     * 查询知识库详情。
      *
      * @param kbId knowledge base id
      * @return detail
@@ -32,35 +32,35 @@ public interface IAiKnowledgeBaseService {
     AiKnowledgeBasePo selectById(Long kbId);
 
     /**
-     * Query all enabled knowledge bases.
+     * 查询全部已启用的知识库。
      *
      * @return knowledge base list
      */
     List<AiKnowledgeBasePo> selectAll();
 
     /**
-     * Insert knowledge base.
+     * 新增知识库。
      *
      * @param knowledgeBase knowledge base data
      */
     void insert(AiKnowledgeBasePo knowledgeBase);
 
     /**
-     * Update knowledge base.
+     * 修改知识库。
      *
      * @param knowledgeBase knowledge base data
      */
     void update(AiKnowledgeBasePo knowledgeBase);
 
     /**
-     * Delete knowledge base.
+     * 删除知识库。
      *
      * @param kbId knowledge base id
      */
     void deleteById(Long kbId);
 
     /**
-     * Query documents in a knowledge base.
+     * 查询知识库内的文档。
      *
      * @param kbId knowledge base id
      * @param query query params
@@ -69,7 +69,7 @@ public interface IAiKnowledgeBaseService {
     PageResult<AiDocumentPo> selectDocumentPage(Long kbId, AiDocumentQuery query);
 
     /**
-     * Upload knowledge document.
+     * 上传知识库文档。
      *
      * @param kbId knowledge base id
      * @param file file
@@ -77,21 +77,21 @@ public interface IAiKnowledgeBaseService {
     void uploadDocument(Long kbId, MultipartFile file);
 
     /**
-     * Reindex document.
+     * 重建文档索引。
      *
      * @param docId document id
      */
     void reindexDocument(Long docId);
 
     /**
-     * Delete document.
+     * 删除文档。
      *
      * @param docId document id
      */
     void deleteDocument(Long docId);
 
     /**
-     * Run hit test (vector first, keyword fallback).
+     * 执行命中测试（优先向量检索，失败回退关键词检索）。
      *
      * @param kbId knowledge base id
      * @param query query text
@@ -100,7 +100,7 @@ public interface IAiKnowledgeBaseService {
     List<Map<String, Object>> hitTest(Long kbId, String query);
 
     /**
-     * Query paragraph detail (for citation click-through).
+     * 查询段落详情（供引用来源点击跳转）。
      *
      * @param paragraphId paragraph id
      * @return paragraph detail with kb/doc info

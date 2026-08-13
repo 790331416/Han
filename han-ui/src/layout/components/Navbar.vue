@@ -130,6 +130,8 @@ import { useI18n } from 'vue-i18n'
 import { getMyTenants, switchTenant, type TenantSimple } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+// 默认头像走本地静态资源：内网部署请求不到公网 CDN 会裂图，也不该向第三方域名泄露访问来源。
+import defaultAvatar from '@/assets/avatar-default.svg'
 import NotifyBell from './NotifyBell.vue'
 
 const route = useRoute()
@@ -137,7 +139,6 @@ const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
-const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 const { isFullscreen, toggle } = useFullscreen()
 const isDark = useDark({ storageKey: 'han-dark-mode' })
 const toggleDark = useToggle(isDark)
@@ -222,11 +223,16 @@ const handleSwitchTenant = async () => {
 }
 
 const handleLogout = async () => {
-  await ElMessageBox.confirm('确定要退出登录吗?', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
+  // 用户点「取消」或点遮罩关闭时 confirm 会 reject，不接住会留下未处理的 Promise rejection。
+  try {
+    await ElMessageBox.confirm('确定要退出登录吗?', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
 
   await userStore.logout()
   router.push('/login')

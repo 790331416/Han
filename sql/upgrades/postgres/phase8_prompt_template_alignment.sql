@@ -20,11 +20,58 @@ CREATE TABLE IF NOT EXISTS ai_prompt_template (
     update_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 20260812 修正：下面的 ALTER COLUMN ... SET DEFAULT 会引用 tenant_id / category /
+-- variables / description / built_in / status 六列，但原来的 ADD COLUMN 列表只补了四个审计列。
+-- 头部注释自己就写了「为历史半成品表补充缺失列」，缺其中任一列就会报
+-- column ... does not exist 并中断整条升级链。这里把六列一并补上。
 ALTER TABLE ai_prompt_template
+    ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS category VARCHAR(30) DEFAULT 'system',
+    ADD COLUMN IF NOT EXISTS variables TEXT DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS description VARCHAR(1000) DEFAULT '',
+    ADD COLUMN IF NOT EXISTS built_in INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS status CHAR(1) DEFAULT '0',
     ADD COLUMN IF NOT EXISTS create_by VARCHAR(64) DEFAULT '',
     ADD COLUMN IF NOT EXISTS update_by VARCHAR(64) DEFAULT '',
     ADD COLUMN IF NOT EXISTS create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ADD COLUMN IF NOT EXISTS update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- 列宽以 phase8 这套为权威口径（template_name 200 / category 30 / description 1000 /
+-- variables TEXT）。full-init.sql 历史上是 100 / 20 / 500 / TEXT，两类环境长期分叉，
+-- 这里做幂等的扩宽，把存量库统一过去；扩宽不会截断数据。
+DO $$
+DECLARE
+    v_widen RECORD;
+BEGIN
+    FOR v_widen IN
+        SELECT * FROM (VALUES
+            ('template_name', 'VARCHAR(200)', 200),
+            ('category', 'VARCHAR(30)', 30),
+            ('description', 'VARCHAR(1000)', 1000)
+        ) AS t(col, target_type, target_len)
+    LOOP
+        CONTINUE WHEN NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'ai_prompt_template'
+              AND column_name = v_widen.col
+              AND character_maximum_length IS NOT NULL
+              AND character_maximum_length < v_widen.target_len
+        );
+        EXECUTE format('ALTER TABLE ai_prompt_template ALTER COLUMN %I TYPE %s',
+                       v_widen.col, v_widen.target_type);
+    END LOOP;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'ai_prompt_template'
+          AND column_name = 'variables'
+          AND data_type <> 'text'
+    ) THEN
+        ALTER TABLE ai_prompt_template ALTER COLUMN variables TYPE TEXT;
+    END IF;
+END $$;
 
 ALTER TABLE ai_prompt_template
     ALTER COLUMN tenant_id SET DEFAULT 0,

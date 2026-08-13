@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * Structured MCP tool trace for chat message insight.
+ * 对话消息洞察用的结构化 MCP 工具调用轨迹。
  * <p>
  * 两种形态：配置摘要（绑定的 MCP 服务与可用工具，兜底展示）与真实调用记录
  * （toolName/callArgs/callResult/costMs/callStatus 非空时为一次真实 tools/call）。

@@ -1,10 +1,23 @@
 package ${packageName}.domain.po;
 
+#if($hasBaseClass)
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.han.common.mybatis.domain.entity.BizEntity;
+import ${baseClassImport};
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-#foreach($type in $importTypes)
+#else
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+#if($hasDelFlag)
+import com.baomidou.mybatisplus.annotation.TableLogic;
+#end
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
+import java.io.Serial;
+import java.io.Serializable;
+#end
+#foreach($type in $poImportTypes)
 import ${type};
 #end
 
@@ -15,14 +28,29 @@ import ${type};
  * @date ${date}
  */
 @Data
+#if($hasBaseClass)
 @EqualsAndHashCode(callSuper = true)
+#end
 @TableName("${tableName}")
-public class ${className}Po extends BizEntity {
+#if($hasBaseClass)
+public class ${className}Po extends ${baseClass} {
+#else
+public class ${className}Po implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
+#end
 #foreach($column in $columns)
-#if($column.javaField != 'id' && $column.javaField != 'createBy' && $column.javaField != 'createTime' && $column.javaField != 'updateBy' && $column.javaField != 'updateTime' && $column.javaField != 'delFlag' && $column.javaField != 'tenantId')
+#if(!$inheritedFields.contains($column.javaField))
 
 #if($column.columnComment)
     /** ${column.columnComment} */
+#end
+#if(!$hasBaseClass && $hasPk && $column.javaField == $pkJavaField)
+    @TableId(value = "${column.columnName}", type = IdType.#if($pkAutoIncrement)AUTO#{else}ASSIGN_ID#end)
+#end
+#if(!$hasBaseClass && $column.javaField == 'delFlag')
+    @TableLogic
 #end
     private ${column.javaType} ${column.javaField};
 #end

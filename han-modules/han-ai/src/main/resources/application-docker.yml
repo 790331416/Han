@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: han-ai
+  servlet:
+    # 知识库文档上传：不配置时受 Spring 默认 1MB 约束，绝大多数 pdf/docx 会直接上传失败。
+    # 口径与 han-file 一致（同为 HAN_<模块>_MAX_FILE_SIZE 环境变量覆盖）。
+    multipart:
+      max-file-size: ${HAN_AI_MAX_FILE_SIZE:100MB}
+      max-request-size: ${HAN_AI_MAX_REQUEST_SIZE:120MB}
   cloud:
     nacos:
       discovery:
@@ -18,8 +24,7 @@ spring:
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
   datasource:
-    driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}}
     username: ${DB_USER:han}
     password: ${DB_PASSWORD:han@2026}
     hikari:
@@ -52,12 +57,22 @@ mybatis-plus:
 han:
   ai:
     document-storage-path: ${AI_DOCUMENT_STORAGE_PATH:/app/data/ai-documents}
+    document:
+      # 知识库上传扩展名白名单（不含点号，逗号分隔）；不在名单内的一律拒绝，
+      # 避免二进制文件被按 UTF-8 文本兜底读入内存
+      allowed-extensions: ${AI_DOCUMENT_ALLOWED_EXTENSIONS:txt,md,markdown,csv,tsv,log,json,xml,yml,yaml,html,htm,pdf,docx,xlsx}
     # SSRF 防护（G1-12）：默认拒绝内网/环回/链路本地/元数据地址；
     # 需放行容器网络内 MCP 服务时配置 allowed-hosts（主机名/通配后缀/IP/CIDR，逗号分隔）
     ssrf:
       enabled: ${AI_SSRF_ENABLED:true}
       allow-private-network: ${AI_SSRF_ALLOW_PRIVATE_NETWORK:false}
       allowed-hosts: ${AI_SSRF_ALLOWED_HOSTS:}
+    # 流式生成专用线程池（替代 ForkJoinPool.commonPool）；
+    # 任务是 300 秒级阻塞 IO，并发上限即同时在跑的流式会话数上限
+    stream:
+      max-concurrency: ${AI_STREAM_MAX_CONCURRENCY:32}
+      queue-capacity: ${AI_STREAM_QUEUE_CAPACITY:64}
+      keep-alive-seconds: ${AI_STREAM_KEEP_ALIVE_SECONDS:120}
 
 logging:
   level:

@@ -10,7 +10,8 @@
     </parent>
 
     <artifactId>han-starter-cache</artifactId>
-    <description>缓存Starter - 支持Redis/Caffeine可插拔</description>
+    <!-- 状态：能力占位，尚无任何实现，详见 com.han.starter.cache 的 package-info -->
+    <description>缓存Starter - 规划支持Redis/Caffeine可插拔（当前无实现）</description>
 
     <dependencies>
         <dependency>

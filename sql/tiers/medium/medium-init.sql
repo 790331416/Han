@@ -1,11 +1,13 @@
-﻿-- Han medium tier PostgreSQL init
--- generated from legacy modular SQL layout on 2026-04-15
+-- Han medium 档 PostgreSQL 全新初始化脚本
+-- 2026-04-15 由旧的分模块 SQL 目录结构合并生成
+
+-- 下方 "-- source: xxx" 标记记录该段内容的历史来源，
+-- 指向 2026-04-15 合并前的分模块 SQL 目录，那套目录已不再存在。
+-- 本文件即是权威定义，直接改这里，不需要回改任何来源文件。
 
 -- ============================================================
 -- source: postgres\system\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- =============================================
 -- 3. 部门表
@@ -63,9 +65,39 @@ CREATE TABLE sys_user (
     update_name     VARCHAR(50),
     update_time     TIMESTAMP,
     del_flag       SMALLINT        DEFAULT 0,
-    remark          VARCHAR(500),
-    UNIQUE (username, tenant_id)
+    remark          VARCHAR(500)
 );
+
+-- =============================================
+-- 4.1 社交及外部身份绑定表
+-- =============================================
+-- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
+-- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
+-- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
+CREATE TABLE sys_user_social (
+    id              BIGINT          NOT NULL PRIMARY KEY,
+    user_id         BIGINT          NOT NULL,
+    tenant_id       BIGINT,
+    provider        VARCHAR(32)     NOT NULL,
+    open_id         VARCHAR(128)    NOT NULL,
+    access_token    VARCHAR(512),
+    nickname        VARCHAR(100),
+    avatar          VARCHAR(500),
+    extra           TEXT,
+    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_social_user_id ON sys_user_social (user_id);
+CREATE INDEX idx_user_social_provider_openid ON sys_user_social (provider, open_id);
+
+-- 租户内一个第三方身份只绑一个账号（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）
+CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
+    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
+
+-- 一个账号同 provider 只绑一个第三方身份
+CREATE UNIQUE INDEX uq_user_social_user_provider
+    ON sys_user_social (user_id, provider);
+
 
 -- =============================================
 -- 5. 岗位表
@@ -75,7 +107,7 @@ CREATE TABLE sys_post (
     tenant_id       BIGINT          NOT NULL,
     post_code       VARCHAR(50)     NOT NULL,
     post_name       VARCHAR(100)    NOT NULL,
-    sort            INT             DEFAULT 0,
+    post_sort       INT             DEFAULT 0,
     status          SMALLINT        DEFAULT 0,
     create_by       BIGINT,
     create_name     VARCHAR(50),
@@ -354,7 +386,7 @@ CREATE TABLE sys_user_online (
 -- =============================================
 CREATE TABLE sys_client (
     id              BIGINT          NOT NULL PRIMARY KEY,
-    client_key      VARCHAR(50)     NOT NULL UNIQUE,
+    client_key      VARCHAR(50)     NOT NULL,
     client_secret   VARCHAR(200)    NOT NULL,
     client_type     VARCHAR(20)     NOT NULL,
     token_expire    INT             DEFAULT 1800,
@@ -373,12 +405,41 @@ CREATE TABLE sys_client (
     remark          VARCHAR(500)
 );
 
+-- =============================================
+-- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）
+-- =============================================
+-- del_flag 是逻辑删除标记，唯一约束若不带 WHERE del_flag = 0，
+-- 软删除一条记录后就再也建不出同名记录。索引名与列顺序必须与
+-- sql/upgrades/postgres/phase5_unique_constraint.sql 保持一致，
+-- 否则升级链会在同一张表上建出两个等价索引。
+CREATE UNIQUE INDEX sys_user_username_tenant_uniq
+    ON sys_user (username, tenant_id) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_role_key_tenant
+    ON sys_role (tenant_id, role_key) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_role_name_tenant
+    ON sys_role (tenant_id, role_name) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_post_code_tenant
+    ON sys_post (tenant_id, post_code) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_dict_type_tenant
+    ON sys_dict_type (COALESCE(tenant_id, 0), dict_type) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_dict_data_tenant
+    ON sys_dict_data (COALESCE(tenant_id, 0), dict_type, dict_value) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_config_key_tenant
+    ON sys_config (COALESCE(tenant_id, 0), config_key) WHERE del_flag = 0;
+
+CREATE UNIQUE INDEX uk_sys_client_key
+    ON sys_client (client_key) WHERE del_flag = 0;
+
 
 -- ============================================================
 -- source: postgres\system\10-seed.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 3. 部门
 INSERT INTO sys_dept (id, tenant_id, parent_id, ancestors, dept_name, dept_code, post_sort, status) VALUES
@@ -395,7 +456,7 @@ INSERT INTO sys_user (id, tenant_id, dept_id, username, nickname, password, phon
 (2, 1, 101, 'han', '徐漫', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '13800000001', 0, '普通管理员');
 
 -- 5. 岗位
-INSERT INTO sys_post (id, tenant_id, post_code, post_name, sort, status) VALUES
+INSERT INTO sys_post (id, tenant_id, post_code, post_name, post_sort, status) VALUES
 (1, 1, 'ceo', '董事长', 1, 0),
 (2, 1, 'cto', '技术总监', 2, 0),
 (3, 1, 'manager', '项目经理', 3, 0),
@@ -412,8 +473,10 @@ INSERT INTO sys_role (id, tenant_id, role_name, role_key, role_sort, data_scope,
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (1, 0, '0', '系统管理', 'M', 'system', NULL, NULL, 'system', 1, 0, 0),
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
-(3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
-(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0);
+(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
+(5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0),
+(6, 0, '0', '工作流', 'M', 'workflow', NULL, NULL, 'connection', 6, 0, 0),
+(7, 0, '0', '开放平台', 'M', 'open', NULL, NULL, 'platform', 7, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (100, 1, '0,1', '用户管理', 'C', 'user', 'system/user/index', 'system:user:list', 'user', 1, 0, 0),
@@ -424,8 +487,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (105, 1, '0,1', '字典管理', 'C', 'dict', 'system/dict/index', 'system:dict:list', 'dict', 6, 0, 0),
 (106, 1, '0,1', '参数设置', 'C', 'config', 'system/config/index', 'system:config:list', 'edit', 7, 0, 0),
 (107, 1, '0,1', '通知公告', 'C', 'notice', 'system/notice/index', 'system:notice:list', 'message', 8, 0, 0),
-(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0),
-(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0);
+(109, 1, '0,1', '文件管理', 'C', 'file', 'system/file/index', 'file:list', 'upload', 10, 0, 0),
+(110, 1, '0,1', 'OSS配置', 'C', 'oss-config', 'system/oss-config/index', 'system:oss:list', 'upload', 11, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (200, 2, '0,2', '在线用户', 'C', 'online', 'monitor/online/index', 'monitor:online:list', 'online', 1, 0, 0),
@@ -434,13 +497,27 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (203, 2, '0,2', '缓存监控', 'C', 'cache', 'monitor/cache/index', 'monitor:cache:list', 'redis', 4, 0, 0),
 (204, 2, '0,2', '服务监控', 'C', 'server', 'monitor/server/index', 'monitor:server:list', 'server', 5, 0, 0);
 
-INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
-(300, 3, '0,3', '代码生成', 'C', 'gen', 'tool/gen/index', 'tool:gen:list', 'code', 1, 0, 0),
-(301, 3, '0,3', '系统接口', 'C', 'swagger', 'tool/swagger/index', 'tool:swagger:list', 'swagger', 2, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
-(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0);
+(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0),
+(402, 4, '0,4', '资源配额', 'C', 'quota', 'tenant/quota/index', 'tenant:quota:query', 'pie-chart', 3, 0, 0);
+
+-- 7.1 任务调度 / 工作流 / 开放平台菜单
+-- 菜单 ID 与 sql/upgrades/postgres/phase9_base_menu_backfill.sql 保持同一套编号，
+-- 避免旧库回放 phase9 时重复插入或错挂父节点。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(210, 5, '0,5', '定时任务', 'C', 'list', 'job/index', 'job:list', 'clock', 1, 0, 0),
+(211, 5, '0,5', '调度日志', 'C', 'log', 'job/log', 'job:log:list', 'document', 2, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(310, 6, '0,6', '流程定义', 'C', 'definition', 'workflow/definition/index', 'workflow:definition:list', 'document', 1, 0, 0),
+(311, 6, '0,6', '流程实例', 'C', 'instance', 'workflow/instance/index', 'workflow:instance:list', 'histogram', 2, 0, 0),
+(312, 6, '0,6', '待办任务', 'C', 'todo', 'workflow/task/index', 'workflow:task:todo', 'bell', 3, 0, 0),
+(313, 6, '0,6', '已办任务', 'C', 'done', 'workflow/task/done', 'workflow:task:done', 'finished', 4, 0, 0);
+
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(410, 7, '0,7', '应用管理', 'C', 'app', 'open/app/index', 'open:app:list', 'grid', 1, 0, 0);
 
 -- 按钮权限
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
@@ -473,18 +550,49 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1052, 105, '0,1,105', '字典新增', 'F', '', NULL, 'system:dict:add', '#', 2, 0, 0),
 (1053, 105, '0,1,105', '字典修改', 'F', '', NULL, 'system:dict:edit', '#', 3, 0, 0),
 (1054, 105, '0,1,105', '字典删除', 'F', '', NULL, 'system:dict:remove', '#', 4, 0, 0),
-(1055, 105, '0,1,105', '字典导出', 'F', '', NULL, 'system:dict:export', '#', 5, 0, 0),
 (1061, 106, '0,1,106', '参数查询', 'F', '', NULL, 'system:config:query', '#', 1, 0, 0),
 (1062, 106, '0,1,106', '参数新增', 'F', '', NULL, 'system:config:add', '#', 2, 0, 0),
 (1063, 106, '0,1,106', '参数修改', 'F', '', NULL, 'system:config:edit', '#', 3, 0, 0),
 (1064, 106, '0,1,106', '参数删除', 'F', '', NULL, 'system:config:remove', '#', 4, 0, 0),
-(1065, 106, '0,1,106', '参数导出', 'F', '', NULL, 'system:config:export', '#', 5, 0, 0),
 (1071, 107, '0,1,107', '公告查询', 'F', '', NULL, 'system:notice:query', '#', 1, 0, 0),
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
 (1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
-(1091, 109, '0,1,109', '文件查询', 'F', '', NULL, 'file:query', '#', 1, 0, 0),
 (1092, 109, '0,1,109', '文件删除', 'F', '', NULL, 'file:remove', '#', 2, 0, 0);
+
+-- 按钮权限（1100 段）：与后端 @PreAuthorize 声明的权限串一一对应
+-- 权限串以后端注解为准；1100 段之前的历史按钮权限保持原有编号不动。
+INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
+(1101, 100, '0,1,100', '社交解绑', 'F', '', NULL, 'system:user:unbind', '#', 8, 0, 0),
+(1111, 201, '0,2,201', '操作日志导出', 'F', '', NULL, 'monitor:operlog:export', '#', 1, 0, 0),
+(1112, 201, '0,2,201', '操作日志删除', 'F', '', NULL, 'monitor:operlog:remove', '#', 2, 0, 0),
+(1113, 202, '0,2,202', '登录日志导出', 'F', '', NULL, 'monitor:loginlog:export', '#', 1, 0, 0),
+(1114, 202, '0,2,202', '登录日志删除', 'F', '', NULL, 'monitor:loginlog:remove', '#', 2, 0, 0),
+(1115, 200, '0,2,200', '强制下线', 'F', '', NULL, 'monitor:online:forceLogout', '#', 1, 0, 0),
+(1121, 110, '0,1,110', 'OSS配置查询', 'F', '', NULL, 'system:oss:query', '#', 1, 0, 0),
+(1122, 110, '0,1,110', 'OSS配置新增', 'F', '', NULL, 'system:oss:add', '#', 2, 0, 0),
+(1123, 110, '0,1,110', 'OSS配置修改', 'F', '', NULL, 'system:oss:edit', '#', 3, 0, 0),
+(1124, 110, '0,1,110', 'OSS配置删除', 'F', '', NULL, 'system:oss:remove', '#', 4, 0, 0),
+(1131, 210, '0,5,210', '任务新增', 'F', '', NULL, 'job:add', '#', 1, 0, 0),
+(1132, 210, '0,5,210', '任务修改', 'F', '', NULL, 'job:edit', '#', 2, 0, 0),
+(1133, 210, '0,5,210', '任务删除', 'F', '', NULL, 'job:remove', '#', 3, 0, 0),
+(1134, 211, '0,5,211', '调度日志删除', 'F', '', NULL, 'job:log:remove', '#', 1, 0, 0),
+(1141, 400, '0,4,400', '租户查询', 'F', '', NULL, 'tenant:query', '#', 1, 0, 0),
+(1142, 400, '0,4,400', '租户新增', 'F', '', NULL, 'tenant:add', '#', 2, 0, 0),
+(1143, 400, '0,4,400', '租户修改', 'F', '', NULL, 'tenant:edit', '#', 3, 0, 0),
+(1144, 400, '0,4,400', '租户删除', 'F', '', NULL, 'tenant:remove', '#', 4, 0, 0),
+(1145, 400, '0,4,400', '租户计费查询', 'F', '', NULL, 'system:tenant:list', '#', 5, 0, 0),
+(1146, 400, '0,4,400', '租户计费变更', 'F', '', NULL, 'system:tenant:edit', '#', 6, 0, 0),
+(1151, 401, '0,4,401', '套餐查询', 'F', '', NULL, 'tenant:package:query', '#', 1, 0, 0),
+(1152, 401, '0,4,401', '套餐新增', 'F', '', NULL, 'tenant:package:add', '#', 2, 0, 0),
+(1153, 401, '0,4,401', '套餐修改', 'F', '', NULL, 'tenant:package:edit', '#', 3, 0, 0),
+(1154, 401, '0,4,401', '套餐删除', 'F', '', NULL, 'tenant:package:remove', '#', 4, 0, 0),
+(1155, 402, '0,4,402', '配额修改', 'F', '', NULL, 'tenant:quota:edit', '#', 1, 0, 0),
+(1161, 410, '0,7,410', '应用查询', 'F', '', NULL, 'open:app:query', '#', 1, 0, 0),
+(1162, 410, '0,7,410', '应用新增', 'F', '', NULL, 'open:app:add', '#', 2, 0, 0),
+(1163, 410, '0,7,410', '应用修改', 'F', '', NULL, 'open:app:edit', '#', 3, 0, 0),
+(1164, 410, '0,7,410', '应用删除', 'F', '', NULL, 'open:app:remove', '#', 4, 0, 0),
+(1165, 410, '0,7,410', '重置密钥', 'F', '', NULL, 'open:app:resetSecret', '#', 5, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);
@@ -496,7 +604,11 @@ INSERT INTO sys_user_post (user_id, post_id) VALUES (1, 1), (2, 4);
 INSERT INTO sys_role_menu (role_id, menu_id) SELECT 1, id FROM sys_menu WHERE del_flag = 0;
 
 -- 11. 字典类型
-INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
+-- 种子必须显式写 tenant_id：HanTenantLineHandler 会给 sys_dict_type / sys_dict_data /
+-- sys_config 注入 tenant_id = 当前租户，落库为 NULL 时 NULL = 1 恒为 UNKNOWN，
+-- 默认管理员（tenant_id = 1）一条内置字典和参数都读不到。
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status, remark)
+SELECT v.id, 1, v.dict_name, v.dict_type, v.status, v.remark FROM (VALUES
 (1, '用户性别', 'sys_user_sex', 0, '用户性别列表'),
 (2, '系统开关', 'sys_normal_disable', 0, '系统开关列表'),
 (3, '菜单状态', 'sys_show_hide', 0, '菜单状态列表'),
@@ -507,10 +619,12 @@ INSERT INTO sys_dict_type (id, dict_name, dict_type, status, remark) VALUES
 (8, '系统状态', 'sys_common_status', 0, '登录状态列表'),
 (9, '客户端类型', 'sys_client_type', 0, '客户端类型列表'),
 (10, '数据范围', 'sys_data_scope', 0, '数据范围列表'),
-(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表');
+(11, '租户隔离类型', 'sys_isolation_type', 0, '租户隔离类型列表')
+) AS v(id, dict_name, dict_type, status, remark);
 
 -- 12. 字典数据
-INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status) VALUES
+INSERT INTO sys_dict_data (id, tenant_id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status)
+SELECT v.id, 1, v.dict_type, v.dict_label, v.dict_value, v.dict_sort, v.css_class, v.list_class, v.is_default, v.status FROM (VALUES
 (1, 'sys_user_sex', '未知', '0', 1, '', '', 0, 0),
 (2, 'sys_user_sex', '男', '1', 2, '', '', 0, 0),
 (3, 'sys_user_sex', '女', '2', 3, '', '', 0, 0),
@@ -549,16 +663,20 @@ INSERT INTO sys_dict_data (id, dict_type, dict_label, dict_value, dict_sort, css
 (36, 'sys_data_scope', '仅本人数据', '5', 5, '', 'info', 0, 0),
 (37, 'sys_isolation_type', '逻辑隔离', 'logical', 1, '', 'primary', 1, 0),
 (38, 'sys_isolation_type', '物理隔离', 'physical', 2, '', 'warning', 0, 0),
-(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0);
+(39, 'sys_isolation_type', '混合隔离', 'hybrid', 3, '', 'info', 0, 0)
+) AS v(id, dict_type, dict_label, dict_value, dict_sort, css_class, list_class, is_default, status);
 
 -- 13. 参数配置
-INSERT INTO sys_config (id, config_name, config_key, config_value, config_type, remark) VALUES
+INSERT INTO sys_config (id, tenant_id, config_name, config_key, config_value, config_type, remark)
+SELECT v.id, 1, v.config_name, v.config_key, v.config_value, v.config_type, v.remark FROM (VALUES
 (1, '主框架页-默认皮肤样式名称', 'sys.index.skinName', 'skin-blue', 'Y', '蓝色 skin-blue、绿色 skin-green、紫色 skin-purple、红色 skin-red、黄色 skin-yellow'),
 (2, '用户管理-账号初始密码', 'sys.user.initPassword', '123456', 'Y', '初始化密码 123456'),
 (3, '主框架页-侧边栏主题', 'sys.index.sideTheme', 'theme-dark', 'Y', '深色主题theme-dark，浅色主题theme-light'),
 (4, '账号自助-验证码开关', 'sys.account.captchaEnabled', 'true', 'Y', '是否开启验证码功能（true开启，false关闭）'),
 (5, '账号自助-是否开启用户注册功能', 'sys.account.registerUser', 'false', 'Y', '是否开启注册用户功能（true开启，false关闭）'),
-(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
+(6, '用户登录-黑名单列表', 'sys.login.blackIPList', '', 'Y', '设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）'),
+(7, '用户登录-微信扫码登录开关', 'sys.login.wechatEnabled', 'false', 'Y', '是否开启微信扫码登录（true开启，false关闭）；开启前需在服务端配置 WECHAT_OPEN_APP_ID/WECHAT_OPEN_APP_SECRET')
+) AS v(id, config_name, config_key, config_value, config_type, remark);
 
 -- 14. 客户端配置
 INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire, refresh_expire, max_online, kick_strategy, status, remark) VALUES
@@ -573,8 +691,6 @@ INSERT INTO sys_client (id, client_key, client_secret, client_type, token_expire
 -- ============================================================
 -- source: postgres\job\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- =============================================
 -- 定时任务表
@@ -617,8 +733,6 @@ CREATE TABLE sys_job_log (
 -- ============================================================
 -- source: postgres\job\10-seed.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 15. 示例任务
 INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status, remark) VALUES
@@ -629,8 +743,6 @@ INSERT INTO sys_job (job_name, job_group, invoke_target, cron_expression, status
 -- ============================================================
 -- source: postgres\job\90-fixup.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- ============================================================
 -- JobFlow 迁移 SQL 脚本
@@ -658,17 +770,11 @@ DROP TABLE IF EXISTS qrtz_triggers CASCADE;
 DROP TABLE IF EXISTS qrtz_job_details CASCADE;
 DROP TABLE IF EXISTS qrtz_calendars CASCADE;
 
--- 3. 验证变更
-SELECT column_name, data_type, character_maximum_length
-FROM information_schema.columns
-WHERE table_name = 'sys_job' AND column_name IN ('service_name', 'handler');
 
 
 -- ============================================================
 -- source: postgres\tenant\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 CREATE TABLE sys_tenant (
     id              BIGINT          NOT NULL PRIMARY KEY,
@@ -738,8 +844,6 @@ CREATE UNIQUE INDEX idx_tenant_quota_tenant ON sys_tenant_quota(tenant_id);
 -- ============================================================
 -- source: postgres\tenant\10-seed.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 -- 1. 租户
 INSERT INTO sys_tenant (id, tenant_name, contact_name, contact_phone, package_id, user_limit, status, remark) VALUES
@@ -753,7 +857,7 @@ INSERT INTO sys_tenant_package (id, package_name, menu_ids, status, remark) VALU
 -- ============================================================
 -- source: postgres\tenant\90-fixup.sql
 -- ============================================================
--- PostgreSQL tenant billing extension tables.
+-- 租户计费扩展表（PostgreSQL）。
 
 CREATE TABLE IF NOT EXISTS sys_tenant_subscription (
     id BIGINT PRIMARY KEY,
@@ -950,7 +1054,7 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 -- source: postgres\open\00-schema.sql
 -- ============================================================
--- PostgreSQL open-platform core tables.
+-- 开放平台核心表（PostgreSQL）。
 
 CREATE TABLE IF NOT EXISTS open_app (
     id BIGSERIAL PRIMARY KEY,
@@ -1014,8 +1118,6 @@ COMMENT ON TABLE open_user_authorization IS 'User authorization record';
 -- ============================================================
 -- source: postgres\file\00-schema.sql
 -- ============================================================
--- 本文件由仓库整理脚本从现有 PostgreSQL 正式脚本拆分生成。
--- 如需调整结构，请同步更新 manifest 与 sql/README.md。
 
 CREATE TABLE sys_file (
     id              BIGINT          NOT NULL PRIMARY KEY,
@@ -1060,5 +1162,4 @@ COMMENT ON TABLE sys_oss_config IS 'OSS存储配置';
 -- ============================================================
 -- 当前模块暂无独立初始化种子。
 -- 如后续新增预置数据，请在本文件补充。
-
 

@@ -3,7 +3,7 @@
 <mapper namespace="com.han.gen.mapper.GenTableMapper">
 
     <!-- 查询数据库中所有业务表（排除系统表和已导入的表） -->
-    <select id="selectDbTableList" resultType="com.han.gen.domain.DbTableInfo">
+    <select id="selectDbTableList" databaseId="postgresql" resultType="com.han.gen.domain.DbTableInfo">
         SELECT
             c.relname AS table_name,
             obj_description(c.oid) AS table_comment
@@ -21,7 +21,7 @@
     </select>
 
     <!-- 查询指定表的列信息（PostgreSQL） -->
-    <select id="selectDbColumnsByTableName" resultType="com.han.gen.domain.DbColumnInfo">
+    <select id="selectDbColumnsByTableName" databaseId="postgresql" resultType="com.han.gen.domain.DbColumnInfo">
         SELECT
             a.attname AS column_name,
             col_description(a.attrelid, a.attnum) AS column_comment,
@@ -42,6 +42,38 @@
           AND a.attnum > 0
           AND NOT a.attisdropped
         ORDER BY a.attnum
+    </select>
+
+    <!-- 查询数据库中所有业务表（MySQL） -->
+    <select id="selectDbTableList" databaseId="mysql" resultType="com.han.gen.domain.DbTableInfo">
+        SELECT
+            t.table_name,
+            t.table_comment
+        FROM information_schema.tables t
+        WHERE t.table_schema = DATABASE()
+          AND t.table_type = 'BASE TABLE'
+          AND t.table_name NOT LIKE 'sql_%'
+          AND t.table_name NOT IN (SELECT table_name FROM gen_table)
+        <if test="tableName != null and tableName != ''">
+            AND t.table_name LIKE CONCAT('%', #{tableName}, '%')
+        </if>
+        ORDER BY t.table_name
+    </select>
+
+    <!-- 查询指定表的列信息（MySQL） -->
+    <select id="selectDbColumnsByTableName" databaseId="mysql" resultType="com.han.gen.domain.DbColumnInfo">
+        SELECT
+            column_name,
+            column_comment,
+            column_type,
+            is_nullable,
+            column_key,
+            column_default,
+            ordinal_position
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = #{tableName}
+        ORDER BY ordinal_position
     </select>
 
 </mapper>

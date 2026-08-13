@@ -1,6 +1,7 @@
 package com.han.common.core.util;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -118,13 +119,15 @@ public final class HanStrUtil {
 
     /**
      * 大小写转换
+     * <p>固定用 {@link Locale#ROOT}，避免土耳其语等 Locale 下 {@code i/I} 的特殊映射
+     * 让不同节点算出不同结果（签名、缓存 key 等路径对此敏感）。
      */
     public static String toUpperCase(String str) {
-        return str == null ? null : str.toUpperCase();
+        return str == null ? null : str.toUpperCase(Locale.ROOT);
     }
 
     public static String toLowerCase(String str) {
-        return str == null ? null : str.toLowerCase();
+        return str == null ? null : str.toLowerCase(Locale.ROOT);
     }
 
     /**

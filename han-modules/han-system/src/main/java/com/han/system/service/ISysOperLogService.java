@@ -17,6 +17,13 @@ public interface ISysOperLogService {
     PageResult<SysOperLogPo> selectPage(SysOperLogQuery query);
 
     /**
+     * 查询操作日志（导出用，不分页，按 maxRows 截断）
+     *
+     * <p>分页插件 maxLimit 是 500，导出复用分页会被静默截断成 500 条。
+     */
+    List<SysOperLogPo> selectListForExport(SysOperLogQuery query, int maxRows);
+
+    /**
      * 根据ID查询操作日志
      */
     SysOperLogPo selectById(Long id);

@@ -23,6 +23,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SysOperLogServiceImpl implements ISysOperLogService, IOperLogService {
 
+    /** 单页最大条数，防止 pageSize 被传成超大值拖库 */
+    private static final int MAX_PAGE_SIZE = 200;
+
     private final SysOperLogMapper operLogMapper;
 
     // ==================== ISysOperLogService ====================
@@ -30,10 +33,26 @@ public class SysOperLogServiceImpl implements ISysOperLogService, IOperLogServic
     @Override
     public PageResult<SysOperLogPo> selectPage(SysOperLogQuery query) {
         Page<SysOperLogPo> page = operLogMapper.selectPage(
-                new Page<>(query.getPageNum(), query.getPageSize()),
+                new Page<>(clampPageNum(query.getPageNum()), clampPageSize(query.getPageSize())),
                 buildQueryWrapper(query)
         );
         return new PageResult<>(page.getRecords(), page.getTotal());
+    }
+
+    private static long clampPageNum(Integer pageNum) {
+        return pageNum == null || pageNum < 1 ? 1L : pageNum;
+    }
+
+    private static long clampPageSize(Integer pageSize) {
+        if (pageSize == null || pageSize < 1) {
+            return 10L;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
+    }
+
+    @Override
+    public List<SysOperLogPo> selectListForExport(SysOperLogQuery query, int maxRows) {
+        return operLogMapper.selectList(buildQueryWrapper(query).last("LIMIT " + maxRows));
     }
 
     @Override

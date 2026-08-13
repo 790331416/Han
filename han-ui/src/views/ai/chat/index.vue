@@ -77,6 +77,16 @@
           >
             <el-option v-for="m in imageModelList" :key="m.modelId" :label="m.modelName" :value="m.modelId" />
           </el-select>
+          <el-button
+            v-if="currentConversationId"
+            size="small"
+            :icon="Delete"
+            data-testid="ai-chat-clear-messages-button"
+            :disabled="streaming || sending || messages.length === 0"
+            @click="handleClearMessages"
+          >
+            清空消息
+          </el-button>
         </div>
       </div>
 
@@ -104,8 +114,13 @@
                 {{ question }}
               </el-button>
             </div>
+            <div v-if="hasEarlierMessages" class="earlier-messages" data-testid="ai-chat-load-earlier">
+              <el-button link type="primary" @click="loadEarlierMessages">
+                加载更早的消息（还有 {{ messages.length - visibleMessages.length }} 条）
+              </el-button>
+            </div>
             <div
-              v-for="(msg, idx) in messages"
+              v-for="(msg, idx) in visibleMessages"
               :key="msg.messageId || msg.sortOrder"
               :class="['message-item', msg.role]"
               data-testid="ai-chat-message"
@@ -167,7 +182,7 @@
                   </div>
                   <div
                     class="message-text"
-                    v-html="msg.role === 'assistant' ? renderAssistantMarkdown(msg) : renderMarkdown(msg.content)"
+                    v-html="renderedMessageHtml[idx]"
                   ></div>
                   <div class="message-actions" v-if="!streaming">
                     <el-button v-if="msg.role === 'user'" type="info" link size="small" data-testid="ai-chat-edit-button" @click="startEditMessage(msg)">
@@ -185,7 +200,7 @@
                       <el-icon><RefreshRight /></el-icon>再次生成
                     </el-button>
                     <el-button
-                      v-else-if="msg.role === 'assistant' && idx === messages.length - 1"
+                      v-else-if="msg.role === 'assistant' && idx === visibleMessages.length - 1"
                       type="info"
                       link
                       size="small"
@@ -242,6 +257,17 @@
               <el-button type="danger" size="small" round data-testid="ai-chat-stop-button" @click="handleStopGenerate">
                 <el-icon><VideoPause /></el-icon>停止生成
               </el-button>
+            </div>
+            <!--
+              流式失败后的人工降级入口（非流式 /ai/chat/send）。
+              刻意不做自动回落：流式链路一旦已经把请求送达后端，自动重发会让同一轮对话被执行两次。
+            -->
+            <div v-if="fallbackRequest && !streaming && !sending" class="stream-fallback" data-testid="ai-chat-fallback">
+              <span class="stream-fallback-tip">流式回复失败。</span>
+              <el-button type="primary" link size="small" data-testid="ai-chat-fallback-button" @click="handleSendWithoutStream">
+                改用非流式重新发送
+              </el-button>
+              <el-button link size="small" @click="fallbackRequest = null">忽略</el-button>
             </div>
             <div
               v-if="pendingImages.length > 0 || uploadingImageCount > 0"
@@ -634,7 +660,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted, watch } from 'vue'
+import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { Plus, Delete, Promotion, ChatDotRound, User, Monitor, Edit, RefreshRight, VideoPause, Picture, Close, Download, Loading } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
@@ -654,6 +680,8 @@ import {
   getKnowledgeParagraphDetail,
   uploadChatImage,
   generateChatImage,
+  sendChatMessage,
+  clearConversationMessages,
   kbTypeOptions,
   indexStatusOptions,
   transportTypeOptions,
@@ -666,12 +694,18 @@ import {
   type AiFlowNodeTrace,
   type AiModel,
   type AiWorkflow,
+  type ChatRequest,
   type KnowledgeBase,
   type KnowledgeParagraphDetail,
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
-import { requestAiStream, type AiStreamMetaPayload, type AiStreamNodeEvent } from '@/utils/ai-stream'
+import {
+  isReportedAiStreamError,
+  requestAiStream,
+  type AiStreamMetaPayload,
+  type AiStreamNodeEvent
+} from '@/utils/ai-stream'
 import { sanitizeHtml } from '@/utils/sanitize-html'
 
 // marked 配置：启用代码高亮
@@ -712,6 +746,33 @@ const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
 const route = useRoute()
 const router = useRouter()
+
+/**
+ * 组件是否已卸载。
+ *
+ * <p>SSE 回调持有的是闭包，组件销毁后仍会被触发；这里作为统一闸门，
+ * 卸载后一律不再写响应式状态、不再发起后续接口请求。
+ */
+let disposed = false
+
+/** 流式失败后暂存的请求体，供用户手动降级为非流式发送（`/ai/chat/send`）。 */
+const fallbackRequest = ref<ChatRequest | null>(null)
+
+// ==================== 长会话渲染窗口 ====================
+/** 首屏渲染的最近消息条数；更早的消息由用户显式展开，避免上百轮对话一次性挂满 DOM。 */
+const MESSAGE_WINDOW_STEP = 30
+const visibleMessageCount = ref(MESSAGE_WINDOW_STEP)
+
+const visibleMessages = computed(() => {
+  const list = messages.value
+  return list.length > visibleMessageCount.value ? list.slice(-visibleMessageCount.value) : list
+})
+
+const hasEarlierMessages = computed(() => messages.value.length > visibleMessages.value.length)
+
+function loadEarlierMessages() {
+  visibleMessageCount.value += MESSAGE_WINDOW_STEP
+}
 
 // ==================== 多模态（图片上传 / 文生图） ====================
 const MAX_CHAT_IMAGES = 4
@@ -1134,6 +1195,25 @@ onMounted(async () => {
   await loadContextApplication()
 })
 
+/**
+ * 卸载清理：中断在途 SSE 并置 disposed。
+ *
+ * <p>不做这件事的话，切路由后 fetch 仍然挂着（后端 `AiSseChannel` 要等写失败或 SSE 超时才释放线程），
+ * `onDelta` 回调还会继续往已销毁组件写状态、访问已卸载 DOM，完成后甚至再发一轮接口请求。
+ */
+onUnmounted(() => {
+  disposed = true
+  if (scrollFrameHandle !== 0) {
+    cancelAnimationFrame(scrollFrameHandle)
+    scrollFrameHandle = 0
+  }
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
+  messageHtmlCache = new Map()
+})
+
 watch(
   () => route.query.conversationId,
   async (value) => {
@@ -1261,7 +1341,7 @@ async function loadContextApplication() {
 }
 
 async function reloadCurrentConversationMessages() {
-  if (!currentConversationId.value) {
+  if (disposed || !currentConversationId.value) {
     return
   }
   try {
@@ -1328,6 +1408,9 @@ async function restoreConversationState() {
 }
 
 async function syncCurrentConversationState() {
+  if (disposed) {
+    return
+  }
   await loadConversations()
   if (!currentConversationId.value && conversationList.value.length > 0) {
     const latest = conversationList.value[0]
@@ -1344,6 +1427,8 @@ async function selectConversation(conv: AiConversation, options: { syncRoute?: b
   currentConversationId.value = conv.conversationId
   currentConversation.value = conv
   streamMeta.value = null
+  fallbackRequest.value = null
+  visibleMessageCount.value = MESSAGE_WINDOW_STEP
   persistConversationId(conv.conversationId)
   if (syncRoute) {
     syncConversationRoute(conv.conversationId)
@@ -1363,6 +1448,8 @@ function handleNewChat() {
   messages.value = []
   inputMessage.value = ''
   streamMeta.value = null
+  fallbackRequest.value = null
+  visibleMessageCount.value = MESSAGE_WINDOW_STEP
   persistConversationId(null)
   syncConversationRoute(null)
 }
@@ -1409,9 +1496,10 @@ async function handleSend() {
   sending.value = true
   inputMessage.value = ''
   pendingImages.value = []
+  fallbackRequest.value = null
 
   const userMsg: AiChatMessage = {
-    messageId: Date.now(),
+    messageId: createLocalMessageId(),
     conversationId: currentConversationId.value || 0,
     role: 'user',
     content: msg,
@@ -1427,23 +1515,130 @@ async function handleSend() {
   streamContent.value = ''
   streamMeta.value = null
 
+  const requestBody: ChatRequest = {
+    conversationId: currentConversationId.value || undefined,
+    workflowId: routeWorkflowId.value || currentConversation.value?.workflowId || undefined,
+    modelId: selectedModelId.value,
+    message: msg,
+    imageFileIds: attachedImages.length > 0
+      ? attachedImages.map((item) => item.fileId).filter((id): id is string | number => id !== undefined)
+      : undefined
+  }
+
   try {
     await processStreamRequest({
       path: '/ai/chat/stream',
       body: {
-        conversationId: currentConversationId.value || null,
-        workflowId: routeWorkflowId.value || currentConversation.value?.workflowId || null,
-        modelId: selectedModelId.value,
-        message: msg,
-        imageFileIds: attachedImages.length > 0 ? attachedImages.map((item) => item.fileId) : undefined
+        conversationId: requestBody.conversationId ?? null,
+        workflowId: requestBody.workflowId ?? null,
+        modelId: requestBody.modelId,
+        message: requestBody.message,
+        imageFileIds: requestBody.imageFileIds
       }
     })
   } catch (e: any) {
     streaming.value = false
-    ElMessage.error('发送失败: ' + (e.message || '未知错误'))
+    if (e?.name === 'AbortError') {
+      return
+    }
+    // 失败回滚：把乐观插入的这条用户消息撤掉，文字与图片附件还给输入区
+    rollbackOptimisticMessage(userMsg, msg, attachedImages)
+    fallbackRequest.value = requestBody
+    if (!isReportedAiStreamError(e)) {
+      ElMessage.error('发送失败: ' + (e?.message || '未知错误'))
+    }
   } finally {
     sending.value = false
     scrollToBottom()
+  }
+}
+
+/** 发送失败回滚：移除乐观插入的用户消息，恢复输入框文本与待发图片。 */
+function rollbackOptimisticMessage(userMsg: AiChatMessage, text: string, images: AiChatImage[]) {
+  const idx = messages.value.findIndex((item) => item.messageId === userMsg.messageId)
+  if (idx >= 0) {
+    messages.value.splice(idx, 1)
+  }
+  if (!inputMessage.value.trim()) {
+    inputMessage.value = text
+  }
+  if (images.length > 0 && pendingImages.value.length === 0) {
+    pendingImages.value = images
+  }
+}
+
+/**
+ * 人工降级：改走非流式 `/ai/chat/send` 重发上一次失败的请求。
+ *
+ * <p>刻意不做自动回落 —— 流式失败可能只是传输中断而后端已经在执行，
+ * 自动重发会造成同一轮对话被执行两次（token 双份、工具副作用双份）。
+ */
+async function handleSendWithoutStream() {
+  const payload = fallbackRequest.value
+  if (!payload || sending.value || streaming.value) return
+  sending.value = true
+  const userMsg: AiChatMessage = {
+    messageId: createLocalMessageId(),
+    conversationId: currentConversationId.value || 0,
+    role: 'user',
+    content: payload.message,
+    sortOrder: messages.value.length + 1
+  }
+  messages.value.push(userMsg)
+  scrollToBottom()
+  try {
+    const res = await sendChatMessage(payload)
+    const assistantMessage = (res as any).data as AiChatMessage | undefined
+    if (assistantMessage) {
+      messages.value.push(assistantMessage)
+    }
+    fallbackRequest.value = null
+    await syncCurrentConversationState()
+  } catch (e: any) {
+    rollbackOptimisticMessage(userMsg, payload.message, [])
+    ElMessage.error('非流式发送失败: ' + (e?.message || '未知错误'))
+  } finally {
+    sending.value = false
+    scrollToBottom()
+  }
+}
+
+/**
+ * 本地占位消息 ID。
+ *
+ * <p>带 `local-` 前缀是为了和后端真实 ID 区分开：这个值同时被用作列表 key、
+ * `data-message-id` 与编辑定位依据，用 `Date.now()` 同一毫秒连续插入两条就会撞 key。
+ */
+let localMessageSeq = 0
+function createLocalMessageId(): string {
+  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${++localMessageSeq}`
+  return `local-${uuid}`
+}
+
+/** 判断消息是否只是本地占位（尚未落库）。 */
+function isLocalMessageId(messageId?: string | number): boolean {
+  return typeof messageId === 'string' && messageId.startsWith('local-')
+}
+
+/** 清空当前会话消息（后端 `/ai/chat/conversations/clear/{id}`）。 */
+async function handleClearMessages() {
+  if (!currentConversationId.value || streaming.value || sending.value) return
+  try {
+    await ElMessageBox.confirm('确认清空当前会话的全部消息？该操作不可恢复。', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await clearConversationMessages(currentConversationId.value)
+    messages.value = []
+    streamMeta.value = null
+    visibleMessageCount.value = MESSAGE_WINDOW_STEP
+    ElMessage.success('已清空当前会话消息')
+    await loadConversations()
+  } catch (e: any) {
+    ElMessage.error('清空失败: ' + (e?.message || '未知错误'))
   }
 }
 
@@ -1470,7 +1665,7 @@ async function runImageGeneration(prompt: string) {
   generatingImage.value = true
 
   messages.value.push({
-    messageId: Date.now(),
+    messageId: createLocalMessageId(),
     conversationId: currentConversationId.value || 0,
     role: 'user',
     content: prompt,
@@ -1607,7 +1802,7 @@ function handleStopGenerate() {
   const partialContent = streamContent.value || streamNodeContent.value
   if (partialContent) {
     messages.value.push({
-      messageId: Date.now() + 1,
+      messageId: createLocalMessageId(),
       conversationId: currentConversationId.value || 0,
       role: 'assistant',
       content: partialContent + '\n\n*[已停止生成]*',
@@ -1642,9 +1837,11 @@ async function handleRegenerate() {
       path: `/ai/chat/regenerate/${currentConversationId.value}`
     })
   } catch (e: any) {
-    if (e.name !== 'AbortError') {
+    if (e?.name !== 'AbortError') {
       streaming.value = false
-      ElMessage.error('重新生成失败: ' + (e.message || '未知错误'))
+      if (!isReportedAiStreamError(e)) {
+        ElMessage.error('重新生成失败: ' + (e?.message || '未知错误'))
+      }
     }
   } finally {
     sending.value = false
@@ -1654,6 +1851,11 @@ async function handleRegenerate() {
 
 // ==================== 消息编辑 ====================
 function startEditMessage(msg: AiChatMessage) {
+  // 本地占位消息还没落库，编辑时无法给后端一个真实 messageId
+  if (isLocalMessageId(msg.messageId)) {
+    ElMessage.warning('该消息还在保存中，请稍后再编辑')
+    return
+  }
   editingMessageId.value = msg.messageId
   editMessageContent.value = msg.content
 }
@@ -1680,7 +1882,7 @@ async function submitEditMessage(msg: AiChatMessage) {
 
   // 添加编辑后的用户消息到界面
   messages.value.push({
-    messageId: Date.now(),
+    messageId: createLocalMessageId(),
     conversationId: currentConversationId.value,
     role: 'user',
     content: editMessageContent.value,
@@ -1698,9 +1900,11 @@ async function submitEditMessage(msg: AiChatMessage) {
       }
     })
   } catch (e: any) {
-    if (e.name !== 'AbortError') {
+    if (e?.name !== 'AbortError') {
       streaming.value = false
-      ElMessage.error('发送失败: ' + (e.message || '未知错误'))
+      if (!isReportedAiStreamError(e)) {
+        ElMessage.error('发送失败: ' + (e?.message || '未知错误'))
+      }
     }
   } finally {
     sending.value = false
@@ -1739,32 +1943,44 @@ async function processStreamRequest(options: { path: string; body?: unknown }) {
   streamRunningNode.value = ''
   let responseMeta: AiStreamMetaPayload | null = null
   abortController.value = new AbortController()
-  const fullContent = await requestAiStream({
-    baseUrl,
-    path: options.path,
-    token: userStore.token,
-    tenantId: userStore.tenantId,
-    body: options.body,
-    signal: abortController.value.signal,
-    onDelta: ({ fullContent }) => {
-      streamContent.value = fullContent
-      scrollToBottom()
-    },
-    onNodeEvent: handleStreamNodeEvent,
-    onMeta: (meta) => {
-      responseMeta = meta
-      streamMeta.value = meta
-    },
-    onError: (message) => {
-      ElMessage.error('AI回复出错: ' + (message || '未知错误'))
+  try {
+    const fullContent = await requestAiStream({
+      baseUrl,
+      path: options.path,
+      token: userStore.token,
+      tenantId: userStore.tenantId,
+      body: options.body,
+      signal: abortController.value.signal,
+      onDelta: ({ fullContent }) => {
+        if (disposed) return
+        streamContent.value = fullContent
+        scrollToBottom()
+      },
+      onNodeEvent: (event) => {
+        if (disposed) return
+        handleStreamNodeEvent(event)
+      },
+      onMeta: (meta) => {
+        responseMeta = meta
+        if (disposed) return
+        streamMeta.value = meta
+      },
+      onError: (message) => {
+        if (disposed) return
+        ElMessage.error('AI回复出错: ' + (message || '未知错误'))
+      }
+    })
+    if (disposed) return
+    streaming.value = false
+    streamRunningNode.value = ''
+    if (fullContent) {
+      messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
     }
-  })
-  streaming.value = false
-  streamRunningNode.value = ''
-  if (fullContent) {
-    messages.value.push(buildStreamAssistantMessage(fullContent, responseMeta))
+    await syncCurrentConversationState()
+  } finally {
+    // 用完即弃，避免下一次「停止生成」误 abort 上一轮已失效的 controller
+    abortController.value = null
   }
-  await syncCurrentConversationState()
 }
 
 /**
@@ -1789,7 +2005,7 @@ function handleStreamNodeEvent(event: AiStreamNodeEvent) {
 
 function buildStreamAssistantMessage(content: string, meta: AiStreamMetaPayload | null): AiChatMessage {
   const assistantMessage: AiChatMessage = {
-    messageId: meta?.messageId ?? Date.now() + 1,
+    messageId: meta?.messageId ?? createLocalMessageId(),
     conversationId: currentConversationId.value || 0,
     role: 'assistant',
     content,
@@ -1965,11 +2181,23 @@ function openContextManagement() {
   ElMessage.info('当前通用对话没有专属管理入口')
 }
 
+/**
+ * 滚动到底部。
+ *
+ * <p>流式期间每个 token 都会调用，用 rAF 合并到一帧，
+ * 避免每 token 都读一次 `scrollHeight` 触发强制重排。
+ */
+let scrollFrameHandle = 0
 function scrollToBottom() {
-  nextTick(() => {
-    if (messagesRef.value) {
-      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
-    }
+  if (disposed || scrollFrameHandle !== 0) return
+  scrollFrameHandle = requestAnimationFrame(() => {
+    scrollFrameHandle = 0
+    if (disposed) return
+    void nextTick(() => {
+      if (messagesRef.value) {
+        messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+      }
+    })
   })
 }
 
@@ -1985,17 +2213,113 @@ function renderMarkdown(content: string): string {
 /**
  * 渲染 assistant 消息：markdown 后把 [n] 引用角标替换为可点击元素，
  * 点击经消息区事件委托打开引用出处抽屉（F3 行内引用）。
+ *
+ * <p>角标注入必须在 DOM 文本节点上做，不能对整段 HTML 字符串跑正则 ——
+ * 否则回复里的 `https://x/docs/[1]` 会被塞进 `href` 属性值中间把链接打断，
+ * 代码块里的 `arr[1]` 也会被误替换。
  */
 function renderAssistantMarkdown(msg: AiChatMessage): string {
   const html = renderMarkdown(msg.content)
   const sourceCount = msg.knowledgeSources?.length ?? 0
   if (sourceCount === 0) return html
-  return html.replace(/\[(\d{1,2})\]/g, (raw, num: string) => {
-    const index = Number(num)
-    if (index < 1 || index > sourceCount) return raw
-    return `<sup class="citation-badge" data-citation-index="${index}" title="查看引用出处">[${index}]</sup>`
-  })
+  return injectCitationBadges(html, sourceCount)
 }
+
+/** 引用角标注入时需要整体跳过的子树（链接属性、代码块内容不能被改写）。 */
+const CITATION_SKIP_TAGS = new Set(['A', 'CODE', 'PRE', 'SUP'])
+
+function injectCitationBadges(html: string, sourceCount: number): string {
+  if (typeof document === 'undefined') return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+  const targets: Text[] = []
+  let node = walker.nextNode()
+  while (node) {
+    const textNode = node as Text
+    if (/\[\d{1,2}\]/.test(textNode.data) && !isInsideSkippedSubtree(textNode, template.content)) {
+      targets.push(textNode)
+    }
+    node = walker.nextNode()
+  }
+
+  for (const textNode of targets) {
+    replaceCitationsInTextNode(textNode, sourceCount)
+  }
+
+  return template.innerHTML
+}
+
+function isInsideSkippedSubtree(textNode: Text, root: DocumentFragment): boolean {
+  let parent = textNode.parentElement
+  while (parent && parent !== (root as unknown as Element)) {
+    if (CITATION_SKIP_TAGS.has(parent.tagName)) {
+      return true
+    }
+    parent = parent.parentElement
+  }
+  return false
+}
+
+function replaceCitationsInTextNode(textNode: Text, sourceCount: number): void {
+  const pattern = /\[(\d{1,2})\]/g
+  const fragment = document.createDocumentFragment()
+  let lastIndex = 0
+  let matched = false
+
+  for (const match of textNode.data.matchAll(pattern)) {
+    const index = Number(match[1])
+    if (index < 1 || index > sourceCount) {
+      continue
+    }
+    const start = match.index ?? 0
+    matched = true
+    if (start > lastIndex) {
+      fragment.appendChild(document.createTextNode(textNode.data.slice(lastIndex, start)))
+    }
+    const badge = document.createElement('sup')
+    badge.className = 'citation-badge'
+    badge.setAttribute('data-citation-index', String(index))
+    badge.setAttribute('title', '查看引用出处')
+    badge.textContent = `[${index}]`
+    fragment.appendChild(badge)
+    lastIndex = start + match[0].length
+  }
+
+  if (!matched) return
+  if (lastIndex < textNode.data.length) {
+    fragment.appendChild(document.createTextNode(textNode.data.slice(lastIndex)))
+  }
+  textNode.replaceWith(fragment)
+}
+
+/**
+ * 消息气泡 HTML 缓存。
+ *
+ * <p>模板里的裸函数调用没有任何 memo，流式期间每收一个 token 都会让整个组件 re-render，
+ * 于是所有历史消息都被重新 `marked.parse` + 净化一遍（每 token O(消息数 × 消息长度)）。
+ * 这里按「消息 id + 内容签名」缓存渲染结果，只有真正变化的那条才会重新解析。
+ */
+let messageHtmlCache = new Map<string, { signature: string; html: string }>()
+
+const renderedMessageHtml = computed<string[]>(() => {
+  const nextCache = new Map<string, { signature: string; html: string }>()
+  const htmlList = visibleMessages.value.map((msg) => {
+    const key = String(msg.messageId ?? `sort-${msg.sortOrder}`)
+    const signature = `${msg.role}|${msg.knowledgeSources?.length ?? 0}|${msg.content ?? ''}`
+    const cached = messageHtmlCache.get(key)
+    const html = cached && cached.signature === signature
+      ? cached.html
+      : (msg.role === 'assistant' ? renderAssistantMarkdown(msg) : renderMarkdown(msg.content))
+    nextCache.set(key, { signature, html })
+    return html
+  })
+  // 缓存随可见窗口收敛，不会随会话切换无限增长
+  messageHtmlCache = nextCache
+  return htmlList
+})
 
 /** 消息区点击委托：命中引用角标时定位对应消息的知识来源并打开出处抽屉 */
 function onMessageAreaClick(event: MouseEvent) {
@@ -2203,6 +2527,12 @@ function restoreSelectedModelId() {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+
+    .earlier-messages {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
 
     .welcome-screen {
       display: flex;
@@ -2451,6 +2781,17 @@ function restoreSelectedModelId() {
       display: flex;
       justify-content: center;
       margin-bottom: 12px;
+    }
+
+    .stream-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 12px;
+      font-size: 13px;
+
+      .stream-fallback-tip { color: #f56c6c; }
     }
 
     .pending-images {

@@ -7,9 +7,10 @@ import com.han.common.security.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.function.Consumer;
 
 /**
- * Shared support methods for AI services.
+ * AI 各服务共用的支撑方法。
  */
 abstract class AiServiceSupport {
 
@@ -50,6 +51,28 @@ abstract class AiServiceSupport {
             if (item.asText().trim().length() > SUGGESTED_QUESTION_MAX_LENGTH) {
                 throw new BusinessException("单条推荐问题不能超过 " + SUGGESTED_QUESTION_MAX_LENGTH + " 字");
             }
+        }
+    }
+
+    /**
+     * 部分更新字段合并：仅当请求体带上该字段（非 null）时才覆盖库内现值。
+     *
+     * <p>管理端编辑接口直接以实体接收请求体，请求体里缺省的字段反序列化后是 null。
+     * 若无条件回写，部分字段提交（如编排设计器只提交 workflowId + flowConfig）会把未提交字段
+     * 一并清成 null，随后被保存校验拦成必填报错，或把可选字段静默重置成 normalize 默认值。
+     *
+     * <p>持久化语义不变：除显式声明
+     * {@link com.baomidou.mybatisplus.annotation.FieldStrategy#ALWAYS} 的列外，
+     * {@code updateById} 按默认 NOT_NULL 策略跳过 null 字段，本就不会把 null 落库。
+     * 反过来，需要「清空即恢复默认」的 ALWAYS 列必须保留无条件回写，不能改用本方法，
+     * 否则会丢掉显式置空能力。
+     *
+     * @param value  请求体中的字段值，null 表示本次未提交该字段
+     * @param setter 目标实体的写入方法
+     */
+    protected <V> void copyIfPresent(V value, Consumer<V> setter) {
+        if (value != null) {
+            setter.accept(value);
         }
     }
 

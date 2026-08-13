@@ -1,6 +1,7 @@
 package com.han.ai.service.impl;
 
 import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.common.core.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.MetadataMode;
@@ -33,6 +34,12 @@ class AiEmbeddingClient {
 
     /** 按「模型ID+配置指纹」缓存已构建的 EmbeddingModel，配置变更后指纹变化自动重建 */
     private final Map<String, OpenAiEmbeddingModel> modelCache = new ConcurrentHashMap<>();
+
+    private final AiUrlSecurityValidator urlSecurityValidator;
+
+    AiEmbeddingClient(AiUrlSecurityValidator urlSecurityValidator) {
+        this.urlSecurityValidator = urlSecurityValidator;
+    }
 
     float[] embed(AiModelPo model, String apiKey, String text) {
         List<float[]> vectors = embedBatch(model, apiKey, List.of(text));
@@ -97,5 +104,7 @@ class AiEmbeddingClient {
         if (!StringUtils.hasText(apiKey)) {
             throw new BusinessException("未找到可用的向量模型 API Key");
         }
+        // SSRF 防护：Embedding 走的也是用户可配置的 baseUrl，与对话链路同一套校验器
+        urlSecurityValidator.validate(normalizeBaseUrl(model.getBaseUrl()), "向量模型");
     }
 }

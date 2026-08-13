@@ -21,6 +21,10 @@ export async function openAiChatPage(
   }
 }
 
+/**
+ * 对话页只渲染最近 30 条消息，更早的消息要先点 `ai-chat-load-earlier` 才会挂到 DOM 上。
+ * 因此这里定位到的是「当前渲染窗口内」的消息，不能当成会话全量消息数使用。
+ */
 export function assistantMessages(page: Page): Locator {
   return page.locator('[data-testid="ai-chat-message"][data-role="assistant"]')
 }
@@ -51,6 +55,7 @@ export async function expectMessageTextContains(message: Locator, text: string, 
   await expect(message.locator('.message-text')).toContainText(text, { timeout })
 }
 
+/** `minimumCount` 超过渲染窗口（30 条）时，调用方必须先展开更早的消息，否则永远等不到。 */
 export async function waitForAssistantMessageCount(page: Page, minimumCount = 1, timeout = 30000): Promise<void> {
   await expect.poll(async () => {
     return await assistantMessages(page).count()

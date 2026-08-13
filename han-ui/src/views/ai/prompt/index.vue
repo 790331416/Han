@@ -26,7 +26,7 @@
       <template #header>
         <div class="card-header">
           <span>Prompt模板列表</span>
-          <el-button type="primary" :icon="Plus" data-testid="ai-prompt-create-button" @click="handleAdd">新增模板</el-button>
+          <el-button v-hasPermi="['ai:prompt:add']" type="primary" :icon="Plus" data-testid="ai-prompt-create-button" @click="handleAdd">新增模板</el-button>
         </div>
       </template>
 
@@ -64,8 +64,8 @@
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
             <el-button type="info" link data-testid="ai-prompt-preview-button" @click="handlePreview(row)">预览</el-button>
-            <el-button type="primary" link :icon="Edit" data-testid="ai-prompt-edit-button" @click="handleEdit(row)" :disabled="row.builtIn === 1">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" data-testid="ai-prompt-delete-button" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
+            <el-button v-hasPermi="['ai:prompt:edit']" type="primary" link :icon="Edit" data-testid="ai-prompt-edit-button" @click="handleEdit(row)" :disabled="row.builtIn === 1">编辑</el-button>
+            <el-button v-hasPermi="['ai:prompt:remove']" type="danger" link :icon="Delete" data-testid="ai-prompt-delete-button" @click="handleDelete(row)" :disabled="row.builtIn === 1">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

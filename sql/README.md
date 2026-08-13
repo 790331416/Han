@@ -6,52 +6,117 @@
 
 - `tiers/`
   - `small/small-init.sql`
+  - `small/small-init-mysql.sql`
   - `small/small-nacos-derby-import.sql`
   - `medium/medium-init.sql`
   - `medium/medium-nacos-derby-import.sql`
   - `full/full-init.sql`
   - `full/full-nacos-derby-import.sql`
 - `upgrades/postgres/`
-  - PostgreSQL 正式增量升级脚本
-  - `20260521_aivideo_mvp0.sql`：AI 短剧 MVP 0 表结构增量脚本
-  - `20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子
-  - `20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt、Prompt 配置继承与流式生成配套升级
-  - `20260526_aivideo_mvp2_scene_image.sql`：AI 短剧 MVP 2 单场景纯场景图候选生成配置升级脚本
-  - `20260527_aivideo_media_preview_access.sql`：AI 短剧受控媒体预览、素材访问策略和候选图默认值清理升级脚本
-  - `20260527_aivideo_scene_prompt_and_candidate_fill.sql`：AI 短剧场景图默认 Prompt 替换为参考词，并保持默认 2 张候选配置
-  - `20260529_aivideo_shot_video_continuity.sql`：AI 短剧分镜视频尾帧衔接字段与默认 Prompt 强约束升级脚本
-  - `20260601_aivideo_shot_video_av_character_scene_continuity.sql`：AI 短剧分镜视频默认 Prompt 补充音画双轨、角色一致性和场景连续性强约束
-  - `20260601_aivideo_shot_action_budget.sql`：AI 短剧剧本/分镜/视频 Prompt 增加动作预算、动态 5/6/8 秒、构图部位锁定和视频禁用自动配音配套模板
-  - `20260602_aivideo_character_turnaround_prompt.sql`：AI 短剧角色构建和角色图 Prompt 强制四方向全身转面表，屏蔽头部特写/三视图旧版版式
-  - `20260602_aivideo_character_turnaround_prompt_sanitize.sql`：AI 短剧角色图模板补充“净化后的角色外观提示词”说明，配合后端净化历史头像/三视图版式词
-  - `20260602_aivideo_video_ready_reference_prompts.sql`：AI 短剧角色图/场景图 Prompt 切换为 Seedance 视频参考素材友好规则，强制单主体角色锚点、单镜头场景锚点，并补充分镜视频对角色锚定图的使用边界
-  - `20260603_aivideo_shot_spatial_continuity.sql`：AI 短剧分镜提取 Prompt 增加剧情空间连续性硬约束，禁止广告牌/高处危机后无过渡跳到狗窝、室内等未铺垫地点
-  - `20260605_aivideo_shot_transition_plan.sql`：AI 短剧分镜增加转场关系、后期拼接组和默认转场效果字段，区分连续镜头与切场镜头
-- `20260607_aivideo_audio_track_prompt.sql`：AI 短剧剧本/分镜/视频 Prompt 改为对白、旁白/画外音、心声/心理活动三轨规则，避免把心理画面朗读成配音
-- `20260610_aivideo_sound_design_prompt.sql`：AI 短剧剧本/资产/分镜 Prompt 增加角色声线、BGM 和音效规划，前置输出 `soundDesign`、`bgmCue` 和 `sfxCues`
-- `20260610_aivideo_shot_sound_cues.sql`：AI 短剧分镜表增加 `bgm_cue`、`sfx_cues`，让资产提取出的 BGM/音效计划可被后期语音和剪辑混音阶段读取
-- `20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 模板分类的系统字典，保证管理端下拉与列表筛选可从公共字典模块读取
-- `20260702_ai_prompt_template_audit_columns.sql`：为 `ai_prompt_template` 补齐 `create_by`/`update_by` 审计列，修复 95 旧库 Prompt 模板列表 500
-- `20260702_sys_oper_log_module_alignment.sql`：`sys_oper_log` 旧列名（title/business_type）对齐代码侧（module/oper_type），补 `oper_user_id`，修复操作日志写入失败导致的 0 条留痕
-- `20260703_ai_chat_multimodal.sql`：AI 对话多模态升级，`ai_model` 增 `supports_vision` 视觉能力标记、`ai_chat_message` 增 `images` 图片附件列
-- `20260703_ai_flow_meta.sql`：AI 编排执行引擎升级，`ai_chat_message` 增 `meta` 扩展元数据列（承载 advanced 工作流节点执行时间线）
-- `20260703_file_manage_menu.sql`：系统管理新增「文件管理」菜单与 `file:query`/`file:remove` 按钮权限，配套 han-file `/file/list`、`/file/remove` 管理接口
-- `20260703_ai_agent_share_key.sql`：`ai_agent` 增 `share_key` 分享链接 key，配套应用发布公开对话接口与免登录分享页
-- `20260715_aivideo_admin_menu_alignment.sql`：补齐 AI 短剧任务监管、基础配置菜单及查询/编辑权限，并只关联有效超管角色
-- `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除同租户、同类型且名称/状态/备注完全一致的重复字典类型，保留最小 ID；内容冲突的重复继续由升级演练拦截
+  - PostgreSQL 正式增量升级脚本，清单见下方「升级脚本清单」
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
 ## 使用规则
 
-- 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- PostgreSQL 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
+- MySQL 初始化当前只认 `sql/tiers/small/small-init-mysql.sql`
 - Nacos 导入只认 `sql/tiers/<tier>/<tier>-nacos-derby-import.sql`
-- 增量升级只认 `sql/upgrades/postgres/`
+- PostgreSQL 增量升级只认 `sql/upgrades/postgres/`；MySQL 当前仅支持 clean small 初始化，暂无存量升级入口
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本
 - PostgreSQL 脚本禁止继续使用 MySQL 写法，例如列内 `COMMENT`、`AUTO_INCREMENT`、`ON UPDATE CURRENT_TIMESTAMP`、`AFTER`、`USE <db>`
 - `sys_user` 初始化结构必须包含登录链路依赖的 `pwd_update_time`、`pwd_reset_flag`、`totp_secret` 与 `totp_enabled`
 - PostgreSQL 增量升级脚本不得新建 `deleted` 列；软删除列统一使用 `del_flag`
+- 新增升级脚本必须幂等（`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` / `WHERE NOT EXISTS`），并同步登记进
+  `deploy/scripts/rehearse-postgres-upgrades.sh` 与 `deploy/scripts/rehearse-postgres-backup-upgrades.sh`
+  的 `UPGRADE_FILES` 数组，否则 `scripts/checks/check_sql_layout.py` 会报未登记
 - 修改 `sql/upgrades/postgres/` 后，必须至少执行结构检查；涉及旧库兼容时还要执行升级演练脚本
+
+## Nacos 配置正文的落位
+
+根目录 `nacos/` 目录当前是空的，**各服务的 Nacos 配置正文内嵌在
+`sql/tiers/<tier>/<tier>-nacos-derby-import.sql` 的 `nacos.config_info.content` 字段里**。
+要改某个服务的 Nacos 运行配置（端口、数据源、上传大小、超时等），改的就是这几个文件。
+
+- 每档覆盖的配置：small 5 个、medium 9 个、full 11 个，
+  含 `application-shared.yml` 与各服务的 `han-<service>.yml`
+- 配置优先级：模块自带的 `application.yml` / `application-docker.yml` **高于** 通过
+  `spring.config.import: optional:nacos:han-<service>.yml` 导入的 Nacos 配置。
+  也就是说，只有模块本地没写这个键时，在这里补的值才会生效
+- 改完必须确认 YAML 缩进正确：正文是 SQL 单引号字符串，缩进错了不会报 SQL 错，
+  只会在服务启动时静默丢配置
+
+## 初始化与升级脚本的一致性约定
+
+三档 `*-init.sql` 是全新部署的唯一结构来源，`upgrades/postgres/` 只服务存量库。
+两侧必须表达同一个最终结构，否则会出现「老环境正常、新装环境报错」这一类只有新部署才踩的坑。
+
+- 升级脚本新建的表和列，必须同步补进对应档位的 `*-init.sql`
+- 升级脚本修正过的约束（例如带 `WHERE del_flag = 0` 的部分唯一索引），必须同步回 `*-init.sql`
+- 升级脚本播下的菜单与权限点，必须同步补进 `*-init.sql`
+- 菜单 ID 只有一套：`*-init.sql` 与 `phase9_base_menu_backfill.sql` 共用同一批编号
+  （目录 1-7 / 500，页面菜单 100-110、200-204、210-211、300-301、310-313、400-402、410、510-517，
+  按钮权限 1001-1092 与 1100 段）。新增菜单不得另起一套编号
+
+## 权限标识口径
+
+同一功能的权限串在「后端 `@PreAuthorize` / `sys_menu.perms` / 前端路由 `meta.permission`」三处必须一致，
+**以后端注解为准**。历史上日志与监控存在多套写法，现已统一为：
+
+| 功能 | 统一后的权限串 |
+| --- | --- |
+| 在线用户 | `monitor:online:list`、`monitor:online:forceLogout` |
+| 操作日志 | `monitor:operlog:list`、`monitor:operlog:export`、`monitor:operlog:remove` |
+| 登录日志 | `monitor:loginlog:list`、`monitor:loginlog:export`、`monitor:loginlog:remove` |
+| 缓存监控 | `monitor:cache:list` |
+| 服务监控 | `monitor:server:list` |
+
+已废弃的写法：`system:operlog:list`、`system:loginlog:list`、`system:monitor:server`、
+`system:monitor:cache`、`monitor:logininfor:*`。
+
+## 升级脚本清单
+
+执行顺序以 `deploy/scripts/rehearse-postgres-upgrades.sh` 的 `UPGRADE_FILES` 数组为准，
+**不得按文件名字典序执行**（依赖顺序与字典序不同，例如 `phase1_tenant.sql` 必须早于所有依赖 `tenant_id` 的脚本）。
+
+- `20260415_upgrade_phase1_legacy.sql`：旧库基础表结构补齐与列名归一
+- `phase1_tenant.sql`：补 `tenant_id` 列、回填平台租户 1 并建租户过滤索引
+- `20260415_system_del_flag_alignment.sql`：`deleted` 列统一改名为 `del_flag`
+- `phase3_security.sql`：安全相关列与索引补齐
+- `phase4_management.sql`：管理端相关表补齐
+- `phase5_unique_constraint.sql`：唯一约束改为带 `WHERE del_flag = 0` 的部分唯一索引，支持多租户同名与软删后重建
+- `phase6_notice_center.sql`：通知中心表结构
+- `phase7_login_log_alignment.sql`：登录日志旧列名对齐
+- `phase8_prompt_template_alignment.sql`：`ai_prompt_template` 历史半成品表补列与内置模板补齐；同时把列宽统一到权威口径（`template_name` 200 / `category` 30 / `description` 1000 / `variables` TEXT）
+- `phase9_base_menu_backfill.sql`：为存量库回填基线菜单与超管授权，按 `perms` 语义键去重
+- `phase10_sys_dept_leader_id_compat.sql`：`sys_dept.leader_id` 兼容
+- `20260415_upgrade_phase2_ai_legacy.sql`：AI 模块旧库表结构与内置 Prompt 模板
+- `20260415_ai_agent_backfill.sql`：`ai_agent` 表兜底建表与列补齐
+- `20260415_gen_table_migration.sql`：代码生成器元数据表迁移
+- `20260415_gen_tenant_alignment.sql`：代码生成器表租户列对齐
+- `20260415_job_log_tenant_alignment.sql`：`sys_job_log` 租户列对齐
+- `jobflow_v1_trace_id.sql`：`sys_job_log.trace_id`
+- `20260415_ai_chat_message_tenant_alignment.sql`：`ai_chat_message` 租户列与索引
+- `20260415_ip_location_migration.sql`：IP 归属地列
+- `20260415_password_policy_migration.sql`：密码策略列
+- `20260415_social_login_migration.sql`：`sys_user_social` 社交登录绑定表
+- `20260415_tenant_del_flag_alignment.sql`：租户相关表软删列对齐
+- `20260415_totp_2fa_migration.sql`：TOTP 双因子列
+- `20260415_system_login_log_message_alignment.sql`：`sys_login_log.message` 列名对齐
+- `20260415_system_post_sort_alignment.sql`：`sys_post.sort` 改名为 `post_sort`，与 `SysPostPo.postSort` 对齐
+- `20260612_ai_generic_dict_alignment.sql`：通用 AI 字典对齐（明确排除业务字典）
+- `20260702_ai_prompt_template_audit_columns.sql`：为 `ai_prompt_template` 补 `create_by`/`update_by` 审计列
+- `20260702_sys_oper_log_module_alignment.sql`：`sys_oper_log` 旧列名对齐为 `module`/`oper_type`，补 `oper_user_id`
+- `20260703_ai_agent_share_key.sql`：`ai_agent.share_key` 分享链接 key
+- `20260703_ai_chat_multimodal.sql`：`ai_model.supports_vision`、`ai_chat_message.images`
+- `20260703_ai_flow_meta.sql`：`ai_chat_message.meta` 工作流节点执行时间线
+- `20260703_file_manage_menu.sql`：文件管理菜单与 `file:query`/`file:remove` 按钮权限（其中 `file:query` 已由 `20260813_file_perms_alignment.sql` 下线，本脚本保留原样以记录历史迁移事实）
+- `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除完全一致的重复字典类型，保留最小 ID
+- `20260720_ai_agent_chat_tuning.sql`：`ai_agent`/`ai_workflow` 对话调优列
+- `20260720_wechat_social_login.sql`：微信扫码登录唯一索引、`sys.login.wechatEnabled` 开关与社交解绑权限。**本脚本会物理删除违反新唯一规则的历史社交绑定行**，执行前必须备份；脚本自身会先把待删行写进 `sys_user_social_conflict_backup_20260720`
+- `20260812_permission_seed_alignment.sql`：补齐 AI / job / tenant / OSS / 开放平台 / 日志与在线用户的权限点种子，并把日志与监控权限串统一到 `monitor:*` 口径
+- `20260812_unique_constraint_del_flag_alignment.sql`：`sys_user_social` 结构兜底；把角色、岗位、字典、参数、客户端上不带 `del_flag` 条件的唯一约束换成部分唯一索引；存在重复数据时只告警跳过，不中断升级链
+- `20260813_file_perms_alignment.sql`：文件列表接口的权限串由 `file:query` 改为 `file:list`，与全仓 `:list`/`:query` 约定一致；先给只持有 `file:query` 的角色补授 `file:list`，再下线 `file:query` 菜单，升级前后可见范围不变
 
 ## 升级演练
 
@@ -73,8 +138,6 @@ bash deploy/scripts/rehearse-postgres-upgrades.sh
 - `sys_user.totp_enabled`
 - `ai_agent.del_flag`
 - `sys_menu.sort`
-- `ai_video_project`
-- `aivideo_text` 默认 Prompt 模板
 
 针对真实逻辑备份或 95 当前运行库，可执行备份恢复型演练：
 
@@ -87,16 +150,61 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 
 ## 三档说明
 
-- `small`
-  - PostgreSQL：`sql/tiers/small/small-init.sql`
-  - Nacos：`sql/tiers/small/small-nacos-derby-import.sql`
-- `medium`
-  - PostgreSQL：`sql/tiers/medium/medium-init.sql`
-  - Nacos：`sql/tiers/medium/medium-nacos-derby-import.sql`
-- `full`
-  - PostgreSQL：`sql/tiers/full/full-init.sql`
-  - Nacos：`sql/tiers/full/full-nacos-derby-import.sql`
-  - AI 短剧：MVP 0 表结构、MVP 1 默认 Prompt 模板和 `han-aivideo.yml` 运行配置只进入 full tier，表名前缀为 `ai_video_`
+| 档位 | PostgreSQL 初始化 SQL | MySQL 8.4 初始化 SQL | Nacos 导入 SQL | 覆盖模块 |
+| --- | --- | --- | --- | --- |
+| `small` | `sql/tiers/small/small-init.sql` | `sql/tiers/small/small-init-mysql.sql` | `sql/tiers/small/small-nacos-derby-import.sql` | gateway、auth、system、job |
+| `medium` | `sql/tiers/medium/medium-init.sql` | `sql/tiers/medium/medium-init-mysql.sql` | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
+| `full` | `sql/tiers/full/full-init.sql` | `sql/tiers/full/full-init-mysql.sql` | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
+
+PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库，三档全新初始化均已提供独立脚本，
+且三档都完成了 PostgreSQL 18.1 与 MySQL 8.4.10 的实库对照导入（严格模式零错误、
+表/菜单/权限/字典数量逐项一致），证据见兼容手册 §1.1。服务层回归尚未做。
+增量升级脚本按数据库分目录：`sql/upgrades/postgres/` 与 `sql/upgrades/mysql/`，
+MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-mysql.sql` 里，不回港。
+口径与边界以 [PostgreSQL/MySQL 兼容与切换手册](../docs/11-PostgreSQL-MySQL兼容与切换手册.md) 为准。
+
+### 菜单与权限点的档位划分
+
+划分遵循四条硬规则，全部由 `scripts/checks/check_sql_layout.py` 的静态门禁保证，
+破坏任意一条都会导致门禁失败：
+
+1. **同一档位的 PostgreSQL 与 MySQL 播种菜单逐条相同**（菜单 ID、名称、权限串全等），
+   换数据库不会换出另一套菜单。（`check_tier_menu_division`）
+2. **逐级追加**：small ⊆ medium ⊆ full，上层只允许在下层基础上增加。（同上）
+3. **按钮型菜单的权限串必须有后端接口**：后端没有 `@PreAuthorize("@ss.hasAuthority('x')")`
+   或 `@RequiresPermission("x")` 引用它，就是点了没反应的死按钮。（`check_button_perms_have_endpoint`）
+4. **种子的 `tenant_id` 两库必须一致**：一边写 1 一边留 NULL，会被租户过滤掉、整页为空。
+   （`check_seed_tenant_parity`）
+5. **同表种子行数两库必须相等**：漏播单行既不会导入报错，也不会被表数/菜单数这类
+   粗粒度对比发现。（`check_seed_row_count_parity`；`sys_menu` 由规则 1 逐条比对，不重复计）
+
+当前实际划分（数量为静态播种的菜单条数，已在真实库导入核对）：
+
+| 档位 | 菜单数 | 相对下一档新增的内容 |
+| --- | --- | --- |
+| `small` | 65 | 基线：系统管理、系统监控、任务调度 |
+| `medium` | 100 | +35：租户管理与套餐配额、工作流、开放平台、文件管理、OSS 配置 |
+| `full` | 135 | +35：代码生成，以及 AI 模型/知识库/MCP/智能体/编排/Prompt/Token 统计/对话 |
+
+**只播该档实际部署了模块的菜单。** 判据有两层：
+
+- 该功能依赖的业务表在本档 init 里建没建：`tool:gen:*` 依赖 `gen_table`（只在 full）、
+  `tenant:*` 依赖 `sys_tenant`（medium 起）、`ai:*` 依赖 `ai_model`（只在 full）。
+  播了模块表不存在的父菜单，升级脚本 `20260812_permission_seed_alignment.sql`
+  会顺着父菜单继续补子权限点，最终显示一批点不开的死菜单。
+- 后端接口与前端页面是否真的存在。历史上「客户端管理」「系统接口」两个菜单在
+  后端 Controller、前端页面、前端路由三处都不存在，「字典导出」「参数导出」两个按钮
+  后端也没有对应接口，均已移除。
+
+页面型菜单（`menu_type = 'C'`）的权限串允许只被前端路由使用而没有同名接口。
+按钮型菜单（`'F'`）不适用这条豁免，它的唯一作用就是给接口做鉴权。
+
+权限串后缀遵循全仓统一约定（与若依一致）：`:list` 挂列表接口（`GET /list`）
+并兼作页面可见性权限，`:query` 挂按主键查详情的接口（`GET /{id}`）。
+han-file 曾是唯一例外——列表接口挂的是 `file:query`，菜单里播的却是 `file:list`，
+两者对不上且没有详情接口；`20260813_file_perms_alignment.sql` 已把接口改回
+`file:list` 并下线 `file:query`，升级时会先给只有 `file:query` 的角色补授
+`file:list`，可见范围不变。
 
 ## 归档说明
 
@@ -105,41 +213,33 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 - `sql/archive/postgres-legacy/`
   - 旧 PostgreSQL 母本
 - `sql/archive/upgrade-legacy/`
-  - 旧升级脚本
+  - 旧升级脚本。其中 10 个文件与 `sql/upgrades/postgres/` 同名，且有 5 个内容已经分叉，
+    排障时请以 `sql/upgrades/postgres/` 下的现役版本为准
 - `sql/archive/tier-modular-legacy/`
   - 上一轮按模块拆分的 tier SQL
 - `sql/archive/shared-legacy/`
   - 旧共享模板与共享基础脚本
 
-## AI 短剧 SQL 变更记录
+### AI 短剧（aivideo）升级脚本
 
-当前 master 同步候选共恢复 28 个关联升级脚本：26 个 `*aivideo*.sql`，以及 2 个公共 AI 字典对齐脚本 `20260611_ai_builtin_dict_alignment.sql`、`20260611_ai_dict_options.sql`。正式执行顺序由升级演练脚本按文件名固定，新增、删除或改名时必须同步本节和两套演练清单。
+以下脚本随 `aivideo-dev` 分支并入，只作用于 full 档的 `ai_video_*` 表与 aivideo Prompt 模板，
+不影响 small/medium。执行顺序同样按文件名升序。
 
-- `sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子，和 `sql/tiers/full/full-init.sql` 保持同步。
-- `sql/upgrades/postgres/20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt 入库、项目/全局 Prompt 模板 ID 补齐，并配合润色流式生成链路。
-- `sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql`：AI 短剧 MVP 2 场景图 Prompt 模板、`scene_image_prompt_template_id` 和默认候选图数量升级脚本，和 `sql/tiers/full/full-init.sql` 保持同步。
-- `sql/upgrades/postgres/20260527_aivideo_media_preview_access.sql`：新增 `media_access_policy`，把历史场景图文件地址归一为受控 `/file/public/...` 路径，并把旧项目候选图数量 3 清理为默认 2。
-- `sql/upgrades/postgres/20260527_aivideo_scene_prompt_and_candidate_fill.sql`：更新 `AI短剧场景图生成` 内置模板为 BOSS 提供的“电影级纯净场景设计专家”默认词，并确保全局配置继续指向默认 2 张候选图。
-- `sql/upgrades/postgres/20260529_aivideo_shot_video_continuity.sql`：新增 `ai_video_shot.tail_frame_media_id`，更新分镜视频默认 Prompt 为尾帧衔接强约束模板，下一分镜可继承上一分镜尾帧参考图。
-- `sql/upgrades/postgres/20260601_aivideo_shot_video_av_character_scene_continuity.sql`：更新分镜视频默认 Prompt，强制区分对白与旁白，禁止视频阶段新增或改变配音，并把角色完整外观锚点和场景背景连续性写入模板变量。
-- `sql/upgrades/postgres/20260601_aivideo_shot_action_budget.sql`：更新剧本、分镜和分镜视频模板，引入动作预算、动态 5/6/8 秒、强动作拆镜、目标部位可见、发光部位锁定，并归一历史项目和分镜秒数。
-- `sql/upgrades/postgres/20260602_aivideo_character_turnaround_prompt.sql`：更新角色构建和角色图默认模板，把角色图硬锁为正面、左侧面、右侧面、背面四方向全身转面表，并禁止头部特写/半身/三视图旧版版式替代。
-- `sql/upgrades/postgres/20260602_aivideo_character_turnaround_prompt_sanitize.sql`：更新角色图模板说明为“净化后的角色外观提示词”，配合后端在角色图和分镜视频生成前净化历史头像/三视图版式词。
-- `sql/upgrades/postgres/20260602_aivideo_video_ready_reference_prompts.sql`：把角色图从四方向设定表切换为单主体视频角色锚定图，把场景图强化为可供 Seedance 首帧/环境锚定的单镜头纯场景图，并同步资产提取/角色构建模板和分镜视频角色锚定图使用边界。
-- `sql/upgrades/postgres/20260603_aivideo_shot_spatial_continuity.sql`：更新分镜提取默认模板，增加剧情空间连续性硬约束，要求相邻分镜承接主体位置、危险目标和结尾状态，并禁止无铺垫跳转到狗窝、室内、窝口等新地点。
-- `sql/upgrades/postgres/20260605_aivideo_shot_transition_plan.sql`：新增 `transition_before_type`、`transition_before_desc`、`transition_effect`、`stitch_group_no`，让分镜表显式显示开场/连续/切场，并为后期视频剪辑 API 拼接和转场提供结构化计划。
-- `sql/upgrades/postgres/20260607_aivideo_audio_track_prompt.sql`：更新 AI 短剧剧本生成、分镜提取和分镜视频生成内置 Prompt，把声音规则拆成“对白可口型、旁白/画外音可发声但不口型、心声/心理活动默认不朗读”，并要求低声报数/耳语/读出等写入 `dialogue`。
-- `sql/upgrades/postgres/20260610_aivideo_sound_design_prompt.sql`：更新 AI 短剧剧本生成、资产提取、分镜提取和分镜视频生成内置 Prompt，要求前置输出角色声线、旁白声线、BGM、音效/环境声规划，并为后期语音、音乐音效和混音成片提供结构化依据。
-- `sql/upgrades/postgres/20260610_aivideo_shot_sound_cues.sql`：为 `ai_video_shot` 增加 `bgm_cue` 和 `sfx_cues` 两列，用于保存每个分镜的背景音乐与音效触发计划，供剪辑预检、后期语音和后续混音流程使用。
-- `sql/upgrades/postgres/20260521_aivideo_mvp0.sql`：创建 AI 短剧项目、版本、角色、场景、分镜、媒体、任务和审核等 MVP 0 基础表。
-- `sql/upgrades/postgres/20260527_aivideo_character_image_workflow.sql`：增加角色图 Prompt 模板位并对齐角色、场景、润色和图像生成模板。
-- `sql/upgrades/postgres/20260527_aivideo_shot_video_workflow.sql`：增加分镜视频模板位、候选数量默认值和单分镜视频生成模板。
-- `sql/upgrades/postgres/20260609_aivideo_prompt_template_alignment.sql`：对齐 Prompt 审计列、变量类型以及连续性、道具和声音策略模板。
-- `sql/upgrades/postgres/20260610_aivideo_model_config_alignment.sql`：增加默认禁用的火山 TTS 与 VOD 剪辑模型配置占位，凭据继续由模型管理受控录入。
-- `sql/upgrades/postgres/20260610_aivideo_tts_voice_assets.sql`：增加分镜 TTS 时间、说话人、音色字段和角色稳定声线资产。
-- `sql/upgrades/postgres/20260611_ai_builtin_dict_alignment.sql`：补齐 AI 模型类型、供应商和 Prompt 分类公共字典。
-- `sql/upgrades/postgres/20260611_ai_dict_options.sql`：把 AI 模型类型和 Prompt 分类选择项统一到 `sys_dict_*`。
-- `sql/upgrades/postgres/20260611_aivideo_prop_assets.sql`：增加结构化道具资产和道具锚点提取规则。
-- `sql/upgrades/postgres/20260615_aivideo_action_budget_prop_link.sql`：增加动作预算、复杂动作拆镜、道具交接和场景连续性硬规则。
-- `sql/upgrades/postgres/20260615_aivideo_tts_prompt_alignment.sql`：对齐数据库、full 初始化和 Java 内置后期语音模板语义。
-- `sql/upgrades/postgres/20260623_aivideo_short_script_shot_split.sql`：短祝福、口播和单场景内容默认拆为至少 3 个镜头或画面段落。
+- `20260521_aivideo_mvp0.sql`：AI 短剧 MVP 0 表结构增量脚本
+- `20260521_aivideo_mvp1_text.sql`：AI 短剧 MVP 1 文本链路 Prompt 模板种子
+- `20260526_aivideo_prompt_stream.sql`：AI 短剧润色长 Prompt、Prompt 配置继承与流式生成配套升级
+- `20260526_aivideo_mvp2_scene_image.sql`：AI 短剧 MVP 2 单场景纯场景图候选生成配置升级脚本
+- `20260527_aivideo_media_preview_access.sql`：AI 短剧受控媒体预览、素材访问策略和候选图默认值清理升级脚本
+- `20260527_aivideo_scene_prompt_and_candidate_fill.sql`：AI 短剧场景图默认 Prompt 替换为参考词，并保持默认 2 张候选配置
+- `20260529_aivideo_shot_video_continuity.sql`：AI 短剧分镜视频尾帧衔接字段与默认 Prompt 强约束升级脚本
+- `20260601_aivideo_shot_video_av_character_scene_continuity.sql`：AI 短剧分镜视频默认 Prompt 补充音画双轨、角色一致性和场景连续性强约束
+- `20260601_aivideo_shot_action_budget.sql`：AI 短剧剧本/分镜/视频 Prompt 增加动作预算、动态 5/6/8 秒、构图部位锁定和视频禁用自动配音配套模板
+- `20260602_aivideo_character_turnaround_prompt.sql`：AI 短剧角色构建和角色图 Prompt 强制四方向全身转面表，屏蔽头部特写/三视图旧版版式
+- `20260602_aivideo_character_turnaround_prompt_sanitize.sql`：AI 短剧角色图模板补充“净化后的角色外观提示词”说明，配合后端净化历史头像/三视图版式词
+- `20260602_aivideo_video_ready_reference_prompts.sql`：AI 短剧角色图/场景图 Prompt 切换为 Seedance 视频参考素材友好规则，强制单主体角色锚点、单镜头场景锚点，并补充分镜视频对角色锚定图的使用边界
+- `20260603_aivideo_shot_spatial_continuity.sql`：AI 短剧分镜提取 Prompt 增加剧情空间连续性硬约束，禁止广告牌/高处危机后无过渡跳到狗窝、室内等未铺垫地点
+- `20260605_aivideo_shot_transition_plan.sql`：AI 短剧分镜增加转场关系、后期拼接组和默认转场效果字段，区分连续镜头与切场镜头
+- `20260607_aivideo_audio_track_prompt.sql`：AI 短剧剧本/分镜/视频 Prompt 改为对白、旁白/画外音、心声/心理活动三轨规则，避免把心理画面朗读成配音
+- `20260610_aivideo_sound_design_prompt.sql`：AI 短剧剧本/资产/分镜 Prompt 增加角色声线、BGM 和音效规划，前置输出 `soundDesign`、`bgmCue` 和 `sfxCues`
+- `20260610_aivideo_shot_sound_cues.sql`：AI 短剧分镜表增加 `bgm_cue`、`sfx_cues`，让资产提取出的 BGM/音效计划可被后期语音和剪辑混音阶段读取
+- `20260715_aivideo_admin_menu_alignment.sql`：补齐 AI 短剧任务监管、基础配置菜单及查询/编辑权限，并只关联有效超管角色

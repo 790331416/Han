@@ -10,7 +10,7 @@
     </parent>
 
     <artifactId>han-common-datasource</artifactId>
-    <description>动态数据源模块 - PostgreSQL多库支持</description>
+    <description>动态数据源模块 - PostgreSQL/MySQL 多库支持</description>
 
     <dependencies>
         <dependency>
@@ -26,6 +26,11 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
         </dependency>
     </dependencies>
 

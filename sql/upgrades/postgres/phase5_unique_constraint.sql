@@ -32,7 +32,27 @@ BEGIN
     ALTER TABLE sys_user ALTER COLUMN del_flag SET DEFAULT 0;
 END $$;
 
-ALTER TABLE sys_user DROP CONSTRAINT IF EXISTS sys_user_username_key;
+-- 20260812 修正：原来只 DROP 固定名 sys_user_username_key，
+-- 显式命名的旧约束（uk_sys_user_username 等）和 tier init 自动命名的
+-- sys_user_username_tenant_id_key 都躲得过去，结果新建的部分唯一索引形同虚设。
+-- 改为按列集合查 pg_constraint，写法对齐 20260720_wechat_social_login.sql。
+DO $$
+DECLARE
+    v_constraint TEXT;
+BEGIN
+    FOR v_constraint IN
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'sys_user'::regclass
+          AND contype = 'u'
+          AND (SELECT array_agg(attname ORDER BY attname)
+               FROM unnest(conkey) AS k
+               JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k)
+              IN (ARRAY['username']::name[], ARRAY['tenant_id', 'username']::name[])
+    LOOP
+        EXECUTE format('ALTER TABLE sys_user DROP CONSTRAINT %I', v_constraint);
+    END LOOP;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS sys_user_username_tenant_uniq
     ON sys_user (username, tenant_id) WHERE del_flag = 0;

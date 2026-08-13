@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.ai.domain.po.AiModelPo;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +36,7 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
- * Minimal OpenAI-compatible client used for model connectivity checks and chat requests.
+ * 最小化的 OpenAI 兼容客户端，用于模型连通性检查与对话请求。
  */
 @Slf4j
 @Component
@@ -50,6 +51,12 @@ class AiOpenAiCompatibleClient {
     private static final String CONTENT_GENERATIONS_TASKS_PATH = "/contents/generations/tasks";
     private static final String CURL_STATUS_MARKER = "__CURL_STATUS__:";
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+    private final AiUrlSecurityValidator urlSecurityValidator;
+
+    AiOpenAiCompatibleClient(AiUrlSecurityValidator urlSecurityValidator) {
+        this.urlSecurityValidator = urlSecurityValidator;
+    }
 
     String testConnection(AiModelPo model, String apiKey) {
         String content = chatCompletion(model, apiKey, List.of(
@@ -665,27 +672,37 @@ class AiOpenAiCompatibleClient {
     }
 
     private URI buildChatCompletionUri(String baseUrl) {
-        String normalizedBaseUrl = baseUrl.trim();
-        if (normalizedBaseUrl.endsWith("/")) {
-            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
-        }
-        return URI.create(normalizedBaseUrl + CHAT_COMPLETIONS_PATH);
+        return buildProviderUri(baseUrl, CHAT_COMPLETIONS_PATH);
     }
 
     private URI buildImageGenerationUri(String baseUrl) {
-        String normalizedBaseUrl = baseUrl.trim();
-        if (normalizedBaseUrl.endsWith("/")) {
-            normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
-        }
-        return URI.create(normalizedBaseUrl + IMAGE_GENERATIONS_PATH);
+        return buildProviderUri(baseUrl, IMAGE_GENERATIONS_PATH);
     }
 
     private URI buildContentGenerationTasksUri(String baseUrl) {
+        return buildProviderUri(baseUrl, CONTENT_GENERATIONS_TASKS_PATH);
+    }
+
+    /**
+     * 拼接供应商端点并在发起请求前做一次 SSRF 复核。
+     * <p>
+     * 保存路径已在 {@code AiModelServiceImpl.validateCoreFields} 校验过 baseUrl，这里是第二道闸门：
+     * 拦住校验器上线之前写入的存量脏数据，以及绕过管理端直接改库的情况。
+     */
+    private URI buildProviderUri(String baseUrl, String path) {
+        if (!StringUtils.hasText(baseUrl)) {
+            throw new BusinessException("模型 API Base URL 未配置");
+        }
         String normalizedBaseUrl = baseUrl.trim();
         if (normalizedBaseUrl.endsWith("/")) {
             normalizedBaseUrl = normalizedBaseUrl.substring(0, normalizedBaseUrl.length() - 1);
         }
-        return URI.create(normalizedBaseUrl + CONTENT_GENERATIONS_TASKS_PATH);
+        urlSecurityValidator.validate(normalizedBaseUrl, "AI模型");
+        try {
+            return URI.create(normalizedBaseUrl + path);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException("模型 API Base URL 格式不合法：" + normalizedBaseUrl);
+        }
     }
 
     private URI buildContentGenerationTaskQueryUri(String baseUrl, String providerTaskId) {
@@ -1190,7 +1207,7 @@ class AiOpenAiCompatibleClient {
                 return "模型调用失败(" + statusCode + "): " + envelope.error.message;
             }
         } catch (RuntimeException ignored) {
-            // Provider error bodies are not guaranteed to be JSON.
+            // 供应商返回的错误体不保证是 JSON。
         }
         String excerpt = body == null ? "" : body.replaceAll("\\s+", " ").trim();
         if (excerpt.length() > 180) {

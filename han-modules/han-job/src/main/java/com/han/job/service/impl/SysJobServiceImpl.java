@@ -36,6 +36,7 @@ public class SysJobServiceImpl implements ISysJobService {
     private final SysJobMapper jobMapper;
     private final Scheduler scheduler;
     private final SysJobConverter jobConverter;
+    private final JobHandlerRegistry jobHandlerRegistry;
 
     @Override
     public PageResult<JobDTO> listJob(JobQuery query) {
@@ -68,6 +69,7 @@ public class SysJobServiceImpl implements ISysJobService {
     @Transactional(rollbackFor = Exception.class)
     public void createJob(JobDTO dto) throws SchedulerException {
         SysJobPo job = jobConverter.toPo(dto);
+        jobHandlerRegistry.validateInvokeTarget(job.getInvokeTarget());
         jobMapper.insert(job);
         QuartzJobUtils.createScheduleJob(scheduler, job);
         log.info("创建定时任务成功: {}", job.getJobName());
@@ -83,6 +85,7 @@ public class SysJobServiceImpl implements ISysJobService {
         }
 
         SysJobPo updated = jobConverter.toPo(dto);
+        jobHandlerRegistry.validateInvokeTarget(updated.getInvokeTarget());
         job.setJobName(updated.getJobName());
         job.setJobGroup(updated.getJobGroup());
         job.setInvokeTarget(updated.getInvokeTarget());

@@ -1,15 +1,57 @@
 /**
  * 本地代理服务器 — 解决 Node.js 24 Vite http-proxy ECONNREFUSED 问题
- * 用法: node proxy-server.mjs
- * 将 localhost:9090 转发到 10.18.35.95:9090
+ * 用法: PROXY_TARGET=http://<host>:<port> node proxy-server.mjs
+ *
+ * 只监听 127.0.0.1，仅供本地联调使用。
  */
 import http from 'node:http'
 
-const TARGET_HOST = '10.18.35.95'
-const TARGET_PORT = 9090
-const LOCAL_PORT = 9090
+const rawTarget = process.env.PROXY_TARGET
+if (!rawTarget) {
+  console.error('缺少 PROXY_TARGET 环境变量，例如：PROXY_TARGET=http://127.0.0.1:9090 node proxy-server.mjs')
+  process.exit(1)
+}
+
+let target
+try {
+  target = new URL(rawTarget)
+} catch {
+  console.error(`PROXY_TARGET 不是合法 URL: ${rawTarget}`)
+  process.exit(1)
+}
+
+const TARGET_HOST = target.hostname
+const TARGET_PORT = Number(target.port || 80)
+const LOCAL_PORT = Number(process.env.PROXY_PORT || 9090)
+
+/** 只回显本机来源，不再对所有响应无条件放开 Access-Control-Allow-Origin: *。 */
+const isLocalOrigin = (origin) =>
+  typeof origin === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+
+const buildCorsHeaders = (req) => {
+  const origin = req.headers.origin
+  if (!isLocalOrigin(origin)) {
+    return {}
+  }
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+    'Access-Control-Allow-Headers': req.headers['access-control-request-headers'] || 'Content-Type,Authorization',
+    'Access-Control-Expose-Headers': 'Content-Disposition'
+  }
+}
 
 const server = http.createServer((req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      ...buildCorsHeaders(req),
+      'Access-Control-Max-Age': '86400'
+    })
+    res.end()
+    return
+  }
+
   const options = {
     hostname: TARGET_HOST,
     port: TARGET_PORT,
@@ -20,13 +62,9 @@ const server = http.createServer((req, res) => {
   }
 
   const proxyReq = http.request(options, (proxyRes) => {
-    // Add CORS headers
     res.writeHead(proxyRes.statusCode, {
       ...proxyRes.headers,
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': '*',
-      'Access-Control-Allow-Headers': '*',
-      'Access-Control-Expose-Headers': '*'
+      ...buildCorsHeaders(req)
     })
     proxyRes.pipe(res)
   })
@@ -40,19 +78,6 @@ const server = http.createServer((req, res) => {
   req.pipe(proxyReq)
 })
 
-// Handle CORS preflight
-server.on('request', (req, res) => {
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': '*',
-      'Access-Control-Allow-Headers': '*',
-      'Access-Control-Max-Age': '86400'
-    })
-    res.end()
-  }
-})
-
 server.listen(LOCAL_PORT, '127.0.0.1', () => {
-  console.log(`Proxy: localhost:${LOCAL_PORT} → ${TARGET_HOST}:${TARGET_PORT}`)
+  console.log(`Proxy: 127.0.0.1:${LOCAL_PORT} -> ${TARGET_HOST}:${TARGET_PORT}`)
 })

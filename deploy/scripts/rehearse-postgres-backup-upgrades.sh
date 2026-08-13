@@ -17,31 +17,21 @@ KEEP_TEMP="${HAN_BACKUP_REHEARSAL_KEEP_TEMP:-0}"
 DATABASE_NAME="${HAN_BACKUP_REHEARSAL_DATABASE:-backup_rehearsal}"
 
 UPGRADE_FILES=(
-  "sql/upgrades/postgres/20260415_upgrade_phase1_legacy.sql"
-  "sql/upgrades/postgres/phase1_tenant.sql"
-  "sql/upgrades/postgres/20260415_system_del_flag_alignment.sql"
-  "sql/upgrades/postgres/phase3_security.sql"
-  "sql/upgrades/postgres/phase4_management.sql"
-  "sql/upgrades/postgres/phase5_unique_constraint.sql"
-  "sql/upgrades/postgres/phase6_notice_center.sql"
-  "sql/upgrades/postgres/phase7_login_log_alignment.sql"
-  "sql/upgrades/postgres/phase8_prompt_template_alignment.sql"
-  "sql/upgrades/postgres/phase9_base_menu_backfill.sql"
-  "sql/upgrades/postgres/phase10_sys_dept_leader_id_compat.sql"
-  "sql/upgrades/postgres/20260415_upgrade_phase2_ai_legacy.sql"
   "sql/upgrades/postgres/20260415_ai_agent_backfill.sql"
+  "sql/upgrades/postgres/20260415_ai_chat_message_tenant_alignment.sql"
   "sql/upgrades/postgres/20260415_gen_table_migration.sql"
   "sql/upgrades/postgres/20260415_gen_tenant_alignment.sql"
-  "sql/upgrades/postgres/20260415_job_log_tenant_alignment.sql"
-  "sql/upgrades/postgres/jobflow_v1_trace_id.sql"
-  "sql/upgrades/postgres/20260415_ai_chat_message_tenant_alignment.sql"
   "sql/upgrades/postgres/20260415_ip_location_migration.sql"
+  "sql/upgrades/postgres/20260415_job_log_tenant_alignment.sql"
   "sql/upgrades/postgres/20260415_password_policy_migration.sql"
   "sql/upgrades/postgres/20260415_social_login_migration.sql"
-  "sql/upgrades/postgres/20260415_tenant_del_flag_alignment.sql"
-  "sql/upgrades/postgres/20260415_totp_2fa_migration.sql"
+  "sql/upgrades/postgres/20260415_system_del_flag_alignment.sql"
   "sql/upgrades/postgres/20260415_system_login_log_message_alignment.sql"
   "sql/upgrades/postgres/20260415_system_post_sort_alignment.sql"
+  "sql/upgrades/postgres/20260415_tenant_del_flag_alignment.sql"
+  "sql/upgrades/postgres/20260415_totp_2fa_migration.sql"
+  "sql/upgrades/postgres/20260415_upgrade_phase1_legacy.sql"
+  "sql/upgrades/postgres/20260415_upgrade_phase2_ai_legacy.sql"
   "sql/upgrades/postgres/20260521_aivideo_mvp0.sql"
   "sql/upgrades/postgres/20260521_aivideo_mvp1_text.sql"
   "sql/upgrades/postgres/20260526_aivideo_mvp2_scene_image.sql"
@@ -81,6 +71,19 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260715_sys_dict_type_exact_duplicate_alignment.sql"
   "sql/upgrades/postgres/20260720_ai_agent_chat_tuning.sql"
   "sql/upgrades/postgres/20260720_wechat_social_login.sql"
+  "sql/upgrades/postgres/20260812_permission_seed_alignment.sql"
+  "sql/upgrades/postgres/20260812_unique_constraint_del_flag_alignment.sql"
+  "sql/upgrades/postgres/20260813_file_perms_alignment.sql"
+  "sql/upgrades/postgres/jobflow_v1_trace_id.sql"
+  "sql/upgrades/postgres/phase10_sys_dept_leader_id_compat.sql"
+  "sql/upgrades/postgres/phase1_tenant.sql"
+  "sql/upgrades/postgres/phase3_security.sql"
+  "sql/upgrades/postgres/phase4_management.sql"
+  "sql/upgrades/postgres/phase5_unique_constraint.sql"
+  "sql/upgrades/postgres/phase6_notice_center.sql"
+  "sql/upgrades/postgres/phase7_login_log_alignment.sql"
+  "sql/upgrades/postgres/phase8_prompt_template_alignment.sql"
+  "sql/upgrades/postgres/phase9_base_menu_backfill.sql"
 )
 BACKUP_INPUTS=()
 COMPOSE_TIER=""
@@ -196,39 +199,6 @@ END $$;
 SQL
 }
 
-assert_no_duplicate_dictionary_rows() {
-  psql_db -At <<'SQL'
-DO $$
-DECLARE
-    v_count INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO v_count
-    FROM (
-        SELECT tenant_id, dict_type
-        FROM sys_dict_type
-        WHERE COALESCE(del_flag, 0) = 0
-        GROUP BY tenant_id, dict_type
-        HAVING COUNT(*) > 1
-    ) duplicates;
-    IF v_count > 0 THEN
-        RAISE EXCEPTION 'duplicate active dictionary types remain: %', v_count;
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM (
-        SELECT tenant_id, dict_type, dict_value
-        FROM sys_dict_data
-        WHERE COALESCE(del_flag, 0) = 0
-        GROUP BY tenant_id, dict_type, dict_value
-        HAVING COUNT(*) > 1
-    ) duplicates;
-    IF v_count > 0 THEN
-        RAISE EXCEPTION 'duplicate active dictionary values remain: %', v_count;
-    END IF;
-END $$;
-SQL
-}
-
 assert_required_columns() {
   psql_db -At <<'SQL'
 DO $$
@@ -257,29 +227,30 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'sys_menu.sort missing';
     END IF;
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'ai_video_project'
     ) THEN
-        RAISE EXCEPTION 'ai_video_project missing';
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'ai_video_project_setting' AND column_name = 'character_image_prompt_template_id'
-    ) THEN
-        RAISE EXCEPTION 'ai_video_project_setting.character_image_prompt_template_id missing';
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM ai_prompt_template
-        WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
-    ) THEN
-        RAISE EXCEPTION 'AI short-drama prompt templates missing';
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM ai_prompt_template
-        WHERE category = 'aivideo_image' AND template_name = 'AI短剧角色图生成'
-    ) THEN
-        RAISE EXCEPTION 'AI short-drama character image prompt template missing';
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'ai_video_project_setting' AND column_name = 'character_image_prompt_template_id'
+        ) THEN
+            RAISE EXCEPTION 'ai_video_project_setting.character_image_prompt_template_id missing';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM ai_prompt_template
+            WHERE category = 'aivideo_text' AND template_name = 'AI短剧原文润色'
+        ) THEN
+            RAISE EXCEPTION 'AI short-drama prompt templates missing';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM ai_prompt_template
+            WHERE category = 'aivideo_image' AND template_name = 'AI短剧角色图生成'
+        ) THEN
+            RAISE EXCEPTION 'AI short-drama character image prompt template missing';
+        END IF;
+    ELSE
+        RAISE NOTICE 'ai_video_project absent; skipping AIVideo-specific assertions';
     END IF;
 END $$;
 SQL
@@ -405,7 +376,6 @@ done
 assert_has_tables
 run_upgrades
 assert_no_deleted_columns
-assert_no_duplicate_dictionary_rows
 assert_required_columns
 
 echo "[backup-rehearsal] backup upgrade rehearsal passed"

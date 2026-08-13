@@ -61,10 +61,19 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_time   ON ai_token_usage(create_time)
 CREATE INDEX IF NOT EXISTS idx_prompt_tpl_tenant  ON ai_prompt_template(tenant_id);
 
 -- 内置Prompt模板（示例数据）
+-- 20260812 修正：原来是无条件 INSERT ... VALUES，是全部升级脚本里唯一一处没有冲突处理的
+-- 数据插入。ai_prompt_template 上没有 template_name 的唯一约束，clean_full 路径下
+-- full-init 已经插过同样 5 条，本脚本再插一遍就变成 2 份，每重放一次再多 1 份。
+-- 改为与 phase8_prompt_template_alignment.sql 一致的 SELECT ... WHERE NOT EXISTS 守卫。
 INSERT INTO ai_prompt_template (tenant_id, template_name, category, content, variables, description, built_in, status)
-VALUES
-(NULL, '通用助手', 'system', '你是一个智能助手，请用专业、简洁的方式回答用户的问题。', NULL, '通用对话场景的系统提示词', 1, '0'),
+SELECT v.tenant_id, v.template_name, v.category, v.content, v.variables, v.description, v.built_in, v.status
+FROM (VALUES
+(NULL::BIGINT, '通用助手', 'system', '你是一个智能助手，请用专业、简洁的方式回答用户的问题。', NULL::TEXT, '通用对话场景的系统提示词', 1, '0'),
 (NULL, '翻译助手', 'system', '你是一位专业的翻译专家。请将用户输入的内容翻译为{{targetLang}}，保持原文语义和风格。', '["targetLang"]', '多语言翻译场景', 1, '0'),
 (NULL, '代码审查', 'system', '你是一位资深的{{language}}开发工程师，请对用户提供的代码进行审查，指出潜在问题并给出改进建议。', '["language"]', '代码审查场景', 1, '0'),
 (NULL, '文档总结', 'system', '请对以下内容进行总结，提取关键要点，用简洁的条目形式输出，不超过{{maxPoints}}条。', '["maxPoints"]', '长文档摘要场景', 1, '0'),
-(NULL, 'SQL生成', 'system', '你是一位数据库专家，请根据用户的自然语言描述生成对应的{{dbType}} SQL语句。请确保SQL语法正确且高效。', '["dbType"]', 'SQL语句生成场景', 1, '0');
+(NULL, 'SQL生成', 'system', '你是一位数据库专家，请根据用户的自然语言描述生成对应的{{dbType}} SQL语句。请确保SQL语法正确且高效。', '["dbType"]', 'SQL语句生成场景', 1, '0')
+) AS v(tenant_id, template_name, category, content, variables, description, built_in, status)
+WHERE NOT EXISTS (
+    SELECT 1 FROM ai_prompt_template t WHERE t.template_name = v.template_name
+);

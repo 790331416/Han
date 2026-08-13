@@ -3,7 +3,7 @@ package com.han.ai.domain.query;
 import lombok.Data;
 
 /**
- * AI workflow query.
+ * AI 编排查询条件。
  */
 @Data
 public class AiWorkflowQuery {

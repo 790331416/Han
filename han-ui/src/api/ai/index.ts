@@ -1,5 +1,21 @@
 import { get, post } from '@/utils/request'
+import type { AxiosRequestConfig } from 'axios'
 import type { PageResult, PageQuery } from '@/types'
+
+/**
+ * AI 长耗时推理接口的超时时间。
+ *
+ * <p>axios 实例的全局 `timeout` 是 30 秒，对文生图、智能体/工作流测试对话、编排非流式调试
+ * 这类要跑几十秒到几分钟的推理请求来说必然误杀：前端弹「请求超时」，
+ * 后端却仍在继续执行并照常消耗 token、落库消息。
+ * 这里只给这几个接口单独放宽，不动全局值。
+ */
+const AI_LONG_TASK_TIMEOUT = 180_000
+
+/** 长耗时 AI 接口统一的请求配置。 */
+function longTaskConfig(config?: AxiosRequestConfig): AxiosRequestConfig {
+  return { timeout: AI_LONG_TASK_TIMEOUT, ...config }
+}
 
 // ===================== AI模型 =====================
 
@@ -49,8 +65,9 @@ export function deleteAiModel(modelId: string | number) {
   return post<void>(`/ai/model/remove/${modelId}`)
 }
 
+// 连通性测试会真实调用一次上游模型，同属长耗时请求
 export function testAiModel(modelId: string | number) {
-  return post<string>(`/ai/model/test/${modelId}`)
+  return post<string>(`/ai/model/test/${modelId}`, undefined, longTaskConfig())
 }
 
 export function listAllModels(modelType?: string) {
@@ -231,6 +248,10 @@ export interface AiAgent {
   systemPrompt?: string
   welcomeMessage?: string
   prologue?: string
+  /** 采样温度（对应 `AiAgentPo.temperature`） */
+  temperature?: number
+  /** 单次回复最大 token（对应 `AiAgentPo.maxTokens`） */
+  maxTokens?: number
   /** 开场推荐问题（JSON 字符串数组，最多 5 条） */
   suggestedQuestions?: string
   /** 对话历史注入条数（空=默认 12） */
@@ -252,8 +273,8 @@ export interface AiAgentQuery extends PageQuery {
   status?: string
 }
 
-export function listAiAgent(query: AiAgentQuery) {
-  return get<PageResult<AiAgent>>('/ai/agent/list', query)
+export function listAiAgent(query: AiAgentQuery, config?: AxiosRequestConfig) {
+  return get<PageResult<AiAgent>>('/ai/agent/list', query, config)
 }
 
 export function getAiAgent(agentId: string | number) {
@@ -281,7 +302,7 @@ export function unpublishAiAgent(agentId: string | number) {
 }
 
 export function chatWithAgent(agentId: string | number, message: string, conversationId?: string) {
-  return post<string>(`/ai/agent/chat/${agentId}`, { message, conversationId })
+  return post<string>(`/ai/agent/chat/${agentId}`, { message, conversationId }, longTaskConfig())
 }
 
 // 重置分享链接（旧 shareKey 立即失效，返回新 key）
@@ -310,7 +331,7 @@ export function getShareProfile(shareKey: string) {
 }
 
 export function shareChat(shareKey: string, message: string, history: ShareChatHistoryItem[]) {
-  return post<{ reply: string }>(`/ai/share/${shareKey}/chat`, { message, history })
+  return post<{ reply: string }>(`/ai/share/${shareKey}/chat`, { message, history }, longTaskConfig())
 }
 
 // ===================== AI工作流 =====================
@@ -339,8 +360,8 @@ export interface AiWorkflowQuery extends PageQuery {
   status?: string
 }
 
-export function listAiWorkflow(query: AiWorkflowQuery) {
-  return get<PageResult<AiWorkflow>>('/ai/workflow/list', query)
+export function listAiWorkflow(query: AiWorkflowQuery, config?: AxiosRequestConfig) {
+  return get<PageResult<AiWorkflow>>('/ai/workflow/list', query, config)
 }
 
 export function getAiWorkflow(workflowId: string | number) {
@@ -368,7 +389,7 @@ export function unpublishAiWorkflow(workflowId: string | number) {
 }
 
 export function chatWithWorkflow(workflowId: string | number, message: string, conversationId?: string) {
-  return post<string>(`/ai/workflow/chat/${workflowId}`, { message, conversationId })
+  return post<string>(`/ai/workflow/chat/${workflowId}`, { message, conversationId }, longTaskConfig())
 }
 
 // 编排节点执行轨迹（advanced 工作流执行时间线）
@@ -393,7 +414,7 @@ export interface AiFlowDebugResult {
 // 编排调试运行（设计器调试抽屉）：不要求已发布、不落会话消息；
 // params 为 start 节点自定义入参取值（flowConfig v2，可空）
 export function debugAiWorkflow(workflowId: string | number, message: string, params?: Record<string, string>) {
-  return post<AiFlowDebugResult>(`/ai/workflow/debug/${workflowId}`, { message, params })
+  return post<AiFlowDebugResult>(`/ai/workflow/debug/${workflowId}`, { message, params }, longTaskConfig())
 }
 
 // ===================== AI对话 =====================
@@ -494,8 +515,9 @@ export interface ChatRequest {
   imageFileIds?: (string | number)[]
 }
 
+// 非流式发送（流式链路不可用时的人工降级通道）
 export function sendChatMessage(data: ChatRequest) {
-  return post<AiChatMessage>('/ai/chat/send', data)
+  return post<AiChatMessage>('/ai/chat/send', data, longTaskConfig())
 }
 
 // 上传对话图片附件（走文件服务，返回 fileId + 公开访问地址）
@@ -516,7 +538,7 @@ export interface ChatImageRequest {
 
 // 对话内文生图（IMAGE 模型），返回带图片附件的 assistant 消息
 export function generateChatImage(data: ChatImageRequest) {
-  return post<AiChatMessage>('/ai/chat/image', data)
+  return post<AiChatMessage>('/ai/chat/image', data, longTaskConfig())
 }
 
 export interface AiConversationQuery extends PageQuery {
@@ -588,17 +610,50 @@ export function renderPromptTemplate(templateId: string | number, variables: Rec
 }
 
 // ===================== Token统计 =====================
+//
+// 注意：后端三个统计接口返回的是 `List<Map<String, Object>>`，key 直接是 SQL 的 AS 别名
+// （`AiAnalyticsMapper`），所以这里的字段名是 snake_case 而非驼峰。
+// 这个契约很脆弱 —— 一旦后端调整别名或给 Map 加驼峰转换，页面会静默变成全 0。
+// 正确的收口方式是后端补 `AiTokenStatsVo`；在那之前先把类型显式声明出来，
+// 至少让前端改字段名时能被 TS 拦住。
+
+/** 按模型维度的 Token 统计行。 */
+export interface AiTokenStatsByModelRow {
+  model_name?: string
+  call_count?: number | string
+  prompt_tokens?: number | string
+  completion_tokens?: number | string
+  total_tokens?: number | string
+}
+
+/** 按用户维度的 Token 统计行。 */
+export interface AiTokenStatsByUserRow {
+  user_id?: number | string
+  call_count?: number | string
+  prompt_tokens?: number | string
+  completion_tokens?: number | string
+  total_tokens?: number | string
+}
+
+/** 按天维度的 Token 统计行。 */
+export interface AiTokenStatsByDayRow {
+  date?: string
+  call_count?: number | string
+  prompt_tokens?: number | string
+  completion_tokens?: number | string
+  total_tokens?: number | string
+}
 
 export function tokenStatsByModel(startTime: string, endTime: string) {
-  return get<any[]>('/ai/token/stats/model', { startTime, endTime })
+  return get<AiTokenStatsByModelRow[]>('/ai/token/stats/model', { startTime, endTime })
 }
 
 export function tokenStatsByUser(startTime: string, endTime: string) {
-  return get<any[]>('/ai/token/stats/user', { startTime, endTime })
+  return get<AiTokenStatsByUserRow[]>('/ai/token/stats/user', { startTime, endTime })
 }
 
 export function tokenStatsByDay(startTime: string, endTime: string) {
-  return get<any[]>('/ai/token/stats/daily', { startTime, endTime })
+  return get<AiTokenStatsByDayRow[]>('/ai/token/stats/daily', { startTime, endTime })
 }
 
 // ===================== 知识库命中测试 =====================
@@ -641,6 +696,13 @@ export const providerOptions = [
   { label: 'FastGPT', value: 'fastgpt' }
 ]
 
+/**
+ * Prompt 模板分类兜底项。
+ *
+ * <p>通用底座只保留 system / user / assistant 三个通用分类；
+ * 业务侧分类（如 AI 短剧的文本润色、剧本生成等）一律由 `ai_prompt_category` 字典下发，
+ * 由对应业务模块自己扩字典数据，不在通用底座里硬编码业务枚举。
+ */
 export const promptCategoryOptions = [
   { label: '系统提示词', value: 'system' },
   { label: '用户模板', value: 'user' },

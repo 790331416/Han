@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * AI chat message entity.
+ * AI 对话消息实体。
  */
 @Data
 @TableName("ai_chat_message")

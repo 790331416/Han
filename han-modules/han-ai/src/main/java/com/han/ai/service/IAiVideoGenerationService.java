@@ -6,7 +6,7 @@ import com.han.api.ai.domain.AiVideoTaskQueryRequest;
 import com.han.api.ai.domain.AiVideoTaskQueryResponse;
 
 /**
- * Internal video generation service.
+ * 内部视频生成服务。
  */
 public interface IAiVideoGenerationService {
 

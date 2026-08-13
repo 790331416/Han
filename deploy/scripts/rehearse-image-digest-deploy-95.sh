@@ -21,12 +21,12 @@ digest-pinned images.
 Targets:
   small:  gateway,auth,system,job,ui
   medium: open,file
-  full:   open,file,ai,aivideo
+  full:   open,file,ai
   all:    medium and full
 
 When --services is passed, the list is filtered by services present in each
 target tier. Use this for broader rehearsals, for example:
-  --services gateway,auth,system,job,tenant,workflow,open,file,ai,aivideo,gen,ui
+  --services gateway,auth,system,job,tenant,workflow,open,file,ai,gen,ui
 
 Safety:
   This script does not build images, edit .env, delete volumes, clear data, or
@@ -103,7 +103,7 @@ services_for_tier() {
       echo "gateway auth system tenant workflow job open file ui"
       ;;
     full)
-      echo "gateway auth system tenant workflow job open file ai aivideo gen ui"
+      echo "gateway auth system tenant workflow job open file ai gen ui"
       ;;
     *)
       echo "[digest-rehearsal] unsupported tier: ${tier}" >&2
@@ -122,7 +122,7 @@ default_services_for_tier() {
       echo "open file"
       ;;
     full)
-      echo "open file ai aivideo"
+      echo "open file ai"
       ;;
     *)
       echo "[digest-rehearsal] unsupported tier: ${tier}" >&2
@@ -214,7 +214,20 @@ run_tier() {
     return 1
   fi
 
-  read -r -a services <<<"$(selected_services_for_tier "${tier}")"
+  # 命令替换失败时整条 read 语句的退出码取自 read 而不是子命令，set -e 抓不到，
+  # services 会退化成空数组；而 `docker compose up --force-recreate` 参数为空的语义
+  # 是「作用于 compose 文件里的全部服务」，会连 postgres/redis/nacos 一起重建。
+  local services_line
+  if ! services_line="$(selected_services_for_tier "${tier}")"; then
+    echo "[digest-rehearsal] failed to resolve services for tier ${tier}" >&2
+    return 1
+  fi
+  read -r -a services <<<"${services_line}"
+  if [[ "${#services[@]}" -eq 0 ]]; then
+    echo "[digest-rehearsal] empty service list for tier ${tier}; refusing to act on the whole tier" >&2
+    return 1
+  fi
+
   echo "[digest-rehearsal] tier: ${tier}"
   echo "[digest-rehearsal] deploy dir: ${deploy_dir}"
 

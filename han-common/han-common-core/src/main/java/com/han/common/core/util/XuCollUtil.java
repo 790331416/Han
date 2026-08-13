@@ -1,12 +1,19 @@
 package com.han.common.core.util;
 
-import java.util.*;
-import java.util.function.*;
-import java.util.stream.*;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * 集合工具类
+ *
+ * @deprecated 与 {@link HanCollUtil} 完全重复，已全部委托给 {@code HanCollUtil}。
+ * 新代码请直接使用 {@link HanCollUtil}，存量调用点将在统一整改批次中迁移。
  */
+@Deprecated(since = "1.0.0")
 public final class XuCollUtil {
 
     private XuCollUtil() {}
@@ -15,104 +22,84 @@ public final class XuCollUtil {
      * 判断集合是否为空
      */
     public static boolean isEmpty(Collection<?> collection) {
-        return collection == null || collection.isEmpty();
+        return HanCollUtil.isEmpty(collection);
     }
 
     /**
      * 判断集合是否非空
      */
     public static boolean isNotEmpty(Collection<?> collection) {
-        return !isEmpty(collection);
+        return HanCollUtil.isNotEmpty(collection);
     }
 
     /**
      * 判断数组是否为空
      */
     public static boolean isEmpty(Object[] array) {
-        return array == null || array.length == 0;
+        return HanCollUtil.isEmpty(array);
     }
 
     /**
      * 判断数组是否非空
      */
     public static boolean isNotEmpty(Object[] array) {
-        return !isEmpty(array);
+        return HanCollUtil.isNotEmpty(array);
     }
 
     /**
      * 获取第一个元素
      */
     public static <T> T getFirst(List<T> list) {
-        return isEmpty(list) ? null : list.get(0);
+        return HanCollUtil.getFirst(list);
     }
 
     /**
      * 转换为列表
      */
+    @SafeVarargs
     public static <T> List<T> toList(T... elements) {
-        if (elements == null || elements.length == 0) {
-            return new ArrayList<>();
-        }
-        return Arrays.asList(elements);
+        return HanCollUtil.toList(elements);
     }
 
     /**
      * 过滤
      */
     public static <T> List<T> filter(List<T> list, Predicate<T> predicate) {
-        if (isEmpty(list)) {
-            return new ArrayList<>();
-        }
-        return list.stream().filter(predicate).collect(Collectors.toList());
+        return HanCollUtil.filter(list, predicate);
     }
 
     /**
      * 映射
      */
     public static <T, R> List<R> map(List<T> list, Function<T, R> mapper) {
-        if (isEmpty(list)) {
-            return new ArrayList<>();
-        }
-        return list.stream().map(mapper).collect(Collectors.toList());
+        return HanCollUtil.map(list, mapper);
     }
 
     /**
      * 分组
      */
     public static <T, K> Map<K, List<T>> groupBy(List<T> list, Function<T, K> classifier) {
-        if (isEmpty(list)) {
-            return new HashMap<>();
-        }
-        return list.stream().collect(Collectors.groupingBy(classifier));
+        return HanCollUtil.groupBy(list, classifier);
     }
 
     /**
      * 去重
      */
     public static <T> List<T> distinct(List<T> list) {
-        if (isEmpty(list)) {
-            return new ArrayList<>();
-        }
-        return list.stream().distinct().collect(Collectors.toList());
+        return HanCollUtil.distinct(list);
     }
 
     /**
      * 排序
      */
     public static <T> List<T> sort(List<T> list, Comparator<? super T> comparator) {
-        if (isEmpty(list)) {
-            return new ArrayList<>();
-        }
-        return list.stream().sorted(comparator).collect(Collectors.toList());
+        return HanCollUtil.sort(list, comparator);
     }
 
     /**
      * 连接
      */
     public static String join(Collection<?> collection, String delimiter) {
-        if (isEmpty(collection)) {
-            return "";
-        }
-        return collection.stream().map(Object::toString).collect(Collectors.joining(delimiter));
+        return HanCollUtil.join(collection, delimiter);
     }
 }

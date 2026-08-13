@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * OSS storage configuration controller.
+ * 对象存储配置控制器。
  */
 @AdminAuth
 @RestController("adminSysOssConfigController")

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MCP server controller.
+ * MCP 服务控制器。
  */
 @AdminAuth
 @RestController
@@ -32,7 +32,7 @@ public class AiMcpController {
     private final IAiMcpServerService aiMcpServerService;
 
     /**
-     * Query paged MCP server list.
+     * 分页查询 MCP 服务列表。
      *
      * @param query query params
      * @return page result
@@ -44,7 +44,7 @@ public class AiMcpController {
     }
 
     /**
-     * Query MCP server detail.
+     * 查询 MCP 服务详情。
      *
      * @param mcpId server id
      * @return detail
@@ -56,7 +56,7 @@ public class AiMcpController {
     }
 
     /**
-     * Query all enabled MCP servers.
+     * 查询全部已启用的 MCP 服务。
      *
      * @return server list
      */
@@ -67,7 +67,7 @@ public class AiMcpController {
     }
 
     /**
-     * Create MCP server.
+     * 新增 MCP 服务。
      *
      * @param server server data
      * @return result
@@ -81,7 +81,7 @@ public class AiMcpController {
     }
 
     /**
-     * Update MCP server.
+     * 修改 MCP 服务。
      *
      * @param server server data
      * @return result
@@ -95,7 +95,7 @@ public class AiMcpController {
     }
 
     /**
-     * Delete MCP server.
+     * 删除 MCP 服务。
      *
      * @param mcpId server id
      * @return result
@@ -109,7 +109,7 @@ public class AiMcpController {
     }
 
     /**
-     * Refresh MCP tool metadata.
+     * 刷新 MCP 工具元数据。
      *
      * @param mcpId server id
      * @return refresh message
@@ -133,7 +133,7 @@ public class AiMcpController {
     }
 
     /**
-     * Query stored tool metadata list (designer tool dropdown / param form).
+     * 查询已存储的工具元数据列表（供编排设计器的工具下拉与参数表单使用）。
      *
      * @param mcpId server id
      * @return tool metadata list

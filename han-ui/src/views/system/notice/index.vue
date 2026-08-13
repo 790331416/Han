@@ -140,6 +140,7 @@ import type { IDomEditor } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { listNotice, getNotice, addNotice, updateNotice, deleteNotice, deleteNotices } from '@/api/system/notice'
 import type { Notice, NoticeForm } from '@/api/system/notice'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 import type { FormInstance, FormRules } from 'element-plus'
 import { sanitizeHtml } from '@/utils/sanitize-html'
 

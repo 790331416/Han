@@ -6,6 +6,7 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
 import path from 'path'
+import { CHUNK_SIZE_WARNING_LIMIT, MANUAL_CHUNKS } from './build/chunks'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
@@ -42,7 +43,8 @@ export default defineConfig(({ mode }) => {
       open: shouldOpenBrowser,
       proxy: {
         '/dev-api': {
-          target: 'http://10.18.35.95:9090',
+          // 换开发环境时改 .env.development 的 VITE_DEV_PROXY_TARGET，不用改代码
+          target: env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:9090',
           changeOrigin: true,
           rewrite: (p: string) => p.replace(/^\/dev-api/, '')
         }
@@ -50,16 +52,14 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      chunkSizeWarningLimit: 2000,
+      sourcemap: false,
+      chunkSizeWarningLimit: CHUNK_SIZE_WARNING_LIMIT,
       rollupOptions: {
         output: {
           chunkFileNames: 'assets/js/[name]-[hash].js',
           entryFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
-          manualChunks: {
-            vue: ['vue', 'vue-router', 'pinia'],
-            elementPlus: ['element-plus', '@element-plus/icons-vue']
-          }
+          manualChunks: MANUAL_CHUNKS
         }
       }
     }

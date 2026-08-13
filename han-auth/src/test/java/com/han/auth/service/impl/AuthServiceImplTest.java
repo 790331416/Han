@@ -8,6 +8,7 @@ import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.CaptchaSettingService;
+import com.han.auth.service.LoginAttemptGuard;
 import com.han.auth.service.TotpService;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
@@ -40,13 +41,15 @@ class AuthServiceImplTest {
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
     private final SystemServiceClient systemServiceClient = mock(SystemServiceClient.class);
     private final TenantServiceClient tenantServiceClient = mock(TenantServiceClient.class);
+    private final LoginAttemptGuard loginAttemptGuard = mock(LoginAttemptGuard.class);
     private final AuthServiceImpl authService = new AuthServiceImpl(
             redisTemplate,
             systemServiceClient,
             tenantServiceClient,
             new SecurityProperties(),
             mock(TotpService.class),
-            mock(CaptchaSettingService.class)
+            mock(CaptchaSettingService.class),
+            loginAttemptGuard
     );
 
     @AfterEach

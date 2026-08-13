@@ -7,7 +7,9 @@ FROM registry.cn-hangzhou.aliyuncs.com/xzy0112/eclipse-temurin:21-jre-alpine
 ENV JAVA_OPTS="-Xms256m -Xmx256m -XX:+UseG1GC -XX:MaxGCPauseMillis=200" \
     TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
-    SERVER_PORT=9208
+    SERVER_PORT=9100
+
+# 登录凭据必须由运行时注入（-e MONITOR_ADMIN_USERNAME=... -e MONITOR_ADMIN_PASSWORD=...），未注入则启动失败
 
 # 安装必要工具
 RUN apk add --no-cache tzdata curl && \
@@ -21,10 +23,10 @@ COPY target/han-monitor.jar app.jar
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${SERVER_PORT:-9208}/actuator/health || exit 1
+    CMD curl -f http://localhost:${SERVER_PORT:-9100}/actuator/health || exit 1
 
 # 暴露端口
-EXPOSE 9208
+EXPOSE 9100
 
 # 启动应用
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

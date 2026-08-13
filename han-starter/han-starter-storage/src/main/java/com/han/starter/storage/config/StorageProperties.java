@@ -15,6 +15,21 @@ public class StorageProperties {
      */
     private RustFS rustfs = new RustFS();
 
+    /**
+     * 存储配置查询结果缓存秒数；存储配置低频变更，避免每次文件读写都查库。
+     */
+    private int configCacheSeconds = 60;
+
+    /**
+     * 运行期 Provider 缓存上限；超出后按最近最少使用淘汰并关闭对应的 S3 客户端。
+     */
+    private int providerCacheSize = 16;
+
+    /**
+     * 桶不存在时是否自动创建；生产环境建议关闭并按最小权限授予服务账号。
+     */
+    private boolean autoCreateBucket = true;
+
     public String getType() {
         return type;
     }
@@ -31,10 +46,43 @@ public class StorageProperties {
         this.rustfs = rustfs;
     }
 
+    public int getConfigCacheSeconds() {
+        return configCacheSeconds;
+    }
+
+    public void setConfigCacheSeconds(int configCacheSeconds) {
+        this.configCacheSeconds = configCacheSeconds;
+    }
+
+    public int getProviderCacheSize() {
+        return providerCacheSize;
+    }
+
+    public void setProviderCacheSize(int providerCacheSize) {
+        this.providerCacheSize = providerCacheSize;
+    }
+
+    public boolean isAutoCreateBucket() {
+        return autoCreateBucket;
+    }
+
+    public void setAutoCreateBucket(boolean autoCreateBucket) {
+        this.autoCreateBucket = autoCreateBucket;
+    }
+
     public static class RustFS {
         private String endpoint = "http://localhost:9000";
-        private String accessKey = "hanadmin";
-        private String secretKey = "han@2026";
+
+        /**
+         * 访问凭据必须由部署环境显式注入；不提供内置默认值，缺失时存储操作直接失败。
+         */
+        private String accessKey = "";
+
+        /**
+         * 访问密钥必须由部署环境显式注入；不提供内置默认值，缺失时存储操作直接失败。
+         */
+        private String secretKey = "";
+
         private String region = "us-east-1";
         private String bucket = "han";
         private String prefix = "";

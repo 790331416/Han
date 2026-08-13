@@ -17,7 +17,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 
 /**
- * OSS storage configuration service implementation.
+ * 对象存储配置服务实现。
  */
 @Service
 @RequiredArgsConstructor

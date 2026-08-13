@@ -16,8 +16,8 @@
       </div>
       <div class="toolbar-right">
         <el-button :icon="CircleCheck" data-testid="ai-flow-validate-btn" @click="handleValidate">校验</el-button>
-        <el-button :icon="VideoPlay" data-testid="ai-flow-debug-btn" @click="openDebugDrawer">调试运行</el-button>
-        <el-button type="primary" :icon="Check" :loading="saving" @click="handleSave">保存</el-button>
+        <el-button v-hasPermi="['ai:workflow:edit']" :icon="VideoPlay" data-testid="ai-flow-debug-btn" @click="openDebugDrawer">调试运行</el-button>
+        <el-button v-hasPermi="['ai:workflow:edit']" type="primary" :icon="Check" :loading="saving" @click="handleSave">保存</el-button>
       </div>
     </div>
 
@@ -161,6 +161,29 @@
             @click="runDebug"
           >
             执行
+          </el-button>
+          <el-button
+            v-if="debugRunning"
+            type="danger"
+            plain
+            style="margin-top: 8px; width: 100%; margin-left: 0;"
+            data-testid="ai-flow-debug-stop"
+            @click="stopDebug"
+          >
+            停止调试
+          </el-button>
+          <!--
+            非流式重跑是人工兜底：流式失败不自动回落，否则同一条编排会被执行两遍
+            （token 双份、MCP 工具副作用双份）。
+          -->
+          <el-button
+            v-else
+            plain
+            style="margin-top: 8px; width: 100%; margin-left: 0;"
+            data-testid="ai-flow-debug-run-sync"
+            @click="runDebugWithoutStream"
+          >
+            非流式重跑（无实时时间线）
           </el-button>
 
           <template v-if="debugResult">
@@ -415,9 +438,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ZoomIn, ZoomOut, FullScreen, Check, CircleCheck, VideoPlay } from '@element-plus/icons-vue'
 import { VueFlow, useVueFlow, Position, Handle } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -464,7 +487,66 @@ const nodeTypes = [
 let nodeId = 0
 const getNodeId = () => `node_${++nodeId}`
 
-const goBack = () => router.push('/ai/workflow')
+let edgeSeq = 0
+
+/**
+ * 连线 id 生成。
+ *
+ * <p>原实现只用 `e{source}-{target}` 拼装，忽略了 sourceHandle：
+ * condition 节点的 yes/no 两个分支汇到同一个下游节点是合法编排，
+ * 但会产生完全相同的 edge id，导致 Vue Flow 只渲染一条、删除误删、保存后分支丢失。
+ */
+function createEdgeId(connection: Connection): string {
+  const sourceHandle = connection.sourceHandle || 'default'
+  const targetHandle = connection.targetHandle || 'default'
+  return `e_${connection.source}_${sourceHandle}__${connection.target}_${targetHandle}__${++edgeSeq}`
+}
+
+// ==================== 未保存改动守卫（G：误关页面/误跳路由不丢整张编排） ====================
+/** 最近一次保存（或加载）时的画布快照，用于判断是否存在未保存改动。 */
+const savedSnapshot = ref('')
+
+const currentSnapshot = () => JSON.stringify(buildFlowConfig())
+
+const isDirty = () => savedSnapshot.value !== '' && savedSnapshot.value !== currentSnapshot()
+
+const markSaved = () => {
+  savedSnapshot.value = currentSnapshot()
+}
+
+const UNSAVED_TIP = '编排有未保存的改动，确认离开吗？离开后本次编辑将全部丢失。'
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (!isDirty()) return
+  event.preventDefault()
+  // 部分浏览器仍依赖 returnValue 才会弹出确认框
+  event.returnValue = UNSAVED_TIP
+}
+
+/** 存在未保存改动时二次确认；用户取消返回 false。 */
+async function confirmDiscardChanges(): Promise<boolean> {
+  if (!isDirty()) return true
+  try {
+    await ElMessageBox.confirm(UNSAVED_TIP, '未保存提示', {
+      type: 'warning',
+      confirmButtonText: '放弃改动并离开',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+const goBack = async () => {
+  if (!(await confirmDiscardChanges())) return
+  savedSnapshot.value = ''
+  router.push('/ai/workflow')
+}
+
+onBeforeRouteLeave(async () => {
+  return await confirmDiscardChanges()
+})
 
 // 拖拽创建节点
 const onDragStart = (event: DragEvent, nodeType: any) => {
@@ -505,8 +587,23 @@ const getDefaultData = (type: string) => {
 
 // 连线
 const onConnect = (connection: Connection) => {
+  if (connection.source === connection.target) {
+    ElMessage.warning('不支持自环连线（节点不能连回自己）')
+    return
+  }
+
+  const duplicated = edges.value.some((edge) =>
+    edge.source === connection.source
+    && edge.target === connection.target
+    && (edge.sourceHandle || null) === (connection.sourceHandle || null)
+    && (edge.targetHandle || null) === (connection.targetHandle || null))
+  if (duplicated) {
+    ElMessage.warning('这两个出入口之间已存在连线，无需重复连接')
+    return
+  }
+
   const newEdge: Edge = {
-    id: `e${connection.source}-${connection.target}`,
+    id: createEdgeId(connection),
     source: connection.source,
     target: connection.target,
     sourceHandle: connection.sourceHandle || undefined,
@@ -615,9 +712,19 @@ const removeStartParam = (idx: number) => {
   }
 }
 
-const deleteNode = () => {
+const deleteNode = async () => {
   if (!selectedNode.value) return
   const id = selectedNode.value.id
+  const label = (selectedNode.value.data as any)?.label || id
+  const relatedEdges = edges.value.filter(e => e.source === id || e.target === id).length
+  const tip = relatedEdges > 0
+    ? `确认删除节点「${label}」吗？将同时删除与它相连的 ${relatedEdges} 条连线，且不可撤销。`
+    : `确认删除节点「${label}」吗？该操作不可撤销。`
+  try {
+    await ElMessageBox.confirm(tip, '删除节点', { type: 'warning' })
+  } catch {
+    return
+  }
   nodes.value = nodes.value.filter(n => n.id !== id)
   edges.value = edges.value.filter(e => e.source !== id && e.target !== id)
   selectedNode.value = null
@@ -815,7 +922,86 @@ const onToolArgModeChange = (mode: string | number | boolean | undefined) => {
 // ==================== 画布校验（前端体验层，后端保存时二次复核） ====================
 const invalidNodeIds = ref<Set<string>>(new Set())
 
-/** DAG 校验：唯一 start、无环、无孤岛；失败节点红框标注。返回错误列表。 */
+/**
+ * 变量引用语法，与后端 `AiFlowEngine.VAR_REF_PATTERN` 逐字对齐：
+ * `{{name}}` 或 `{{nodeId.output}}`，名字只允许 `[\w-]`（写中文变量名后端解析不到）。
+ */
+const VAR_REF_PATTERN = /\{\{\s*([\w-]+)(?:\.([\w-]+))?\s*\}\}/g
+
+/** 后端内置变量（`AiFlowEngine` 初始化 vars 时注入）。 */
+const BUILTIN_VAR_NAMES = ['message', 'result', 'knowledge']
+
+/** 后端 `resolveVarRef` 目前只认 `output` 字段，其余字段一律解析成空串。 */
+const SUPPORTED_VAR_FIELDS = ['output']
+
+/** 收集节点上所有会走模板渲染的文本（llm/tool/condition/output）。 */
+function collectTemplateTexts(node: Node): string[] {
+  const data = (node.data || {}) as any
+  const texts: string[] = []
+  const push = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) texts.push(value)
+  }
+  push(data.systemPrompt)
+  push(data.userTemplate)
+  push(data.template)
+  push(data.expression)
+  push(data.arguments)
+  if (Array.isArray(data.branches)) {
+    data.branches.forEach((branch: any) => push(branch?.expression))
+  }
+  return texts
+}
+
+/**
+ * 变量引用校验：括号闭合、引用名存在、结构化字段受支持。
+ *
+ * <p>不做上游拓扑序校验 —— 后端对未赋值的引用是「替换为空串」而不是报错，
+ * 这里只拦住肯定写错的引用，避免把合法但取空值的写法误判为错误。
+ */
+function validateVariableRefs(nodeList: Node[], invalid: Set<string>): string[] {
+  const errors: string[] = []
+  const nodeIds = new Set(nodeList.map((n) => n.id))
+  const paramNames = new Set<string>()
+  for (const node of nodeList) {
+    if (node.type !== 'start') continue
+    const params = (node.data as any)?.inputParams
+    if (!Array.isArray(params)) continue
+    for (const param of params) {
+      if (param && typeof param.name === 'string' && param.name.trim()) {
+        paramNames.add(param.name.trim())
+      }
+    }
+  }
+
+  for (const node of nodeList) {
+    const label = (node.data as any)?.label || node.id
+    for (const text of collectTemplateTexts(node)) {
+      const openCount = (text.match(/\{\{/g) || []).length
+      const closeCount = (text.match(/\}\}/g) || []).length
+      if (openCount !== closeCount) {
+        errors.push(`节点「${label}」的变量引用括号不匹配（{{ 与 }} 数量不一致）`)
+        invalid.add(node.id)
+        continue
+      }
+      for (const match of text.matchAll(VAR_REF_PATTERN)) {
+        const [, name, field] = match
+        if (field && !SUPPORTED_VAR_FIELDS.includes(field)) {
+          errors.push(`节点「${label}」引用了不支持的字段 {{${name}.${field}}}，当前仅支持 .output`)
+          invalid.add(node.id)
+          continue
+        }
+        const known = BUILTIN_VAR_NAMES.includes(name) || paramNames.has(name) || nodeIds.has(name)
+        if (!known) {
+          errors.push(`节点「${label}」引用了未定义的变量 {{${name}}}`)
+          invalid.add(node.id)
+        }
+      }
+    }
+  }
+  return errors
+}
+
+/** DAG 校验：唯一 start、无环、无孤岛、无悬空连线、变量引用合法；失败节点红框标注。返回错误列表。 */
 const validateFlow = (): string[] => {
   const errors: string[] = []
   const invalid = new Set<string>()
@@ -832,6 +1018,13 @@ const validateFlow = (): string[] => {
 
   if (nodeList.length > 30) {
     errors.push('节点数超过上限 30')
+  }
+
+  // 悬空连线：与后端 AiFlowGraph 的「编排存在指向不存在节点的连线」检查对齐
+  const nodeIdSet = new Set(nodeList.map(n => n.id))
+  const danglingEdges = edgeList.filter(e => !nodeIdSet.has(e.source) || !nodeIdSet.has(e.target))
+  if (danglingEdges.length > 0) {
+    errors.push(`存在指向不存在节点的连线 ${danglingEdges.length} 条，请删除后重连`)
   }
 
   // Kahn 拓扑检环
@@ -877,8 +1070,10 @@ const validateFlow = (): string[] => {
     }
   }
 
+  errors.push(...validateVariableRefs(nodeList, invalid))
+
   invalidNodeIds.value = invalid
-  // 红框标注失败节点
+  // 红框标注失败节点（`class` 是纯展示状态，序列化时由 buildFlowConfig 剔除，不落库）
   nodes.value = nodeList.map(n => ({
     ...n,
     class: invalid.has(n.id) ? 'node-invalid' : ''
@@ -919,6 +1114,12 @@ const openDebugDrawer = () => {
   debugVisible.value = true
 }
 
+/** 调试期的 AbortController，供「停止调试」与组件卸载时取消在途 SSE。 */
+const debugAbortController = ref<AbortController | null>(null)
+
+/** 组件是否已卸载：SSE 回调是闭包，卸载后不能再写响应式状态。 */
+let disposed = false
+
 const runDebug = async () => {
   const message = debugMessage.value.trim()
   if (!message) {
@@ -930,24 +1131,76 @@ const runDebug = async () => {
     ElMessage.error('画布校验失败：' + errors.join('；'))
     return
   }
+
+  // 保存必须独立处理：保存失败还继续调试的话，跑的是服务端上一次保存的旧配置，
+  // 用户却以为在调当前画布。
+  const saved = await saveFlowConfig()
+  if (!saved) {
+    ElMessage.error('画布保存失败，已取消调试（避免调试到服务端的旧配置）')
+    return
+  }
+
   debugRunning.value = true
   debugResult.value = null
   const params = collectDebugParams()
   try {
-    // 先保存再调试，保证后端执行的是当前画布
-    const flowConfig = JSON.stringify({ version: 2, nodes: nodes.value, edges: edges.value })
-    await updateAiWorkflow({ workflowId, flowConfig } as any)
     await runDebugStream(message, params)
-  } catch (streamError: any) {
-    // 流式调试链路异常时降级为一次性调试接口
-    try {
-      const res = await debugAiWorkflow(workflowId, message, params)
-      debugResult.value = (res as any).data || null
-    } catch (e: any) {
-      ElMessage.error('调试运行失败: ' + (e.message || streamError.message || '未知错误'))
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      ElMessage.info('已停止调试')
+      return
     }
+    // 刻意不自动回落到非流式接口：节点执行失败时后端也会发 error 事件并让流式抛错，
+    // 自动重跑会把整条编排再执行一遍（token 双份、MCP 工具副作用双份）。
+    // 需要重跑时由用户点「非流式重跑」显式发起。
+    ElMessage.error('调试运行失败: ' + (e?.message || '未知错误'))
   } finally {
-    debugRunning.value = false
+    debugAbortController.value = null
+    if (!disposed) {
+      debugRunning.value = false
+    }
+  }
+}
+
+/** 停止调试：中断在途 SSE。 */
+const stopDebug = () => {
+  if (debugAbortController.value) {
+    debugAbortController.value.abort()
+    debugAbortController.value = null
+  }
+  debugRunning.value = false
+}
+
+/**
+ * 非流式重跑（`/ai/workflow/debug`）。
+ *
+ * <p>作为流式失败后的人工兜底，必须由用户显式发起 —— 编排里的 MCP 工具调用是有副作用的，
+ * 不能因为流式链路报错就自动再跑一遍。
+ */
+const runDebugWithoutStream = async () => {
+  const message = debugMessage.value.trim()
+  if (!message) {
+    ElMessage.warning('请输入调试消息')
+    return
+  }
+  if (debugRunning.value) return
+  const saved = await saveFlowConfig()
+  if (!saved) {
+    ElMessage.error('画布保存失败，已取消调试（避免调试到服务端的旧配置）')
+    return
+  }
+  debugRunning.value = true
+  debugResult.value = null
+  try {
+    const res = await debugAiWorkflow(workflowId, message, collectDebugParams())
+    if (disposed) return
+    debugResult.value = (res as any).data || null
+  } catch (e: any) {
+    ElMessage.error('调试运行失败: ' + (e?.message || '未知错误'))
+  } finally {
+    if (!disposed) {
+      debugRunning.value = false
+    }
   }
 }
 
@@ -976,15 +1229,19 @@ async function runDebugStream(message: string, params?: Record<string, string>) 
   debugResult.value = live
   let sawFinalReply = false
   const publish = () => {
+    if (disposed) return
     debugResult.value = { ...live, nodeTraces: [...live.nodeTraces] }
   }
+  debugAbortController.value = new AbortController()
   await requestAiStream({
     baseUrl,
     path: `/ai/workflow/debug-stream/${workflowId}`,
     token: userStore.token,
     tenantId: userStore.tenantId,
     body: { message, params },
+    signal: debugAbortController.value.signal,
     onNodeEvent: (event: AiStreamNodeEvent) => {
+      if (disposed) return
       if (event.type === 'node_start') {
         live.nodeTraces.push({
           nodeId: event.content.nodeId || '',
@@ -1015,6 +1272,7 @@ async function runDebugStream(message: string, params?: Record<string, string>) 
       publish()
     },
     onMeta: (meta) => {
+      if (disposed) return
       if (typeof meta.success === 'boolean') {
         live.success = meta.success
       }
@@ -1026,6 +1284,47 @@ async function runDebugStream(message: string, params?: Record<string, string>) 
   })
 }
 
+/**
+ * 序列化画布配置。
+ *
+ * <p>`class` 是校验红框用的纯展示状态，绝不能随 flowConfig 落库 ——
+ * 否则展示状态会长期污染持久化数据，后端 `AiFlowGraph` 解析时还要跟着一起吃下去。
+ * schema v2：新增 start.inputParams / llm.userTemplate·memoryRounds / condition.branches；后端对 v1 兼容读。
+ */
+interface PersistedFlowConfig {
+  version: number
+  nodes: Record<string, unknown>[]
+  edges: unknown[]
+}
+
+function buildFlowConfig(): PersistedFlowConfig {
+  // 先降型再 map：Vue Flow 的 Node 类型层级很深，直接在其上做 map + 展开会把 TS 推断撑爆
+  const rawNodes = nodes.value as unknown as Record<string, unknown>[]
+  const persistedNodes: Record<string, unknown>[] = []
+  for (const node of rawNodes) {
+    const persisted = { ...node }
+    delete persisted.class
+    persistedNodes.push(persisted)
+  }
+  return {
+    version: 2,
+    nodes: persistedNodes,
+    edges: edges.value as unknown as unknown[]
+  }
+}
+
+/** 保存画布，成功返回 true。 */
+async function saveFlowConfig(): Promise<boolean> {
+  try {
+    await updateAiWorkflow({ workflowId, flowConfig: JSON.stringify(buildFlowConfig()) } as any)
+    markSaved()
+    return true
+  } catch {
+    // 错误文案已由全局拦截器弹出
+    return false
+  }
+}
+
 // 保存流程
 const handleSave = async () => {
   const errors = validateFlow()
@@ -1035,12 +1334,9 @@ const handleSave = async () => {
   }
   saving.value = true
   try {
-    // schema v2：新增 start.inputParams / llm.userTemplate·memoryRounds / condition.branches；后端对 v1 兼容读
-    const flowConfig = JSON.stringify({ version: 2, nodes: nodes.value, edges: edges.value })
-    await updateAiWorkflow({ workflowId, flowConfig } as any)
-    ElMessage.success('流程保存成功')
-  } catch (e: any) {
-    ElMessage.error('保存失败: ' + (e.message || ''))
+    if (await saveFlowConfig()) {
+      ElMessage.success('流程保存成功')
+    }
   } finally {
     saving.value = false
   }
@@ -1062,6 +1358,11 @@ const loadWorkflow = async () => {
           const match = n.id.match(/node_(\d+)/)
           if (match) nodeId = Math.max(nodeId, parseInt(match[1]))
         })
+        // 恢复 edge 序号，避免新连线的 id 与历史配置里的重复
+        edges.value.forEach(e => {
+          const match = String(e.id).match(/__(\d+)$/)
+          if (match) edgeSeq = Math.max(edgeSeq, parseInt(match[1]))
+        })
       } catch { /* 无效配置，使用默认 */ }
     }
     // 如果没有节点，创建默认开始节点
@@ -1070,7 +1371,10 @@ const loadWorkflow = async () => {
         { id: getNodeId(), type: 'start', position: { x: 250, y: 50 }, data: { label: '开始' } }
       ]
     }
-  } catch { /* ignore */ }
+  } catch { /* ignore */ } finally {
+    // 以加载完成时的画布为「已保存」基线，之后任何编辑都会被判定为未保存改动
+    markSaved()
+  }
 }
 
 const loadOptions = async () => {
@@ -1085,6 +1389,22 @@ const loadOptions = async () => {
 onMounted(() => {
   loadWorkflow()
   loadOptions()
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
+
+/**
+ * 卸载清理：中断在途调试 SSE 并摘掉 beforeunload。
+ *
+ * <p>原实现连 `signal` 都没传给 `requestAiStream`，一旦发起就完全无法取消：
+ * 切路由后连接继续挂着，回调还会往已销毁组件写状态。
+ */
+onUnmounted(() => {
+  disposed = true
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  if (debugAbortController.value) {
+    debugAbortController.value.abort()
+    debugAbortController.value = null
+  }
 })
 </script>
 

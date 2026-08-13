@@ -33,7 +33,7 @@ async function pickTenantWithQuota(
       const quota = await fetchTenantQuota(request, apiBaseUrl, accessToken, tenant.tenantId)
       return { tenant, quota }
     } catch {
-      // Continue until a readable quota is found.
+      // 继续向后找，直到拿到一条可读的配额为止。
     }
   }
 

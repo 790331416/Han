@@ -2,6 +2,7 @@ package com.han.ai.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.han.ai.config.AiStreamExecutor;
 import com.han.ai.domain.po.AiWorkflowPo;
 import com.han.ai.domain.query.AiWorkflowQuery;
 import com.han.ai.domain.vo.AiFlowDebugVo;
@@ -11,8 +12,6 @@ import com.han.ai.service.IAiChatService;
 import com.han.ai.service.IAiWorkflowService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
-import com.han.common.security.context.SecurityContextHolder;
-import com.han.common.security.domain.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,10 +21,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
- * AI workflow service implementation.
+ * AI 编排服务实现。
  */
 @Slf4j
 @Service
@@ -38,6 +37,8 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
     private final AiWorkflowMapper aiWorkflowMapper;
     private final IAiChatService aiChatService;
     private final AiFlowEngine aiFlowEngine;
+    /** 编排调试流式专用线程池，替代并行度只有「核数-1」的 ForkJoinPool.commonPool */
+    private final AiStreamExecutor aiStreamExecutor;
 
     @Override
     public PageResult<AiWorkflowPo> selectPage(AiWorkflowQuery query) {
@@ -126,46 +127,49 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         String debugMessage = message.trim();
         SseEmitter emitter = new SseEmitter(DEBUG_STREAM_SSE_TIMEOUT);
         AiSseChannel channel = new AiSseChannel(emitter);
-        LoginUser loginUser = SecurityContextHolder.getLoginUser();
-        CompletableFuture.runAsync(() -> {
-            SecurityContextHolder.setLoginUser(loginUser);
-            try {
-                AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), debugMessage,
-                        List.of(), params,
-                        new AiFlowEngine.FlowEventListener() {
-                            @Override
-                            public void onNodeStart(AiFlowGraph.FlowNode node) {
-                                channel.sendEvent("node_start", Map.of(
-                                        "nodeId", node.id(),
-                                        "nodeType", node.type() == null ? "" : node.type(),
-                                        "nodeName", node.label() == null ? "" : node.label()));
-                            }
+        try {
+            aiStreamExecutor.execute(() -> {
+                try {
+                    AiFlowEngine.FlowResult result = aiFlowEngine.execute(workflow.getFlowConfig(), debugMessage,
+                            List.of(), params,
+                            new AiFlowEngine.FlowEventListener() {
+                                @Override
+                                public void onNodeStart(AiFlowGraph.FlowNode node) {
+                                    channel.sendEvent("node_start", Map.of(
+                                            "nodeId", node.id(),
+                                            "nodeType", node.type() == null ? "" : node.type(),
+                                            "nodeName", node.label() == null ? "" : node.label()));
+                                }
 
-                            @Override
-                            public void onNodeDelta(String nodeId, String delta) {
-                                channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
-                            }
+                                @Override
+                                public void onNodeDelta(String nodeId, String delta) {
+                                    channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
+                                }
 
-                            @Override
-                            public void onNodeEnd(AiFlowNodeTraceVo trace) {
-                                channel.sendEvent("node_end", trace);
-                            }
-                        });
-                String reply = result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage();
-                channel.sendEvent("delta", reply);
-                channel.sendEvent("meta", Map.of(
-                        "success", result.success(),
-                        "nodeTraces", result.traces()));
-                channel.sendDone();
-                channel.complete();
-            } catch (Exception ex) {
-                log.warn("AI workflow debug stream failed, workflowId={}", workflowId, ex);
-                channel.sendEvent("error", ex.getMessage() == null ? "编排调试异常" : ex.getMessage());
-                channel.complete();
-            } finally {
-                SecurityContextHolder.clear();
-            }
-        });
+                                @Override
+                                public void onNodeEnd(AiFlowNodeTraceVo trace) {
+                                    channel.sendEvent("node_end", trace);
+                                }
+                            });
+                    String reply = result.success() ? result.finalText() : "编排执行失败：" + result.errorMessage();
+                    channel.sendEvent("delta", reply);
+                    channel.sendEvent("meta", Map.of(
+                            "success", result.success(),
+                            "nodeTraces", result.traces()));
+                    channel.sendDone();
+                    channel.complete();
+                } catch (Exception ex) {
+                    log.warn("AI workflow debug stream failed, workflowId={}", workflowId, ex);
+                    channel.sendEvent("error", AiChatServiceImpl.clientSafeErrorMessage(ex, "编排调试异常"));
+                    channel.complete();
+                }
+            });
+        } catch (RejectedExecutionException ex) {
+            log.warn("AI workflow debug stream rejected, workflowId={}, queued={}",
+                    workflowId, aiStreamExecutor.queuedTaskCount());
+            channel.sendEvent("error", AiChatServiceImpl.STREAM_BUSY_MESSAGE);
+            channel.complete();
+        }
         return emitter;
     }
 
@@ -266,18 +270,22 @@ public class AiWorkflowServiceImpl extends AiServiceSupport implements IAiWorkfl
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     * 编排设计器保存画布只提交 workflowId + flowConfig，其余字段必须沿用库内值。
+     */
     private void copyEditableFields(AiWorkflowPo source, AiWorkflowPo target) {
-        target.setWorkflowName(source.getWorkflowName());
-        target.setDescription(source.getDescription());
-        target.setWorkflowType(source.getWorkflowType());
-        target.setModelId(source.getModelId());
-        target.setKnowledgeBaseIds(source.getKnowledgeBaseIds());
-        target.setMcpServerIds(source.getMcpServerIds());
-        target.setSystemPrompt(source.getSystemPrompt());
-        target.setFlowConfig(source.getFlowConfig());
-        target.setPrologue(source.getPrologue());
-        target.setSuggestedQuestions(source.getSuggestedQuestions());
-        target.setStatus(source.getStatus());
+        copyIfPresent(source.getWorkflowName(), target::setWorkflowName);
+        copyIfPresent(source.getDescription(), target::setDescription);
+        copyIfPresent(source.getWorkflowType(), target::setWorkflowType);
+        copyIfPresent(source.getModelId(), target::setModelId);
+        copyIfPresent(source.getKnowledgeBaseIds(), target::setKnowledgeBaseIds);
+        copyIfPresent(source.getMcpServerIds(), target::setMcpServerIds);
+        copyIfPresent(source.getSystemPrompt(), target::setSystemPrompt);
+        copyIfPresent(source.getFlowConfig(), target::setFlowConfig);
+        copyIfPresent(source.getPrologue(), target::setPrologue);
+        copyIfPresent(source.getSuggestedQuestions(), target::setSuggestedQuestions);
+        copyIfPresent(source.getStatus(), target::setStatus);
     }
 
     private void normalize(AiWorkflowPo workflow) {

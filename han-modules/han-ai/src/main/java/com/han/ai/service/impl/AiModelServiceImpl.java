@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.ai.domain.po.AiModelPo;
 import com.han.ai.domain.query.AiModelQuery;
 import com.han.ai.mapper.AiModelMapper;
+import com.han.ai.security.AiUrlSecurityValidator;
 import com.han.ai.service.IAiModelService;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
@@ -17,7 +18,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * AI model service implementation.
+ * AI 模型服务实现。
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +32,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
     private final AiModelMapper aiModelMapper;
     private final AiModelCredentialResolver credentialResolver;
     private final AiOpenAiCompatibleClient openAiCompatibleClient;
+    private final AiUrlSecurityValidator urlSecurityValidator;
 
     @Override
     public PageResult<AiModelPo> selectPage(AiModelQuery query) {
@@ -62,7 +64,7 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
             return enabledModels;
         }
 
-        // Compatibility fallback for historical seed data that contains only disabled defaults.
+        // 兼容历史种子数据只有「已停用默认项」的情况，做一次回退。
         LambdaQueryWrapper<AiModelPo> fallbackWrapper = new LambdaQueryWrapper<AiModelPo>()
                 .eq(StringUtils.hasText(modelType), AiModelPo::getModelType, modelType)
                 .orderByAsc(AiModelPo::getStatus)
@@ -193,6 +195,9 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         if (!StringUtils.hasText(model.getBaseUrl())) {
             throw new BusinessException("API Base URL不能为空");
         }
+        // SSRF 防护：与 MCP 保存路径同一套校验器。模型侧此前只校验非空，
+        // 而供应商响应体会回显给调用方，构成一条完整的可回显 SSRF。
+        urlSecurityValidator.validate(model.getBaseUrl(), "AI模型");
         if (model.getMaxTokens() == null || model.getMaxTokens() < 1) {
             throw new BusinessException("最大Token数必须大于0");
         }
@@ -223,20 +228,24 @@ public class AiModelServiceImpl extends AiServiceSupport implements IAiModelServ
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     */
     private void copyEditableFields(AiModelPo source, AiModelPo target) {
-        target.setModelName(source.getModelName());
-        target.setModelType(source.getModelType());
-        target.setProvider(source.getProvider());
-        target.setModelCode(source.getModelCode());
-        target.setBaseUrl(source.getBaseUrl());
+        copyIfPresent(source.getModelName(), target::setModelName);
+        copyIfPresent(source.getModelType(), target::setModelType);
+        copyIfPresent(source.getProvider(), target::setProvider);
+        copyIfPresent(source.getModelCode(), target::setModelCode);
+        copyIfPresent(source.getBaseUrl(), target::setBaseUrl);
+        // 凭据单独判定：空值与掩码值都表示沿用库内 API Key，不能被请求体覆盖
         if (!credentialResolver.shouldKeepExistingApiKey(source.getApiKey())) {
             target.setApiKey(source.getApiKey());
         }
-        target.setMaxTokens(source.getMaxTokens());
-        target.setTemperature(source.getTemperature());
-        target.setSupportsVision(source.getSupportsVision());
-        target.setStatus(source.getStatus());
-        target.setRemark(source.getRemark());
+        copyIfPresent(source.getMaxTokens(), target::setMaxTokens);
+        copyIfPresent(source.getTemperature(), target::setTemperature);
+        copyIfPresent(source.getSupportsVision(), target::setSupportsVision);
+        copyIfPresent(source.getStatus(), target::setStatus);
+        copyIfPresent(source.getRemark(), target::setRemark);
     }
 
     private void normalize(AiModelPo model) {

@@ -35,8 +35,15 @@ ACCESS_KEY_ENV = "RUSTFS_ACCESS_KEY"
 SECRET_KEY_ENV = "RUSTFS_SECRET_KEY"
 REGION_DEFAULT = "us-east-1"
 SERVICE = "s3"
-USERNAME = os.environ.get("HAN_FILE_PROBE_USERNAME", "admin")
-PASSWORD = os.environ.get("HAN_FILE_PROBE_PASSWORD", "admin123")
+# 探针账号一律由环境变量注入，不再内置超管默认登录口令。
+USERNAME = os.environ.get("HAN_FILE_PROBE_USERNAME", "")
+PASSWORD = os.environ.get("HAN_FILE_PROBE_PASSWORD", "")
+if not USERNAME or not PASSWORD:
+    print(
+        "[verify-file-service-95] HAN_FILE_PROBE_USERNAME and HAN_FILE_PROBE_PASSWORD are required",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 TIERS = {
     "medium": {
@@ -256,7 +263,9 @@ def s3_signed_request(method, storage):
     host = parsed.netloc
     path = "/" + urllib.parse.quote(storage["bucket"], safe="") + "/" + urllib.parse.quote(storage["object_key"], safe="/~")
     url = endpoint + path
-    now = datetime.datetime.utcnow()
+    # datetime.utcnow() 在 Python 3.12 已废弃，未来版本会移除；这里生成的是
+    # SigV4 的 x-amz-date，行为一旦变化会导致签名时间戳错误、探针对象删不掉。
+    now = datetime.datetime.now(datetime.timezone.utc)
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
     date_stamp = now.strftime("%Y%m%d")
     payload_hash = hashlib.sha256(b"").hexdigest()

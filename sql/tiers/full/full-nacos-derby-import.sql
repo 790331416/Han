@@ -441,6 +441,13 @@ INSERT INTO nacos.config_info (
   port: 9208
 
 spring:
+  servlet:
+    multipart:
+      # 知识库文档上传走 han-ai 自己的 MultipartFile 入口，不经过 han-file。
+      # 不显式设置就会落到 Spring 默认的 1MB，稍大一点的文档直接 413。
+      # 默认值与 han-file 对齐，避免同一套网关/nginx 尺寸下两个服务上限不一致。
+      max-file-size: ${HAN_AI_MAX_FILE_SIZE:300MB}
+      max-request-size: ${HAN_AI_MAX_REQUEST_SIZE:320MB}
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
@@ -470,61 +477,6 @@ han:
   'codex',
   '10.18.35.95',
   'ai runtime config',
-  NULL,
-  NULL,
-  'yaml',
-  NULL,
-  NULL
-);
-
-DELETE FROM nacos.his_config_info
-WHERE data_id = 'han-aivideo.yml' AND group_id = 'DEFAULT_GROUP' AND tenant_id = '';
-
-DELETE FROM nacos.config_info
-WHERE data_id = 'han-aivideo.yml' AND group_id = 'DEFAULT_GROUP' AND tenant_id = '';
-
-INSERT INTO nacos.config_info (
-  data_id, group_id, tenant_id, app_name, content, md5, gmt_create, gmt_modified, src_user, src_ip, c_desc, c_use, effect, type, c_schema, encrypted_data_key
-) VALUES (
-  'han-aivideo.yml',
-  'DEFAULT_GROUP',
-  '',
-  'han-aivideo',
-  'server:
-  port: 9209
-
-spring:
-  datasource:
-    driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: ${DB_USER:han}
-    password: ${DB_PASSWORD:han@2026}
-    hikari:
-      minimum-idle: 5
-      maximum-pool-size: 20
-      idle-timeout: 300000
-      connection-timeout: 30000
-      max-lifetime: 1800000
-
-mybatis-plus:
-  mapper-locations: classpath*:/mapper/**/*.xml
-  type-aliases-package: com.han.aivideo.domain.po
-  configuration:
-    map-underscore-to-camel-case: true
-    cache-enabled: false
-  global-config:
-    db-config:
-      id-type: assign_id
-      logic-delete-field: delFlag
-      logic-delete-value: 1
-      logic-not-delete-value: 0
-',
-  NULL,
-  CURRENT_TIMESTAMP,
-  CURRENT_TIMESTAMP,
-  'codex',
-  '10.18.35.95',
-  'aivideo runtime config',
   NULL,
   NULL,
   'yaml',

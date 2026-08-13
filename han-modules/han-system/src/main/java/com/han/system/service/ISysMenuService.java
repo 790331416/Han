@@ -42,6 +42,13 @@ public interface ISysMenuService {
     Set<String> selectMenuPermsByUserId(Long userId);
 
     /**
+     * 查询用户通过启用中的角色实际拥有的菜单ID集合。
+     *
+     * <p>角色授权时用它判定「操作者能不能把这些菜单勾给别人」，防止越权提权。
+     */
+    List<Long> selectMenuIdsByUserId(Long userId);
+
+    /**
      * 根据ID查询菜单
      */
     SysMenuPo selectMenuById(Long menuId);

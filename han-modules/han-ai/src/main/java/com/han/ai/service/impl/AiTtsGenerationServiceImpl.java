@@ -11,7 +11,7 @@ import org.springframework.util.StringUtils;
 import java.util.Base64;
 
 /**
- * Volcengine-based text-to-speech generation implementation.
+ * 基于火山引擎的语音合成实现。
  */
 @Service
 @RequiredArgsConstructor

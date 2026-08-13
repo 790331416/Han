@@ -1,11 +1,12 @@
 package com.han.common.core.util;
 
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-
 /**
  * 字符串工具类
+ *
+ * @deprecated 与 {@link HanStrUtil} 完全重复，已全部委托给 {@code HanStrUtil}。
+ * 新代码请直接使用 {@link HanStrUtil}，存量调用点将在统一整改批次中迁移。
  */
+@Deprecated(since = "1.0.0")
 public final class XuStrUtil {
 
     private XuStrUtil() {}
@@ -14,142 +15,115 @@ public final class XuStrUtil {
      * 判断字符串是否为空
      */
     public static boolean isBlank(String str) {
-        return str == null || str.trim().isEmpty();
+        return HanStrUtil.isBlank(str);
     }
 
     /**
      * 判断字符串是否非空
      */
     public static boolean isNotBlank(String str) {
-        return !isBlank(str);
+        return HanStrUtil.isNotBlank(str);
     }
 
     /**
      * 判断字符串是否为空
      */
     public static boolean isEmpty(String str) {
-        return str == null || str.isEmpty();
+        return HanStrUtil.isEmpty(str);
     }
 
     /**
      * 判断字符串是否非空
      */
     public static boolean isNotEmpty(String str) {
-        return !isEmpty(str);
+        return HanStrUtil.isNotEmpty(str);
     }
 
     /**
      * 空字符串转null
      */
     public static String nullIfEmpty(String str) {
-        return isEmpty(str) ? null : str;
+        return HanStrUtil.nullIfEmpty(str);
     }
 
     /**
      * null转空字符串
      */
     public static String emptyIfNull(String str) {
-        return str == null ? "" : str;
+        return HanStrUtil.emptyIfNull(str);
     }
 
     /**
      * 去除前后空格
      */
     public static String trim(String str) {
-        return str == null ? null : str.trim();
+        return HanStrUtil.trim(str);
     }
 
     /**
      * 生成UUID字符串
      */
     public static String uuid() {
-        return UUID.randomUUID().toString();
+        return HanStrUtil.uuid();
     }
 
     /**
      * 转换为UTF-8字节数组
      */
     public static byte[] getBytesUtf8(String str) {
-        return str == null ? null : str.getBytes(StandardCharsets.UTF_8);
+        return HanStrUtil.getBytesUtf8(str);
     }
 
     /**
      * 从UTF-8字节数组转字符串
      */
     public static String newStringUtf8(byte[] bytes) {
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return HanStrUtil.newStringUtf8(bytes);
     }
 
     /**
      * 拼接字符串
      */
     public static String join(String... strings) {
-        if (strings == null || strings.length == 0) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder();
-        for (String str : strings) {
-            if (isNotEmpty(str)) {
-                sb.append(str);
-            }
-        }
-        return sb.toString();
+        return HanStrUtil.join(strings);
     }
 
     /**
      * 分割字符串
      */
     public static String[] split(String str, String delimiter) {
-        if (isBlank(str)) {
-            return new String[0];
-        }
-        return str.split(delimiter);
+        return HanStrUtil.split(str, delimiter);
     }
 
     /**
      * 替换字符串
      */
     public static String replace(String str, String oldStr, String newStr) {
-        if (isBlank(str)) {
-            return str;
-        }
-        return str.replace(oldStr, newStr);
+        return HanStrUtil.replace(str, oldStr, newStr);
     }
 
     /**
      * 大小写转换
      */
     public static String toUpperCase(String str) {
-        return str == null ? null : str.toUpperCase();
+        return HanStrUtil.toUpperCase(str);
     }
 
     public static String toLowerCase(String str) {
-        return str == null ? null : str.toLowerCase();
+        return HanStrUtil.toLowerCase(str);
     }
 
     /**
      * 判断是否相等
      */
     public static boolean equals(String str1, String str2) {
-        if (str1 == str2) {
-            return true;
-        }
-        if (str1 == null || str2 == null) {
-            return false;
-        }
-        return str1.equals(str2);
+        return HanStrUtil.equals(str1, str2);
     }
 
     /**
      * 判断是否相等（忽略大小写）
      */
     public static boolean equalsIgnoreCase(String str1, String str2) {
-        if (str1 == str2) {
-            return true;
-        }
-        if (str1 == null || str2 == null) {
-            return false;
-        }
-        return str1.equalsIgnoreCase(str2);
+        return HanStrUtil.equalsIgnoreCase(str1, str2);
     }
 }

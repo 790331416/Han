@@ -1,12 +1,12 @@
 package com.han.common.log.aspect;
 
 import com.han.common.core.util.HanIpUtil;
-import com.han.common.core.util.HanJsonUtil;
 import com.han.common.log.annotation.OperLog;
+import com.han.common.log.config.OperLogProperties;
 import com.han.common.log.domain.OperLogEvent;
 import com.han.common.log.service.IOperLogService;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -14,24 +14,37 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.time.LocalDateTime;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * 操作日志 AOP 切面
  * <p>
  * 拦截标注 @OperLog 的方法，异步采集日志信息并写入数据库。
+ * <p>
+ * 参数与响应在落库前会过 {@link OperLogMasker} 做字段级脱敏；
+ * 容器里没有 {@link IOperLogService} 实现时降级写本地日志，不静默丢弃。
  */
 @Slf4j
 @Aspect
-@RequiredArgsConstructor
 public class OperLogAspect {
-
-    private final IOperLogService operLogService;
 
     /** 请求参数和返回结果最大记录长度 */
     private static final int MAX_LENGTH = 2000;
+
+    private final IOperLogService operLogService;
+    private final Executor executor;
+    private final OperLogMasker masker;
+
+    public OperLogAspect(IOperLogService operLogService, OperLogProperties properties, Executor executor) {
+        this.operLogService = operLogService;
+        this.executor = executor;
+        this.masker = new OperLogMasker(properties != null ? properties.getMaskFields() : null);
+    }
 
     @Around("@annotation(operLog)")
     public Object around(ProceedingJoinPoint joinPoint, OperLog operLog) throws Throwable {
@@ -76,7 +89,7 @@ public class OperLogAspect {
 
             // 构建日志参数快照
             String operParam = operLog.saveParams() ? getParams(jp) : null;
-            String jsonResult = operLog.saveResult() ? toJson(result) : null;
+            String jsonResult = operLog.saveResult() ? truncate(masker.toJson(result), MAX_LENGTH) : null;
             String errorMsg = error != null ? truncate(error.getMessage(), MAX_LENGTH) : null;
 
             // 快照完成，异步入库
@@ -87,12 +100,12 @@ public class OperLogAspect {
             final String fRequestMethod = requestMethod;
             final String fOperIp = operIp;
 
-            CompletableFuture.runAsync(() -> {
+            executor.execute(() -> {
                 try {
                     OperLogEvent event = OperLogEvent.builder()
                             .tenantId(fTenantId)
                             .module(operLog.module())
-                            .operType(operLog.type().ordinal())
+                            .operType(operLog.type().getCode())
                             .operName(fOperName)
                             .operUserId(fUserId)
                             .operUrl(fOperUrl)
@@ -106,7 +119,12 @@ public class OperLogAspect {
                             .costTime(costTime)
                             .operTime(LocalDateTime.now())
                             .build();
-                    operLogService.recordOperLog(event);
+                    if (operLogService != null) {
+                        operLogService.recordOperLog(event);
+                    } else {
+                        // 没有本地实现时降级到本地日志：可见地降级，好过静默丢弃审计记录
+                        log.warn("[OperLog] 无 IOperLogService 实现，审计事件仅记录到本地日志: {}", event);
+                    }
                 } catch (Exception e) {
                     log.error("异步记录操作日志失败", e);
                 }
@@ -128,10 +146,19 @@ public class OperLogAspect {
                 return null;
             }
             StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
             for (int i = 0; i < paramNames.length; i++) {
-                if (i > 0) sb.append(", ");
+                if (isNotLoggable(args[i])) {
+                    continue;
+                }
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
                 sb.append("\"").append(paramNames[i]).append("\": ");
-                sb.append(toJson(args[i]));
+                sb.append(masker.isMaskedName(paramNames[i])
+                        ? "\"" + OperLogMasker.MASKED + "\""
+                        : masker.toJson(args[i]));
             }
             sb.append("}");
             return truncate(sb.toString(), MAX_LENGTH);
@@ -141,16 +168,17 @@ public class OperLogAspect {
     }
 
     /**
-     * 对象转 JSON
+     * 不该进日志的参数类型：文件、流、Servlet 对象。
+     * <p>大文件导入原先会被整体 base64 进内存再截断，代价是一次完整的内存拷贝。
      */
-    private String toJson(Object obj) {
-        if (obj == null) return "null";
-        try {
-            String json = HanJsonUtil.toJsonString(obj);
-            return truncate(json, MAX_LENGTH);
-        } catch (Exception e) {
-            return "[序列化失败]";
-        }
+    private static boolean isNotLoggable(Object arg) {
+        return arg instanceof MultipartFile
+                || arg instanceof MultipartFile[]
+                || arg instanceof InputStream
+                || arg instanceof OutputStream
+                || arg instanceof HttpServletRequest
+                || arg instanceof HttpServletResponse
+                || arg instanceof byte[];
     }
 
     /**

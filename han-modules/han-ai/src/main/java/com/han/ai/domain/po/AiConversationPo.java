@@ -8,7 +8,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * AI conversation entity.
+ * AI 会话实体。
  */
 @Data
 @TableName("ai_conversation")

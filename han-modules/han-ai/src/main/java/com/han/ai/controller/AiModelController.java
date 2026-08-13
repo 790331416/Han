@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * AI model controller.
+ * AI 模型控制器。
  */
 @AdminAuth
 @RestController
@@ -31,7 +31,7 @@ public class AiModelController {
     private final IAiModelService aiModelService;
 
     /**
-     * Query paged model list.
+     * 分页查询模型列表。
      *
      * @param query query params
      * @return page result
@@ -43,7 +43,7 @@ public class AiModelController {
     }
 
     /**
-     * Query model detail.
+     * 查询模型详情。
      *
      * @param modelId model id
      * @return detail
@@ -55,7 +55,7 @@ public class AiModelController {
     }
 
     /**
-     * Query all enabled models.
+     * 查询全部已启用的模型。
      *
      * @param modelType optional model type
      * @return model list
@@ -67,7 +67,7 @@ public class AiModelController {
     }
 
     /**
-     * Create model.
+     * 新增模型。
      *
      * @param model model data
      * @return result
@@ -81,7 +81,7 @@ public class AiModelController {
     }
 
     /**
-     * Update model.
+     * 修改模型。
      *
      * @param model model data
      * @return result
@@ -95,7 +95,7 @@ public class AiModelController {
     }
 
     /**
-     * Delete model.
+     * 删除模型。
      *
      * @param modelId model id
      * @return result
@@ -109,7 +109,7 @@ public class AiModelController {
     }
 
     /**
-     * Validate model config.
+     * 校验模型配置连通性。
      *
      * @param modelId model id
      * @return validation result

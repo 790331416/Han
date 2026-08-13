@@ -6,6 +6,10 @@ on:
     branches:
       - master
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   layout:
     runs-on: ubuntu-latest
@@ -24,3 +28,34 @@ jobs:
         run: python scripts/checks/check_no_generated_files.py
       - name: Check deploy layout
         run: python scripts/checks/check_deploy_layout.py
+      - name: Check deploy secrets
+        run: python scripts/checks/check_deploy_secrets.py
+      - name: Check database compat
+        run: python scripts/checks/check_database_compat.py
+      - name: Check endpoint authz
+        run: python scripts/checks/check_endpoint_authz.py
+
+  compose:
+    name: Validate compose files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 阻断项 S-89（根 compose 挂载已归档的 SQL）如果早有这一步就能更早暴露。
+      # --env-file 用各自的 .env.example，顺带证明样板文件覆盖了所有必填变量。
+      - name: docker compose config
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tier in small medium full; do
+            echo "::group::deploy/${tier}"
+            docker compose \
+              -f "deploy/${tier}/docker-compose.yml" \
+              --env-file "deploy/${tier}/.env.example" \
+              config --quiet
+            echo "::endgroup::"
+          done
+          for compose in docker-compose.yml docker-compose-small.yml docker-compose-full.yml; do
+            echo "::group::${compose}"
+            docker compose -f "${compose}" --env-file .env.example config --quiet
+            echo "::endgroup::"
+          done

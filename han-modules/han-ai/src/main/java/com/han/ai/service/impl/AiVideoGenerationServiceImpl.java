@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * OpenAI-compatible video generation implementation.
+ * OpenAI 兼容协议的视频生成实现。
  */
 @Service
 @RequiredArgsConstructor

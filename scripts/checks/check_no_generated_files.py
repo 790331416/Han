@@ -11,8 +11,11 @@ FORBIDDEN_SUBSTRINGS = [
     ".m2/",
     ".codex-temp/",
     "output/playwright/",
+    "__pycache__/",
 ]
-FORBIDDEN_SUFFIXES = [".log", ".tar.gz", ".zip", ".tsbuildinfo"]
+FORBIDDEN_SUFFIXES = [".log", ".tar.gz", ".zip", ".pyc"]
+# 私钥、证书与密钥库不得入库；需要时由部署环境注入。
+KEY_MATERIAL_SUFFIXES = [".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"]
 
 
 def main() -> int:
@@ -34,6 +37,8 @@ def main() -> int:
             violations.append(f"检测到不应提交的产物: {path}")
         if any(path.endswith(suffix) for suffix in FORBIDDEN_SUFFIXES):
             violations.append(f"检测到压缩包或日志产物: {path}")
+        if any(path.endswith(suffix) for suffix in KEY_MATERIAL_SUFFIXES):
+            violations.append(f"检测到疑似私钥或密钥库文件: {path}")
     if violations:
         print("\n".join(violations))
         return 1

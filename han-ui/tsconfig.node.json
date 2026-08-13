@@ -7,5 +7,11 @@
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "vite.build.config.ts",
+    "build/**/*.ts",
+    "uno.config.ts",
+    "playwright.config.ts"
+  ]
 }

@@ -6,7 +6,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * Text generation response.
+ * 文本生成响应。
  */
 @Data
 public class AiTextGenerateResponse implements Serializable {

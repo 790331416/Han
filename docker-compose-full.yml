@@ -4,6 +4,12 @@
 # 硬件: 8核16GB
 # 基础设施: PostgreSQL 18.1 + Redis 8.6 + Nacos 3.1.1 + RustFS
 # 服务: gateway, auth, system, tenant, job, open, workflow, file, ai, gen
+# ---------------------------------------------
+# 【已弃用 / 过渡保留】
+# 正式部署入口是 deploy/small、deploy/medium、deploy/full（见 AGENTS.md 与
+# docs/03-部署手册.md §11）。本文件只保留给本地开发过渡使用，不得用于 95 或
+# 任何正式环境；三档的端口偏移、镜像清单与初始化顺序以 deploy/<tier> 为准。
+# 口令等敏感项必须由环境变量注入，缺失即启动失败，参见根目录 .env.example。
 # =============================================
 
 x-db-env: &db-env
@@ -11,12 +17,12 @@ x-db-env: &db-env
   DB_PORT: "5432"
   DB_NAME: han
   DB_USER: han
-  DB_PASSWORD: han@2026
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
 
 x-redis-env: &redis-env
   REDIS_HOST: redis
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: han@2026
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 
 x-nacos-env: &nacos-env
   NACOS_SERVER_ADDR: nacos:8848
@@ -28,13 +34,13 @@ x-rabbitmq-env: &rabbitmq-env
   RABBITMQ_HOST: rabbitmq
   RABBITMQ_PORT: "5672"
   RABBITMQ_USERNAME: han
-  RABBITMQ_PASSWORD: han@2026
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
 
 x-service-env: &service-env
   <<: [*db-env, *redis-env, *nacos-env, *rabbitmq-env]
   SPRING_PROFILES_ACTIVE: docker
   HAN_DEPLOY_TIER: full
-  HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+  HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
   JAVA_OPTS: -Xms256m -Xmx512m
   TZ: Asia/Shanghai
 
@@ -43,20 +49,19 @@ services:
 
   postgres:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/postgres:18.1
+    restart: always
+    mem_limit: ${HAN_POSTGRES_MEM_LIMIT:-1g}
     container_name: han-postgres
     environment:
       POSTGRES_DB: han
       POSTGRES_USER: han
-      POSTGRES_PASSWORD: han@2026
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       TZ: Asia/Shanghai
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./sql/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./sql/postgres/init-base-data.sql:/docker-entrypoint-initdb.d/02-base-data.sql
-      - ./sql/han_ai.sql:/docker-entrypoint-initdb.d/03-ai.sql
-      - ./sql/sys_oss_config.sql:/docker-entrypoint-initdb.d/04-oss.sql
+      - ./sql/tiers/full/full-init.sql:/docker-entrypoint-initdb.d/01-full-init.sql:ro
     networks:
       - han-network
     healthcheck:
@@ -67,8 +72,10 @@ services:
 
   redis:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/redis:8.6.0
+    restart: always
+    mem_limit: ${HAN_REDIS_MEM_LIMIT:-512m}
     container_name: han-redis
-    command: redis-server --requirepass han@2026
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
       - "6379:6379"
     volumes:
@@ -76,20 +83,22 @@ services:
     networks:
       - han-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "han@2026", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   nacos:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/nacos:v3.1.1
+    restart: always
+    mem_limit: ${HAN_NACOS_MEM_LIMIT:-1g}
     container_name: han-nacos
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
-      NACOS_AUTH_TOKEN: "aGFuQDIwMjZoYW5AMjAyNmhhbkAyMDI2aGFuQDIwMjZoYW5AMjAyNg=="
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN is required}
       NACOS_AUTH_IDENTITY_KEY: serverIdentity
-      NACOS_AUTH_IDENTITY_VALUE: han2026
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?NACOS_AUTH_IDENTITY_VALUE is required}
       JVM_XMS: 512m
       JVM_XMX: 512m
       TZ: Asia/Shanghai
@@ -109,10 +118,12 @@ services:
 
   rustfs:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/rustfs:1.0.0-alpha.81
+    restart: always
+    mem_limit: ${HAN_RUSTFS_MEM_LIMIT:-512m}
     container_name: han-rustfs
     environment:
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY is required}
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CONSOLE_ADDRESS: ":9001"
     ports:
@@ -124,11 +135,13 @@ services:
       - han-network
 
   rabbitmq:
-    image: rabbitmq:3.13-management
+    image: ${HAN_RABBITMQ_IMAGE:-registry.cn-hangzhou.aliyuncs.com/xzy0112/rabbitmq:3.13-management}
+    restart: always
+    mem_limit: ${HAN_RABBITMQ_MEM_LIMIT:-768m}
     container_name: han-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: han
-      RABBITMQ_DEFAULT_PASS: han@2026
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
       TZ: Asia/Shanghai
     ports:
       - "5672:5672"
@@ -147,13 +160,15 @@ services:
 
   gateway:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-gateway:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-gateway
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       SPRING_CLOUD_GATEWAY_SERVER_WEBFLUX_TRUSTED_PROXIES: .*
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
       JAVA_OPTS: -Xms256m -Xmx512m -Dio.netty.transport.noNative=true
       TZ: Asia/Shanghai
     ports:
@@ -168,12 +183,14 @@ services:
 
   auth:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-auth:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-auth
     environment:
       <<: [*redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
       SPRING_AUTOCONFIGURE_EXCLUDE: >-
         org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,
         org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
@@ -191,13 +208,15 @@ services:
 
   system:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-system:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-system
     environment:
       <<: *service-env
       HAN_GEN_ENABLED: "true"
       RUSTFS_ENDPOINT: http://rustfs:9000
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY is required}
     ports:
       - "9201:9201"
     depends_on:
@@ -212,6 +231,8 @@ services:
 
   tenant:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-tenant:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-tenant
     environment:
       <<: *service-env
@@ -229,6 +250,8 @@ services:
 
   workflow:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-workflow:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-workflow
     environment:
       <<: *service-env
@@ -246,6 +269,8 @@ services:
 
   job:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-job:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-job
     environment:
       <<: *service-env
@@ -263,6 +288,8 @@ services:
 
   open:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-open:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-open
     environment:
       <<: *service-env
@@ -280,16 +307,18 @@ services:
 
   file:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-file:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-file
     environment:
       <<: [*db-env, *redis-env, *nacos-env]
       SPRING_PROFILES_ACTIVE: docker
       HAN_DEPLOY_TIER: full
-      HAN_INNER_AUTH_SECRET: han-cloud-inner-auth
+      HAN_INNER_AUTH_SECRET: ${HAN_INNER_AUTH_SECRET:?HAN_INNER_AUTH_SECRET is required}
       SERVER_FORWARD_HEADERS_STRATEGY: framework
       RUSTFS_ENDPOINT: http://rustfs:9000
-      RUSTFS_ACCESS_KEY: hanadmin
-      RUSTFS_SECRET_KEY: han@2026
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-hanadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY is required}
       HAN_FILE_MAX_FILE_SIZE: 300MB
       HAN_FILE_MAX_REQUEST_SIZE: 320MB
       JAVA_OPTS: -Xms256m -Xmx512m
@@ -310,6 +339,8 @@ services:
 
   ai:
     image: registry.cn-hangzhou.aliyuncs.com/xzy0112/han-ai:latest
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-ai
     environment:
       <<: *service-env
@@ -344,6 +375,8 @@ services:
 
   gen:
     image: ${HAN_GEN_IMAGE:-han-gen:latest}
+    restart: unless-stopped
+    mem_limit: ${HAN_APP_MEM_LIMIT:-1g}
     container_name: han-gen
     environment:
       <<: *service-env

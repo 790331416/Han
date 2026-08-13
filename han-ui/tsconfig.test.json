@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /**
+     * `pinia-plugin-persistedstate` 要显式列进来：它靠模块增强给 defineStore 加 `persist` 选项，
+     * 而本配置的 include 不覆盖 src/main.ts，拿不到那条 import 带来的增强。
+     */
+    "types": ["vite/client", "element-plus/global", "node", "pinia-plugin-persistedstate"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["tests/**/*.ts", "src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"]
+}

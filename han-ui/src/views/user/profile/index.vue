@@ -101,7 +101,7 @@
                   <el-input v-model="pwdForm.oldPassword" type="password" placeholder="请输入旧密码" show-password />
                 </el-form-item>
                 <el-form-item label="新密码" prop="newPassword">
-                  <el-input v-model="pwdForm.newPassword" type="password" placeholder="请输入新密码" show-password />
+                  <el-input v-model="pwdForm.newPassword" type="password" :placeholder="PASSWORD_RULE_TEXT" show-password />
                 </el-form-item>
                 <el-form-item label="确认密码" prop="confirmPassword">
                   <el-input v-model="pwdForm.confirmPassword" type="password" placeholder="请确认新密码" show-password />
@@ -176,6 +176,7 @@ import { getUserProfile, updateUserProfile, updateUserPassword, updateUserAvatar
 import { getTotpStatus, getTotpSetup, bindTotp, unbindTotp } from '@/api/system/totp'
 import { useUserStore } from '@/stores/user'
 import { useRoute } from 'vue-router'
+import { PASSWORD_RULE_TEXT, validatePasswordRule } from '../../system/shared/password-rule'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const userStore = useUserStore()
@@ -232,7 +233,7 @@ const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入旧密码', trigger: 'blur' }],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 8, max: 32, message: '密码长度在8到32个字符', trigger: 'blur' }
+    { validator: validatePasswordRule, trigger: 'blur' }
   ],
   confirmPassword: [
     { required: true, message: '请确认新密码', trigger: 'blur' },

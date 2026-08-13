@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * OpenAI-compatible text generation implementation.
+ * OpenAI 兼容协议的文本生成实现。
  */
 @Service
 @RequiredArgsConstructor

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -29,7 +30,17 @@ public class TenantInitDto implements Serializable {
     /** 管理员用户名 */
     private String adminUsername;
 
-    /** 管理员密码（明文，由 han-system 加密存储） */
+    /**
+     * 管理员密码（明文，由 han-system 加密存储）。
+     *
+     * <p><b>风险已知、暂未消除</b>：这份明文经 {@code POST /inner/system/tenant/init} 传输，
+     * 而服务间是纯 HTTP（{@code HttpClientFactoryBean} 的 baseUrl 是 {@code http://<serviceName>}），
+     * 任何链路抓包、请求体日志、APM body 采样都会拿到租户管理员的初始密码。
+     * 目标形态是由 han-system 生成随机初始密码并回一次性重置凭据；若必须由调用方指定，
+     * 则用平台公钥加密后传输（han-auth 已有 {@code /auth/publicKey} 机制可复用）。
+     * 已排除出 {@code toString()}，先把「误打日志」这一半堵上。
+     */
+    @ToString.Exclude
     private String adminPassword;
 
     /** 管理员昵称 */

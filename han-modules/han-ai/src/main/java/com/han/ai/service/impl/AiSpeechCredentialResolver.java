@@ -13,8 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Resolve Volcengine speech (TTS) structured credentials from AI model management first, then environment variables.
- * This keeps the generic speech client credentials inside han-ai instead of business modules.
+ * 火山引擎语音（TTS）的结构化凭据优先取自 AI 模型管理，其次才回落到环境变量。
+ * 这样通用语音客户端的凭据留在 han-ai 内部，不外泄到各业务模块。
  */
 @Component
 @RequiredArgsConstructor

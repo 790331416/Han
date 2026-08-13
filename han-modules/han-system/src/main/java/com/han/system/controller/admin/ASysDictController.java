@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.builtin.SysBuiltinDictRegistry;
 import com.han.system.domain.po.SysDictDataPo;
@@ -56,6 +57,7 @@ public class ASysDictController {
      * 查询全部字典类型。
      */
     @GetMapping("/type/all")
+    @PreAuthorize("@ss.hasAuthority('system:dict:list')")
     public R<List<SysDictTypePo>> listAllTypes() {
         builtinDictRegistry.ensureBuiltInDictionaries();
         return R.ok(dictTypeMapper.selectList(null));
@@ -128,8 +130,12 @@ public class ASysDictController {
 
     /**
      * 按字典类型查询启用中的字典值。
+     *
+     * <p>全站下拉、标签渲染都走这个接口（前端 {@code utils/dict-options.ts}），
+     * 挂权限点会让所有非字典管理员的页面标签失效，因此显式标注豁免而不是收权限。
      */
     @GetMapping("/data/type/{dictType}")
+    @PermissionExempt("字典值供全站下拉与标签渲染，已登录即可访问")
     public R<List<SysDictDataPo>> listDataByType(@PathVariable String dictType) {
         builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictDataPo> wrapper = new LambdaQueryWrapper<SysDictDataPo>()

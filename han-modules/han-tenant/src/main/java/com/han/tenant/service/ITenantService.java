@@ -4,6 +4,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.web.service.IBaseService;
 import com.han.tenant.domain.dto.TenantDTO;
 import com.han.tenant.domain.query.TenantQuery;
+import com.han.tenant.domain.vo.TenantOptionVO;
 import com.han.tenant.domain.vo.TenantVO;
 
 import java.util.List;
@@ -42,6 +43,26 @@ public interface ITenantService extends IBaseService<TenantQuery, TenantDTO> {
      * 查询所有有效租户
      */
     List<TenantVO> listAllValidTenants();
+
+    /**
+     * 查询所有有效租户的下拉选项（只含租户 ID 与名称，供匿名登录页使用）
+     */
+    List<TenantOptionVO> listTenantOptions();
+
+    /**
+     * 按域名查询租户下拉选项（只含租户 ID 与名称，供匿名登录页使用）
+     */
+    TenantOptionVO getTenantOptionByDomain(String domain);
+
+    /**
+     * 按租户 ID 查询契约层租户信息，供 {@code /inner/tenant/{tenantId}} 使用
+     */
+    com.han.api.tenant.domain.TenantVO getApiTenantById(Long tenantId);
+
+    /**
+     * 查询所有有效租户的契约层信息，供 {@code /inner/tenant/listAllValid} 使用
+     */
+    List<com.han.api.tenant.domain.TenantVO> listApiValidTenants();
 
     /**
      * 统计租户用户数

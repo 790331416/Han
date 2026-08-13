@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 /**
- * AI service bootstrap.
+ * AI 服务启动入口。
  */
 @SpringBootApplication(scanBasePackages = "com.han")
 @EnableDiscoveryClient

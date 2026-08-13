@@ -3,6 +3,7 @@ package com.han.ai.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.han.ai.config.AiStreamExecutor;
 import com.han.ai.domain.dto.AiChatImageRequest;
 import com.han.ai.domain.dto.AiChatRequest;
 import com.han.ai.domain.dto.AiMessageEditRequest;
@@ -37,7 +38,6 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
-import com.han.common.security.domain.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -59,10 +59,10 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
- * AI chat service implementation.
+ * AI 对话服务实现。
  */
 @Slf4j
 @Service
@@ -74,6 +74,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private static final String ROLE_ASSISTANT = "assistant";
     /** 真流式 SSE 超时：需覆盖编排单流 5 分钟上限 + 收尾余量 */
     private static final long SSE_TIMEOUT = 330_000L;
+    /** 流式线程池打满时回传给客户端的提示（不暴露内部容量细节） */
+    static final String STREAM_BUSY_MESSAGE = "AI 服务当前并发已满，请稍后重试";
     private static final int HISTORY_MESSAGE_LIMIT = 12;
     private static final int MAX_CHAT_IMAGES = 4;
     private static final int MAX_TOOL_CALL_ROUNDS = 5;
@@ -93,6 +95,8 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private final AiMcpClientService aiMcpClientService;
     /** 长执行治理：会话/消息落库拆为前后两个短事务，模型与编排调用不占写事务 */
     private final TransactionTemplate transactionTemplate;
+    /** 流式生成专用线程池，替代并行度只有「核数-1」的 ForkJoinPool.commonPool */
+    private final AiStreamExecutor aiStreamExecutor;
 
     @Override
     public PageResult<AiConversationPo> selectConversationPage(AiConversationQuery query) {
@@ -348,7 +352,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                 }
             };
             try {
-                R<FileDTO> uploaded = fileServiceClient.upload(resource);
+                R<FileDTO> uploaded = fileServiceClient.upload(resource, resolveTenantIdForWrite());
                 if (uploaded != null && uploaded.getData() != null && StringUtils.hasText(uploaded.getData().getUrl())) {
                     images.add(new AiChatImageVo(uploaded.getData().getId(), uploaded.getData().getUrl(), fileName));
                 } else {
@@ -450,7 +454,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
             }
             R<FileBase64DTO> result;
             try {
-                result = fileServiceClient.loadBase64(fileId);
+                result = fileServiceClient.loadBase64(fileId, tenantId);
             } catch (RuntimeException ex) {
                 log.warn("Load chat image failed, fileId={}", fileId, ex);
                 throw new BusinessException("图片读取失败，请重新上传");
@@ -472,6 +476,9 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
 
     /**
      * 图片附件租户归属校验：非管理员只能引用本租户或平台级（tenantId=0）文件，防止伪造 fileId 跨租户读图。
+     *
+     * <p>读取时已把租户传给文件服务、由提供方同口径拦截，这里保留一道调用方校验作纵深防御，
+     * 不要因为「服务端已经查过了」把它删掉。
      */
     private void requireImageTenantAccess(Long tenantId, FileBase64DTO file, Long fileId) {
         if (tenantId == null) {
@@ -1373,7 +1380,7 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
                     try {
                         result.add(Long.valueOf(trimmed));
                     } catch (NumberFormatException ignoredNumber) {
-                        // Ignore illegal ids and keep remaining values.
+                        // 跳过非法 ID，保留其余取值继续处理。
                     }
                 }
             }
@@ -1413,57 +1420,72 @@ public class AiChatServiceImpl extends AiServiceSupport implements IAiChatServic
     private SseEmitter streamReply(StreamSession session) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
         AiSseChannel channel = new AiSseChannel(emitter);
-        LoginUser loginUser = SecurityContextHolder.getLoginUser();
-        CompletableFuture.runAsync(() -> {
-            SecurityContextHolder.setLoginUser(loginUser);
-            try {
-                StreamCallbacks callbacks = new StreamCallbacks() {
-                    @Override
-                    public void onDelta(String delta) {
-                        channel.sendEvent("delta", delta);
-                    }
+        try {
+            aiStreamExecutor.execute(() -> {
+                try {
+                    StreamCallbacks callbacks = new StreamCallbacks() {
+                        @Override
+                        public void onDelta(String delta) {
+                            channel.sendEvent("delta", delta);
+                        }
 
-                    @Override
-                    public void onNodeStart(String nodeId, String nodeType, String nodeName) {
-                        channel.sendEvent("node_start", Map.of(
-                                "nodeId", nodeId,
-                                "nodeType", nodeType == null ? "" : nodeType,
-                                "nodeName", nodeName == null ? "" : nodeName));
-                    }
+                        @Override
+                        public void onNodeStart(String nodeId, String nodeType, String nodeName) {
+                            channel.sendEvent("node_start", Map.of(
+                                    "nodeId", nodeId,
+                                    "nodeType", nodeType == null ? "" : nodeType,
+                                    "nodeName", nodeName == null ? "" : nodeName));
+                        }
 
-                    @Override
-                    public void onNodeDelta(String nodeId, String delta) {
-                        channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
-                    }
+                        @Override
+                        public void onNodeDelta(String nodeId, String delta) {
+                            channel.sendEvent("node_delta", Map.of("nodeId", nodeId, "delta", delta));
+                        }
 
-                    @Override
-                    public void onNodeEnd(AiFlowNodeTraceVo trace) {
-                        channel.sendEvent("node_end", trace);
+                        @Override
+                        public void onNodeEnd(AiFlowNodeTraceVo trace) {
+                            channel.sendEvent("node_end", trace);
+                        }
+                    };
+                    boolean flowPath = resolveAdvancedWorkflow(session.context().workflowId()) != null;
+                    GeneratedReply reply = generateReply(session, callbacks);
+                    AiChatMessagePo assistantMessage = reply.assistantMessage();
+                    if (flowPath) {
+                        // 编排最终文本以一次完整 delta 兜底下发（node_delta 为过程增量，模板渲染后文本以此为准）
+                        channel.sendEvent("delta", assistantMessage.getContent());
                     }
-                };
-                boolean flowPath = resolveAdvancedWorkflow(session.context().workflowId()) != null;
-                GeneratedReply reply = generateReply(session, callbacks);
-                AiChatMessagePo assistantMessage = reply.assistantMessage();
-                if (flowPath) {
-                    // 编排最终文本以一次完整 delta 兜底下发（node_delta 为过程增量，模板渲染后文本以此为准）
-                    channel.sendEvent("delta", assistantMessage.getContent());
+                    Map<String, Object> metaPayload = buildStreamMeta(assistantMessage);
+                    if (!metaPayload.isEmpty()) {
+                        channel.sendEvent("meta", metaPayload);
+                    }
+                    channel.sendDone();
+                    channel.complete();
+                } catch (Exception ex) {
+                    log.warn("AI stream reply failed, conversationId={}",
+                            session.conversation().getConversationId(), ex);
+                    channel.sendEvent("error", clientSafeErrorMessage(ex, "AI响应异常"));
+                    channel.complete();
                 }
-                Map<String, Object> metaPayload = buildStreamMeta(assistantMessage);
-                if (!metaPayload.isEmpty()) {
-                    channel.sendEvent("meta", metaPayload);
-                }
-                channel.sendDone();
-                channel.complete();
-            } catch (Exception ex) {
-                log.warn("AI stream reply failed, conversationId={}",
-                        session.conversation().getConversationId(), ex);
-                channel.sendEvent("error", ex.getMessage() == null ? "AI响应异常" : ex.getMessage());
-                channel.complete();
-            } finally {
-                SecurityContextHolder.clear();
-            }
-        });
+            });
+        } catch (RejectedExecutionException ex) {
+            log.warn("AI stream task rejected, conversationId={}, queued={}",
+                    session.conversation().getConversationId(), aiStreamExecutor.queuedTaskCount());
+            channel.sendEvent("error", STREAM_BUSY_MESSAGE);
+            channel.complete();
+        }
         return emitter;
+    }
+
+    /**
+     * SSE 错误文案收敛：业务异常的 message 是我们自己写的、面向用户的提示，可以原样下发；
+     * 其余异常只回一句通用提示，异常原文只进日志，避免把供应商响应体、
+     * 内部类名与堆栈片段透给前端（含免登录的分享对话页）。
+     */
+    static String clientSafeErrorMessage(Throwable error, String fallback) {
+        if (error instanceof BusinessException && StringUtils.hasText(error.getMessage())) {
+            return error.getMessage();
+        }
+        return fallback;
     }
 
     private Map<String, Object> buildStreamMeta(AiChatMessagePo assistantMessage) {

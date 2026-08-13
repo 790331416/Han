@@ -12,20 +12,28 @@ import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.HanStrUtil;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import com.han.common.security.util.DataOwnerUtil;
 import com.han.system.converter.SysUserConverter;
 import com.han.system.domain.dto.ProfileDto;
 import com.han.system.domain.dto.SysUserDto;
+import com.han.system.domain.vo.SimpleUserVo;
 import com.han.system.domain.vo.UserImportVo;
+import com.han.system.domain.po.SysPostPo;
+import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserPostPo;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserRolePo;
 import com.han.system.domain.query.SysUserQuery;
 import com.han.system.domain.vo.UserVO;
+import com.han.system.mapper.SysPostMapper;
+import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserPostMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysUserService;
+import com.han.system.service.SysOnlineSessionService;
+import com.han.system.service.SysOnlineSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,10 +51,26 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> implements ISysUserService {
 
+    /** 超级管理员用户ID */
+    private static final long SUPER_ADMIN_USER_ID = 1L;
+
+    /** 用户状态：停用 */
+    private static final int STATUS_DISABLED = 1;
+
+    /** 下拉接口单次最多返回的用户数，避免大租户下变成通讯录导出口 */
+    private static final int SIMPLE_LIST_MAX_ROWS = 200;
+
+    /** 允许在下拉接口里看到联系方式的权限点 */
+    private static final List<String> CONTACT_VISIBLE_PERMISSIONS = List.of(
+            "system:user:query", "system:user:list", "system:dept:add", "system:dept:edit");
+
     private final SysUserMapper sysUserMapper;
     private final SysUserConverter sysUserConverter;
     private final SysUserRoleMapper userRoleMapper;
     private final SysUserPostMapper userPostMapper;
+    private final SysRoleMapper roleMapper;
+    private final SysPostMapper postMapper;
+    private final SysOnlineSessionService onlineSessionService;
     private final TenantServiceClient tenantServiceClient;
 
     @Override
@@ -60,6 +84,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         }
         return new PageResult<>(result.getRecords(), result.getTotal(),
                 (int) result.getCurrent(), (int) result.getSize());
+    }
+
+    @Override
+    public List<UserVO> selectUserListForExport(SysUserQuery query, int maxRows) {
+        if (SecurityContextHolder.isAdmin()) {
+            return TenantHelper.ignore(() -> sysUserMapper.selectUserListForExport(query, maxRows));
+        }
+        return sysUserMapper.selectUserListForExport(query, maxRows);
     }
 
     @Override
@@ -160,6 +192,11 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     public int update(SysUserDto dto) {
         Long tenantId = SecurityContextHolder.getTenantId();
 
+        assertSuperAdminOperable(dto.getUserId());
+        if (isSuperAdmin(dto.getUserId()) && dto.getStatus() != null && dto.getStatus() == STATUS_DISABLED) {
+            throw new BusinessException("不允许停用超级管理员");
+        }
+
         SysUserPo existUser = getById(dto.getUserId());
         if (existUser == null) {
             throw new BusinessException("用户不存在");
@@ -187,13 +224,18 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
                 insertUserPost(existUser.getId(), dto.getPostIds());
             }
         }
+
+        // 角色或状态变了就撤销会话：Redis 里的权限快照只在登录时写入，不撤销等于改了不生效
+        if (dto.getRoleIds() != null || dto.getStatus() != null) {
+            onlineSessionService.revokeByUserId(existUser.getId());
+        }
         return 1;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteById(Long id) {
-        if (id == 1L) {
+        if (isSuperAdmin(id)) {
             throw new BusinessException("不允许删除超级管理员");
         }
         if (id.equals(SecurityContextHolder.getUserId())) {
@@ -202,6 +244,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         deleteUserRole(id);
         deleteUserPost(id);
         removeById(id);
+        onlineSessionService.revokeByUserId(id);
         return 1;
     }
 
@@ -218,6 +261,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
 
     @Override
     public void resetPwd(Long userId, String password) {
+        assertSuperAdminOperable(userId);
         PasswordUtil.validate(password);
         SysUserPo po = new SysUserPo();
         po.setId(userId);
@@ -225,17 +269,22 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         po.setPwdUpdateTime(java.time.LocalDateTime.now());
         po.setPwdResetFlag(1);
         updateById(po);
+        onlineSessionService.revokeByUserId(userId);
     }
 
     @Override
     public void updateUserStatus(Long userId, Integer status) {
-        if (userId == 1L && status == 1) {
+        assertSuperAdminOperable(userId);
+        if (isSuperAdmin(userId) && status != null && status == STATUS_DISABLED) {
             throw new BusinessException("不允许停用超级管理员");
         }
         SysUserPo po = new SysUserPo();
         po.setId(userId);
         po.setStatus(status);
         updateById(po);
+        if (status != null && status == STATUS_DISABLED) {
+            onlineSessionService.revokeByUserId(userId);
+        }
     }
 
     @Override
@@ -375,14 +424,66 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         sysUserMapper.updateById(user);
     }
 
+    // ==================== 超级管理员保护 ====================
+
+    private boolean isSuperAdmin(Long userId) {
+        return userId != null && userId == SUPER_ADMIN_USER_ID;
+    }
+
+    /**
+     * 超级管理员只能由超级管理员本人操作。
+     *
+     * <p>与 {@code deleteById} 的「不允许删除超级管理员」、{@code updateUserStatus} 的
+     * 「不允许停用超级管理员」同属一批规则，此前 {@code resetPwd} / {@code update} 两个入口漏掉了：
+     * 只要持有 {@code system:user:resetPwd} 就能改掉 1 号超管密码并登录，等于拿下整个平台。
+     */
+    private void assertSuperAdminOperable(Long targetUserId) {
+        if (isSuperAdmin(targetUserId) && !SecurityContextHolder.isAdmin()) {
+            throw new BusinessException("不允许操作超级管理员");
+        }
+    }
+
     // ==================== 关联表操作 ====================
 
     private void insertUserRole(Long userId, Set<Long> roleIds) {
         if (roleIds == null || roleIds.isEmpty()) {
             return;
         }
+        assertRolesInCurrentTenant(roleIds);
         for (Long roleId : roleIds) {
             userRoleMapper.insert(new SysUserRolePo(userId, roleId));
+        }
+    }
+
+    /**
+     * 校验角色都属于当前租户。
+     *
+     * <p>{@code sys_user_role} 被排除出租户过滤（表上没有 tenant_id 列），跨租户绑定的防线
+     * 全在应用层，而此前拿到 ID 就直接 insert。这里按 ID 反查 {@code sys_role}——该表本身受
+     * 租户插件过滤，查不到即说明不属于当前租户。
+     */
+    private void assertRolesInCurrentTenant(Set<Long> roleIds) {
+        if (SecurityContextHolder.isAdmin()) {
+            return;
+        }
+        long visible = roleMapper.selectCount(
+                new LambdaQueryWrapper<SysRolePo>().in(SysRolePo::getId, roleIds));
+        if (visible != roleIds.size()) {
+            throw new BusinessException("存在不属于当前租户的角色，无法分配");
+        }
+    }
+
+    /**
+     * 校验岗位都属于当前租户，理由同 {@link #assertRolesInCurrentTenant(Set)}。
+     */
+    private void assertPostsInCurrentTenant(Set<Long> postIds) {
+        if (SecurityContextHolder.isAdmin()) {
+            return;
+        }
+        long visible = postMapper.selectCount(
+                new LambdaQueryWrapper<SysPostPo>().in(SysPostPo::getId, postIds));
+        if (visible != postIds.size()) {
+            throw new BusinessException("存在不属于当前租户的岗位，无法分配");
         }
     }
 
@@ -396,6 +497,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         if (postIds == null || postIds.isEmpty()) {
             return;
         }
+        assertPostsInCurrentTenant(postIds);
         for (Long postId : postIds) {
             userPostMapper.insert(new SysUserPostPo(userId, postId));
         }
@@ -408,20 +510,51 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     }
 
     @Override
-    public List<java.util.Map<String, Object>> selectSimpleUserList() {
-        List<SysUserPo> users = sysUserMapper.selectList(
-                new LambdaQueryWrapper<SysUserPo>()
-                        .eq(SysUserPo::getStatus, 0)
-                        .select(SysUserPo::getId, SysUserPo::getNickname, SysUserPo::getPhone, SysUserPo::getEmail)
-                        .orderByAsc(SysUserPo::getNickname)
-        );
-        return users.stream().map(u -> {
-            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
-            map.put("userId", u.getId());
-            map.put("nickname", u.getNickname());
-            map.put("phone", u.getPhone());
-            map.put("email", u.getEmail());
-            return map;
-        }).toList();
+    public List<SimpleUserVo> selectSimpleUserList(String keyword) {
+        boolean contactVisible = canViewContact();
+
+        LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getStatus, 0);
+        if (HanStrUtil.isNotBlank(keyword)) {
+            String trimmed = keyword.trim();
+            wrapper.and(w -> w.like(SysUserPo::getNickname, trimmed).or().like(SysUserPo::getUsername, trimmed));
+        }
+        if (contactVisible) {
+            wrapper.select(SysUserPo::getId, SysUserPo::getNickname, SysUserPo::getPhone, SysUserPo::getEmail);
+        } else {
+            wrapper.select(SysUserPo::getId, SysUserPo::getNickname);
+        }
+        wrapper.orderByAsc(SysUserPo::getNickname).last("LIMIT " + SIMPLE_LIST_MAX_ROWS);
+
+        return sysUserMapper.selectList(wrapper).stream()
+                .map(u -> SimpleUserVo.builder()
+                        .userId(u.getId())
+                        .nickname(u.getNickname())
+                        .phone(contactVisible ? u.getPhone() : null)
+                        .email(contactVisible ? u.getEmail() : null)
+                        .build())
+                .toList();
+    }
+
+    /**
+     * 下拉接口是否可以下发联系方式。
+     *
+     * <p>部门维护页需要用负责人的真实手机号/邮箱回填部门联系方式，因此对具备
+     * 用户查询或部门维护权限的调用方保留明文；其余已登录用户只能拿到昵称。
+     */
+    private boolean canViewContact() {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        if (user == null) {
+            return false;
+        }
+        if (user.isAdmin()) {
+            return true;
+        }
+        for (String permission : CONTACT_VISIBLE_PERMISSIONS) {
+            if (user.hasPermission(permission)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

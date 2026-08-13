@@ -22,8 +22,8 @@ ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS status SMALLINT DEFAULT 0;
 ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS remark VARCHAR(500);
 ALTER TABLE sys_dict_data ADD COLUMN IF NOT EXISTS del_flag SMALLINT DEFAULT 0;
 
-UPDATE sys_dict_type SET del_flag = COALESCE(del_flag, 0);
-UPDATE sys_dict_data SET del_flag = COALESCE(del_flag, 0);
+UPDATE sys_dict_type SET del_flag = 0 WHERE del_flag IS NULL;
+UPDATE sys_dict_data SET del_flag = 0 WHERE del_flag IS NULL;
 
 CREATE TEMP TABLE IF NOT EXISTS tmp_ai_target_tenants (
     tenant_id BIGINT PRIMARY KEY

@@ -11,24 +11,49 @@ public final class GenUtils {
     private GenUtils() {}
 
     /**
-     * PostgreSQL 列类型 → Java 类型
+     * PostgreSQL / MySQL 列类型 → Java 类型。
+     *
+     * <p>PostgreSQL 侧入参是 {@code format_type(atttypid, atttypmod)} 的结果，形如
+     * {@code character varying(64)}、{@code timestamp with time zone}、{@code integer[]}；
+     * MySQL 侧入参是 {@code information_schema.columns.column_type}，形如
+     * {@code datetime}、{@code longblob}、{@code tinyint(1)}。两种来源都走这一份映射。
+     *
+     * <p>带时区的类型必须先于不带时区的判断，否则时区语义会被 {@code LocalDateTime} 静默吃掉。
      */
     public static String dbTypeToJavaType(String columnType) {
         if (columnType == null) return "String";
         String type = columnType.toLowerCase().trim();
 
+        // 数组类型没有开箱可用的 TypeHandler，先按字符串落地并在 PO 上提示需要自定义处理
+        if (isArrayType(type)) return "String";
+
         if (type.startsWith("bigint") || type.startsWith("int8")) return "Long";
-        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2") || type.startsWith("smallint")) return "Integer";
+        if (type.startsWith("integer") || type.startsWith("int4") || type.startsWith("int2")
+                || type.startsWith("smallint") || type.startsWith("mediumint")
+                || type.startsWith("tinyint") || type.startsWith("int")) return "Integer";
         if (type.startsWith("numeric") || type.startsWith("decimal")) return "BigDecimal";
         if (type.startsWith("real") || type.startsWith("float4")) return "Float";
         if (type.startsWith("double") || type.startsWith("float8")) return "Double";
         if (type.startsWith("boolean") || type.startsWith("bool")) return "Boolean";
-        if (type.startsWith("timestamp")) return "LocalDateTime";
+        if (type.startsWith("timestamp with time zone") || type.startsWith("timestamptz")) return "OffsetDateTime";
+        // MySQL 的 datetime 无时区，与 PostgreSQL 不带时区的 timestamp 同语义
+        if (type.startsWith("timestamp") || type.startsWith("datetime")) return "LocalDateTime";
         if (type.startsWith("date")) return "LocalDate";
+        if (type.startsWith("time with time zone") || type.startsWith("timetz")) return "OffsetTime";
         if (type.startsWith("time")) return "LocalTime";
-        if (type.startsWith("bytea")) return "byte[]";
-        if (type.startsWith("json") || type.startsWith("jsonb")) return "String";
+        // bytea 是 PostgreSQL 口径，blob / binary 系列是 MySQL 口径
+        if (type.startsWith("bytea") || type.contains("blob") || type.contains("binary")) return "byte[]";
+        // uuid / json / jsonb / inet / interval 等按文本落地，两种驱动都可直接读写字符串
         return "String";
+    }
+
+    /**
+     * PostgreSQL 数组类型：{@code integer[]} 这种 format_type 形式，或 {@code _int4} 这种内部名
+     */
+    public static boolean isArrayType(String columnType) {
+        if (columnType == null) return false;
+        String type = columnType.toLowerCase().trim();
+        return type.endsWith("[]") || type.startsWith("_");
     }
 
     /**
@@ -87,16 +112,24 @@ public final class GenUtils {
                 .javaType(dbTypeToJavaType(col.getColumnType()))
                 .javaField(columnNameToJavaField(col.getColumnName()))
                 .isPk("PRI".equals(col.getColumnKey()) ? 1 : 0)
-                .isIncrement(0)
+                .isIncrement(isIncrementColumn(col) ? 1 : 0)
                 .isRequired("NO".equals(col.getIsNullable()) ? 1 : 0)
                 .isInsert(isInsertColumn(col) ? 1 : 0)
                 .isEdit(isEditColumn(col) ? 1 : 0)
                 .isList(isListColumn(col) ? 1 : 0)
                 .isQuery(isQueryColumn(col) ? 1 : 0)
-                .queryType("EQ")
+                .queryType(guessQueryType(col))
                 .htmlType(guessHtmlType(col))
                 .sort(sort)
                 .build();
+    }
+
+    /**
+     * PostgreSQL 的 serial / identity 列，默认值形如 nextval('xxx_id_seq'::regclass)
+     */
+    private static boolean isIncrementColumn(DbColumnInfo col) {
+        String def = col.getColumnDefault();
+        return def != null && def.toLowerCase().contains("nextval(");
     }
 
     private static boolean isInsertColumn(DbColumnInfo col) {
@@ -120,12 +153,31 @@ public final class GenUtils {
         return name.contains("name") || name.contains("title") || "status".equals(name) || name.contains("type");
     }
 
+    /**
+     * 查询方式推断：时间列按区间查，名称类文本按模糊查，其余按等值查
+     */
+    private static String guessQueryType(DbColumnInfo col) {
+        String javaType = dbTypeToJavaType(col.getColumnType());
+        if (isDateType(javaType)) return "BETWEEN";
+        String name = col.getColumnName();
+        if ("String".equals(javaType) && (name.contains("name") || name.contains("title") || name.contains("code"))) {
+            return "LIKE";
+        }
+        return "EQ";
+    }
+
     private static String guessHtmlType(DbColumnInfo col) {
         String javaType = dbTypeToJavaType(col.getColumnType());
         String name = col.getColumnName();
-        if ("LocalDateTime".equals(javaType) || "LocalDate".equals(javaType)) return "datetime";
+        if (isDateType(javaType)) return "datetime";
         if (name.contains("content") || name.contains("remark")) return "textarea";
         if (name.contains("status") || name.contains("type") || name.contains("sex")) return "select";
         return "input";
+    }
+
+    /** 日期时间类 Java 类型，查询按区间、表单用日期控件 */
+    public static boolean isDateType(String javaType) {
+        return "LocalDateTime".equals(javaType) || "LocalDate".equals(javaType)
+                || "OffsetDateTime".equals(javaType);
     }
 }

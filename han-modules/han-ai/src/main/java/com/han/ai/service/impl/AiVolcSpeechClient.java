@@ -18,8 +18,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Volcengine Doubao speech (TTS) client. The Volcengine speech protocol differs from the
- * OpenAI-compatible endpoints used for chat/image/video, so it is implemented as a dedicated client.
+ * 火山引擎豆包语音（TTS）客户端。火山的语音协议与 chat/image/video 所用的
+ * OpenAI 兼容接口不同，因此单独实现为一个专用客户端。
  */
 @Slf4j
 @Component

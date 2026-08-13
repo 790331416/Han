@@ -4,7 +4,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
 /**
- * Database connection properties for runtime storage configuration lookup.
+ * 运行期存储配置查询所用的数据库连接参数。
  */
 public final class StorageDatabaseProperties {
 

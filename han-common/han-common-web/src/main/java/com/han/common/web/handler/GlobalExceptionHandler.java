@@ -10,14 +10,18 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
-import org.springframework.validation.FieldError;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.ObjectError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -72,10 +76,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public R<Void> handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .collect(Collectors.joining(", "));
-        return R.fail(message);
+        return R.fail(resolveBindingMessage(e.getBindingResult()));
     }
 
     /**
@@ -83,10 +84,49 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(BindException.class)
     public R<Void> handleBindException(BindException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
+        return R.fail(resolveBindingMessage(e.getBindingResult()));
+    }
+
+    /**
+     * 汇总校验错误。
+     * <p>用 {@code getAllErrors} 而不是 {@code getFieldErrors}：类级约束（例如「开始时间必须早于
+     * 结束时间」这种跨字段校验）产生的是 global error，只读字段级错误会得到空串，
+     * 前端弹出一个空白提示。同时过滤 null 消息，避免拼出字面量 "null"。
+     */
+    private static String resolveBindingMessage(BindingResult bindingResult) {
+        String message = bindingResult.getAllErrors().stream()
+                .map(ObjectError::getDefaultMessage)
+                .filter(msg -> msg != null && !msg.isBlank())
                 .collect(Collectors.joining(", "));
-        return R.fail(message);
+        return message.isBlank() ? "参数校验失败" : message;
+    }
+
+    /**
+     * 请求体 JSON 格式错误
+     * <p>纯客户端错误，按 warn 记录且不打堆栈 —— 这是最容易被外部刷爆 ERROR 日志的入口。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public R<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException e,
+                                                         HttpServletRequest request) {
+        log.warn("请求体解析失败: {} - {}", request.getRequestURI(), e.getMessage());
+        return R.fail("请求体格式错误，请检查 JSON 结构");
+    }
+
+    /**
+     * Content-Type 不支持
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public R<Void> handleHttpMediaTypeNotSupportedException(HttpMediaTypeNotSupportedException e) {
+        return R.fail("不支持的请求内容类型: " + e.getContentType());
+    }
+
+    /**
+     * 上传文件超限
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public R<Void> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
+        log.warn("上传文件超过大小限制: {}", e.getMaxUploadSize());
+        return R.fail("上传文件超过大小限制");
     }
 
     /**

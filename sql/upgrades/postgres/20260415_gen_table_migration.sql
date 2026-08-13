@@ -68,10 +68,12 @@ CREATE INDEX IF NOT EXISTS idx_gen_table_column_table_id ON gen_table_column(tab
 
 DO $$
 BEGIN
+    -- conname 在不同 schema / 不同表上可以重名，必须同时限定 conrelid
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
         WHERE conname = 'fk_gen_table_column_table_id'
+          AND conrelid = 'public.gen_table_column'::regclass
     ) THEN
         ALTER TABLE gen_table_column
             ADD CONSTRAINT fk_gen_table_column_table_id

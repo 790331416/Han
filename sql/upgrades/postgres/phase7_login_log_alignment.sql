@@ -43,3 +43,29 @@ END $$;
 
 ALTER TABLE sys_login_log
     ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT '';
+
+-- 20260812 补充：新旧列并存时把历史数据搬到新列
+-- 上面的 RENAME 只在「旧列存在且新列不存在」时触发；两列同时存在时旧列里的历史
+-- 登录记录会被永久孤立，管理端只读新列。
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_login_log' AND column_name = 'ipaddr'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_login_log' AND column_name = 'ip_addr'
+    ) THEN
+        EXECUTE 'UPDATE sys_login_log SET ip_addr = ipaddr WHERE COALESCE(ip_addr, '''') = '''' AND COALESCE(ipaddr, '''') <> ''''';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_login_log' AND column_name = 'msg'
+    ) AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'sys_login_log' AND column_name = 'message'
+    ) THEN
+        EXECUTE 'UPDATE sys_login_log SET message = msg WHERE COALESCE(message, '''') = '''' AND COALESCE(msg, '''') <> ''''';
+    END IF;
+END $$;

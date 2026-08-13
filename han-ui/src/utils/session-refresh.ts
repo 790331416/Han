@@ -253,12 +253,16 @@ function applyPersistedSession(
     return
   }
 
+  /**
+   * 访问令牌只写 `utils/auth.ts` 的显式键，不再回写持久化 Store。
+   * 持久化里只保留调试身份锚点，避免令牌出现第二个来源被复活。
+   */
   const persistedState = readPersistedUserStore()
+  delete persistedState.token
   window.localStorage.setItem(
     PERSISTED_USER_STORE_KEY,
     JSON.stringify({
       ...persistedState,
-      token: accessToken,
       _userId: runtimeUserId ?? null
     })
   )
@@ -275,7 +279,10 @@ function getPersistedRuntimeUserId(): string | number | null {
 }
 
 /** 读取 localStorage 中持久化的用户状态，解析失败时按空对象处理。 */
-function readPersistedUserStore(): Record<string, unknown> & { _userId?: string | number | null } {
+function readPersistedUserStore(): Record<string, unknown> & {
+  _userId?: string | number | null
+  token?: string
+} {
   if (typeof window === 'undefined') {
     return {}
   }

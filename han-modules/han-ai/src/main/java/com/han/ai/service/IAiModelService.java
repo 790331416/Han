@@ -7,12 +7,12 @@ import com.han.common.core.domain.PageResult;
 import java.util.List;
 
 /**
- * AI model service.
+ * AI 模型服务。
  */
 public interface IAiModelService {
 
     /**
-     * Query paged model list.
+     * 分页查询模型列表。
      *
      * @param query query params
      * @return page result
@@ -20,7 +20,7 @@ public interface IAiModelService {
     PageResult<AiModelPo> selectPage(AiModelQuery query);
 
     /**
-     * Query model detail.
+     * 查询模型详情。
      *
      * @param modelId model id
      * @return model detail
@@ -28,7 +28,7 @@ public interface IAiModelService {
     AiModelPo selectById(Long modelId);
 
     /**
-     * Query all enabled models.
+     * 查询全部已启用的模型。
      *
      * @param modelType model type filter
      * @return model list
@@ -36,28 +36,28 @@ public interface IAiModelService {
     List<AiModelPo> selectAll(String modelType);
 
     /**
-     * Insert model.
+     * 新增模型。
      *
      * @param model model data
      */
     void insert(AiModelPo model);
 
     /**
-     * Update model.
+     * 修改模型。
      *
      * @param model model data
      */
     void update(AiModelPo model);
 
     /**
-     * Delete model by id.
+     * 按主键删除模型。
      *
      * @param modelId model id
      */
     void deleteById(Long modelId);
 
     /**
-     * Validate model config.
+     * 校验模型配置连通性。
      *
      * @param modelId model id
      * @return test result message

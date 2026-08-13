@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 
 /**
- * AI agent service implementation.
+ * AI 智能体服务实现。
  */
 @Service
 @RequiredArgsConstructor
@@ -230,22 +230,28 @@ public class AiAgentServiceImpl extends AiServiceSupport implements IAiAgentServ
         }
     }
 
+    /**
+     * 合并请求体到库内现值：未提交的字段保持原样（见 {@link AiServiceSupport#copyIfPresent}）。
+     */
     private void copyEditableFields(AiAgentPo source, AiAgentPo target) {
-        target.setAgentName(source.getAgentName());
-        target.setDescription(source.getDescription());
-        target.setAvatar(source.getAvatar());
-        target.setSystemPrompt(source.getSystemPrompt());
-        target.setPrologue(source.getPrologue());
-        target.setSuggestedQuestions(source.getSuggestedQuestions());
-        target.setModelId(source.getModelId());
-        target.setKnowledgeBaseIds(source.getKnowledgeBaseIds());
-        target.setMcpServerIds(source.getMcpServerIds());
-        target.setTemperature(source.getTemperature());
-        target.setMaxTokens(source.getMaxTokens());
+        copyIfPresent(source.getAgentName(), target::setAgentName);
+        copyIfPresent(source.getDescription(), target::setDescription);
+        copyIfPresent(source.getAvatar(), target::setAvatar);
+        copyIfPresent(source.getSystemPrompt(), target::setSystemPrompt);
+        copyIfPresent(source.getPrologue(), target::setPrologue);
+        copyIfPresent(source.getSuggestedQuestions(), target::setSuggestedQuestions);
+        copyIfPresent(source.getModelId(), target::setModelId);
+        copyIfPresent(source.getKnowledgeBaseIds(), target::setKnowledgeBaseIds);
+        copyIfPresent(source.getMcpServerIds(), target::setMcpServerIds);
+        copyIfPresent(source.getTemperature(), target::setTemperature);
+        copyIfPresent(source.getMaxTokens(), target::setMaxTokens);
+        // 以下三个调参列声明为 FieldStrategy.ALWAYS，NULL 即恢复默认（编辑页「留空按默认」）。
+        // 保留无条件回写以守住显式置空能力；代价是这三个字段不支持部分提交，
+        // 新增部分更新调用方时必须整体带上它们。
         target.setHistoryLimit(source.getHistoryLimit());
         target.setRetrievalTopK(source.getRetrievalTopK());
         target.setSimilarityThreshold(source.getSimilarityThreshold());
-        target.setStatus(source.getStatus());
+        copyIfPresent(source.getStatus(), target::setStatus);
     }
 
     private void normalize(AiAgentPo agent) {

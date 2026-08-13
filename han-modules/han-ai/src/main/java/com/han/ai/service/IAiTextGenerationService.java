@@ -6,12 +6,12 @@ import com.han.api.ai.domain.AiTextGenerateResponse;
 import java.util.function.Consumer;
 
 /**
- * Internal text generation service.
+ * 内部文本生成服务。
  */
 public interface IAiTextGenerationService {
 
     /**
-     * Generate text by configured model and prompt.
+     * 按已配置的模型与提示词生成文本。
      *
      * @param request generation request
      * @return generation response
@@ -19,7 +19,7 @@ public interface IAiTextGenerationService {
     AiTextGenerateResponse generate(AiTextGenerateRequest request);
 
     /**
-     * Generate text by streaming provider chunks.
+     * 以流式方式逐块返回供应商生成的文本。
      *
      * @param request generation request
      * @param deltaConsumer chunk callback
@@ -28,7 +28,7 @@ public interface IAiTextGenerationService {
     AiTextGenerateResponse stream(AiTextGenerateRequest request, Consumer<String> deltaConsumer);
 
     /**
-     * Render the effective user prompt without invoking a model.
+     * 只渲染最终的用户提示词，不调用模型。
      *
      * @param request generation request
      * @return rendered prompt

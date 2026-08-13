@@ -21,7 +21,7 @@
       <template #header>
         <div class="card-header">
           <span>MCP服务管理</span>
-          <el-button type="primary" :icon="Plus" data-testid="ai-mcp-create-button" @click="handleAdd">新增MCP服务</el-button>
+          <el-button v-hasPermi="['ai:mcp:add']" type="primary" :icon="Plus" data-testid="ai-mcp-create-button" @click="handleAdd">新增MCP服务</el-button>
         </div>
       </template>
 
@@ -65,10 +65,10 @@
             >
               测试连接
             </el-button>
-            <el-button type="success" link data-testid="ai-mcp-refresh-button" @click="handleRefresh(row)">刷新工具</el-button>
+            <el-button v-hasPermi="['ai:mcp:edit']" type="success" link data-testid="ai-mcp-refresh-button" @click="handleRefresh(row)">刷新工具</el-button>
             <el-button type="info" link data-testid="ai-mcp-view-tools-button" @click="handleViewTools(row)">查看工具</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-hasPermi="['ai:mcp:edit']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-hasPermi="['ai:mcp:remove']" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -205,8 +205,13 @@ const resetQuery = () => { queryFormRef.value?.resetFields(); handleQuery() }
 const handleAdd = () => { Object.assign(form, defaultForm()); dialogVisible.value = true }
 
 const handleEdit = async (row: McpServer) => {
-  const res = await getMcpServer(row.mcpId)
-  Object.assign(form, res.data)
+  try {
+    const res = await getMcpServer(row.mcpId)
+    Object.assign(form, res.data)
+  } catch {
+    // 详情拉取失败时不要静默不开对话框（错误文案由拦截器弹出）
+    return
+  }
   dialogVisible.value = true
 }
 

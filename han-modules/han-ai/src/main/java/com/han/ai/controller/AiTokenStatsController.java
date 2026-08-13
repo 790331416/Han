@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Token statistics controller.
+ * Token 用量统计控制器。
  */
 @AdminAuth
 @RestController
@@ -24,7 +24,7 @@ public class AiTokenStatsController {
     private final IAiTokenStatsService aiTokenStatsService;
 
     /**
-     * Query token stats by model.
+     * 按模型维度查询 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time
@@ -37,7 +37,7 @@ public class AiTokenStatsController {
     }
 
     /**
-     * Query token stats by user.
+     * 按用户维度查询 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time
@@ -50,7 +50,7 @@ public class AiTokenStatsController {
     }
 
     /**
-     * Query token stats by day.
+     * 按天维度查询 Token 用量。
      *
      * @param startTime start time
      * @param endTime end time

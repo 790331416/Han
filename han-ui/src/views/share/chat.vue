@@ -39,12 +39,14 @@
           </el-button>
         </div>
         <div
-          v-for="(msg, idx) in messages"
-          :key="idx"
+          v-for="msg in messages"
+          :key="msg.key"
           class="share-message"
           :class="msg.role"
         >
-          <div class="bubble">{{ msg.content }}</div>
+          <!-- 与主对话页一致的 markdown 渲染：净化器已强制 rel="noopener noreferrer"，对外场景安全 -->
+          <div v-if="msg.role === 'assistant'" class="bubble markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-else class="bubble">{{ msg.content }}</div>
         </div>
         <div v-if="sending" class="share-message assistant">
           <div class="bubble bubble-loading">
@@ -83,17 +85,36 @@ import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Promotion } from '@element-plus/icons-vue'
+import { marked } from 'marked'
 import { getShareProfile, shareChat, type ShareProfile, type ShareChatHistoryItem } from '@/api/ai'
+import { sanitizeHtml } from '@/utils/sanitize-html'
 
 const route = useRoute()
 const shareKey = String(route.params.shareKey || '')
 
+/** 分享页消息：`key` 是稳定标识，避免用数组下标做 key —— 失败回滚 pop 后会导致 DOM 复用错位。 */
+interface ShareMessageItem extends ShareChatHistoryItem {
+  key: string
+}
+
 const profile = ref<ShareProfile | null>(null)
 const notFound = ref(false)
-const messages = ref<ShareChatHistoryItem[]>([])
+const messages = ref<ShareMessageItem[]>([])
 const inputMessage = ref('')
 const sending = ref(false)
 const messageListRef = ref<HTMLElement>()
+
+let messageSeq = 0
+const nextMessageKey = () => `m-${++messageSeq}`
+
+function renderMarkdown(content: string): string {
+  if (!content) return ''
+  try {
+    return sanitizeHtml(marked.parse(content, { breaks: true, gfm: true }) as string)
+  } catch {
+    return sanitizeHtml(content)
+  }
+}
 
 const scrollToBottom = () => {
   void nextTick(() => {
@@ -140,15 +161,18 @@ const handleSend = async () => {
   const message = inputMessage.value.trim()
   if (!message || sending.value) return
   inputMessage.value = ''
-  messages.value.push({ role: 'user', content: message })
+  messages.value.push({ key: nextMessageKey(), role: 'user', content: message })
   scrollToBottom()
   sending.value = true
   try {
     // 无状态接口：随请求携带最近 10 轮历史（不含刚发送的这条）
-    const history = messages.value.slice(0, -1).slice(-20)
+    const history: ShareChatHistoryItem[] = messages.value
+      .slice(0, -1)
+      .slice(-20)
+      .map(({ role, content }) => ({ role, content }))
     const res = await shareChat(shareKey, message, history)
     const reply = (res as any).data?.reply || ''
-    messages.value.push({ role: 'assistant', content: reply || '(无回复内容)' })
+    messages.value.push({ key: nextMessageKey(), role: 'assistant', content: reply || '(无回复内容)' })
   } catch (e: any) {
     messages.value.pop()
     inputMessage.value = message
@@ -253,6 +277,26 @@ onMounted(() => {
   &.user .bubble {
     background: #409eff;
     color: #fff;
+  }
+
+  // markdown 渲染后由标签自己控制排版，不能再保留纯文本的 pre-wrap
+  .bubble.markdown-body {
+    white-space: normal;
+
+    :deep(p) { margin: 0 0 8px; &:last-child { margin-bottom: 0; } }
+    :deep(ul), :deep(ol) { margin: 0 0 8px; padding-left: 20px; }
+    :deep(pre) {
+      margin: 8px 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: #f5f7fa;
+      overflow-x: auto;
+    }
+    :deep(code) { font-family: 'Fira Code', Consolas, monospace; font-size: 13px; }
+    :deep(table) { border-collapse: collapse; width: 100%; margin: 8px 0; }
+    :deep(th), :deep(td) { border: 1px solid #e4e7ed; padding: 6px 8px; }
+    :deep(img) { max-width: 100%; }
+    :deep(a) { color: #409eff; word-break: break-all; }
   }
 }
 

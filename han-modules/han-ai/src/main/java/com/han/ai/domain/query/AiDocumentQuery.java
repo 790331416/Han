@@ -3,7 +3,7 @@ package com.han.ai.domain.query;
 import lombok.Data;
 
 /**
- * Document query.
+ * 文档查询条件。
  */
 @Data
 public class AiDocumentQuery {

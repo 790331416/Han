@@ -1,7 +1,7 @@
 package com.han.starter.storage.config;
 
 /**
- * Storage configuration record with a stable locator.
+ * 带稳定定位符的存储配置记录。
  */
 public final class StorageConfigRecord {
 

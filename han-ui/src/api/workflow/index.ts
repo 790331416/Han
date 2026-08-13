@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import service, { get, post } from '@/utils/request'
 import type { PageResult, PageQuery } from '@/types'
 
 // ===================== 流程定义 =====================
@@ -36,9 +36,10 @@ export function deployProcessDefinition(data: FormData) {
   })
 }
 
-// 部署流程定义(XML)
+// 部署流程定义(XML)。name/category 必须转义，否则含 & # 的名称会打乱查询串
 export function deployProcessDefinitionXml(name: string, category: string, bpmnXml: string) {
-  return post<void>(`/workflow/definition/deployXml?name=${name}&category=${category}`, bpmnXml, {
+  const query = `name=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`
+  return post<void>(`/workflow/definition/deployXml?${query}`, bpmnXml, {
     headers: { 'Content-Type': 'text/plain' }
   })
 }
@@ -61,6 +62,35 @@ export function deleteProcessDefinition(deploymentId: string, cascade: boolean =
 // 获取流程定义XML
 export function getProcessDefinitionXml(processDefinitionId: string) {
   return get<string>(`/workflow/definition/xml/${processDefinitionId}`)
+}
+
+/**
+ * 获取流程图 PNG。
+ *
+ * 该接口要求 workflow:definition:query 权限，必须走 axios 带上 Authorization 头再转 blob，
+ * 不能直接把地址塞给 <img src>（浏览器发的图片请求不带鉴权头，必定 401）。
+ */
+export async function fetchProcessDefinitionDiagram(processDefinitionId: string): Promise<Blob> {
+  const response: any = await service({
+    url: `/workflow/definition/diagram/${encodeURIComponent(processDefinitionId)}`,
+    method: 'GET',
+    responseType: 'blob',
+    silentError: true
+  })
+  const blob = response?.data as Blob
+  if (!blob) {
+    throw new Error('流程图加载失败')
+  }
+  // 后端抛业务异常时 HTTP 仍是 200，body 是 R 包装的 JSON 而不是图片，必须识别出来
+  if (blob.type && blob.type.includes('application/json')) {
+    let message = '流程图加载失败'
+    try {
+      const parsed = JSON.parse(await blob.text())
+      message = parsed?.msg || parsed?.message || message
+    } catch { /* 不是合法 JSON，用默认提示 */ }
+    throw new Error(message)
+  }
+  return blob
 }
 
 // ===================== 流程实例 =====================
@@ -157,6 +187,8 @@ export interface TaskCompleteForm {
   taskId: string
   variables?: Record<string, any>
   comment?: string
+  /** 审批结论：pass 通过 / reject 驳回 / return 退回，后端写成 result 流程变量 */
+  result?: string
 }
 
 // 待办任务列表
@@ -184,8 +216,8 @@ export function delegateTask(taskId: string, userId: string) {
   return post<void>('/workflow/task/delegate', { taskId, userId })
 }
 
-// 撤回任务
-export function revokeTask(taskId: string) {
+// 取消签收（后端 /revoke 内部执行的是 Flowable unclaim，即清空 assignee，不是流程回退）
+export function unclaimTask(taskId: string) {
   return post<void>(`/workflow/task/revoke/${taskId}`)
 }
 

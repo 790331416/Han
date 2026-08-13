@@ -1,191 +1,191 @@
-# JobFlow Ç¨ÒÆ²¿ÊğÎÄµµ
+# JobFlow è¿ç§»éƒ¨ç½²æ–‡æ¡£
 
-## ¸ÅÊö
+## æ¦‚è¿°
 
-±¾´Î±ä¸ü½« `han-job` Ä£¿éµÄµ÷¶È¿ò¼Ü´Ó **Quartz** Ìæ»»Îª×ÔÑĞµÄ **JobFlow** ÇáÁ¿¼¶µ÷¶È¿ò¼Ü¡£
+æœ¬æ¬¡å˜æ›´å°† `han-job` æ¨¡å—çš„è°ƒåº¦æ¡†æ¶ä» **Quartz** æ›¿æ¢ä¸ºè‡ªç ”çš„ **JobFlow** è½»é‡çº§è°ƒåº¦æ¡†æ¶ã€‚
 
-### ±ä¸ü·¶Î§
+### å˜æ›´èŒƒå›´
 
-| ±ä¸üÏî | ËµÃ÷ |
+| å˜æ›´é¡¹ | è¯´æ˜ |
 |--------|------|
-| µ÷¶ÈÒıÇæ | Quartz ¡ú JobFlow£¨×ÔÑĞ£© |
-| ÒÀÀµ±ä»¯ | ÒÆ³ı `spring-boot-starter-quartz` |
-| Êı¾İ¿â±ä»¯ | É¾³ı `qrtz_*` ±í£¬`sys_job` ĞÂÔö 2 ¸ö×Ö¶Î |
-| ÅäÖÃ±ä»¯ | ÒÆ³ı Quartz YAML ÅäÖÃ£¬ĞÂÔö JobFlow ÅäÖÃ |
+| è°ƒåº¦å¼•æ“ | Quartz â†’ JobFlowï¼ˆè‡ªç ”ï¼‰ |
+| ä¾èµ–å˜åŒ– | ç§»é™¤ `spring-boot-starter-quartz` |
+| æ•°æ®åº“å˜åŒ– | åˆ é™¤ `qrtz_*` è¡¨ï¼Œ`sys_job` æ–°å¢ 2 ä¸ªå­—æ®µ |
+| é…ç½®å˜åŒ– | ç§»é™¤ Quartz YAML é…ç½®ï¼Œæ–°å¢ JobFlow é…ç½® |
 
 ---
 
-## Ò»¡¢Êı¾İ¿â±ä¸ü
+## ä¸€ã€æ•°æ®åº“å˜æ›´
 
-### 1.1 Ö´ĞĞ SQL ½Å±¾
+### 1.1 æ‰§è¡Œ SQL è„šæœ¬
 
-ÔÚ PostgreSQL ÖĞÖ´ĞĞ `sql/jobflow_migration.sql`£º
+åœ¨ PostgreSQL ä¸­æ‰§è¡Œ `sql/jobflow_migration.sql`ï¼š
 
 ```bash
 psql -U han -d han -f sql/jobflow_migration.sql
 ```
 
-### 1.2 ±ä¸üÃ÷Ï¸
+### 1.2 å˜æ›´æ˜ç»†
 
-**ĞÂÔö×Ö¶Î£º**
+**æ–°å¢å­—æ®µï¼š**
 
-| ±íÃû | ×Ö¶ÎÃû | ÀàĞÍ | ËµÃ÷ |
+| è¡¨å | å­—æ®µå | ç±»å‹ | è¯´æ˜ |
 |------|--------|------|------|
-| sys_job | service_name | VARCHAR(100) | Ö´ĞĞÆ÷·şÎñÃû£¨Nacos ×¢²áÃû£¬Ô¶³Ìµ÷ÓÃÊ±Ê¹ÓÃ£© |
-| sys_job | handler | VARCHAR(100) | Ö´ĞĞÆ÷´¦Àí·½·¨Â·¾¶£¨Ô¶³Ìµ÷ÓÃÊ±Ê¹ÓÃ£© |
+| sys_job | service_name | VARCHAR(100) | æ‰§è¡Œå™¨æœåŠ¡åï¼ˆNacos æ³¨å†Œåï¼Œè¿œç¨‹è°ƒç”¨æ—¶ä½¿ç”¨ï¼‰ |
+| sys_job | handler | VARCHAR(100) | æ‰§è¡Œå™¨å¤„ç†æ–¹æ³•è·¯å¾„ï¼ˆè¿œç¨‹è°ƒç”¨æ—¶ä½¿ç”¨ï¼‰ |
 
-**É¾³ı±í£º**
+**åˆ é™¤è¡¨ï¼š**
 
-ËùÓĞ `qrtz_` Ç°×ºµÄ Quartz ±í£¨¹² 11 ÕÅ£©¡£
+æ‰€æœ‰ `qrtz_` å‰ç¼€çš„ Quartz è¡¨ï¼ˆå…± 11 å¼ ï¼‰ã€‚
 
 ---
 
-## ¶ş¡¢´úÂë±ä¸ü
+## äºŒã€ä»£ç å˜æ›´
 
-### 2.1 É¾³ıµÄÎÄ¼ş
+### 2.1 åˆ é™¤çš„æ–‡ä»¶
 
-| ÎÄ¼ş | ËµÃ÷ |
+| æ–‡ä»¶ | è¯´æ˜ |
 |------|------|
-| `QuartzConfig.java` | Quartz µ÷¶ÈÆ÷ÅäÖÃ |
-| `QuartzJobUtils.java` | Quartz ÈÎÎñ¹¤¾ßÀà |
-| `AbstractQuartzJob.java` | Quartz ³éÏóÈÎÎñÀà |
-| `QuartzJobExecution.java` | ÔÊĞí²¢·¢Ö´ĞĞµÄÈÎÎñÊµÏÖ |
-| `QuartzDisallowConcurrentExecution.java` | ½ûÖ¹²¢·¢Ö´ĞĞµÄÈÎÎñÊµÏÖ |
-| `JobInitializer.java` | Quartz ÈÎÎñ³õÊ¼»¯Æ÷ |
+| `QuartzConfig.java` | Quartz è°ƒåº¦å™¨é…ç½® |
+| `QuartzJobUtils.java` | Quartz ä»»åŠ¡å·¥å…·ç±» |
+| `AbstractQuartzJob.java` | Quartz æŠ½è±¡ä»»åŠ¡ç±» |
+| `QuartzJobExecution.java` | å…è®¸å¹¶å‘æ‰§è¡Œçš„ä»»åŠ¡å®ç° |
+| `QuartzDisallowConcurrentExecution.java` | ç¦æ­¢å¹¶å‘æ‰§è¡Œçš„ä»»åŠ¡å®ç° |
+| `JobInitializer.java` | Quartz ä»»åŠ¡åˆå§‹åŒ–å™¨ |
 
-### 2.2 ĞÂÔöµÄÎÄ¼ş
+### 2.2 æ–°å¢çš„æ–‡ä»¶
 
-| ÎÄ¼ş | ËµÃ÷ |
+| æ–‡ä»¶ | è¯´æ˜ |
 |------|------|
-| `scheduler/JobFlowScheduler.java` | JobFlow ºËĞÄµ÷¶ÈÆ÷ |
-| `scheduler/ExecutorDiscovery.java` | Nacos Ö´ĞĞÆ÷·¢ÏÖ£¨Ö§³Ö»º´æ½µ¼¶£© |
-| `scheduler/JobFlowExecutorClient.java` | HTTP Ô¶³ÌÖ´ĞĞÆ÷¿Í»§¶Ë |
-| `scheduler/JobFlowInitializer.java` | JobFlow Æô¶¯Æ÷ |
-| `scheduler/CompensationTask.java` | ³¬Ê±ÈÎÎñ²¹³¥ |
-| `util/CronUtils.java` | Cron ¹¤¾ßÀà£¨¼æÈİ Quartz 7 Î»¸ñÊ½ºÍ `?` ×Ö·û£© |
+| `scheduler/JobFlowScheduler.java` | JobFlow æ ¸å¿ƒè°ƒåº¦å™¨ |
+| `scheduler/ExecutorDiscovery.java` | Nacos æ‰§è¡Œå™¨å‘ç°ï¼ˆæ”¯æŒç¼“å­˜é™çº§ï¼‰ |
+| `scheduler/JobFlowExecutorClient.java` | HTTP è¿œç¨‹æ‰§è¡Œå™¨å®¢æˆ·ç«¯ |
+| `scheduler/JobFlowInitializer.java` | JobFlow å¯åŠ¨å™¨ |
+| `scheduler/CompensationTask.java` | è¶…æ—¶ä»»åŠ¡è¡¥å¿ |
+| `util/CronUtils.java` | Cron å·¥å…·ç±»ï¼ˆå…¼å®¹ Quartz 7 ä½æ ¼å¼å’Œ `?` å­—ç¬¦ï¼‰ |
 
-### 2.3 ĞŞ¸ÄµÄÎÄ¼ş
+### 2.3 ä¿®æ”¹çš„æ–‡ä»¶
 
-| ÎÄ¼ş | ±ä¸üËµÃ÷ |
+| æ–‡ä»¶ | å˜æ›´è¯´æ˜ |
 |------|---------|
-| `pom.xml` | ÒÆ³ı `spring-boot-starter-quartz` ÒÀÀµ |
-| `application.yml` | ÒÆ³ı Quartz ÅäÖÃ£¬ĞÂÔö `jobflow.scheduler` ÅäÖÃ |
-| `hanJobApplication.java` | Ìí¼Ó `@EnableScheduling` |
-| `SysJob.java` | ĞÂÔö `serviceName`¡¢`handler` ×Ö¶Î |
-| `SysJobService.java` | ÒÆ³ıËùÓĞ `SchedulerException` |
-| `SysJobServiceImpl.java` | Ê¹ÓÃ JobFlowScheduler Ìæ´ú Quartz Scheduler |
-| `ASysJobController.java` | ÒÆ³ı SchedulerException catch ¿é |
-| `ISysJobController.java` | ÒÆ³ı SchedulerException catch ¿é |
-| `JobFlowMonitorController.java` | ¸ÄÎª JobFlow ·ç¸ñ¼à¿Ø¶Ëµã |
+| `pom.xml` | ç§»é™¤ `spring-boot-starter-quartz` ä¾èµ– |
+| `application.yml` | ç§»é™¤ Quartz é…ç½®ï¼Œæ–°å¢ `jobflow.scheduler` é…ç½® |
+| `hanJobApplication.java` | æ·»åŠ  `@EnableScheduling` |
+| `SysJob.java` | æ–°å¢ `serviceName`ã€`handler` å­—æ®µ |
+| `SysJobService.java` | ç§»é™¤æ‰€æœ‰ `SchedulerException` |
+| `SysJobServiceImpl.java` | ä½¿ç”¨ JobFlowScheduler æ›¿ä»£ Quartz Scheduler |
+| `ASysJobController.java` | ç§»é™¤ SchedulerException catch å— |
+| `ISysJobController.java` | ç§»é™¤ SchedulerException catch å— |
+| `JobFlowMonitorController.java` | æ”¹ä¸º JobFlow é£æ ¼ç›‘æ§ç«¯ç‚¹ |
 
 ---
 
-## Èı¡¢ÅäÖÃ±ä¸ü
+## ä¸‰ã€é…ç½®å˜æ›´
 
-### 3.1 application.yml ĞÂÔöÅäÖÃ
+### 3.1 application.yml æ–°å¢é…ç½®
 
 ```yaml
-# JobFlow µ÷¶ÈÆ÷ÅäÖÃ
+# JobFlow è°ƒåº¦å™¨é…ç½®
 jobflow:
   scheduler:
-    thread-pool-size: 20        # ÈÎÎñÖ´ĞĞÏß³Ì³Ø´óĞ¡
-    timeout: 300                # ÈÎÎñ³¬Ê±Ê±¼ä£¨Ãë£©
-    max-retry: 3                # ×î´óÖØÊÔ´ÎÊı
-    connect-timeout: 5000       # HTTP Á¬½Ó³¬Ê±£¨ºÁÃë£©
-    read-timeout: 30000         # HTTP ¶ÁÈ¡³¬Ê±£¨ºÁÃë£©
-    lock-timeout: 60            # ·Ö²¼Ê½Ëø³¬Ê±£¨Ãë£©
-    compensation-enabled: true  # ÊÇ·ñÆôÓÃ²¹³¥ÈÎÎñ
-    compensation-interval: 60000 # ²¹³¥É¨Ãè¼ä¸ô£¨ºÁÃë£©
-    stuck-threshold: 600000     # ¿¨×¡ãĞÖµ£¨ºÁÃë£©
-    scan-interval: 10           # µ÷¶ÈÉ¨Ãè¼ä¸ô£¨Ãë£©
+    thread-pool-size: 20        # ä»»åŠ¡æ‰§è¡Œçº¿ç¨‹æ± å¤§å°
+    timeout: 300                # ä»»åŠ¡è¶…æ—¶æ—¶é—´ï¼ˆç§’ï¼‰
+    max-retry: 3                # æœ€å¤§é‡è¯•æ¬¡æ•°
+    connect-timeout: 5000       # HTTP è¿æ¥è¶…æ—¶ï¼ˆæ¯«ç§’ï¼‰
+    read-timeout: 30000         # HTTP è¯»å–è¶…æ—¶ï¼ˆæ¯«ç§’ï¼‰
+    lock-timeout: 60            # åˆ†å¸ƒå¼é”è¶…æ—¶ï¼ˆç§’ï¼‰
+    compensation-enabled: true  # æ˜¯å¦å¯ç”¨è¡¥å¿ä»»åŠ¡
+    compensation-interval: 60000 # è¡¥å¿æ‰«æé—´éš”ï¼ˆæ¯«ç§’ï¼‰
+    stuck-threshold: 600000     # å¡ä½é˜ˆå€¼ï¼ˆæ¯«ç§’ï¼‰
+    scan-interval: 10           # è°ƒåº¦æ‰«æé—´éš”ï¼ˆç§’ï¼‰
 ```
 
-### 3.2 Nacos ÅäÖÃ£¨ÈçÊ¹ÓÃ Nacos ÅäÖÃÖĞĞÄ£©
+### 3.2 Nacos é…ç½®ï¼ˆå¦‚ä½¿ç”¨ Nacos é…ç½®ä¸­å¿ƒï¼‰
 
-ĞèÒª½«ÉÏÊö `jobflow.scheduler` ÅäÖÃÍ¬²½µ½ Nacos ¶ÔÓ¦µÄÅäÖÃÎÄ¼şÖĞ¡£
+éœ€è¦å°†ä¸Šè¿° `jobflow.scheduler` é…ç½®åŒæ­¥åˆ° Nacos å¯¹åº”çš„é…ç½®æ–‡ä»¶ä¸­ã€‚
 
 ---
 
-## ËÄ¡¢²¿Êğ²½Öè
+## å››ã€éƒ¨ç½²æ­¥éª¤
 
-### 4.1 ¹¹½¨
+### 4.1 æ„å»º
 
 ```bash
-# ÉèÖÃ JDK 21
+# è®¾ç½® JDK 21
 export JAVA_HOME=/path/to/jdk-21
 
-# ¹¹½¨ Job Ä£¿é
+# æ„å»º Job æ¨¡å—
 mvn clean package -pl han-modules/han-job -am -DskipTests
 ```
 
-### 4.2 Êı¾İ¿âÇ¨ÒÆ
+### 4.2 æ•°æ®åº“è¿ç§»
 
 ```bash
-# ÔÚ 95 ·şÎñÆ÷ÉÏÖ´ĞĞ SQL
+# åœ¨ 95 æœåŠ¡å™¨ä¸Šæ‰§è¡Œ SQL
 psql -U han -d han -f sql/jobflow_migration.sql
 ```
 
-### 4.3 ²¿Êğ·şÎñ
+### 4.3 éƒ¨ç½²æœåŠ¡
 
 ```bash
-# Docker ·½Ê½£¨Ìæ»»¾É¾µÏñ£©
+# Docker æ–¹å¼ï¼ˆæ›¿æ¢æ—§é•œåƒï¼‰
 docker stop han-job
 docker rm han-job
 
-# ¹¹½¨ĞÂ¾µÏñ²¢Æô¶¯£¨²Î¿¼ deploy.sh£©
-# »òÖ±½ÓÔËĞĞ jar
+# æ„å»ºæ–°é•œåƒå¹¶å¯åŠ¨ï¼ˆå‚è€ƒ deploy.shï¼‰
+# æˆ–ç›´æ¥è¿è¡Œ jar
 java -jar han-job-1.0.0.jar --server.port=9204
 ```
 
-### 4.4 ÑéÖ¤
+### 4.4 éªŒè¯
 
-1. ¼ì²é Nacos ×¢²á£º`http://<nacos-host>:8848/nacos` ¡ú ·şÎñÁĞ±íÖĞ³öÏÖ `han-job`
-2. ¼ì²é½¡¿µ×´Ì¬£º`GET /actuator/jobflow/health`
-3. ¼ì²éµ÷¶ÈÅäÖÃ£º`GET /actuator/jobflow/config`
-4. ²âÊÔÈÎÎñÁĞ±í£º`GET /job/list?pageNum=1&pageSize=10`
-5. ²âÊÔ Cron Ğ£Ñé£º`GET /job/checkCron?cronExpression=0 0/5 * * * ?`
-6. ²é¿´ÈÕÖ¾È·ÈÏ `JobFlow µ÷¶ÈÆ÷ÒÑÆô¶¯` ×ÖÑù
-
----
-
-## Îå¡¢»Ø¹ö·½°¸
-
-ÈçĞè»Ø¹öµ½ Quartz£º
-
-1. »Ö¸´ `pom.xml` ÖĞµÄ `spring-boot-starter-quartz` ÒÀÀµ
-2. »Ö¸´±»É¾³ıµÄ Quartz Ïà¹Ø Java Àà£¨´Ó Git ÀúÊ·»Ö¸´£©
-3. »Ö¸´ `application.yml` ÖĞµÄ Quartz ÅäÖÃ
-4. ÖØĞÂ´´½¨ `qrtz_*` ±í£¨Ê¹ÓÃ Quartz ¹Ù·½ DDL ½Å±¾£©
-5. ÖØĞÂ¹¹½¨²¿Êğ
+1. æ£€æŸ¥ Nacos æ³¨å†Œï¼š`http://<nacos-host>:8848/nacos` â†’ æœåŠ¡åˆ—è¡¨ä¸­å‡ºç° `han-job`
+2. æ£€æŸ¥å¥åº·çŠ¶æ€ï¼š`GET /actuator/jobflow/health`
+3. æ£€æŸ¥è°ƒåº¦é…ç½®ï¼š`GET /actuator/jobflow/config`
+4. æµ‹è¯•ä»»åŠ¡åˆ—è¡¨ï¼š`GET /job/list?pageNum=1&pageSize=10`
+5. æµ‹è¯• Cron æ ¡éªŒï¼š`GET /job/checkCron?cronExpression=0 0/5 * * * ?`
+6. æŸ¥çœ‹æ—¥å¿—ç¡®è®¤ `JobFlow è°ƒåº¦å™¨å·²å¯åŠ¨` å­—æ ·
 
 ---
 
-## Áù¡¢JobFlow ¼Ü¹¹ËµÃ÷
+## äº”ã€å›æ»šæ–¹æ¡ˆ
 
-### ºËĞÄ×é¼ş
+å¦‚éœ€å›æ»šåˆ° Quartzï¼š
+
+1. æ¢å¤ `pom.xml` ä¸­çš„ `spring-boot-starter-quartz` ä¾èµ–
+2. æ¢å¤è¢«åˆ é™¤çš„ Quartz ç›¸å…³ Java ç±»ï¼ˆä» Git å†å²æ¢å¤ï¼‰
+3. æ¢å¤ `application.yml` ä¸­çš„ Quartz é…ç½®
+4. é‡æ–°åˆ›å»º `qrtz_*` è¡¨ï¼ˆä½¿ç”¨ Quartz å®˜æ–¹ DDL è„šæœ¬ï¼‰
+5. é‡æ–°æ„å»ºéƒ¨ç½²
+
+---
+
+## å…­ã€JobFlow æ¶æ„è¯´æ˜
+
+### æ ¸å¿ƒç»„ä»¶
 
 ```
-JobFlowScheduler£¨ºËĞÄµ÷¶ÈÆ÷£©
-©À©¤©¤ ¶¨Ê±É¨Ãè DB ÖĞ status='0' µÄÈÎÎñ
-©À©¤©¤ CronExpression ÅĞ¶ÏÊÇ·ñµ½Ö´ĞĞÊ±¼ä
-©À©¤©¤ Redis ·Ö²¼Ê½Ëø·ÀÖ¹¶àÊµÀıÖØ¸´µ÷¶È
-©À©¤©¤ ±¾µØÖ´ĞĞ£¨invokeTarget ¡ú ·´Éäµ÷ÓÃ Bean ·½·¨£©
-©À©¤©¤ Ô¶³ÌÖ´ĞĞ£¨serviceName + handler ¡ú HTTP µ÷ÓÃÖ´ĞĞÆ÷£©
-©¸©¤©¤ TraceId È«Á´Â·×·×Ù
+JobFlowSchedulerï¼ˆæ ¸å¿ƒè°ƒåº¦å™¨ï¼‰
+â”œâ”€â”€ å®šæ—¶æ‰«æ DB ä¸­ status='0' çš„ä»»åŠ¡
+â”œâ”€â”€ CronExpression åˆ¤æ–­æ˜¯å¦åˆ°æ‰§è¡Œæ—¶é—´
+â”œâ”€â”€ Redis åˆ†å¸ƒå¼é”é˜²æ­¢å¤šå®ä¾‹é‡å¤è°ƒåº¦
+â”œâ”€â”€ æœ¬åœ°æ‰§è¡Œï¼ˆinvokeTarget â†’ åå°„è°ƒç”¨ Bean æ–¹æ³•ï¼‰
+â”œâ”€â”€ è¿œç¨‹æ‰§è¡Œï¼ˆserviceName + handler â†’ HTTP è°ƒç”¨æ‰§è¡Œå™¨ï¼‰
+â””â”€â”€ TraceId å…¨é“¾è·¯è¿½è¸ª
 
-ExecutorDiscovery£¨Ö´ĞĞÆ÷·¢ÏÖ£©
-©À©¤©¤ Í¨¹ı Nacos DiscoveryClient »ñÈ¡Ö´ĞĞÆ÷ÊµÀı
-©À©¤©¤ ÂÖÑ¯¸ºÔØ¾ùºâ
-©¸©¤©¤ ±¾µØ»º´æ½µ¼¶
+ExecutorDiscoveryï¼ˆæ‰§è¡Œå™¨å‘ç°ï¼‰
+â”œâ”€â”€ é€šè¿‡ Nacos DiscoveryClient è·å–æ‰§è¡Œå™¨å®ä¾‹
+â”œâ”€â”€ è½®è¯¢è´Ÿè½½å‡è¡¡
+â””â”€â”€ æœ¬åœ°ç¼“å­˜é™çº§
 
-CompensationTask£¨²¹³¥ÈÎÎñ£©
-©¸©¤©¤ ¶¨ÆÚÉ¨Ãè¿¨×¡µÄÖ´ĞĞ¼ÇÂ¼£¬±ê¼ÇÎª³¬Ê±
+CompensationTaskï¼ˆè¡¥å¿ä»»åŠ¡ï¼‰
+â””â”€â”€ å®šæœŸæ‰«æå¡ä½çš„æ‰§è¡Œè®°å½•ï¼Œæ ‡è®°ä¸ºè¶…æ—¶
 ```
 
-### ÈÎÎñÀàĞÍ
+### ä»»åŠ¡ç±»å‹
 
-| ÀàĞÍ | ÅäÖÃ | ËµÃ÷ |
+| ç±»å‹ | é…ç½® | è¯´æ˜ |
 |------|------|------|
-| ±¾µØÈÎÎñ | ½öÉèÖÃ `invokeTarget` | ·´Éäµ÷ÓÃ±¾µØ Spring Bean ·½·¨ |
-| Ô¶³ÌÈÎÎñ | ÉèÖÃ `serviceName` + `handler` | HTTP µ÷ÓÃ Nacos ×¢²áµÄÖ´ĞĞÆ÷·şÎñ |
-| ·ÖÆ¬ÈÎÎñ | Ê¹ÓÃ `ShardExecutor` | ÀûÓÃ·ÖÆ¬²ßÂÔ²¢ĞĞ´¦Àí£¨ÒÑÓĞ×é¼ş¸´ÓÃ£© |
+| æœ¬åœ°ä»»åŠ¡ | ä»…è®¾ç½® `invokeTarget` | åå°„è°ƒç”¨æœ¬åœ° Spring Bean æ–¹æ³• |
+| è¿œç¨‹ä»»åŠ¡ | è®¾ç½® `serviceName` + `handler` | HTTP è°ƒç”¨ Nacos æ³¨å†Œçš„æ‰§è¡Œå™¨æœåŠ¡ |
+| åˆ†ç‰‡ä»»åŠ¡ | ä½¿ç”¨ `ShardExecutor` | åˆ©ç”¨åˆ†ç‰‡ç­–ç•¥å¹¶è¡Œå¤„ç†ï¼ˆå·²æœ‰ç»„ä»¶å¤ç”¨ï¼‰ |
