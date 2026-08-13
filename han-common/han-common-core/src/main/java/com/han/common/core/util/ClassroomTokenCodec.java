@@ -15,7 +15,15 @@ import java.util.Map;
 public final class ClassroomTokenCodec {
 
     public static final String ISSUER = "han-classroom";
+    /** 按 tokenId 记「这张凭证还活着吗」。删掉它就等于撤销这张凭证。 */
     public static final String SESSION_KEY_PREFIX = "sdfz:classroom:token:";
+    /**
+     * 按人记「这个人当前的正式凭证是哪一张」，值为凭证原文。
+     *
+     * <p>两个用途：han-system 换发时据此复用（凭证同时是旧侧 AES 密钥来源，中途换会解不开），
+     * han-auth 登出时据此找到要作废的那张。两个服务共用同一个 Redis，所以常量放在这里。
+     */
+    public static final String ACTIVE_KEY_PREFIX = "sdfz:classroom:active:";
     public static final String EXCHANGE_KEY_PREFIX = "sdfz:classroom:exchange:";
     private static final String HEADER = "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"han-classroom-v1\"}";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
