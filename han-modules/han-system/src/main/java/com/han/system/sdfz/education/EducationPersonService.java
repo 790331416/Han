@@ -284,7 +284,15 @@ public class EducationPersonService {
             throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
         }
         user.setNickname(truncate(form.personName().trim(), NICKNAME_MAX_LENGTH));
-        user.setStatus(normalStatus(form.status()));
+        // 人员状态到账号状态**只同步停用这一个方向**：人员被停用，账号必须跟着停，
+        // 不允许出现「人员已停用但账号还能登录」的中间态。
+        //
+        // 反向不能同步。账号是在「账号与权限」里被显式停用的（安全原因、离职流程、
+        // 管理员手工处置），一次无关的人员资料编辑——改个电话、打个离校标记——
+        // 不能把它悄悄放开。恢复登录能力必须走账号那条有审批的路径。
+        if (normalStatus(form.status()) == 1) {
+            user.setStatus(1);
+        }
         userMapper.updateById(user);
 
         if (form.wantsRoleChange()) {
