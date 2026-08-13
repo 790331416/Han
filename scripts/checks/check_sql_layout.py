@@ -165,17 +165,36 @@ def check_tier_menu_division(violations: list) -> None:
 
 
 def _seed_tables_with_tenant(path: Path) -> tuple:
-    """返回 (有种子的表集合, 种子里显式写了 tenant_id 的表集合)。
+    """返回 (有种子的表集合, 种子里写入了非 NULL tenant_id 的表集合)。
 
     PostgreSQL 侧常用 `SELECT v.id, 1, ... FROM (VALUES ...)` 投影出 tenant_id，
     MySQL 侧是普通 `INSERT ... VALUES`，两种写法都要能识别到。
+    只统计非 NULL 取值：PostgreSQL 显式写 `tenant_id = NULL` 与 MySQL 省略该列
+    落库结果相同，不构成差异。
     """
     statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
     seeded, with_tenant = set(), set()
-    for m in re.finditer(r"(?is)INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)", statements):
+    for m in re.finditer(
+            r"(?is)INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)(.{0,4000}?);",
+            statements):
         table = m.group(1).lower()
         seeded.add(table)
-        if "tenant_id" in [c.strip().strip('`"').lower() for c in m.group(2).split(",")]:
+        cols = [c.strip().strip('`"').lower() for c in m.group(2).split(",")]
+        if "tenant_id" not in cols:
+            continue
+        idx, body = cols.index("tenant_id"), m.group(3)
+        values = []
+        projection = re.search(r"(?is)SELECT\s+(.*?)\s+FROM\s*\(\s*VALUES", body)
+        if projection:
+            parts = [p.strip() for p in projection.group(1).split(",")]
+            if idx < len(parts):
+                values.append(parts[idx])
+        else:
+            for row in re.finditer(r"\(((?:[^()']|'[^']*')*)\)", body):
+                parts = _split_sql_values(row.group(1))
+                if len(parts) == len(cols):
+                    values.append(parts[idx])
+        if any(v.strip().upper() not in ("NULL", "") for v in values):
             with_tenant.add(table)
     return seeded, with_tenant
 
