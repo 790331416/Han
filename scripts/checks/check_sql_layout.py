@@ -199,6 +199,54 @@ def _seed_tables_with_tenant(path: Path) -> tuple:
     return seeded, with_tenant
 
 
+def check_button_perms_have_endpoint(violations: list) -> None:
+    """按钮型菜单（menu_type='F'）的权限串必须有后端接口声明它。
+
+    按钮权限的唯一作用就是给某个接口做鉴权门控，后端没有任何 @PreAuthorize
+    引用它，说明这个按钮点下去没有对应接口，属于纯死权限点。
+    页面型菜单（'C'）不在此列：页面可见性权限可以只被前端路由使用，
+    例如 file:list 只做菜单门控，实际列表接口用的是 file:query。
+
+    仓库里并存两种权限注解写法，都要认：
+    Spring Security 的 {@code @PreAuthorize("@ss.hasAuthority('x')")}（多数模块），
+    以及自研的 {@code @RequiresPermission("x")}（han-tenant 等模块）。
+    """
+    declared = set()
+    for java in ROOT.rglob("*.java"):
+        if "target" in java.parts:
+            continue
+        try:
+            text = java.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        declared.update(re.findall(r"hasAuthority\('([^']+)'\)", text))
+        declared.update(re.findall(r'RequiresPermission\(\s*"([^"]+)"', text))
+
+    for tier in ("small", "medium", "full"):
+        path = SQL / "tiers" / tier / f"{tier}-init.sql"
+        if not path.exists():
+            continue
+        statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
+        for stmt in re.finditer(r"(?is)INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*?);", statements):
+            cols = [c.strip() for c in stmt.group(1).split(",")]
+            if not {"menu_type", "perms"} <= set(cols):
+                continue
+            i_type, i_perms = cols.index("menu_type"), cols.index("perms")
+            for row in re.finditer(r"\(((?:[^()']|'[^']*')*)\)", stmt.group(2)):
+                vals = _split_sql_values(row.group(1))
+                if len(vals) != len(cols) or vals[i_type].strip("'") != "F":
+                    continue
+                perm = vals[i_perms].strip("'")
+                # DO $$ 块里用变量拼出来的权限串（v_action.perms 之类）不是字面量，跳过
+                if not re.fullmatch(r"[a-z][a-zA-Z]*(?::[a-zA-Z]+)+", perm):
+                    continue
+                if perm not in declared:
+                    violations.append(
+                        f"{path}: 按钮权限 {perm!r} 在后端没有任何 @PreAuthorize 声明，"
+                        f"该按钮没有对应接口"
+                    )
+
+
 def check_seed_tenant_parity(violations: list) -> None:
     """PostgreSQL 种子写了 tenant_id 的表，MySQL 种子也必须写。
 
@@ -380,6 +428,7 @@ def main() -> int:
 
     check_tier_menu_division(violations)
     check_seed_tenant_parity(violations)
+    check_button_perms_have_endpoint(violations)
 
     if violations:
         print("\n".join(violations))

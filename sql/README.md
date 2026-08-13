@@ -164,26 +164,38 @@ MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-my
 
 ### 菜单与权限点的档位划分
 
-划分遵循两条硬规则，已由 `scripts/checks/check_sql_layout.py` 的
-`check_tier_menu_division` 静态门禁保证，破坏任意一条都会导致门禁失败：
+划分遵循四条硬规则，全部由 `scripts/checks/check_sql_layout.py` 的静态门禁保证，
+破坏任意一条都会导致门禁失败：
 
 1. **同一档位的 PostgreSQL 与 MySQL 播种菜单逐条相同**（菜单 ID、名称、权限串全等），
-   换数据库不会换出另一套菜单。
-2. **逐级追加**：small ⊆ medium ⊆ full，上层档位只允许在下层基础上增加，不允许删改。
+   换数据库不会换出另一套菜单。（`check_tier_menu_division`）
+2. **逐级追加**：small ⊆ medium ⊆ full，上层只允许在下层基础上增加。（同上）
+3. **按钮型菜单的权限串必须有后端接口**：后端没有 `@PreAuthorize("@ss.hasAuthority('x')")`
+   或 `@RequiresPermission("x")` 引用它，就是点了没反应的死按钮。（`check_button_perms_have_endpoint`）
+4. **种子的 `tenant_id` 两库必须一致**：一边写 1 一边留 NULL，会被租户过滤掉、整页为空。
+   （`check_seed_tenant_parity`）
 
 当前实际划分（数量为静态播种的菜单条数，已在真实库导入核对）：
 
 | 档位 | 菜单数 | 相对下一档新增的内容 |
 | --- | --- | --- |
-| `small` | 70 | 基线：系统管理、系统监控、系统接口、任务调度 |
-| `medium` | 105 | +35：租户管理与套餐配额、工作流、开放平台、文件管理、OSS 配置 |
-| `full` | 139 | +34：代码生成，以及 AI 模型/知识库/MCP/智能体/编排/Prompt/Token 统计/对话 |
+| `small` | 65 | 基线：系统管理、系统监控、任务调度 |
+| `medium` | 100 | +35：租户管理与套餐配额、工作流、开放平台、文件管理、OSS 配置 |
+| `full` | 135 | +35：代码生成，以及 AI 模型/知识库/MCP/智能体/编排/Prompt/Token 统计/对话 |
 
-**只播该档实际部署了模块的菜单。** 判据是该功能依赖的业务表在本档 init 里建没建：
-`tool:gen:*` 依赖 `gen_table`（只在 full）、`tenant:*` 依赖 `sys_tenant`（medium 起）、
-`ai:*` 依赖 `ai_model`（只在 full）。播了模块表不存在的父菜单，
-升级脚本 `20260812_permission_seed_alignment.sql` 会顺着父菜单继续补子权限点，
-最终在登录后显示一批点不开的死菜单。
+**只播该档实际部署了模块的菜单。** 判据有两层：
+
+- 该功能依赖的业务表在本档 init 里建没建：`tool:gen:*` 依赖 `gen_table`（只在 full）、
+  `tenant:*` 依赖 `sys_tenant`（medium 起）、`ai:*` 依赖 `ai_model`（只在 full）。
+  播了模块表不存在的父菜单，升级脚本 `20260812_permission_seed_alignment.sql`
+  会顺着父菜单继续补子权限点，最终显示一批点不开的死菜单。
+- 后端接口与前端页面是否真的存在。历史上「客户端管理」「系统接口」两个菜单在
+  后端 Controller、前端页面、前端路由三处都不存在，「字典导出」「参数导出」两个按钮
+  后端也没有对应接口，均已移除。
+
+页面型菜单（`menu_type = 'C'`）的权限串允许只被前端路由使用而没有同名接口，
+例如 `file:list` 只做菜单可见性门控，文件列表接口实际用的是 `file:query`。
+按钮型菜单（`'F'`）不适用这条豁免，它的唯一作用就是给接口做鉴权。
 
 ## 归档说明
 
