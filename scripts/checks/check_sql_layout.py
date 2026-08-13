@@ -109,9 +109,11 @@ def collect_seed_menus(path: Path) -> dict:
 
     DO $$ 块里用变量做 ID 的动态插入不参与静态比对。
     """
-    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
     menus: dict = {}
-    for stmt in re.finditer(r"(?is)INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*?);", statements):
+    for stmt_text in split_sql_statements(strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))):
+        stmt = re.match(r"(?is)\s*INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*)", stmt_text)
+        if not stmt:
+            continue
         cols = [c.strip().strip('`"') for c in stmt.group(1).split(",")]
         if not {"id", "menu_name", "perms"} <= set(cols):
             continue
@@ -172,11 +174,11 @@ def _seed_tables_with_tenant(path: Path) -> tuple:
     只统计非 NULL 取值：PostgreSQL 显式写 `tenant_id = NULL` 与 MySQL 省略该列
     落库结果相同，不构成差异。
     """
-    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
     seeded, with_tenant = set(), set()
-    for m in re.finditer(
-            r"(?is)INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)(.{0,4000}?);",
-            statements):
+    for stmt_text in split_sql_statements(strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))):
+        m = re.match(r"(?is)\s*INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)(.*)", stmt_text)
+        if not m:
+            continue
         table = m.group(1).lower()
         seeded.add(table)
         cols = [c.strip().strip('`"').lower() for c in m.group(2).split(",")]
@@ -197,6 +199,81 @@ def _seed_tables_with_tenant(path: Path) -> tuple:
         if any(v.strip().upper() not in ("NULL", "") for v in values):
             with_tenant.add(table)
     return seeded, with_tenant
+
+
+def split_sql_statements(text: str) -> list:
+    """按分号切分 SQL 语句，忽略单引号字符串内部的分号。
+
+    不能直接用正则 `(.*?);` 找语句结尾：种子数据里就有带分号的文本，
+    例如黑名单说明「多个匹配项以;分隔」，那样会把语句从中间截断，
+    后半截的行全部漏统计，检查看起来通过其实什么都没查到。
+    """
+    out, buf, in_quote = [], [], False
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "'":
+            # SQL 里 '' 表示字符串内的单引号
+            if in_quote and i + 1 < n and text[i + 1] == "'":
+                buf.append("''")
+                i += 2
+                continue
+            in_quote = not in_quote
+            buf.append(ch)
+        elif ch == ";" and not in_quote:
+            out.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    if "".join(buf).strip():
+        out.append("".join(buf))
+    return out
+
+
+def _seed_row_counts(path: Path) -> dict:
+    """统计每张表被静态播种的行数。
+
+    PostgreSQL 侧写法是 `INSERT ... SELECT ... FROM (VALUES (..),(..)) AS v(..)`，
+    MySQL 侧是 `INSERT ... VALUES (..),(..)`，两种都按值元组个数计。
+    末尾的 `AS v(列名...)` 也是一对括号，需要排除，否则 PG 侧会多算一行。
+    """
+    counts: dict = {}
+    for stmt in split_sql_statements(strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))):
+        m = re.match(r"(?is)\s*INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\([^)]*\)(.*)", stmt)
+        if not m:
+            continue
+        table, body = m.group(1).lower(), m.group(2)
+        body = re.sub(r"(?is)\)\s*AS\s+\w+\s*\([^)]*\)\s*$", ")", body.rstrip())
+        rows = len(re.findall(r"\((?:[^()']|'[^']*')*\)", body))
+        if rows:
+            counts[table] = counts.get(table, 0) + rows
+    return counts
+
+
+def check_seed_row_count_parity(violations: list) -> None:
+    """同一档位、同一张表，两种数据库播种的行数必须相等。
+
+    漏播单行不会让导入报错，也不会被「表数/菜单数」这类粗粒度对比发现：
+    small 的 MySQL 版曾漏掉 sys_config 里 `sys.login.wechatEnabled` 一行，
+    结果是换到 MySQL 后微信扫码登录开关整个不存在。
+    """
+    for tier in ("small", "medium", "full"):
+        pg_path = SQL / "tiers" / tier / f"{tier}-init.sql"
+        my_path = SQL / "tiers" / tier / f"{tier}-init-mysql.sql"
+        if not (pg_path.exists() and my_path.exists()):
+            continue
+        pg_counts, my_counts = _seed_row_counts(pg_path), _seed_row_counts(my_path)
+        for table in sorted(set(pg_counts) & set(my_counts)):
+            # sys_menu 由 check_tier_menu_division 逐条比对 ID/名称/权限串，比行数严格；
+            # 且 PostgreSQL 侧有 DO $$ 块用变量动态插入，按行数比会误判，这里跳过。
+            if table == "sys_menu":
+                continue
+            if pg_counts[table] != my_counts[table]:
+                violations.append(
+                    f"{tier} 档 {table} 播种行数两库不一致："
+                    f"PostgreSQL {pg_counts[table]} 行 / MySQL {my_counts[table]} 行"
+                )
 
 
 def check_button_perms_have_endpoint(violations: list) -> None:
@@ -226,8 +303,10 @@ def check_button_perms_have_endpoint(violations: list) -> None:
         path = SQL / "tiers" / tier / f"{tier}-init.sql"
         if not path.exists():
             continue
-        statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
-        for stmt in re.finditer(r"(?is)INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*?);", statements):
+        for stmt_text in split_sql_statements(strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))):
+            stmt = re.match(r"(?is)\s*INSERT\s+INTO\s+sys_menu\s*\(([^)]*)\)\s*VALUES(.*)", stmt_text)
+            if not stmt:
+                continue
             cols = [c.strip() for c in stmt.group(1).split(",")]
             if not {"menu_type", "perms"} <= set(cols):
                 continue
@@ -429,6 +508,7 @@ def main() -> int:
     check_tier_menu_division(violations)
     check_seed_tenant_parity(violations)
     check_button_perms_have_endpoint(violations)
+    check_seed_row_count_parity(violations)
 
     if violations:
         print("\n".join(violations))

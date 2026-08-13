@@ -174,6 +174,8 @@ MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-my
    或 `@RequiresPermission("x")` 引用它，就是点了没反应的死按钮。（`check_button_perms_have_endpoint`）
 4. **种子的 `tenant_id` 两库必须一致**：一边写 1 一边留 NULL，会被租户过滤掉、整页为空。
    （`check_seed_tenant_parity`）
+5. **同表种子行数两库必须相等**：漏播单行既不会导入报错，也不会被表数/菜单数这类
+   粗粒度对比发现。（`check_seed_row_count_parity`；`sys_menu` 由规则 1 逐条比对，不重复计）
 
 当前实际划分（数量为静态播种的菜单条数，已在真实库导入核对）：
 
