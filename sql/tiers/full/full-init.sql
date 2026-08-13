@@ -572,7 +572,6 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
 (1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
-(1091, 109, '0,1,109', '文件查询', 'F', '', NULL, 'file:query', '#', 1, 0, 0),
 (1092, 109, '0,1,109', '文件删除', 'F', '', NULL, 'file:remove', '#', 2, 0, 0);
 
 -- 按钮权限（1100 段）：与后端 @PreAuthorize 声明的权限串一一对应

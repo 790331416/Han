@@ -110,12 +110,13 @@
 - `20260703_ai_agent_share_key.sql`：`ai_agent.share_key` 分享链接 key
 - `20260703_ai_chat_multimodal.sql`：`ai_model.supports_vision`、`ai_chat_message.images`
 - `20260703_ai_flow_meta.sql`：`ai_chat_message.meta` 工作流节点执行时间线
-- `20260703_file_manage_menu.sql`：文件管理菜单与 `file:query`/`file:remove` 按钮权限
+- `20260703_file_manage_menu.sql`：文件管理菜单与 `file:query`/`file:remove` 按钮权限（其中 `file:query` 已由 `20260813_file_perms_alignment.sql` 下线，本脚本保留原样以记录历史迁移事实）
 - `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除完全一致的重复字典类型，保留最小 ID
 - `20260720_ai_agent_chat_tuning.sql`：`ai_agent`/`ai_workflow` 对话调优列
 - `20260720_wechat_social_login.sql`：微信扫码登录唯一索引、`sys.login.wechatEnabled` 开关与社交解绑权限。**本脚本会物理删除违反新唯一规则的历史社交绑定行**，执行前必须备份；脚本自身会先把待删行写进 `sys_user_social_conflict_backup_20260720`
 - `20260812_permission_seed_alignment.sql`：补齐 AI / job / tenant / OSS / 开放平台 / 日志与在线用户的权限点种子，并把日志与监控权限串统一到 `monitor:*` 口径
 - `20260812_unique_constraint_del_flag_alignment.sql`：`sys_user_social` 结构兜底；把角色、岗位、字典、参数、客户端上不带 `del_flag` 条件的唯一约束换成部分唯一索引；存在重复数据时只告警跳过，不中断升级链
+- `20260813_file_perms_alignment.sql`：文件列表接口的权限串由 `file:query` 改为 `file:list`，与全仓 `:list`/`:query` 约定一致；先给只持有 `file:query` 的角色补授 `file:list`，再下线 `file:query` 菜单，升级前后可见范围不变
 
 ## 升级演练
 
@@ -195,9 +196,15 @@ MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-my
   后端 Controller、前端页面、前端路由三处都不存在，「字典导出」「参数导出」两个按钮
   后端也没有对应接口，均已移除。
 
-页面型菜单（`menu_type = 'C'`）的权限串允许只被前端路由使用而没有同名接口，
-例如 `file:list` 只做菜单可见性门控，文件列表接口实际用的是 `file:query`。
+页面型菜单（`menu_type = 'C'`）的权限串允许只被前端路由使用而没有同名接口。
 按钮型菜单（`'F'`）不适用这条豁免，它的唯一作用就是给接口做鉴权。
+
+权限串后缀遵循全仓统一约定（与若依一致）：`:list` 挂列表接口（`GET /list`）
+并兼作页面可见性权限，`:query` 挂按主键查详情的接口（`GET /{id}`）。
+han-file 曾是唯一例外——列表接口挂的是 `file:query`，菜单里播的却是 `file:list`，
+两者对不上且没有详情接口；`20260813_file_perms_alignment.sql` 已把接口改回
+`file:list` 并下线 `file:query`，升级时会先给只有 `file:query` 的角色补授
+`file:list`，可见范围不变。
 
 ## 归档说明
 

@@ -54,6 +54,7 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260720_wechat_social_login.sql"
   "sql/upgrades/postgres/20260812_permission_seed_alignment.sql"
   "sql/upgrades/postgres/20260812_unique_constraint_del_flag_alignment.sql"
+  "sql/upgrades/postgres/20260813_file_perms_alignment.sql"
 )
 BACKUP_INPUTS=()
 COMPOSE_TIER=""

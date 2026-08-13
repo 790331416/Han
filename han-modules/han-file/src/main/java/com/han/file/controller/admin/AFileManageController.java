@@ -37,7 +37,7 @@ public class AFileManageController {
      * 文件分页列表。
      */
     @GetMapping("/list")
-    @PreAuthorize("@ss.hasAuthority('file:query')")
+    @PreAuthorize("@ss.hasAuthority('file:list')")
     public R<PageResult<Map<String, Object>>> list(@RequestParam(required = false) String fileName,
                                                    @RequestParam(required = false) String fileType,
                                                    @RequestParam(required = false) String beginTime,

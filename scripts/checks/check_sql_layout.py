@@ -282,7 +282,7 @@ def check_button_perms_have_endpoint(violations: list) -> None:
     按钮权限的唯一作用就是给某个接口做鉴权门控，后端没有任何 @PreAuthorize
     引用它，说明这个按钮点下去没有对应接口，属于纯死权限点。
     页面型菜单（'C'）不在此列：页面可见性权限可以只被前端路由使用，
-    例如 file:list 只做菜单门控，实际列表接口用的是 file:query。
+    不要求后端一定有同名注解。
 
     仓库里并存两种权限注解写法，都要认：
     Spring Security 的 {@code @PreAuthorize("@ss.hasAuthority('x')")}（多数模块），
