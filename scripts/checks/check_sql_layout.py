@@ -65,6 +65,9 @@ UPGRADE_REHEARSAL_SCRIPTS = [
 
 UPGRADE_FILE_RE = re.compile(r'"(sql/upgrades/postgres/[^"]+\.sql)"')
 
+# MySQL 8.4 引入日；早于此日的 PostgreSQL 升级脚本不要求有 MySQL 对应版
+MYSQL_CHANNEL_CUTOFF = "20260811"
+
 
 def tracked_sql_paths() -> list[Path]:
     result = subprocess.run(
@@ -274,6 +277,36 @@ def check_seed_row_count_parity(violations: list) -> None:
                     f"{tier} 档 {table} 播种行数两库不一致："
                     f"PostgreSQL {pg_counts[table]} 行 / MySQL {my_counts[table]} 行"
                 )
+
+
+def check_upgrade_channel_parity(violations: list) -> None:
+    """两个升级通道在起算点之后必须同名成对。
+
+    MySQL 8.4 是 2026-08-11 才引入的，在那之前不存在任何 MySQL 库，
+    更早的 PostgreSQL 脚本一律不回港（理由见 sql/upgrades/mysql/README.md 第 2 节）。
+    起算点之后的每一次变更两库都真实存在，缺哪一侧都会让那一侧的存量库停在旧结构上，
+    而这种漏项在静态检查之外基本无法察觉——新库导初始化脚本永远是对的，
+    只有存量库升级时才会暴露。
+    """
+    channels = {
+        name: {path.name for path in (SQL / "upgrades" / name).glob("*.sql")}
+        for name in ("postgres", "mysql")
+    }
+
+    def after_cutoff(filename: str) -> bool:
+        # 文件名固定 yyyyMMdd_主题.sql；phase*.sql 等无日期前缀的都是历史脚本
+        match = re.match(r"(\d{8})_", filename)
+        return bool(match) and match.group(1) >= MYSQL_CHANNEL_CUTOFF
+
+    for source, target in (("postgres", "mysql"), ("mysql", "postgres")):
+        for filename in sorted(channels[source]):
+            if not after_cutoff(filename) or filename in channels[target]:
+                continue
+            violations.append(
+                f"升级通道缺对应脚本：sql/upgrades/{source}/{filename} "
+                f"没有同名的 sql/upgrades/{target}/{filename}"
+                f"（起算点 {MYSQL_CHANNEL_CUTOFF} 之后的变更两库必须成对）"
+            )
 
 
 def check_button_perms_have_endpoint(violations: list) -> None:
@@ -509,6 +542,7 @@ def main() -> int:
     check_seed_tenant_parity(violations)
     check_button_perms_have_endpoint(violations)
     check_seed_row_count_parity(violations)
+    check_upgrade_channel_parity(violations)
 
     if violations:
         print("\n".join(violations))

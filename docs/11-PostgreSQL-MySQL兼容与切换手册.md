@@ -28,9 +28,17 @@ PostgreSQL 保持 Han 的默认数据库。MySQL 8.4 是正式可选数据库，
 MySQL 侧 8 个 `del_flag` 函数式唯一索引均真实建成（`information_schema.statistics`
 中 `expression IS NOT NULL` 可查），与 PostgreSQL 的部分唯一索引语义对齐。
 
-`sql/upgrades/mysql/` 两个脚本在真实实例上连续执行两次，结果完全一致，
+`sql/upgrades/mysql/` 的脚本在真实实例上连续执行两次，结果完全一致，
 执行后无残留存储过程，**幂等成立**；在已是最新的 small 库上执行为空操作
 （菜单与权限串数量不变），不会再注入本档不该有的菜单。
+
+`20260813_file_perms_alignment.sql` 单独做了双库对照验证：用改动前的
+medium 初始化脚本分别建 PostgreSQL 16 与 MySQL 8.4.10 库，造出四种角色
+授权场景（只有 `file:query` / 两者都有 / 只有 `file:list` / 都没有），
+执行升级后两库的可见范围逐行相同，连跑三次收敛且无重复绑定。
+这个脚本暴露了一个 MySQL 专有限制：错误 1137 不允许在同一条语句里两次
+打开同一张临时表，初版把菜单 ID 放在临时表里双别名引用直接失败，
+改用会话变量后通过。写 MySQL 升级脚本时 1093 与 1137 都要提前避开。
 
 ### 1.3 服务层验证与镜像前置条件（2026-08-13）
 
@@ -52,6 +60,10 @@ MySQL 支持是 2026-08-11 引入的，此前不存在任何 MySQL 库，
 因此 `sql/upgrades/postgres/` 里 2026-08-11 之前的历史脚本**不回港到 MySQL**——
 那些变更已经烘焙在 `*-init-mysql.sql` 里，回港属于死代码。
 `sql/upgrades/mysql/` 只承载 2026-08-11 之后的增量。全新安装不需要执行升级脚本。
+
+起算点之后的变更两库必须同名成对，由 `scripts/checks/check_sql_layout.py`
+的 `check_upgrade_channel_parity` 强制：任一侧缺同名文件即门禁失败。
+漏项在别处基本发现不了——新库导初始化脚本永远是对的，只有存量库升级时才暴露。
 
 ## 2. 为什么以前不能直接切换
 

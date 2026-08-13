@@ -48,9 +48,12 @@ MySQL 8.4 是 2026-08-11 才作为可选数据库引入的（`sql/tiers/small/sm
 | --- | --- | --- |
 | 1 | `20260812_permission_seed_alignment.sql` | 补齐权限点菜单种子，统一权限串，给超管补授权 |
 | 2 | `20260812_unique_constraint_del_flag_alignment.sql` | 唯一约束与逻辑删除对齐，`sys_user_social` 结构兜底 |
+| 3 | `20260813_file_perms_alignment.sql` | 文件列表权限串由 `file:query` 改为 `file:list`，补授后下线旧菜单 |
 
-两个脚本之间没有强依赖，但建议按上表顺序执行：先补数据、再改约束，
-这样约束脚本的重复数据检查能看到最终数据。
+前两个脚本之间没有强依赖，但建议按上表顺序执行：先补数据、再改约束，
+这样约束脚本的重复数据检查能看到最终数据。第 3 个脚本依赖第 1 个：
+`20260812_permission_seed_alignment.sql` 会补种权限点菜单，必须先跑完
+它，`20260813` 才能看到完整的 `file:*` 菜单集合。
 
 ## 5. 与 `sql/upgrades/postgres/` 的对应关系
 
@@ -58,10 +61,15 @@ MySQL 8.4 是 2026-08-11 才作为可选数据库引入的（`sql/tiers/small/sm
 | --- | --- | --- |
 | `20260812_permission_seed_alignment.sql` | `sql/upgrades/postgres/20260812_permission_seed_alignment.sql` | 同名、同语义，逐段对应 |
 | `20260812_unique_constraint_del_flag_alignment.sql` | `sql/upgrades/postgres/20260812_unique_constraint_del_flag_alignment.sql` | 同名、同语义，另多处理一张 `sys_user`（见第 6 节） |
+| `20260813_file_perms_alignment.sql` | `sql/upgrades/postgres/20260813_file_perms_alignment.sql` | 同名、同语义；写法差异全部来自 MySQL 的 1093 / 1137 限制，见脚本头注释 |
 | 无 | 其余 35 个 PostgreSQL 脚本 | 早于 MySQL 引入，按第 2 节的理由不回港 |
 
 同一变更在两个数据库上必须**同名**，方便对照与漏项排查。两侧脚本要成对维护：
 改了 PostgreSQL 版的语义，MySQL 版必须同步，反之亦然。
+
+这条成对约束由 `scripts/checks/check_sql_layout.py` 的
+`check_upgrade_channel_parity` 强制：起算点 2026-08-11 之后的升级脚本，
+任一侧缺失同名文件即门禁失败。起算点之前的脚本按第 2 节豁免。
 
 ## 6. 唯一的一处范围差异：`sys_user`
 
