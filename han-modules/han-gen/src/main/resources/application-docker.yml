@@ -15,17 +15,17 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
-        password: ${NACOS_PASSWORD:han@2026}
+        password: ${NACOS_PASSWORD}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
-        password: ${NACOS_PASSWORD:han@2026}
+        password: ${NACOS_PASSWORD}
         file-extension: yml
   datasource:
     url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:han}}
     username: ${DB_USER:han}
-    password: ${DB_PASSWORD:han@2026}
+    password: ${DB_PASSWORD}
     hikari:
       minimum-idle: 5
       maximum-pool-size: 20
@@ -36,7 +36,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:han@2026}
+      password: ${REDIS_PASSWORD}
       database: 0
       timeout: 3000ms
       lettuce:

@@ -16,7 +16,7 @@ spring:
         namespace: ${NACOS_NAMESPACE:han}
         # 默认留空表示不带鉴权访问 Nacos，需要时由部署侧注入，避免在仓库内写死凭据
         username: ${NACOS_USERNAME:}
-        password: ${NACOS_PASSWORD:}
+        password: ${NACOS_PASSWORD}
   boot:
     admin:
       ui:

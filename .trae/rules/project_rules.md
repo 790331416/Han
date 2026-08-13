@@ -706,7 +706,7 @@ docker-compose -f docker-compose-small.yml up -d
 
 #### 访问地址
 
-- **Nacos**: http://localhost:8848/nacos (han/han@2026)
+- **Nacos**: http://localhost:8848/nacos（账号口令取自部署环境的 `NACOS_USERNAME` / `NACOS_PASSWORD`，不在文档里写明文）
 - **网关**: http://localhost:8080
 
 ### 3.3 中型部署（推荐团队）

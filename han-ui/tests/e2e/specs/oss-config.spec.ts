@@ -48,8 +48,10 @@ test.describe('OSS 配置页面', () => {
         headers: authHeaders(authSession.accessToken),
         data: {
           configKey,
-          accessKey: 'hanadmin',
-          secretKey: 'han@2026',
+          accessKey: 'e2e-access-key',
+          // 不要用真实口令做测试夹具：han@2026 已泄漏，仓库里出现一次就会被
+          // check_deploy_secrets 判为明文凭据，也会误导读者以为这是有效凭据。
+          secretKey: 'e2e-secret-key',
           bucketName: 'han',
           prefix: '',
           endpoint: 'http://rustfs:9000',

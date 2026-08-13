@@ -19,10 +19,10 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
-        password: ${NACOS_PASSWORD:han@2026}
+        password: ${NACOS_PASSWORD}
       config:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
         namespace: ${NACOS_NAMESPACE:han}
         username: ${NACOS_USERNAME:nacos}
-        password: ${NACOS_PASSWORD:han@2026}
+        password: ${NACOS_PASSWORD}
         file-extension: yml
