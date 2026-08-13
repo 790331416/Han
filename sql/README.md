@@ -155,8 +155,9 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
 | `medium` | `sql/tiers/medium/medium-init.sql` | `sql/tiers/medium/medium-init-mysql.sql` | `sql/tiers/medium/medium-nacos-derby-import.sql` | small + tenant、workflow、open、file |
 | `full` | `sql/tiers/full/full-init.sql` | `sql/tiers/full/full-init-mysql.sql` | `sql/tiers/full/full-nacos-derby-import.sql` | medium + ai、gen |
 
-PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库，三档全新初始化均已提供独立脚本。
-其中只有 small 档有真实 MySQL 8.4.10 实库导入证据，medium/full 仅做过与 PostgreSQL 版的静态比对。
+PostgreSQL 是默认数据库，MySQL 8.4 为正式可选数据库，三档全新初始化均已提供独立脚本，
+且三档都完成了 PostgreSQL 18.1 与 MySQL 8.4.10 的实库对照导入（严格模式零错误、
+表/菜单/权限/字典数量逐项一致），证据见兼容手册 §1.1。服务层回归尚未做。
 增量升级脚本按数据库分目录：`sql/upgrades/postgres/` 与 `sql/upgrades/mysql/`，
 MySQL 通道从 2026-08-11 起算，此前的历史变更已烘焙在 `*-init-mysql.sql` 里，不回港。
 口径与边界以 [PostgreSQL/MySQL 兼容与切换手册](../docs/11-PostgreSQL-MySQL兼容与切换手册.md) 为准。

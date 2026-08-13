@@ -9,18 +9,30 @@ PostgreSQL 保持 Han 的默认数据库。MySQL 8.4 是正式可选数据库，
 | 公共 MyBatis、分页、多租户 | 支持 | 支持 | 方言按 JDBC URL 自动识别 |
 | 业务模块 JDBC 驱动 | 支持 | 支持 | 两种驱动随数据库模块一起构建 |
 | 代码生成器元数据查询 | 支持 | 支持 | 按数据库产品名选择 mapper SQL |
-| small clean 初始化 | 支持 | 支持 | 独立 SQL/Compose 与 MySQL 8.4.10 clean 导入已验证 |
-| medium/full clean 初始化 | 支持 | 支持（未实库验证） | 已补齐独立 SQL 与 Compose，见下方 §1.1 |
-| 存量升级 | 支持 | 支持（未实库验证） | `sql/upgrades/mysql/`，起算点见下方 §1.2 |
+| small clean 初始化 | 支持 | 支持 | 三档均已完成实库导入验证，见下方 §1.1 |
+| medium/full clean 初始化 | 支持 | 支持 | 同上 |
+| 存量升级 | 支持 | 支持 | `sql/upgrades/mysql/`，起算点见 §1.2，幂等已实测 |
 
-### 1.1 medium/full 的 MySQL 状态
+### 1.1 实库验证证据（2026-08-13）
 
-`sql/tiers/{medium,full}/{medium,full}-init-mysql.sql` 与
-`deploy/{medium,full}/docker-compose-mysql.yml` 已经落地，并做过与 PostgreSQL 版的逐项静态比对：
-三档的菜单 ID 集合、权限点集合与 PostgreSQL 版完全一致，无重复 ID、无孤儿父节点。
+在 10.18.35.95 上用一次性容器（`mysql:8.4.10` 与 `postgres:18.1`，验证后已销毁，
+未触碰 `/opt/han/deploy` 的正式栈）完成双库对照导入，三档均为**严格模式零错误**，
+且两种数据库产出的对象与种子数量**逐项一致**：
 
-**但这两档尚未做过真实 MySQL 实例导入**。small 档有 8.4.10 实库导入证据，medium/full 没有。
-进入任何正式环境前必须先补实库导入与服务启动验证，不能拿 small 的验证结果替代。
+| 档位 | 表数 | 菜单数 | 权限串数 | 字典类型数 | 字典项数 |
+| --- | --- | --- | --- | --- | --- |
+| small | 21 | 74 | 69 | 11 | 39 |
+| medium | 35 | 106 | 99 | 11 | 39 |
+| full | 50 | 139 | 131 | 18 | 75 |
+
+MySQL 侧 8 个 `del_flag` 函数式唯一索引均真实建成（`information_schema.statistics`
+中 `expression IS NOT NULL` 可查），与 PostgreSQL 的部分唯一索引语义对齐。
+
+`sql/upgrades/mysql/` 两个脚本在真实实例上连续执行两次，结果完全一致
+（菜单 84 / 权限串 79 / 函数索引 8 / 角色菜单关联 84），执行后无残留存储过程，**幂等成立**。
+
+仍未验证的是**服务层**：本轮只验证了 SQL 导入与结构，没有用 MySQL 启动 system、job
+等服务做登录与页面回归。切换到 MySQL 跑业务前仍需完成 §5 的服务侧清单。
 
 ### 1.2 MySQL 存量升级的起算点
 
@@ -76,11 +88,8 @@ python scripts/checks/check_sql_layout.py
 python scripts/checks/check_deploy_layout.py
 ```
 
-**验证状态要分档看**：small MySQL 的 SQL 层已在干净 MySQL 8.4.10 实例验证过；
-medium/full 只做过与 PostgreSQL 版的静态逐项比对，**没有实库导入证据**，
-两档的实库导入与服务启动验证仍是欠账，不能拿 small 的结论替代。
-
-进入具体项目部署前还必须完成：
+三档的 SQL 层均已在干净 MySQL 8.4.10 实例完成导入验证（证据见 §1.1），
+但**服务层仍未验证**。进入具体项目部署前还必须完成：
 
 1. 再次导入 `small-init-mysql.sql` 并记录目标 MySQL 小版本。
 2. 启动 system、job，确认健康检查通过。
