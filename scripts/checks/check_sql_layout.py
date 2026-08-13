@@ -164,6 +164,44 @@ def check_tier_menu_division(violations: list) -> None:
             violations.append(f"档位菜单划分不是逐级追加：{lower} 有而 {upper} 没有的菜单 ID={missing}")
 
 
+def _seed_tables_with_tenant(path: Path) -> tuple:
+    """返回 (有种子的表集合, 种子里显式写了 tenant_id 的表集合)。
+
+    PostgreSQL 侧常用 `SELECT v.id, 1, ... FROM (VALUES ...)` 投影出 tenant_id，
+    MySQL 侧是普通 `INSERT ... VALUES`，两种写法都要能识别到。
+    """
+    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
+    seeded, with_tenant = set(), set()
+    for m in re.finditer(r"(?is)INSERT\s+(?:IGNORE\s+)?INTO\s+[`\"]?(\w+)[`\"]?\s*\(([^)]*)\)", statements):
+        table = m.group(1).lower()
+        seeded.add(table)
+        if "tenant_id" in [c.strip().strip('`"').lower() for c in m.group(2).split(",")]:
+            with_tenant.add(table)
+    return seeded, with_tenant
+
+
+def check_seed_tenant_parity(violations: list) -> None:
+    """PostgreSQL 种子写了 tenant_id 的表，MySQL 种子也必须写。
+
+    行数相同不代表内容相同：sys_config 两边都是 6 行，但 MySQL 侧漏了 tenant_id 列、
+    落库为 NULL，而列表接口按租户过滤，结果是换到 MySQL 后参数设置、字典管理整页为空。
+    这种缺陷只有跑起服务查列表才看得见，这里用静态检查提前拦住。
+    """
+    for tier in ("small", "medium", "full"):
+        pg_path = SQL / "tiers" / tier / f"{tier}-init.sql"
+        my_path = SQL / "tiers" / tier / f"{tier}-init-mysql.sql"
+        if not (pg_path.exists() and my_path.exists()):
+            continue
+        pg_seeded, pg_tenant = _seed_tables_with_tenant(pg_path)
+        my_seeded, my_tenant = _seed_tables_with_tenant(my_path)
+        for table in sorted(pg_tenant & my_seeded):
+            if table not in my_tenant:
+                violations.append(
+                    f"{my_path}: {table} 的种子缺少 tenant_id 列，"
+                    f"PostgreSQL 版写了而 MySQL 版没写，落库为 NULL 会被租户过滤掉"
+                )
+
+
 def check_no_duplicate_create_table(violations: list, path: Path) -> None:
     """同一份初始化脚本里同一张表只能建一次。
 
@@ -322,6 +360,7 @@ def main() -> int:
             violations.append(f"升级演练脚本未覆盖 PostgreSQL upgrade SQL: {script}: {missing_path}")
 
     check_tier_menu_division(violations)
+    check_seed_tenant_parity(violations)
 
     if violations:
         print("\n".join(violations))
