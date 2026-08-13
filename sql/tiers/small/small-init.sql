@@ -69,6 +69,9 @@ CREATE TABLE sys_user (
 -- =============================================
 -- 4.1 社交及外部身份绑定表
 -- =============================================
+-- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
+-- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
+-- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
 CREATE TABLE sys_user_social (
     id              BIGINT          NOT NULL PRIMARY KEY,
     user_id         BIGINT          NOT NULL,
@@ -82,12 +85,14 @@ CREATE TABLE sys_user_social (
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_user_social_user_id
-    ON sys_user_social (user_id);
+CREATE INDEX idx_user_social_user_id ON sys_user_social (user_id);
+CREATE INDEX idx_user_social_provider_openid ON sys_user_social (provider, open_id);
 
+-- 租户内一个第三方身份只绑一个账号（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）
 CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
     ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
 
+-- 一个账号同 provider 只绑一个第三方身份
 CREATE UNIQUE INDEX uq_user_social_user_provider
     ON sys_user_social (user_id, provider);
 
@@ -397,36 +402,6 @@ CREATE TABLE sys_client (
     del_flag       SMALLINT        DEFAULT 0,
     remark          VARCHAR(500)
 );
-
--- =============================================
--- 21. 社交登录绑定表
--- =============================================
--- 结构与 sql/upgrades/postgres/20260415_social_login_migration.sql +
--- sql/upgrades/postgres/20260720_wechat_social_login.sql 的最终形态一致：
--- 不建全局 UNIQUE(provider, open_id)，改为两个租户隔离的唯一索引。
-CREATE TABLE sys_user_social (
-    id              BIGINT          NOT NULL PRIMARY KEY,
-    user_id         BIGINT          NOT NULL,
-    tenant_id       BIGINT,
-    provider        VARCHAR(32)     NOT NULL,
-    open_id         VARCHAR(128)    NOT NULL,
-    access_token    VARCHAR(512),
-    nickname        VARCHAR(100),
-    avatar          VARCHAR(500),
-    extra           TEXT,
-    create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_user_social_user_id ON sys_user_social (user_id);
-CREATE INDEX idx_user_social_provider_openid ON sys_user_social (provider, open_id);
-
--- 租户内一个第三方身份只绑一个账号（tenant_id 为空按 0 归一，避免 NULL 逃逸唯一约束）
-CREATE UNIQUE INDEX uq_user_social_tenant_provider_openid
-    ON sys_user_social (COALESCE(tenant_id, 0), provider, open_id);
-
--- 一个账号同 provider 只绑一个第三方身份
-CREATE UNIQUE INDEX uq_user_social_user_provider
-    ON sys_user_social (user_id, provider);
 
 -- =============================================
 -- 22. 唯一约束（与逻辑删除兼容的部分唯一索引）

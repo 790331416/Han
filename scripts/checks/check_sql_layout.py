@@ -88,6 +88,22 @@ def read_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def check_no_duplicate_create_table(violations: list, path: Path) -> None:
+    """同一份初始化脚本里同一张表只能建一次。
+
+    合并或 cherry-pick 时，两处位置各自新增同名建表语句不会产生文本冲突，
+    但导入时第二次 CREATE TABLE 直接报 "already exists" 并中断整个初始化。
+    """
+    statements = strip_sql_comments(path.read_text(encoding="utf-8", errors="replace"))
+    seen: dict[str, int] = {}
+    for m in re.finditer(r"(?is)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?(\w+)[`\"]?\s*\(", statements):
+        name = m.group(1).lower()
+        seen[name] = seen.get(name, 0) + 1
+    for name, count in sorted(seen.items()):
+        if count > 1:
+            violations.append(f"{path}: 表 {name} 被重复建表 {count} 次，导入会在第二次处中断")
+
+
 def check_insert_columns_exist(violations: list, path: Path) -> None:
     """校验每条 INSERT 的列清单都能在同一文件的 CREATE TABLE 里找到。
 
@@ -159,6 +175,7 @@ def main() -> int:
             text = read_sql(init_file)
             statements = strip_sql_comments(text)
             check_insert_columns_exist(violations, init_file)
+            check_no_duplicate_create_table(violations, init_file)
             for token in FORBIDDEN_SQL_TOKENS:
                 if token in statements:
                     violations.append(f"Tier PostgreSQL SQL 不能包含 MySQL 语法 {token!r}: {init_file}")
@@ -185,6 +202,7 @@ def main() -> int:
             else:
                 mysql_text = read_sql(mysql_init_file)
                 check_insert_columns_exist(violations, mysql_init_file)
+                check_no_duplicate_create_table(violations, mysql_init_file)
                 mysql_upper = strip_sql_comments(mysql_text).upper()
                 for token in FORBIDDEN_MYSQL_TOKENS:
                     if token in mysql_upper:
