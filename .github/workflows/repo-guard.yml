@@ -30,6 +30,10 @@ jobs:
         run: python scripts/checks/check_deploy_layout.py
       - name: Check deploy secrets
         run: python scripts/checks/check_deploy_secrets.py
+      - name: Check database compat
+        run: python scripts/checks/check_database_compat.py
+      - name: Check endpoint authz
+        run: python scripts/checks/check_endpoint_authz.py
 
   compose:
     name: Validate compose files

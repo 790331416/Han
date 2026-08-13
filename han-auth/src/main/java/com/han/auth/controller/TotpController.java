@@ -7,6 +7,7 @@ import com.han.common.core.constant.Constants;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.PasswordUtil;
+import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.context.SecurityContextHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,13 @@ import java.util.Map;
 
 /**
  * 2FA / TOTP 两步验证控制器
+ *
+ * <p>本类不走权限串鉴权：所有接口都只操作调用者本人的 2FA，用户标识一律取自登录态
+ * （{@code SecurityContextHolder.getUserId()}），不接受外部传入，因此不存在越权面。
+ * 访问控制由「网关校验 Token（{@code /auth/totp} 不在网关白名单）+ 方法内校验 userId」
+ * 两层构成，用 {@link PermissionExempt} 把这个事实显式声明出来，
+ * 以便 {@code PermissionCheckPostProcessor} 能扫到本类——否则整个类对启动门禁隐形，
+ * 新增方法漏写登录校验时不会有任何提示。
  */
 @Slf4j
 @RestController
@@ -31,6 +39,7 @@ public class TotpController {
      * <p>用户在个人中心点击"启用两步验证"时调用
      */
     @GetMapping("/setup")
+    @PermissionExempt("本人登录态接口，方法内校验 userId 后只操作调用者自己的 2FA，不接受外部传入的用户标识")
     public R<Map<String, String>> setup() {
         Long userId = SecurityContextHolder.getUserId();
         String username = SecurityContextHolder.getUsername();
@@ -53,6 +62,7 @@ public class TotpController {
      * 确认绑定 TOTP（验证码校验通过后保存密钥）
      */
     @PostMapping("/bind")
+    @PermissionExempt("本人登录态接口，方法内校验 userId 后只操作调用者自己的 2FA，不接受外部传入的用户标识")
     public R<Void> bind(@RequestBody Map<String, String> body) {
         Long userId = SecurityContextHolder.getUserId();
         if (userId == null) {
@@ -79,6 +89,7 @@ public class TotpController {
      * 解绑 TOTP
      */
     @PostMapping("/unbind")
+    @PermissionExempt("本人登录态接口，方法内校验 userId 并额外要求当前密码，只解绑调用者自己的 2FA")
     public R<Void> unbind(@RequestBody Map<String, String> body) {
         Long userId = SecurityContextHolder.getUserId();
         if (userId == null) {
@@ -110,6 +121,7 @@ public class TotpController {
      * 获取当前用户 2FA 状态
      */
     @GetMapping("/status")
+    @PermissionExempt("本人登录态接口，方法内校验 userId 后只读取调用者自己的 2FA 状态")
     public R<Map<String, Object>> status() {
         Long userId = SecurityContextHolder.getUserId();
         if (userId == null) {
