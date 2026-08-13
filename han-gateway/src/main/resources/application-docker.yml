@@ -61,6 +61,13 @@ spring:
               uri: ${SDFZ_THREE_CLASSROOM_GATEWAY_URI:lb://three-classroom-gateway}
               predicates:
                 - Path=/tcapi/**,/ysfz-tcapi/**
+            # 智慧校园契约兼容目录：旧 api 的 api.url 与旧前端 /api 反代都指到这里。
+            # 这份 docker profile 的 routes 是整表覆盖 application.yml 的同名列表而不是追加，
+            # 少一条这里就等于兼容层在容器部署下完全不可达（网关 404，服务侧其实是好的）。
+            - id: sdfz-legacy-compat
+              uri: lb://han-system
+              predicates:
+                - Path=/sdfz-compat/**
   data:
     redis:
       host: ${REDIS_HOST:localhost}
