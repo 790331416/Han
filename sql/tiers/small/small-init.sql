@@ -474,7 +474,6 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1, 0, '0', '系统管理', 'M', 'system', NULL, NULL, 'system', 1, 0, 0),
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
 (3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
-(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
 (5, 0, '0', '任务调度', 'M', 'job', NULL, NULL, 'timer', 5, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
@@ -495,13 +494,12 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (203, 2, '0,2', '缓存监控', 'C', 'cache', 'monitor/cache/index', 'monitor:cache:list', 'redis', 4, 0, 0),
 (204, 2, '0,2', '服务监控', 'C', 'server', 'monitor/server/index', 'monitor:server:list', 'server', 5, 0, 0);
 
+-- 「代码生成」菜单依赖只在 full 档建的 gen_table，本档不播，避免出现点不开的死菜单。
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
-(300, 3, '0,3', '代码生成', 'C', 'gen', 'tool/gen/index', 'tool:gen:list', 'code', 1, 0, 0),
 (301, 3, '0,3', '系统接口', 'C', 'swagger', 'tool/swagger/index', 'tool:swagger:list', 'swagger', 2, 0, 0);
 
-INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
-(400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
-(401, 4, '0,4', '套餐管理', 'C', 'package', 'tenant/package/index', 'tenant:package:list', 'component', 2, 0, 0);
+-- 租户管理菜单从 medium 档起才播：small 不建 sys_tenant 等租户表，
+-- 播了父菜单会让升级脚本顺着父菜单继续补租户权限点，形成点不开的死菜单。
 
 -- 7.1 任务调度菜单
 -- 菜单 ID 与 sql/upgrades/postgres/phase9_base_menu_backfill.sql 保持同一套编号，
