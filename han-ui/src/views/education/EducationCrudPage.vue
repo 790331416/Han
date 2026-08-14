@@ -56,7 +56,9 @@
           :prop="column.key"
           :min-width="column.width || 130"
           show-overflow-tooltip
-        />
+        >
+          <template v-if="column.format" #default="{ row }">{{ column.format(row) }}</template>
+        </el-table-column>
         <el-table-column v-if="config.showSource !== false" label="来源" prop="sourceSystem" width="110">
           <template #default="{ row }">
             <el-tag :type="row.sourceSystem === 'HAN' ? 'success' : 'info'">
@@ -215,15 +217,19 @@ interface Field {
   type?: FieldType
   source?: OptionSource
   hint?: string
+  initial?: unknown
   visibleWhen?: (form: EducationRecord) => boolean
 }
 interface EntityConfig {
   title: string
   permission: string
   showSource?: boolean
-  columns: Array<{ key: string; label: string; width?: number }>
+  columns: Array<{ key: string; label: string; width?: number; format?: (row: EducationRecord) => string }>
   fields: Field[]
 }
+
+// 岗位码到旧三课堂菜单角色串的映射在服务端（sdfz.compat.duty-type），这里只做中文显示。
+const DUTY_LABELS: Record<string, string> = { TEACHER: '普通教师', SCHOOL_ADMIN: '校级管理员' }
 
 const props = defineProps<{ entity: EducationEntity }>()
 const userStore = useUserStore()
@@ -241,12 +247,22 @@ const configs: Record<EducationEntity, EntityConfig> = {
   },
   people: {
     title: '人员', permission: 'education:person',
-    columns: [{ key: 'personNo', label: '人员编号' }, { key: 'personName', label: '姓名', width: 140 }, { key: 'personType', label: '人员类型' }, { key: 'userId', label: '登录账号ID', width: 170 }, { key: 'phone', label: '手机号' }],
+    columns: [{ key: 'personNo', label: '人员编号' }, { key: 'personName', label: '姓名', width: 140 }, { key: 'personType', label: '人员类型' }, { key: 'dutyCode', label: '校内岗位', format: (row: EducationRecord) => DUTY_LABELS[row.dutyCode as string] || DUTY_LABELS.TEACHER }, { key: 'userId', label: '登录账号ID', width: 170 }, { key: 'phone', label: '手机号' }],
     fields: [
       { key: 'schoolId', label: '学校', required: true, type: 'select', source: 'schools' },
       { key: 'personNo', label: '人员编号', required: true },
       { key: 'personName', label: '姓名', required: true },
       { key: 'personType', label: '人员类型', required: true, type: 'select' },
+      {
+        key: 'dutyCode',
+        label: '校内岗位',
+        required: true,
+        type: 'select',
+        // 新增人员默认普通教师：管理岗只能是管理员主动选出来的，不能靠缺省发出去。
+        initial: 'TEACHER',
+        visibleWhen: (form) => form.personType !== 'STUDENT',
+        hint: '校级管理员可进入课程预约、授课统计、学校设置、学校直播间；普通教师不可。与人员类型是两个维度，不会互相推导'
+      },
       { key: 'phone', label: '手机号' },
       { key: 'classIds', label: '所属班级', type: 'multi', source: 'classes', hint: '学生只能归属一个有效行政班' },
       { key: 'subjectIds', label: '任教科目', type: 'multi', source: 'subjects', visibleWhen: (form) => form.personType !== 'STUDENT' },
@@ -337,7 +353,8 @@ function resetQuery() {
 function resetForm() {
   for (const key of Object.keys(form)) delete form[key]
   for (const field of config.value.fields) {
-    if (field.type === 'multi') form[field.key] = []
+    if (field.initial !== undefined) form[field.key] = field.initial
+    else if (field.type === 'multi') form[field.key] = []
     else if (field.type === 'switch') form[field.key] = false
     else if (field.type === 'status' || field.type === 'flag' || field.type === 'number') form[field.key] = 0
     else form[field.key] = ''
@@ -356,6 +373,8 @@ async function handleEdit(row: EducationRecord) {
   resetForm()
   Object.assign(form, row)
   form.loginEnabled = !!row.userId
+  // 引入岗位维度之前建的人员 duty_code 是空的，服务端按普通教师解释，表单要显示成同一个值。
+  if (props.entity === 'people' && !form.dutyCode) form.dutyCode = 'TEACHER'
   await loadFormOptions(row.schoolId)
   if (props.entity === 'people' && row.id) {
     const [memberships, assignments, roles] = await Promise.all([
@@ -393,6 +412,7 @@ async function loadFormOptions(schoolId?: string | number) {
       { label: '教师', value: 'TEACHER' },
       { label: '学生', value: 'STUDENT' }
     ]
+    options.dutyCode = Object.entries(DUTY_LABELS).map(([value, label]) => ({ label, value }))
   }
 }
 
