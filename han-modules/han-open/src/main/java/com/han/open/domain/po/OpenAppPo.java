@@ -40,6 +40,14 @@ public class OpenAppPo extends BizEntity {
     /** 授权范围(多个用逗号分隔) */
     private String scopes;
 
+    /**
+     * 可读取教育目录的学校 ID，逗号分隔。
+     *
+     * <p>ponytail: 当前应用授权量小，先用单列收口；学校范围需要按单校独立审计或大量筛选时，
+     * 升级为 open_app_school_scope 关联表。</p>
+     */
+    private String schoolScope;
+
     /** 授权类型(authorization_code,client_credentials,refresh_token) */
     private String grantTypes;
 

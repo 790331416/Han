@@ -4,7 +4,7 @@
     <div class="welcome-section">
       <div>
         <h2 class="welcome-title">{{ greeting }}，{{ userStore.nickname || userStore.username }} 👋</h2>
-        <p class="welcome-desc">欢迎回到 HAN Cloud 管理平台</p>
+        <p class="welcome-desc">欢迎回到 {{ brandStore.displayName }} 管理平台</p>
       </div>
     </div>
 
@@ -105,6 +105,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
+import { useBrandStore } from '@/stores/brand'
 import { get } from '@/utils/request'
 
 echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -112,6 +113,7 @@ echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendCompone
 const router = useRouter()
 const userStore = useUserStore()
 const appStore = useAppStore()
+const brandStore = useBrandStore()
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -244,7 +246,7 @@ onBeforeUnmount(() => {
 
 // Spring Boot 版本由后端运行时下发，避免硬编码漂移（历史：前端写死 4.0.2，实际 4.1.0）
 const sysInfo = computed(() => [
-  { label: '系统名称', value: 'HAN Cloud' },
+  { label: '系统名称', value: brandStore.displayName },
   { label: '系统版本', value: 'v1.0.0' },
   { label: 'Spring Boot', value: stats.springBootVersion || '-' },
   { label: 'Spring Cloud', value: '2025.1.2' },

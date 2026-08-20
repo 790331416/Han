@@ -10,6 +10,7 @@ export interface OpenApp {
   appType?: string
   redirectUris?: string[]
   scopes?: string[]
+  schoolIds?: (string | number)[]
   grantTypes?: string[]
   accessTokenTtl?: number
   refreshTokenTtl?: number
@@ -31,6 +32,7 @@ export interface OpenAppForm {
   appType?: string
   redirectUris?: string[]
   scopes?: string[]
+  schoolIds?: (string | number)[]
   grantTypes?: string[]
   accessTokenTtl?: number
   refreshTokenTtl?: number
@@ -46,8 +48,14 @@ export function getOpenApp(id: string | number) {
   return get<OpenApp>(`/open/app/${id}`)
 }
 
+export interface OpenAppCredential {
+  appId: string | number
+  appKey: string
+  appSecret: string
+}
+
 export function addOpenApp(data: OpenAppForm) {
-  return post<void>('/open/app', data)
+  return post<OpenAppCredential>('/open/app', data)
 }
 
 export function updateOpenApp(data: OpenAppForm) {

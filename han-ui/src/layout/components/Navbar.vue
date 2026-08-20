@@ -69,6 +69,9 @@
             <el-dropdown-item data-testid="navbar-profile" @click="handleProfile">
               <el-icon><User /></el-icon>个人中心
             </el-dropdown-item>
+            <el-dropdown-item v-if="canViewSystemBrand" data-testid="navbar-system-brand" @click="router.push('/system/brand')">
+              <el-icon><Setting /></el-icon>系统设置
+            </el-dropdown-item>
             <el-dropdown-item divided data-testid="navbar-logout" @click="handleLogout">
               <el-icon><SwitchButton /></el-icon>退出登录
             </el-dropdown-item>
@@ -121,6 +124,7 @@ import {
   HomeFilled,
   Moon,
   OfficeBuilding,
+  Setting,
   Sunny,
   SwitchButton,
   User
@@ -136,6 +140,7 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
+const canViewSystemBrand = computed(() => userStore.hasPermission('system:brand:query'))
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 const { isFullscreen, toggle } = useFullscreen()

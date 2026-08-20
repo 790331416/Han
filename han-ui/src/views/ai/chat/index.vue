@@ -86,7 +86,7 @@
           <div class="chat-messages" ref="messagesRef" data-testid="ai-chat-message-list" @click="onMessageAreaClick">
             <div v-if="messages.length === 0 && !currentConversationId" class="welcome-screen" :class="{ 'welcome-screen-compact': showSuggestedQuestions }">
               <el-icon :size="64" color="#409eff"><ChatDotRound /></el-icon>
-              <h2>欢迎使用 HAN AI 助手</h2>
+              <h2>欢迎使用 {{ brandStore.displayName }} AI 助手</h2>
               <p>选择一个模型，开始对话吧</p>
             </div>
             <!-- 开场推荐问题（G1-10）：会话开场渲染可点击提问，点击即作为用户消息发送 -->
@@ -671,6 +671,7 @@ import {
   type McpServer
 } from '@/api/ai'
 import { useUserStore } from '@/stores/user'
+import { useBrandStore } from '@/stores/brand'
 import { requestAiStream, type AiStreamMetaPayload, type AiStreamNodeEvent } from '@/utils/ai-stream'
 import { sanitizeHtml } from '@/utils/sanitize-html'
 
@@ -712,6 +713,7 @@ const editingMessageId = ref<string | number | null>(null)
 const editMessageContent = ref('')
 const route = useRoute()
 const router = useRouter()
+const brandStore = useBrandStore()
 
 // ==================== 多模态（图片上传 / 文生图） ====================
 const MAX_CHAT_IMAGES = 4

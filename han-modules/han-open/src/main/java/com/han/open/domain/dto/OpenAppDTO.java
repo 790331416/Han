@@ -38,6 +38,9 @@ public class OpenAppDTO implements Serializable {
     /** 授权范围列表（前端传入） */
     private List<String> scopes;
 
+    /** 开放目录可读取的学校 ID 列表（前端传入）。 */
+    private List<Long> schoolIds;
+
     /** 授权类型列表（前端传入） */
     private List<String> grantTypes;
 

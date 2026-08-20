@@ -1,7 +1,7 @@
 <template>
   <div class="login-container" data-testid="social-callback-page">
     <div class="login-form callback-card">
-      <h3 class="title">HAN Cloud</h3>
+      <h3 class="title">{{ brandStore.displayName }}</h3>
       <p class="subtitle">{{ providerLabel }}登录</p>
 
       <!-- 处理中 -->
@@ -109,7 +109,7 @@
     </div>
 
     <div class="footer">
-      <span>Copyright 2024 HAN Cloud. All Rights Reserved.</span>
+      <span>Copyright 2024 {{ brandStore.displayName }}. All Rights Reserved.</span>
     </div>
   </div>
 </template>
@@ -121,6 +121,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowRight, CircleCloseFilled, Loading, Lock, OfficeBuilding, User } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+import { useBrandStore } from '@/stores/brand'
 import {
   getPublicKey,
   socialBind,
@@ -140,6 +141,7 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
+const brandStore = useBrandStore()
 
 const status = ref<CallbackStatus>('processing')
 const loading = ref(false)

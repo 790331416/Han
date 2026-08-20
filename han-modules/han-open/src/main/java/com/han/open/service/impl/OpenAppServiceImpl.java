@@ -11,6 +11,7 @@ import com.han.open.domain.dto.OpenAppDTO;
 import com.han.open.domain.po.OpenAppPo;
 import com.han.open.domain.query.OpenAppQuery;
 import com.han.open.domain.vo.OpenAppVO;
+import com.han.open.domain.vo.OpenAppCredentialVO;
 import com.han.open.mapper.OpenAppMapper;
 import com.han.open.service.IOpenAppService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 
 /**
@@ -90,6 +93,13 @@ public class OpenAppServiceImpl implements IOpenAppService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insert(OpenAppDTO dto) {
+        createWithCredentials(dto);
+        return 1;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public OpenAppCredentialVO createWithCredentials(OpenAppDTO dto) {
         OpenAppPo po = openAppConverter.toPo(dto);
         if (po == null) {
             throw new BusinessException("应用信息不能为空");
@@ -97,8 +107,10 @@ public class OpenAppServiceImpl implements IOpenAppService {
         normalizeForCreate(po);
         validateForSave(po, null);
         po.setAppKey(generateAppKey());
-        po.setAppSecret(generateAppSecret());
-        return openAppMapper.insert(po);
+        String appSecret = generateAppSecret();
+        po.setAppSecret(PasswordUtil.encode(appSecret));
+        openAppMapper.insert(po);
+        return new OpenAppCredentialVO(po.getId(), po.getAppKey(), appSecret);
     }
 
     @Override
@@ -151,7 +163,7 @@ public class OpenAppServiceImpl implements IOpenAppService {
         String newSecret = generateAppSecret();
         OpenAppPo update = new OpenAppPo();
         update.setId(existing.getId());
-        update.setAppSecret(newSecret);
+        update.setAppSecret(PasswordUtil.encode(newSecret));
         openAppMapper.updateById(update);
         return newSecret;
     }
@@ -176,7 +188,22 @@ public class OpenAppServiceImpl implements IOpenAppService {
                 .eq(OpenAppPo::getAppKey, clientId.trim())
                 .eq(OpenAppPo::getStatus, STATUS_ENABLED)
                 .last("LIMIT 1"));
-        return po != null && clientSecret.trim().equals(po.getAppSecret());
+        if (po == null) {
+            return false;
+        }
+        if (PasswordUtil.matches(clientSecret.trim(), po.getAppSecret())) {
+            return true;
+        }
+        // 兼容已落库的明文旧密钥：首次成功使用后升级为哈希，不影响存量第三方接入。
+        if (MessageDigest.isEqual(clientSecret.trim().getBytes(StandardCharsets.UTF_8),
+                po.getAppSecret().getBytes(StandardCharsets.UTF_8))) {
+            OpenAppPo update = new OpenAppPo();
+            update.setId(po.getId());
+            update.setAppSecret(PasswordUtil.encode(clientSecret.trim()));
+            openAppMapper.updateById(update);
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -249,7 +276,9 @@ public class OpenAppServiceImpl implements IOpenAppService {
         po.setLogoutUri(trimToNull(po.getLogoutUri()));
         po.setRedirectUris(normalizeCommaSeparated(po.getRedirectUris()));
         po.setScopes(StringUtils.hasText(po.getScopes()) ? normalizeCommaSeparated(po.getScopes()) : DEFAULT_SCOPES);
-        po.setGrantTypes(StringUtils.hasText(po.getGrantTypes()) ? normalizeCommaSeparated(po.getGrantTypes()) : DEFAULT_GRANT_TYPES);
+        po.setSchoolScope(normalizeSchoolScope(po.getSchoolScope()));
+        po.setGrantTypes(StringUtils.hasText(po.getGrantTypes()) ? normalizeCommaSeparated(po.getGrantTypes())
+                : ("server".equals(po.getAppType()) ? "client_credentials" : DEFAULT_GRANT_TYPES));
         po.setAccessTokenTtl(po.getAccessTokenTtl() != null ? po.getAccessTokenTtl() : DEFAULT_ACCESS_TOKEN_TTL);
         po.setRefreshTokenTtl(po.getRefreshTokenTtl() != null ? po.getRefreshTokenTtl() : DEFAULT_REFRESH_TOKEN_TTL);
         po.setRequirePkce(po.getRequirePkce() != null ? po.getRequirePkce() : DEFAULT_REQUIRE_PKCE);
@@ -269,7 +298,9 @@ public class OpenAppServiceImpl implements IOpenAppService {
         po.setLogoutUri(trimToNull(po.getLogoutUri()));
         po.setRedirectUris(normalizeCommaSeparated(po.getRedirectUris()));
         po.setScopes(StringUtils.hasText(po.getScopes()) ? normalizeCommaSeparated(po.getScopes()) : DEFAULT_SCOPES);
-        po.setGrantTypes(StringUtils.hasText(po.getGrantTypes()) ? normalizeCommaSeparated(po.getGrantTypes()) : DEFAULT_GRANT_TYPES);
+        po.setSchoolScope(normalizeSchoolScope(po.getSchoolScope()));
+        po.setGrantTypes(StringUtils.hasText(po.getGrantTypes()) ? normalizeCommaSeparated(po.getGrantTypes())
+                : ("server".equals(po.getAppType()) ? "client_credentials" : DEFAULT_GRANT_TYPES));
         po.setAccessTokenTtl(po.getAccessTokenTtl() != null ? po.getAccessTokenTtl() : DEFAULT_ACCESS_TOKEN_TTL);
         po.setRefreshTokenTtl(po.getRefreshTokenTtl() != null ? po.getRefreshTokenTtl() : DEFAULT_REFRESH_TOKEN_TTL);
         po.setRequirePkce(po.getRequirePkce() != null ? po.getRequirePkce() : DEFAULT_REQUIRE_PKCE);
@@ -296,6 +327,9 @@ public class OpenAppServiceImpl implements IOpenAppService {
         }
         if (po.getRefreshTokenTtl() == null || po.getRefreshTokenTtl() < 60) {
             throw new BusinessException("RefreshToken 有效期不能小于 60 秒");
+        }
+        if (hasEducationDirectoryScope(po.getScopes()) && !StringUtils.hasText(po.getSchoolScope())) {
+            throw new BusinessException("授权教师、学生或设备目录时必须指定学校范围");
         }
         validateStatus(po.getStatus());
         ensureAppNameUnique(po.getAppName(), currentId);
@@ -340,6 +374,27 @@ public class OpenAppServiceImpl implements IOpenAppService {
                 .distinct()
                 .reduce((left, right) -> left + "," + right)
                 .orElse("");
+    }
+
+    private String normalizeSchoolScope(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        try {
+            return openAppConverter.stringToLongList(value).stream()
+                    .map(String::valueOf)
+                    .collect(java.util.stream.Collectors.joining(","));
+        } catch (NumberFormatException e) {
+            throw new BusinessException("学校范围必须是有效的学校ID列表");
+        }
+    }
+
+    private static boolean hasEducationDirectoryScope(String scopes) {
+        return scopes != null && java.util.Arrays.stream(scopes.split(","))
+                .map(String::trim)
+                .anyMatch(item -> item.equals("edu.teacher.read")
+                        || item.equals("edu.student.read")
+                        || item.equals("edu.device.read"));
     }
 
     private String generateAppKey() {

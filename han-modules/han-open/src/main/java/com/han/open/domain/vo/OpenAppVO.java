@@ -29,6 +29,9 @@ public class OpenAppVO implements Serializable {
      */
     private String appKey;
 
+    /** 应用所属租户，仅用于授权链路内部恢复数据范围。 */
+    private Long tenantId;
+
     /**
      * 应用图标
      */
@@ -58,6 +61,9 @@ public class OpenAppVO implements Serializable {
      * 授权范围列表
      */
     private List<String> scopes;
+
+    /** 开放目录可读取的学校 ID 列表。 */
+    private List<Long> schoolIds;
 
     /**
      * 授权类型列表
@@ -113,4 +119,7 @@ public class OpenAppVO implements Serializable {
      * 创建时间
      */
     private LocalDateTime createTime;
+
+    /** 用于令牌失效版本判断；任意应用授权变更都会使旧 Token 失效。 */
+    private LocalDateTime updateTime;
 }

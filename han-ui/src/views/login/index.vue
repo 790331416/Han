@@ -8,8 +8,9 @@
       data-testid="login-form"
       autocomplete="on"
     >
-      <h3 class="title">HAN Cloud</h3>
-      <p class="subtitle">企业级多租户微服务平台</p>
+      <img v-if="brandStore.logoUrl" class="brand-logo" :src="brandStore.logoUrl" alt="" />
+      <h3 class="title">{{ brandStore.displayName }}</h3>
+      <p v-if="brandStore.loginSubtitle" class="subtitle">{{ brandStore.loginSubtitle }}</p>
       
       <el-form-item v-if="deployTier !== 'small'" prop="tenantId">
         <el-select
@@ -101,7 +102,7 @@
     </el-form>
     
     <div class="footer">
-      <span>Copyright 2024 HAN Cloud. All Rights Reserved.</span>
+      <span>Copyright 2024 {{ brandStore.displayName }}. All Rights Reserved.</span>
     </div>
 
     <!-- 2FA TOTP 验证弹窗 -->
@@ -130,6 +131,7 @@ import { ElMessage } from 'element-plus'
 import { User, Lock, Key, OfficeBuilding } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
+import { useBrandStore } from '@/stores/brand'
 import { getCaptcha, getPublicKey, getSocialProviders, getSocialAuthorizeUrl, type TenantSimple } from '@/api/auth'
 import { rsaEncrypt } from '@/utils/crypto'
 import { get } from '@/utils/request'
@@ -139,6 +141,7 @@ const router = useRouter()
 const route = useRoute()
 const appStore = useAppStore()
 const userStore = useUserStore()
+const brandStore = useBrandStore()
 
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
@@ -389,6 +392,14 @@ onMounted(async () => {
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.03em;
+}
+
+.brand-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  object-fit: contain;
 }
 
 .subtitle {

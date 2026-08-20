@@ -126,8 +126,10 @@ public class OAuth2Controller {
     @PostMapping("/revoke")
     @PermissionExempt("OAuth2 Token 撤销端点，由客户端凭证和业务参数校验控制")
     public R<Void> revoke(@RequestParam String token,
-                          @RequestParam(value = "token_type_hint", required = false) String tokenTypeHint) {
-        oauth2Service.revokeToken(token, tokenTypeHint);
+                          @RequestParam(value = "token_type_hint", required = false) String tokenTypeHint,
+                          @RequestParam("client_id") String clientId,
+                          @RequestParam("client_secret") String clientSecret) {
+        oauth2Service.revokeToken(token, tokenTypeHint, clientId, clientSecret);
         return R.ok();
     }
 
@@ -136,8 +138,10 @@ public class OAuth2Controller {
      */
     @PostMapping("/introspect")
     @PermissionExempt("OAuth2 Token 自省端点，由客户端凭证和业务参数校验控制")
-    public R<Object> introspect(@RequestParam String token) {
-        return R.ok(oauth2Service.introspectToken(token));
+    public R<Object> introspect(@RequestParam String token,
+                                @RequestParam("client_id") String clientId,
+                                @RequestParam("client_secret") String clientSecret) {
+        return R.ok(oauth2Service.introspectToken(token, clientId, clientSecret));
     }
 
     /**
@@ -168,7 +172,8 @@ public class OAuth2Controller {
         metadata.put("grant_types_supported", new String[]{"authorization_code", "refresh_token", "client_credentials"});
         metadata.put("subject_types_supported", new String[]{"public"});
         metadata.put("id_token_signing_alg_values_supported", new String[]{"none"});
-        metadata.put("scopes_supported", new String[]{"openid", "profile"});
+        metadata.put("scopes_supported", new String[]{
+                "openid", "profile", "edu.teacher.read", "edu.student.read", "edu.device.read", "edu.contact.read"});
         return R.ok(metadata);
     }
 

@@ -11,6 +11,7 @@ import router from './router'
 import i18n from './locales'
 import { formatDate } from '@/utils/request'
 import { useAppStore } from '@/stores/app'
+import { useBrandStore } from '@/stores/brand'
 
 import 'virtual:uno.css'
 import 'element-plus/dist/index.css'
@@ -34,7 +35,9 @@ async function bootstrap() {
   app.config.globalProperties.$formatDate = formatDate
 
   const appStore = useAppStore(pinia)
+  const brandStore = useBrandStore(pinia)
   await appStore.loadRuntimeCapabilities()
+  void brandStore.loadPublicBrand()
 
   app.use(router)
   app.mount('#app')

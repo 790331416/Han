@@ -9,6 +9,7 @@ import com.han.open.domain.dto.OpenAppDTO;
 import com.han.open.domain.dto.OpenAppStatusUpdateRequest;
 import com.han.open.domain.query.OpenAppQuery;
 import com.han.open.domain.vo.OpenAppVO;
+import com.han.open.domain.vo.OpenAppCredentialVO;
 import com.han.open.service.IOpenAppService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -60,9 +61,8 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('open:app:add')")
-    public R<Void> add(@Validated @RequestBody OpenAppDTO dto) {
-        openAppService.insert(dto);
-        return R.ok();
+    public R<OpenAppCredentialVO> add(@Validated @RequestBody OpenAppDTO dto) {
+        return R.ok(openAppService.createWithCredentials(dto));
     }
 
     /**

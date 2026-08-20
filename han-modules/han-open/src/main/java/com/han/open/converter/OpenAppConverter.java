@@ -24,6 +24,7 @@ public interface OpenAppConverter {
     @Mapping(source = "id", target = "appId")
     @Mapping(source = "redirectUris", target = "redirectUris", qualifiedByName = "stringToList")
     @Mapping(source = "scopes", target = "scopes", qualifiedByName = "stringToList")
+    @Mapping(source = "schoolScope", target = "schoolIds", qualifiedByName = "stringToLongList")
     @Mapping(source = "grantTypes", target = "grantTypes", qualifiedByName = "stringToList")
     OpenAppVO toVO(OpenAppPo po);
 
@@ -45,6 +46,9 @@ public interface OpenAppConverter {
         }
         if (dto.getScopes() != null) {
             po.setScopes(listToString(dto.getScopes()));
+        }
+        if (dto.getSchoolIds() != null) {
+            po.setSchoolScope(longListToString(dto.getSchoolIds()));
         }
         if (dto.getGrantTypes() != null) {
             po.setGrantTypes(listToString(dto.getGrantTypes()));
@@ -80,6 +84,9 @@ public interface OpenAppConverter {
         if (dto.getScopes() != null) {
             po.setScopes(listToString(dto.getScopes()));
         }
+        if (dto.getSchoolIds() != null) {
+            po.setSchoolScope(longListToString(dto.getSchoolIds()));
+        }
         if (dto.getGrantTypes() != null) {
             po.setGrantTypes(listToString(dto.getGrantTypes()));
         }
@@ -105,5 +112,26 @@ public interface OpenAppConverter {
             return "";
         }
         return String.join(",", list);
+    }
+
+    @Named("stringToLongList")
+    default List<Long> stringToLongList(String value) {
+        if (value == null || value.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .map(Long::valueOf)
+                .distinct()
+                .toList();
+    }
+
+    default String longListToString(List<Long> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        return values.stream().filter(java.util.Objects::nonNull).distinct()
+                .map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
     }
 }

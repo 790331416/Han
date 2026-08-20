@@ -4,6 +4,7 @@ import com.han.open.domain.dto.OAuth2AuthorizeDTO;
 import com.han.open.domain.dto.OAuth2TokenDTO;
 import com.han.open.domain.vo.OAuth2TokenVO;
 import com.han.open.domain.vo.OAuth2UserInfoVO;
+import com.han.open.domain.vo.OpenAccessTokenContext;
 
 /**
  * OAuth2授权服务接口
@@ -28,12 +29,15 @@ public interface IOAuth2Service {
     /**
      * 撤销Token
      */
-    void revokeToken(String token, String tokenTypeHint);
+    void revokeToken(String token, String tokenTypeHint, String clientId, String clientSecret);
 
     /**
      * Token自省(验证Token有效性)
      */
-    Object introspectToken(String token);
+    Object introspectToken(String token, String clientId, String clientSecret);
+
+    /** 验证 Bearer Token、应用状态、Scope 与授权数据范围。 */
+    OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope);
 
     /**
      * 获取用户信息(OpenID Connect UserInfo)

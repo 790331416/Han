@@ -94,6 +94,21 @@
         <el-form-item label="回调地址">
           <el-input v-model="redirectUrisStr" type="textarea" placeholder="多个地址用换行分隔" :rows="3" data-testid="open-app-form-redirect-uris" />
         </el-form-item>
+        <el-form-item label="授权范围">
+          <el-checkbox-group v-model="form.scopes">
+            <el-checkbox label="openid">OpenID</el-checkbox>
+            <el-checkbox label="profile">基础资料</el-checkbox>
+            <el-checkbox label="edu.teacher.read">教师目录</el-checkbox>
+            <el-checkbox label="edu.student.read">学生目录</el-checkbox>
+            <el-checkbox label="edu.device.read">设备目录</el-checkbox>
+            <el-checkbox label="edu.contact.read">联系方式（需审批）</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item v-if="needsSchoolScope" label="授权学校" prop="schoolIds">
+          <el-select v-model="form.schoolIds" multiple filterable clearable placeholder="选择可读取目录的学校" style="width: 100%">
+            <el-option v-for="school in schools" :key="school.value" :label="school.label" :value="school.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="联系人">
           <el-input v-model="form.contactName" placeholder="请输入联系人" data-testid="open-app-form-contact-name" />
         </el-form-item>
@@ -121,10 +136,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, resetAppSecret, changeAppStatus, type OpenApp, type OpenAppForm } from '@/api/open/app'
+import { listOrganizationTree } from '@/api/education'
+import { schoolOptions as flattenSchoolOptions } from '@/utils/education-school-tree'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -136,11 +153,19 @@ const formRef = ref<FormInstance>()
 
 const queryParams = reactive({ appName: '', appType: '' as string | undefined, status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
-const form = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', redirectUris: [], contactName: '', accessTokenTtl: 7200, refreshTokenTtl: 604800, status: 0 })
+const form = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', redirectUris: [], scopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'], schoolIds: [], contactName: '', accessTokenTtl: 7200, refreshTokenTtl: 604800, status: 0 })
+const schools = ref<Array<{ label: string; value: string | number }>>([])
 
 const redirectUrisStr = computed({
   get: () => (form.redirectUris || []).join('\n'),
   set: (val: string) => { form.redirectUris = val.split('\n').map(s => s.trim()).filter(s => s) }
+})
+
+const needsSchoolScope = computed(() => (form.scopes || []).some(scope =>
+  scope === 'edu.teacher.read' || scope === 'edu.student.read' || scope === 'edu.device.read'))
+
+watch(() => form.appType, (appType) => {
+  form.grantTypes = appType === 'server' ? ['client_credentials'] : ['authorization_code', 'refresh_token']
 })
 
 const rules: FormRules = {
@@ -148,7 +173,14 @@ const rules: FormRules = {
   appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }]
 }
 
-onMounted(() => { getList() })
+onMounted(async () => { await loadSchools(); await getList() })
+
+async function loadSchools() {
+  const response = await listOrganizationTree(0)
+  schools.value = flattenSchoolOptions(response.data || []).map(item => ({
+    label: `${item.schoolName}（${item.schoolCode}）`, value: item.id
+  }))
+}
 
 async function getList() {
   loading.value = true
@@ -181,7 +213,7 @@ async function handleEdit(row: OpenApp) {
   try {
     const res = await getOpenApp(row.appId)
     const d = (res as any).data
-    Object.assign(form, { appId: d.appId, appName: d.appName, appDesc: d.appDesc, appType: d.appType, redirectUris: d.redirectUris || [], contactName: d.contactName, accessTokenTtl: d.accessTokenTtl, refreshTokenTtl: d.refreshTokenTtl, status: d.status })
+    Object.assign(form, { appId: d.appId, appName: d.appName, appDesc: d.appDesc, appType: d.appType, redirectUris: d.redirectUris || [], scopes: d.scopes || [], grantTypes: d.grantTypes || [], schoolIds: d.schoolIds || [], contactName: d.contactName, accessTokenTtl: d.accessTokenTtl, refreshTokenTtl: d.refreshTokenTtl, status: d.status })
   } catch { /* ignore */ }
   dialogVisible.value = true
 }
@@ -216,14 +248,19 @@ async function handleResetSecret(row: OpenApp) {
 async function submitForm() {
   if (!formRef.value) return
   await formRef.value.validate()
+  if (needsSchoolScope.value && !(form.schoolIds || []).length) {
+    ElMessage.warning('授权教师、学生或设备目录时必须选择学校范围')
+    return
+  }
   submitLoading.value = true
   try {
     if (form.appId) {
       await updateOpenApp(form)
       ElMessage.success('修改成功')
     } else {
-      await addOpenApp(form)
-      ElMessage.success('新增成功')
+      const response = await addOpenApp(form)
+      const credential = (response as any).data
+      await ElMessageBox.alert(`Client ID：${credential?.appKey || ''}\nClient Secret：${credential?.appSecret || ''}\n\n密钥只显示这一次，请立即安全保存。`, '应用创建成功', { type: 'success', confirmButtonText: '我已记录' })
     }
     dialogVisible.value = false
     getList()
@@ -233,7 +270,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.appId = undefined; form.appName = ''; form.appDesc = ''; form.appType = 'web'; form.redirectUris = []; form.contactName = ''; form.accessTokenTtl = 7200; form.refreshTokenTtl = 604800; form.status = 0
+  form.appId = undefined; form.appName = ''; form.appDesc = ''; form.appType = 'web'; form.redirectUris = []; form.scopes = ['openid', 'profile']; form.grantTypes = ['authorization_code', 'refresh_token']; form.schoolIds = []; form.contactName = ''; form.accessTokenTtl = 7200; form.refreshTokenTtl = 604800; form.status = 0
 }
 </script>
 
