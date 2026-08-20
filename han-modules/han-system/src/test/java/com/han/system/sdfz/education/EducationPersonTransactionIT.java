@@ -13,6 +13,7 @@ import com.han.common.security.context.SecurityContextAdapter;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysUserPo;
+import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
@@ -22,8 +23,10 @@ import com.han.system.sdfz.education.mapper.EduClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduPersonSubjectMapper;
+import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
+import com.han.system.sdfz.education.mapper.EduUserScopeMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -282,12 +285,16 @@ class EducationPersonTransactionIT {
     private static EducationForms.Person teacher(String personNo, String name, String username,
                                                  List<Long> roleIds, List<Long> classIds, String dutyCode) {
         return new EducationForms.Person(null, SCHOOL_ID, personNo, name, "TEACHER",
-                dutyCode, null, 0, null, null, true, username, "Teacher@2026", roleIds, null, classIds, null, null);
+                dutyCode, phoneFor(personNo), 0, null, null, true, username, "Teacher@2026", roleIds, null, classIds, null, null);
     }
 
     private static EducationForms.Person student(String personNo, String name, List<Long> classIds) {
         return new EducationForms.Person(null, SCHOOL_ID, personNo, name, "STUDENT",
-                null, null, 0, null, null, false, null, null, null, null, classIds, null, null);
+                null, phoneFor(personNo), 0, null, null, false, null, null, null, null, classIds, null, null);
+    }
+
+    private static String phoneFor(String personNo) {
+        return "139" + String.format("%08d", Math.abs(personNo.hashCode()) % 100_000_000);
     }
 
     @Configuration
@@ -341,6 +348,13 @@ class EducationPersonTransactionIT {
         }
 
         @Bean
+        EducationDataScopeService educationDataScopeService(EduUserScopeMapper userScopeMapper,
+                                                            EduSchoolMapper schoolMapper,
+                                                            EduRegionMapper regionMapper) {
+            return new EducationDataScopeService(userScopeMapper, schoolMapper, regionMapper);
+        }
+
+        @Bean
         EducationPersonService educationPersonService(EduPersonMapper personMapper,
                                                       EduPersonClassMapper personClassMapper,
                                                       EduPersonSubjectMapper personSubjectMapper,
@@ -349,9 +363,12 @@ class EducationPersonTransactionIT {
                                                       EduSubjectMapper subjectMapper,
                                                       SysUserMapper userMapper,
                                                       SysUserRoleMapper userRoleMapper,
-                                                      SysRoleMapper roleMapper) {
+                                                      SysRoleMapper roleMapper,
+                                                      SysDictDataMapper dictDataMapper,
+                                                      EducationDataScopeService dataScopeService) {
             return new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
-                    schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper);
+                    schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
+                    dataScopeService);
         }
     }
 }

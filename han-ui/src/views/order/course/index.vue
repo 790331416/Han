@@ -3,19 +3,13 @@
     <el-card shadow="never" class="search-form">
       <el-form :model="query" :inline="true">
         <el-form-item label="听讲班">
-          <el-select v-model="query.listenClassId" clearable filterable placeholder="全部" style="width: 200px">
-            <el-option v-for="item in allClasses" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationOptionSelector v-model="query.listenClassId" :options="allClasses" placeholder="全部" style="width: 200px" />
         </el-form-item>
         <el-form-item label="主讲班">
-          <el-select v-model="query.lectureClassId" clearable filterable placeholder="全部" style="width: 200px">
-            <el-option v-for="item in allClasses" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationOptionSelector v-model="query.lectureClassId" :options="allClasses" placeholder="全部" style="width: 200px" />
         </el-form-item>
         <el-form-item label="学期">
-          <el-select v-model="query.semesterId" clearable filterable placeholder="全部" style="width: 180px">
-            <el-option v-for="item in semesters" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationSemesterSelector v-model="query.semesterId" placeholder="全部" style="width: 180px" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="query.status" clearable style="width: 140px">
@@ -118,33 +112,15 @@
         <el-form-item label="业务单号">
           <el-input v-model="form.orderNo" clearable placeholder="留空自动生成；填写后重复提交将幂等返回原单" />
         </el-form-item>
-        <!-- 学校本身不提交，只用来把班级/教室/设备的候选收敛到一所学校之内，
-             与教育域 EducationCrudPage 里选班级的做法一致。 -->
+        <!-- 学校本身不提交，只用于把班级、场所、设备候选收敛到正确学校。 -->
         <el-form-item label="听讲学校">
-          <el-select
-            v-model="scope.listenSchoolId" clearable filterable placeholder="先选学校，再选下面的班级"
-            style="width: 100%" @change="onListenSchoolChange"
-          >
-            <el-option v-for="item in schools" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationSchoolSelector v-model="scope.listenSchoolId" :nodes="organizations" clearable placeholder="先选学校，再选下面的班级" @change="onListenSchoolChange" />
         </el-form-item>
         <el-form-item label="听讲班" prop="listenClassId">
-          <el-select
-            v-model="form.listenClassId" clearable filterable
-            :placeholder="scope.listenSchoolId ? '请选择听讲班' : '请先选听讲学校'"
-            :disabled="!scope.listenSchoolId" style="width: 100%"
-          >
-            <el-option v-for="item in listenClasses" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationClassSelector v-model="form.listenClassId" :school-id="scope.listenSchoolId" placeholder="请选择听讲班" />
         </el-form-item>
         <el-form-item label="听讲教室">
-          <el-select
-            v-model="form.listenRoomId" clearable filterable
-            :placeholder="scope.listenSchoolId ? '留空则听课记录的场所为空' : '请先选听讲学校'"
-            :disabled="!scope.listenSchoolId" style="width: 100%" @change="onListenRoomChange"
-          >
-            <el-option v-for="item in listenRooms" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationPlaceSelector v-model="form.listenRoomId" :school-id="scope.listenSchoolId" placeholder="留空则听课记录的场所为空" @change="onListenRoomChange" />
         </el-form-item>
         <el-form-item label="听讲端设备">
           <el-select
@@ -156,26 +132,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="主讲学校">
-          <el-select
-            v-model="scope.lectureSchoolId" clearable filterable placeholder="先选学校，再选主讲班"
-            style="width: 100%" @change="onLectureSchoolChange"
-          >
-            <el-option v-for="item in schools" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationSchoolSelector v-model="scope.lectureSchoolId" :nodes="organizations" clearable placeholder="先选学校，再选主讲班" @change="onLectureSchoolChange" />
         </el-form-item>
         <el-form-item label="主讲班" prop="lectureClassId">
-          <el-select
-            v-model="form.lectureClassId" clearable filterable
-            :placeholder="scope.lectureSchoolId ? '请选择主讲班' : '请先选主讲学校'"
-            :disabled="!scope.lectureSchoolId" style="width: 100%"
-          >
-            <el-option v-for="item in lectureClasses" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationClassSelector v-model="form.lectureClassId" :school-id="scope.lectureSchoolId" placeholder="请选择主讲班" />
         </el-form-item>
         <el-form-item label="学期" prop="semesterId">
-          <el-select v-model="form.semesterId" clearable filterable placeholder="请选择学期" style="width: 100%">
-            <el-option v-for="item in semesters" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationSemesterSelector v-model="form.semesterId" placeholder="请选择学期" />
         </el-form-item>
         <el-form-item label="授权粒度" prop="grantScope">
           <el-radio-group v-model="form.grantScope">
@@ -184,12 +147,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="form.grantScope === 'BY_SUBJECT'" label="科目" prop="subjectIds">
-          <el-select
-            v-model="selectedSubjectIds" multiple clearable filterable collapse-tags collapse-tags-tooltip
-            placeholder="请选择科目，可多选" style="width: 100%"
-          >
-            <el-option v-for="item in subjects" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+          <EducationSubjectSelector v-model="selectedSubjectIds" :school-id="scope.lectureSchoolId" multiple placeholder="请选择主讲学校的科目，可多选" />
         </el-form-item>
         <el-form-item label="存为草稿">
           <el-switch v-model="form.draft" />
@@ -225,14 +183,20 @@ import {
   type OrderStatus,
   type SyncResult
 } from '@/api/order'
-import { listEducation, listSemesters } from '@/api/education'
+import { listEducation, listOrganizationTree, listSemesters, type EducationOrganizationNode } from '@/api/education'
 import { useUserStore } from '@/stores/user'
+import EducationClassSelector from '@/components/education/EducationClassSelector.vue'
+import EducationOptionSelector, { type EducationSelectOption } from '@/components/education/EducationOptionSelector.vue'
+import EducationPlaceSelector from '@/components/education/EducationPlaceSelector.vue'
+import EducationSchoolSelector from '@/components/education/EducationSchoolSelector.vue'
+import EducationSemesterSelector from '@/components/education/EducationSemesterSelector.vue'
+import EducationSubjectSelector from '@/components/education/EducationSubjectSelector.vue'
 
 const userStore = useUserStore()
 const router = useRouter()
 
 type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
-type Option = { label: string; value: string }
+type Option = EducationSelectOption
 
 const statusOptions: Array<{ value: OrderStatus; label: string }> = [
   { value: 'DRAFT', label: '草稿' },
@@ -254,15 +218,11 @@ const query = reactive<OrderQuery>({ status: '', pageNum: 1, pageSize: 20 })
 const form = reactive<CreateOrderForm>(emptyForm())
 
 // 学校不是订购单的字段，服务端从班级反推；这里只用来收敛下面几个下拉的候选范围。
-const scope = reactive<{ listenSchoolId?: string; lectureSchoolId?: string }>({})
+const scope = reactive<{ listenSchoolId?: string | number; lectureSchoolId?: string | number }>({})
 
-const schools = ref<Option[]>([])
+const organizations = ref<EducationOrganizationNode[]>([])
 const semesters = ref<Option[]>([])
-const subjects = ref<Option[]>([])
-const listenClasses = ref<Option[]>([])
-const listenRooms = ref<Option[]>([])
 const listenDevices = ref<Option[]>([])
-const lectureClasses = ref<Option[]>([])
 /** 列表用的班级全集：列表里的单子可能跨学校，不能只拿某一所的班级来解释名称。 */
 const allClasses = ref<Option[]>([])
 
@@ -280,59 +240,39 @@ function emptyForm(): CreateOrderForm {
   return { grantScope: 'WHOLE_CLASS', draft: false, remark: '' }
 }
 
-/** 学校 / 学期 / 科目 / 班级全集不随表单变化，进页面时拉一次即可。 */
+/** 列表展示只需班级、学期名称；新增表单由通用选择器按学校动态读取。 */
 async function loadStaticOptions() {
-  const [schoolRes, semesterRes, subjectRes, classRes] = await Promise.all([
-    listEducation('schools', { pageNum: 1, pageSize: 100 }),
+  const [organizationRes, semesterRes, classRes] = await Promise.all([
+    listOrganizationTree(0),
     listSemesters({ pageNum: 1, pageSize: 100 }),
-    listEducation('subjects', { pageNum: 1, pageSize: 100 }),
     listEducation('classes', { pageNum: 1, pageSize: 200 })
   ])
-  schools.value = (schoolRes.data?.rows || []).map(item => ({
-    label: `${item.schoolName}（${item.schoolCode}）`, value: String(item.id)
-  }))
+  organizations.value = organizationRes.data || []
   semesters.value = (semesterRes.data?.rows || []).map(item => ({
     label: `${item.semesterName}（${item.semesterCode}）`, value: String(item.id)
-  }))
-  subjects.value = (subjectRes.data?.rows || []).map(item => ({
-    label: `${item.subjectName}（${item.subjectCode}）`, value: String(item.id)
   }))
   allClasses.value = (classRes.data?.rows || []).map(item => ({
     label: `${item.className}（${item.classCode}）`, value: String(item.id)
   }))
 }
 
-async function loadClasses(schoolId?: string): Promise<Option[]> {
-  if (!schoolId) return []
-  const response = await listEducation('classes', { pageNum: 1, pageSize: 100, schoolId })
-  return (response.data?.rows || []).map(item => ({
-    label: `${item.className}（${item.classCode}）`, value: String(item.id)
-  }))
-}
-
-async function onListenSchoolChange(schoolId?: string) {
+async function onListenSchoolChange(value?: string | number | Array<string | number>) {
+  const schoolId = Array.isArray(value) ? undefined : value
   // 换学校要清掉旧选择，否则会留下一个属于别的学校的班级 ID，提交时才报错。
   form.listenClassId = undefined
   form.listenRoomId = undefined
   form.listenDeviceId = undefined
-  listenRooms.value = []
   listenDevices.value = []
-  listenClasses.value = await loadClasses(schoolId)
   if (!schoolId) return
-  const [roomRes, deviceRes] = await Promise.all([
-    listEducation('rooms', { pageNum: 1, pageSize: 100, schoolId }),
-    listEducation('devices', { pageNum: 1, pageSize: 100, schoolId })
-  ])
-  listenRooms.value = (roomRes.data?.rows || []).map(item => ({
-    label: `${item.roomName}（${item.roomCode}）`, value: String(item.id)
-  }))
+  const deviceRes = await listEducation('devices', { pageNum: 1, pageSize: 100, schoolId })
   listenDevices.value = (deviceRes.data?.rows || []).map(item => ({
     label: `${item.deviceName}（${item.deviceCode}）`, value: String(item.id)
   }))
 }
 
 /** 选了教室就把设备再收窄到该教室，没选教室则回到全校设备。 */
-async function onListenRoomChange(roomId?: string) {
+async function onListenRoomChange(value?: string | number | Array<string | number>) {
+  const roomId = Array.isArray(value) ? undefined : value
   form.listenDeviceId = undefined
   const schoolId = scope.listenSchoolId
   if (!schoolId) return
@@ -343,9 +283,9 @@ async function onListenRoomChange(roomId?: string) {
   }))
 }
 
-async function onLectureSchoolChange(schoolId?: string) {
+async function onLectureSchoolChange(_value?: string | number | Array<string | number>) {
   form.lectureClassId = undefined
-  lectureClasses.value = await loadClasses(schoolId)
+  selectedSubjectIds.value = []
 }
 
 function classLabel(id?: string | number) {
@@ -407,10 +347,7 @@ function handleAdd() {
   selectedSubjectIds.value = []
   scope.listenSchoolId = undefined
   scope.lectureSchoolId = undefined
-  listenClasses.value = []
-  listenRooms.value = []
   listenDevices.value = []
-  lectureClasses.value = []
   dialogVisible.value = true
 }
 

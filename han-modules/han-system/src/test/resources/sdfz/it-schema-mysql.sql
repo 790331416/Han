@@ -10,6 +10,8 @@
 SET NAMES utf8mb4;
 
 DROP TABLE IF EXISTS sys_user_role;
+DROP TABLE IF EXISTS sys_dict_data;
+DROP TABLE IF EXISTS sys_dict_type;
 DROP TABLE IF EXISTS sys_role;
 DROP TABLE IF EXISTS sys_user;
 DROP TABLE IF EXISTS edu_person_subject;
@@ -70,6 +72,35 @@ CREATE TABLE sys_user_role (
     user_id BIGINT NOT NULL,
     role_id BIGINT NOT NULL,
     PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE sys_dict_type (
+    id BIGINT NOT NULL PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    dict_name VARCHAR(100) NOT NULL,
+    dict_type VARCHAR(100) NOT NULL,
+    status SMALLINT NOT NULL DEFAULT 0,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NULL,
+    del_flag SMALLINT NOT NULL DEFAULT 0,
+    remark VARCHAR(500)
+);
+
+CREATE TABLE sys_dict_data (
+    id BIGINT NOT NULL PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    dict_sort INT NOT NULL DEFAULT 0,
+    dict_label VARCHAR(100) NOT NULL,
+    dict_value VARCHAR(100) NOT NULL,
+    dict_type VARCHAR(100) NOT NULL,
+    css_class VARCHAR(100),
+    list_class VARCHAR(100),
+    is_default VARCHAR(10),
+    status SMALLINT NOT NULL DEFAULT 0,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NULL,
+    del_flag SMALLINT NOT NULL DEFAULT 0,
+    remark VARCHAR(500)
 );
 
 CREATE TABLE edu_school (
@@ -189,8 +220,15 @@ CREATE TABLE edu_person_subject (
 );
 
 INSERT INTO sys_role (id, tenant_id, role_name, role_key, role_sort, data_scope, status)
-VALUES (202608120101, 1, '普通教师', 'teacher', 11, '5', 0),
+VALUES (202608120101, 1, '普通管理员测试角色', 'common', 11, '5', 0),
        (202608120102, 1, '学生', 'student', 12, '5', 0);
+
+INSERT INTO sys_dict_type (id, tenant_id, dict_name, dict_type, status)
+VALUES (202608180001, 1, '学校职务', 'edu_school_duty', 0);
+
+INSERT INTO sys_dict_data (id, tenant_id, dict_sort, dict_label, dict_value, dict_type, is_default, status)
+VALUES (202608180101, 1, 1, '管理员', 'SCHOOL_ADMIN', 'edu_school_duty', 'N', 0),
+       (202608180102, 1, 2, '普通教师', 'TEACHER', 'edu_school_duty', 'Y', 0);
 
 INSERT INTO edu_school (id, tenant_id, school_code, school_name, school_role, source_system, status)
 VALUES (900001, 1, 'IT-SCH-A', '集成测试学校', 'MAIN', 'HAN', 0);

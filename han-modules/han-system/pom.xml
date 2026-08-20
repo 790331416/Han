@@ -48,6 +48,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.belerweb</groupId>
+            <artifactId>pinyin4j</artifactId>
+            <version>2.5.1</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.han</groupId>
             <artifactId>han-common-tenant</artifactId>
         </dependency>

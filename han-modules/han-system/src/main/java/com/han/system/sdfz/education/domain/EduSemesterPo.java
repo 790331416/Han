@@ -12,6 +12,9 @@ import java.time.LocalDate;
 @TableName("edu_semester")
 public class EduSemesterPo extends BizEntity {
 
+    /** 学校级学期；历史全租户数据迁移完成前允许为空。 */
+    private Long schoolId;
+    private Long academicYearId;
     private String semesterCode;
     private String semesterName;
     private LocalDate beginDate;

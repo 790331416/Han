@@ -11,6 +11,9 @@
             <el-option label="学生" value="STUDENT" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="entity === 'people' || entity === 'subjects'" label="学校">
+          <EducationSchoolSelector v-model="query.schoolId" :nodes="organizations" clearable style="width: 220px" />
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="query.status" clearable style="width: 120px">
             <el-option label="正常" :value="0" />
@@ -43,6 +46,15 @@
               :icon="Plus"
               @click="handleAdd"
             >新增{{ config.title }}</el-button>
+            <el-dropdown v-if="entity === 'people' && userStore.hasPermission('education:person:import')" trigger="click">
+              <el-button type="primary" plain :icon="Upload">导入人员<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleImport">选择文件导入</el-dropdown-item>
+                  <el-dropdown-item @click="handleDownloadTemplate">下载导入模板</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </template>
@@ -108,13 +120,18 @@
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="620px" destroy-on-close>
-      <el-form ref="formRef" :model="form" label-width="120px">
+      <el-form ref="formRef" :model="form" label-width="140px">
         <template v-for="field in visibleFields" :key="field.key">
           <el-form-item
-            :label="field.label"
             :prop="field.key"
-            :rules="field.required ? [{ required: true, message: `请填写${field.label}`, trigger: 'blur' }] : []"
+            :rules="field.required ? [{ required: true, message: `请填写${field.label}`, trigger: field.selector ? 'change' : 'blur' }] : []"
           >
+            <template #label>
+              <span class="field-label">{{ fieldLabel(field) }}</span>
+              <el-tooltip v-if="field.hint" :content="field.hint" placement="top">
+                <el-icon class="field-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </template>
             <el-select v-if="field.type === 'status'" v-model="form[field.key]" style="width: 100%">
               <el-option label="正常" :value="0" />
               <el-option label="停用" :value="1" />
@@ -131,15 +148,36 @@
               value-format="YYYY-MM-DD"
               style="width: 100%"
             />
+            <EducationSchoolSelector v-else-if="field.selector === 'school'" v-model="form[field.key]" :nodes="organizations" style="width: 100%" />
+            <EducationTeachingClassSelector v-else-if="field.selector === 'teachingClass'" v-model="form[field.key]" :school-id="form.schoolId" :teacher="form.personType !== 'STUDENT'" />
+            <EducationClassSelector v-else-if="field.selector === 'class'" v-model="form[field.key]" :school-id="form.schoolId" :multiple="field.multiple" />
+            <EducationSubjectSelector v-else-if="field.selector === 'subject'" v-model="form[field.key]" :school-id="form.schoolId" :multiple="field.multiple" />
+            <EducationPlaceSelector v-else-if="field.selector === 'place'" v-model="form[field.key]" :school-id="form.schoolId" />
+            <el-tree-select
+              v-else-if="field.type === 'deviceScene'"
+              v-model="form.applicationTypes"
+              :data="deviceSceneTree"
+              multiple
+              show-checkbox
+              check-strictly
+              default-expand-all
+              filterable
+              clearable
+              node-key="value"
+              :props="{ label: 'label', children: 'children', disabled: 'disabled' }"
+              style="width: 100%"
+              @change="handleDeviceSceneChange"
+            />
             <el-select
               v-else-if="field.type === 'select'"
               v-model="form[field.key]"
               clearable
               filterable
+              :disabled="field.key === 'deviceType' && Array.isArray(form.applicationTypes) && form.applicationTypes.length > 0"
               style="width: 100%"
             >
               <el-option
-                v-for="option in options[field.key] || []"
+                v-for="option in fieldOptions(field)"
                 :key="option.value"
                 :label="option.label"
                 :value="option.value"
@@ -154,7 +192,7 @@
               style="width: 100%"
             >
               <el-option
-                v-for="option in options[field.key] || []"
+                v-for="option in fieldOptions(field)"
                 :key="option.value"
                 :label="option.label"
                 :value="option.value"
@@ -175,7 +213,6 @@
               :show-password="field.type === 'password'"
               clearable
             />
-            <div v-if="field.hint" class="field-hint">{{ field.hint }}</div>
           </el-form-item>
         </template>
       </el-form>
@@ -184,16 +221,31 @@
         <el-button type="primary" :loading="submitLoading" @click="submitForm">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="importDialogVisible" title="人员导入结果" width="860px" destroy-on-close>
+      <el-table :data="importResults" max-height="520">
+        <el-table-column prop="rowNumber" label="行号" width="80" />
+        <el-table-column prop="personName" label="姓名" min-width="120" />
+        <el-table-column prop="phone" label="手机号" min-width="130" />
+        <el-table-column label="结果" width="90">
+          <template #default="{ row }"><el-tag :type="row.success ? 'success' : 'danger'">{{ row.success ? '成功' : '失败' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="message" label="处理说明" min-width="320" show-overflow-tooltip />
+      </el-table>
+      <template #footer><el-button @click="importDialogVisible = false">关闭</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Delete, Edit, Plus, QuestionFilled, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
   addEducation,
   addPerson,
+  downloadPersonImportTemplate,
+  importPeople,
   listEducation,
   listPersonAssignments,
   listPersonMemberships,
@@ -203,19 +255,32 @@ import {
   updatePerson,
   type EducationEntity,
   type EducationQuery,
-  type EducationRecord
+  type EducationOrganizationNode,
+  type EducationRecord,
+  type PersonImportResult,
+  listOrganizationTree
 } from '@/api/education'
 import { listAllRoles } from '@/api/system/role'
 import { useUserStore } from '@/stores/user'
+import EducationSchoolSelector from '@/components/education/EducationSchoolSelector.vue'
+import EducationClassSelector from '@/components/education/EducationClassSelector.vue'
+import EducationPlaceSelector from '@/components/education/EducationPlaceSelector.vue'
+import EducationSubjectSelector from '@/components/education/EducationSubjectSelector.vue'
+import EducationTeachingClassSelector from '@/components/education/EducationTeachingClassSelector.vue'
+import { schoolOptions as flattenSchoolOptions } from '@/utils/education-school-tree'
+import { findDictLabel, loadDictOptions } from '@/utils/dict-options'
 
-type FieldType = 'text' | 'number' | 'textarea' | 'status' | 'flag' | 'switch' | 'password' | 'date' | 'select' | 'multi'
-type OptionSource = 'roles' | 'classes' | 'subjects' | 'schools' | 'rooms'
+type FieldType = 'text' | 'number' | 'textarea' | 'status' | 'flag' | 'switch' | 'password' | 'date' | 'select' | 'multi' | 'deviceScene'
+type OptionSource = 'roles' | 'schools' | 'schoolDuties' | 'deviceTypes' | 'deviceApplications' | 'assetStatuses'
+type Selector = 'school' | 'class' | 'teachingClass' | 'subject' | 'place'
 interface Field {
   key: string
   label: string
   required?: boolean
   type?: FieldType
   source?: OptionSource
+  selector?: Selector
+  multiple?: boolean
   hint?: string
   initial?: unknown
   visibleWhen?: (form: EducationRecord) => boolean
@@ -228,8 +293,23 @@ interface EntityConfig {
   fields: Field[]
 }
 
-// 岗位码到旧三课堂菜单角色串的映射在服务端（sdfz.compat.duty-type），这里只做中文显示。
-const DUTY_LABELS: Record<string, string> = { TEACHER: '普通教师', SCHOOL_ADMIN: '校级管理员' }
+// 字典未初始化时仍保留第一期两个职务，避免页面因部署顺序短暂不可用。
+const DUTY_FALLBACKS = [
+  { label: '管理员', value: 'SCHOOL_ADMIN' },
+  { label: '普通教师', value: 'TEACHER' }
+]
+const DEVICE_TYPE_FALLBACKS = [{ label: '视频分析', value: 'VIDEO_ANALYSIS' }, { label: '录播设备', value: 'RECORDER' }]
+const DEVICE_APPLICATION_FALLBACKS = [
+  { label: '校园监控', value: 'VIDEO_ANALYSIS:CAMPUS_MONITORING' },
+  { label: '智能巡课', value: 'VIDEO_ANALYSIS:INTELLIGENT_PATROL' },
+  { label: '直播', value: 'RECORDER:LIVE' },
+  { label: '录制', value: 'RECORDER:RECORD' }
+]
+const ASSET_STATUS_FALLBACKS = [
+  { label: '在用', value: 'IN_USE' },
+  { label: '闲置', value: 'IDLE' },
+  { label: '报废', value: 'SCRAPPED' }
+]
 
 const props = defineProps<{ entity: EducationEntity }>()
 const userStore = useUserStore()
@@ -237,59 +317,59 @@ const userStore = useUserStore()
 const configs: Record<EducationEntity, EntityConfig> = {
   schools: {
     title: '学校', permission: 'education:school',
-    columns: [{ key: 'schoolCode', label: '学校编码' }, { key: 'schoolName', label: '学校名称', width: 180 }, { key: 'schoolRole', label: '学校角色' }, { key: 'areaCode', label: '区域编码' }],
-    fields: [{ key: 'parentId', label: '上级学校', type: 'select', source: 'schools' }, { key: 'schoolCode', label: '学校编码', required: true }, { key: 'schoolName', label: '学校名称', required: true }, { key: 'schoolRole', label: '学校角色', required: true }, { key: 'areaCode', label: '区域编码' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+    columns: [{ key: 'schoolName', label: '学校名称', width: 220 }, { key: 'schoolRole', label: '学校角色', format: (row) => schoolRoleLabel(row.schoolRole) }],
+    fields: [{ key: 'parentId', label: '上级学校', type: 'select', source: 'schools' }, { key: 'schoolName', label: '学校名称', required: true, hint: '保存后按学校名称自动生成学校编码' }, { key: 'schoolRole', label: '学校角色', required: true }, { key: 'areaCode', label: '区域编码' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
   classes: {
     title: '班级', permission: 'education:class',
-    columns: [{ key: 'classCode', label: '班级编码' }, { key: 'className', label: '班级名称', width: 180 }, { key: 'gradeCode', label: '年级编码' }, { key: 'schoolId', label: '学校ID', width: 180 }],
-    fields: [{ key: 'schoolId', label: '学校', required: true, type: 'select', source: 'schools' }, { key: 'gradeCode', label: '年级编码' }, { key: 'classCode', label: '班级编码', required: true }, { key: 'className', label: '班级名称', required: true }, { key: 'classRole', label: '班级角色', required: true }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+    columns: [{ key: 'className', label: '班级名称', width: 220 }, { key: 'classRole', label: '班级角色', format: (row) => classRoleLabel(row.classRole) }, { key: 'schoolId', label: '学校', format: (row) => schoolName(row.schoolId) }],
+    fields: [{ key: 'schoolId', label: '学校', required: true, selector: 'school' }, { key: 'className', label: '班级名称', required: true, hint: '请按“X年级X班”填写；保存后自动生成年级编码和班级编码' }, { key: 'classRole', label: '班级角色', required: true }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
   people: {
     title: '人员', permission: 'education:person',
-    columns: [{ key: 'personNo', label: '人员编号' }, { key: 'personName', label: '姓名', width: 140 }, { key: 'personType', label: '人员类型' }, { key: 'dutyCode', label: '校内岗位', format: (row: EducationRecord) => DUTY_LABELS[row.dutyCode as string] || DUTY_LABELS.TEACHER }, { key: 'userId', label: '登录账号ID', width: 170 }, { key: 'phone', label: '手机号' }],
+    columns: [{ key: 'personName', label: '姓名', width: 160 }, { key: 'personType', label: '人员类型', format: (row) => personTypeLabel(row.personType) }, { key: 'dutyCode', label: '校内岗位', format: (row: EducationRecord) => row.personType === 'STUDENT' && !row.dutyCode ? '—' : dutyLabel(row.dutyCode) }, { key: 'phone', label: '手机号' }],
     fields: [
-      { key: 'schoolId', label: '学校', required: true, type: 'select', source: 'schools' },
-      { key: 'personNo', label: '人员编号', required: true },
-      { key: 'personName', label: '姓名', required: true },
+      { key: 'schoolId', label: '学校', required: true, selector: 'school' },
+      { key: 'personName', label: '姓名', required: true, hint: '保存后按姓名自动生成人员编号' },
       { key: 'personType', label: '人员类型', required: true, type: 'select' },
       {
         key: 'dutyCode',
         label: '校内岗位',
         required: true,
         type: 'select',
+        source: 'schoolDuties',
         // 新增人员默认普通教师：管理岗只能是管理员主动选出来的，不能靠缺省发出去。
         initial: 'TEACHER',
         visibleWhen: (form) => form.personType !== 'STUDENT',
-        hint: '校级管理员可进入课程预约、授课统计、学校设置、学校直播间；普通教师不可。与人员类型是两个维度，不会互相推导'
+        hint: '管理员可进入课程预约、授课统计、学校设置、学校直播间；普通教师不可。与人员类型是两个维度，不会互相推导'
       },
-      { key: 'phone', label: '手机号' },
-      { key: 'classIds', label: '所属班级', type: 'multi', source: 'classes', hint: '学生只能归属一个有效行政班' },
-      { key: 'subjectIds', label: '任教科目', type: 'multi', source: 'subjects', visibleWhen: (form) => form.personType !== 'STUDENT' },
+      { key: 'phone', label: '手机号', required: true, hint: '校端使用手机号和密码登录' },
+      { key: 'classIds', label: '任教班级', selector: 'teachingClass', hint: '教师可勾选年级或班级；勾选年级会自动关联其下全部班级。学生只能选择一个班级' },
+      { key: 'subjectIds', label: '任教科目', selector: 'subject', multiple: true, visibleWhen: (form) => form.personType !== 'STUDENT' },
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
-      { key: 'loginEnabled', label: '启用登录', type: 'switch', hint: '启用后由系统建号，无需手工填写 Han 用户 ID' },
-      { key: 'username', label: '登录名', type: 'text', visibleWhen: (form) => !!form.loginEnabled, hint: '字母开头，4~30 位' },
+      { key: 'loginEnabled', label: '启用校端登录', type: 'switch', initial: true, hint: '启用后可使用手机号和密码登录校端' },
       { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => !!form.loginEnabled, hint: '留空则由系统生成并要求首次登录修改' },
-      { key: 'roleIds', label: '登录角色', type: 'multi', source: 'roles', visibleWhen: (form) => !!form.loginEnabled },
+      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER', hint: '开启后才可选择管理端角色；不会改变校端职务' },
+      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess },
       { key: 'status', label: '状态', required: true, type: 'status' },
       { key: 'remark', label: '备注', type: 'textarea' }
     ]
   },
   subjects: {
     title: '科目', permission: 'education:subject',
-    columns: [{ key: 'subjectCode', label: '科目编码' }, { key: 'subjectName', label: '科目名称', width: 180 }, { key: 'sort', label: '排序' }],
-    fields: [{ key: 'subjectCode', label: '科目编码', required: true }, { key: 'subjectName', label: '科目名称', required: true }, { key: 'sort', label: '排序', required: true, type: 'number' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+    columns: [{ key: 'subjectName', label: '科目名称', width: 220 }, { key: 'schoolId', label: '学校', format: (row: EducationRecord) => schoolName(row.schoolId) }, { key: 'sort', label: '排序' }],
+    fields: [{ key: 'schoolId', label: '学校', required: true, selector: 'school' }, { key: 'subjectName', label: '科目名称', required: true, hint: '保存后按学校和科目名称自动生成科目编码' }, { key: 'sort', label: '排序', required: true, type: 'number' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
   devices: {
     title: '设备', permission: 'education:device',
-    columns: [{ key: 'deviceCode', label: '设备编码' }, { key: 'deviceName', label: '设备名称', width: 180 }, { key: 'deviceType', label: '设备类型' }, { key: 'serialNumber', label: '序列号' }, { key: 'assetStatus', label: '资产状态' }],
-    fields: [{ key: 'schoolId', label: '学校', required: true, type: 'select', source: 'schools' }, { key: 'roomId', label: '教室', type: 'select', source: 'rooms' }, { key: 'deviceCode', label: '设备编码', required: true }, { key: 'deviceName', label: '设备名称', required: true }, { key: 'deviceType', label: '设备类型', required: true }, { key: 'model', label: '型号' }, { key: 'serialNumber', label: '序列号' }, { key: 'assetStatus', label: '资产状态', required: true }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+     columns: [{ key: 'deviceCode', label: '设备编码' }, { key: 'deviceName', label: '设备名称', width: 180 }, { key: 'deviceType', label: '设备类型', format: (row) => dictLabel('deviceType', row.deviceType) }, { key: 'applicationTypes', label: '设备应用场景', width: 220, format: (row) => String(row.applicationTypes || '').split(',').filter(Boolean).map(value => dictLabel('applicationTypes', value)).join('、') || '—' }, { key: 'serialNumber', label: '序列号' }, { key: 'assetStatus', label: '资产状态', format: (row) => dictLabel('assetStatus', row.assetStatus) }],
+     fields: [{ key: 'schoolId', label: '学校', required: true, selector: 'school' }, { key: 'roomId', label: '教室', selector: 'place' }, { key: 'deviceCode', label: '设备编码', required: true }, { key: 'deviceName', label: '设备名称', required: true }, { key: 'applicationTypes', label: '设备应用场景', required: true, type: 'deviceScene', source: 'deviceApplications', hint: '先选一个设备类型，再选择该类型下的应用场景；录播设备只能选一个，其他设备可多选' }, { key: 'model', label: '型号' }, { key: 'serialNumber', label: '序列号' }, { key: 'assetStatus', label: '资产状态', required: true, type: 'select', source: 'assetStatuses' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
   // 学期不在这里：它没有 source_system 列，还有日期区间与三态生命周期要渲染，走 views/education/semester 独立页。
   rooms: {
     title: '教室', permission: 'education:room',
-    columns: [{ key: 'roomCode', label: '教室编码' }, { key: 'roomName', label: '教室名称', width: 180 }, { key: 'roomType', label: '教室类型' }, { key: 'schoolId', label: '学校ID', width: 180 }],
-    fields: [{ key: 'schoolId', label: '学校', required: true, type: 'select', source: 'schools' }, { key: 'roomCode', label: '教室编码', required: true }, { key: 'roomName', label: '教室名称', required: true }, { key: 'roomType', label: '教室类型' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
+    columns: [{ key: 'roomName', label: '教室名称', width: 220 }, { key: 'roomType', label: '教室类型', format: (row) => roomTypeLabel(row.roomType) }, { key: 'schoolId', label: '学校', format: (row) => schoolName(row.schoolId) }],
+    fields: [{ key: 'schoolId', label: '学校', required: true, selector: 'school' }, { key: 'roomCode', label: '教室编码', required: true }, { key: 'roomName', label: '教室名称', required: true }, { key: 'roomType', label: '教室类型' }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   }
 }
 
@@ -302,19 +382,101 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
+const importDialogVisible = ref(false)
+const importResults = ref<PersonImportResult[]>([])
 const form = reactive<EducationRecord>({})
 const options = reactive<Record<string, Array<{ label: string; value: any }>>>({})
+const schoolOptions = ref<Array<{ label: string; value: any }>>([])
+const organizations = ref<EducationOrganizationNode[]>([])
 const query = reactive<EducationQuery>({ keyword: '', status: '', personType: '', pageNum: 1, pageSize: 20 })
 
 const visibleFields = computed(() => config.value.fields.filter((field) => !field.visibleWhen || field.visibleWhen(form)))
+const deviceSceneTree = computed(() => {
+  const types = options.deviceType?.length ? options.deviceType : DEVICE_TYPE_FALLBACKS
+  const applications = options.applicationTypes?.length ? options.applicationTypes : DEVICE_APPLICATION_FALLBACKS
+  return types.map((type) => ({
+    value: String(type.value),
+    label: type.label,
+    disabled: true,
+    children: applications
+      .filter((item) => String(item.value).startsWith(`${type.value}:`))
+      .map((item) => ({ value: String(item.value), label: item.label }))
+  }))
+})
 
-onMounted(getList)
+function fieldLabel(field: Field) {
+  return props.entity === 'people' && field.key === 'classIds'
+    ? form.personType === 'STUDENT' ? '所属班级' : '任教班级'
+    : field.label
+}
+function fieldOptions(field: Field) {
+  const values = options[field.key] || []
+  if (field.key !== 'applicationTypes') return values
+  const selected = Array.isArray(form.applicationTypes) ? form.applicationTypes.map(String) : []
+  const selectedType = selected.map(applicationDeviceType).find(Boolean) || String(form.deviceType || '')
+  if (!selectedType) return values
+  const matching = values.filter((item) => String(item.value).startsWith(`${selectedType}:`))
+  return matching.length ? matching : values
+}
+function applicationDeviceType(value: unknown) {
+  const text = String(value || '')
+  const separator = text.indexOf(':')
+  return separator > 0 ? text.slice(0, separator) : ''
+}
+function handleDeviceSceneChange(value: unknown) {
+  const selected = (Array.isArray(value) ? value : value ? [value] : []).map(String)
+  const deviceType = applicationDeviceType(selected[selected.length - 1])
+  const scoped = deviceType ? selected.filter((item) => applicationDeviceType(item) === deviceType) : []
+  form.applicationTypes = (deviceType === 'RECORDER' ? scoped.slice(-1) : scoped)
+  form.deviceType = deviceType || undefined
+}
+function personTypeLabel(value: unknown) { return ({ TEACHER: '教师', STUDENT: '学生' } as Record<string, string>)[String(value || '')] || '—' }
+function schoolRoleLabel(value: unknown) { return ({ MAIN: '主讲学校', ATTEND: '听讲学校', NORMAL: '普通学校' } as Record<string, string>)[String(value || '')] || String(value || '—') }
+function classRoleLabel(value: unknown) { return ({ MAIN: '主讲班级', ATTEND: '听讲班级', NORMAL: '普通班级' } as Record<string, string>)[String(value || '')] || String(value || '—') }
+function roomTypeLabel(value: unknown) { return ({ LIVE: '直播教室', ATTEND: '听讲教室', CLASSROOM: '普通教室' } as Record<string, string>)[String(value || '')] || String(value || '—') }
+function dutyLabel(value: unknown) {
+  return findDictLabel(options.dutyCode || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '普通教师')
+}
+function dictLabel(key: string, value: unknown) {
+  return findDictLabel(options[key] || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '—')
+}
 
-// 班级候选随所选学校变化，避免跨校选班。
-watch(() => form.schoolId, (schoolId) => {
-  if (dialogVisible.value && config.value.fields.some((field) => field.source === 'classes' || field.source === 'rooms')) {
-    loadOptions('classes', schoolId)
-    loadOptions('rooms', schoolId)
+onMounted(async () => { await loadSchoolOptions(); await loadEntityOptions(); await getList() })
+
+// 学校变化时清空从属对象，实际候选由通用选择器按学校重新读取。
+watch(() => form.schoolId, (schoolId, previous) => {
+  if (previous && String(previous) !== String(schoolId)) {
+    form.classIds = []
+    form.subjectIds = []
+    form.roomId = undefined
+  }
+})
+
+watch(() => form.deviceType, (deviceType, previous) => {
+  if (previous && String(previous) !== String(deviceType)) {
+    form.applicationTypes = (form.applicationTypes || []).filter((value: string) => String(value).startsWith(`${deviceType}:`))
+  }
+})
+
+watch(() => form.applicationTypes, (applicationTypes) => {
+  const selected = Array.isArray(applicationTypes) ? applicationTypes.map(String) : []
+  const deviceTypes = [...new Set(selected.map(applicationDeviceType).filter(Boolean))]
+  if (deviceTypes.length === 0) return
+  const deviceType = deviceTypes[0]
+  if (deviceTypes.length > 1) {
+    form.applicationTypes = selected.filter((value) => applicationDeviceType(value) === deviceType)
+  }
+  if (String(form.deviceType || '') !== deviceType) form.deviceType = deviceType
+}, { deep: true })
+
+watch(() => form.personType, (personType, previous) => {
+  if (props.entity !== 'people' || !previous || personType === previous) return
+  if (personType === 'STUDENT') {
+    form.dutyCode = undefined
+    form.managementAccess = false
+    form.roleIds = []
+  } else if (!form.dutyCode) {
+    form.dutyCode = 'TEACHER'
   }
 })
 
@@ -347,6 +509,7 @@ function resetQuery() {
   query.keyword = ''
   query.status = ''
   query.personType = ''
+  query.schoolId = undefined
   handleQuery()
 }
 
@@ -354,7 +517,7 @@ function resetForm() {
   for (const key of Object.keys(form)) delete form[key]
   for (const field of config.value.fields) {
     if (field.initial !== undefined) form[field.key] = field.initial
-    else if (field.type === 'multi') form[field.key] = []
+    else if (field.type === 'multi' || field.multiple) form[field.key] = []
     else if (field.type === 'switch') form[field.key] = false
     else if (field.type === 'status' || field.type === 'flag' || field.type === 'number') form[field.key] = 0
     else form[field.key] = ''
@@ -372,10 +535,13 @@ async function handleEdit(row: EducationRecord) {
   if (!isLocalRow(row)) return
   resetForm()
   Object.assign(form, row)
+  if (props.entity === 'devices') {
+    form.applicationTypes = String(row.applicationTypes || '').split(',').filter(Boolean)
+  }
   form.loginEnabled = !!row.userId
   // 引入岗位维度之前建的人员 duty_code 是空的，服务端按普通教师解释，表单要显示成同一个值。
-  if (props.entity === 'people' && !form.dutyCode) form.dutyCode = 'TEACHER'
-  await loadFormOptions(row.schoolId)
+  if (props.entity === 'people' && form.personType === 'TEACHER' && !form.dutyCode) form.dutyCode = 'TEACHER'
+  await loadFormOptions()
   if (props.entity === 'people' && row.id) {
     const [memberships, assignments, roles] = await Promise.all([
       listPersonMemberships(row.id),
@@ -384,7 +550,9 @@ async function handleEdit(row: EducationRecord) {
     ])
     form.classIds = (memberships.data || []).map((item) => String(item.classId))
     form.subjectIds = (assignments.data || []).map((item) => String(item.subjectId))
-    form.roleIds = (roles.data || []).map((item) => String(item))
+    const availableRoleIds = new Set((options.roleIds || []).map((item) => String(item.value)))
+    form.roleIds = (roles.data || []).map((item) => String(item)).filter((item) => availableRoleIds.has(item))
+    form.managementAccess = form.personType === 'TEACHER' && form.roleIds.length > 0
   }
   dialogTitle.value = `编辑${config.value.title}`
   dialogVisible.value = true
@@ -404,43 +572,68 @@ async function handleRemove(row?: EducationRecord) {
   await getList()
 }
 
-async function loadFormOptions(schoolId?: string | number) {
+async function loadFormOptions() {
   const sources = new Set(config.value.fields.map((field) => field.source).filter(Boolean) as OptionSource[])
-  await Promise.all([...sources].map((source) => loadOptions(source, schoolId ?? form.schoolId)))
+  await Promise.all([...sources].map((source) => loadOptions(source)))
+  if (!form.id && config.value.fields.some((field) => field.selector === 'school') && schoolOptions.value.length === 1) {
+    form.schoolId = schoolOptions.value[0].value
+  }
   if (props.entity === 'people') {
     options.personType = [
       { label: '教师', value: 'TEACHER' },
       { label: '学生', value: 'STUDENT' }
     ]
-    options.dutyCode = Object.entries(DUTY_LABELS).map(([value, label]) => ({ label, value }))
+    if (!options.dutyCode?.length) options.dutyCode = DUTY_FALLBACKS
   }
 }
 
-async function loadOptions(source: OptionSource, schoolId?: string | number) {
+async function loadEntityOptions() {
+  if (props.entity === 'people') {
+    options.personType = [
+      { label: '教师', value: 'TEACHER' },
+      { label: '学生', value: 'STUDENT' }
+    ]
+    await loadOptions('schoolDuties')
+    if (!options.dutyCode?.length) options.dutyCode = DUTY_FALLBACKS
+    return
+  }
+  if (props.entity !== 'devices') return
+  await Promise.all(['deviceTypes', 'deviceApplications', 'assetStatuses'].map((source) => loadOptions(source as OptionSource)))
+}
+
+async function loadOptions(source: OptionSource) {
   const keys = config.value.fields.filter((field) => field.source === source).map((field) => field.key)
-  if (keys.length === 0) return
+  const targetKeys = keys.length > 0 ? keys : source === 'deviceTypes' ? ['deviceType'] : []
+  if (targetKeys.length === 0) return
   let items: Array<{ label: string; value: any }> = []
   if (source === 'roles') {
     const response = await listAllRoles()
     items = (response.data || [])
-      .filter((role) => role.roleKey !== 'admin')
+      .filter((role) => !['teacher', 'student'].includes(String(role.roleKey || '').toLowerCase()))
       .map((role) => ({ label: role.roleName!, value: String(role.id) }))
   } else if (source === 'schools') {
-    const response = await listEducation('schools', { pageNum: 1, pageSize: 100 })
-    items = (response.data?.rows || []).map((item) => ({ label: `${item.schoolName}（${item.schoolCode}）`, value: String(item.id) }))
-  } else if (source === 'subjects') {
-    const response = await listEducation('subjects', { pageNum: 1, pageSize: 100 })
-    items = (response.data?.rows || []).map((item) => ({ label: `${item.subjectName}（${item.subjectCode}）`, value: String(item.id) }))
-  } else if (source === 'classes') {
-    if (!schoolId) { keys.forEach((key) => { options[key] = [] }); return }
-    const response = await listEducation('classes', { pageNum: 1, pageSize: 100, schoolId })
-    items = (response.data?.rows || []).map((item) => ({ label: `${item.className}（${item.classCode}）`, value: String(item.id) }))
-  } else if (source === 'rooms') {
-    if (!schoolId) { keys.forEach((key) => { options[key] = [] }); return }
-    const response = await listEducation('rooms', { pageNum: 1, pageSize: 100, schoolId })
-    items = (response.data?.rows || []).map((item) => ({ label: `${item.roomName}（${item.roomCode}）`, value: String(item.id) }))
+    await loadSchoolOptions()
+    items = schoolOptions.value
+  } else if (source === 'deviceTypes') {
+    items = await loadDictOptions('edu_device_type', DEVICE_TYPE_FALLBACKS)
+  } else if (source === 'deviceApplications') {
+    items = await loadDictOptions('edu_device_application', DEVICE_APPLICATION_FALLBACKS)
+  } else if (source === 'assetStatuses') {
+    items = await loadDictOptions('edu_asset_status', ASSET_STATUS_FALLBACKS)
+  } else if (source === 'schoolDuties') {
+    items = await loadDictOptions('edu_school_duty', DUTY_FALLBACKS)
   }
-  keys.forEach((key) => { options[key] = items })
+  targetKeys.forEach((key) => { options[key] = items })
+}
+
+function schoolName(value: unknown) {
+  return schoolOptions.value.find(item => String(item.value) === String(value))?.label || String(value || '—')
+}
+
+async function loadSchoolOptions() {
+  const response = await listOrganizationTree(0)
+  organizations.value = response.data || []
+  schoolOptions.value = flattenSchoolOptions(organizations.value).map(item => ({ label: item.schoolName, value: String(item.id) }))
 }
 
 async function submitForm() {
@@ -461,26 +654,86 @@ async function submitForm() {
 
 async function submitPerson() {
   const payload: EducationRecord = { ...form }
+  const isStudent = payload.personType === 'STUDENT'
+  if (isStudent) {
+    delete payload.dutyCode
+    delete payload.roleIds
+    if (payload.id && payload.userId) payload.clearRoles = true
+  } else if (!payload.managementAccess) {
+    if (payload.id && payload.userId) {
+      await ElMessageBox.confirm('关闭管理端权限后将清除该人员的管理端角色，确认继续吗？', '确认变更', { type: 'warning' })
+      payload.clearRoles = true
+    }
+    delete payload.roleIds
+  } else if (!payload.roleIds?.length) {
+    ElMessage.warning('请选择管理端角色')
+    return
+  } else {
+    delete payload.clearRoles
+  }
   if (!payload.loginEnabled) {
     delete payload.username
     delete payload.password
-    delete payload.roleIds
-  } else {
+  } else if (!isStudent && payload.managementAccess) {
     if (!payload.password) delete payload.password
-    // 空数组不代表"清空角色"：后端把缺省当作不改动，要清空需显式传 clearRoles。
-    if (!payload.roleIds?.length) delete payload.roleIds
   }
   const response = form.id ? await updatePerson(payload) : await addPerson(payload)
   const result = response.data
   if (result?.initialPassword) {
     await ElMessageBox.alert(
-      `登录名：${result.username}\n初始密码：${result.initialPassword}\n\n该密码只显示这一次，请立即转交本人，首次登录须修改。`,
+      `手机号：${payload.phone}\n初始密码：${result.initialPassword}\n\n该密码只显示这一次，请立即转交本人，首次登录须修改。`,
       '账号创建成功',
       { type: 'success', confirmButtonText: '我已记录' }
     )
   } else {
     ElMessage.success(form.id ? '修改成功' : '新增成功')
   }
+}
+
+function downloadBlob(data: Blob, filename: string) {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(data)
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+async function handleDownloadTemplate() {
+  if (!query.schoolId) {
+    ElMessage.warning('请先选择导入学校')
+    return
+  }
+  try {
+    const response = await downloadPersonImportTemplate(query.schoolId)
+    downloadBlob((response as any).data, '人员导入模板.xlsx')
+  } catch {
+    ElMessage.error('下载导入模板失败')
+  }
+}
+
+function handleImport() {
+  if (!query.schoolId) {
+    ElMessage.warning('请先选择导入学校')
+    return
+  }
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls'
+  input.onchange = async (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0]
+    if (!file) return
+    try {
+      const response = await importPeople(file, query.schoolId!)
+      importResults.value = response.data || []
+      importDialogVisible.value = true
+      const failed = importResults.value.filter(item => !item.success).length
+      ElMessage[failed ? 'warning' : 'success'](`导入完成：成功 ${importResults.value.length - failed} 条，失败 ${failed} 条`)
+      await getList()
+    } catch {
+      ElMessage.error('导入失败，请检查模板格式')
+    }
+  }
+  input.click()
 }
 </script>
 
@@ -489,5 +742,6 @@ async function submitPerson() {
 .search-form { margin-bottom: 16px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
-.field-hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.5; }
+.field-label { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.field-help { color: var(--el-text-color-secondary); cursor: help; vertical-align: middle; }
 </style>

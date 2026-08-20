@@ -1,4 +1,4 @@
-<template><EducationCrudPage entity="rooms" /></template>
+<template><EducationPlaceTreePage /></template>
 <script setup lang="ts">
-import EducationCrudPage from '../EducationCrudPage.vue'
+import EducationPlaceTreePage from '../EducationPlaceTreePage.vue'
 </script>

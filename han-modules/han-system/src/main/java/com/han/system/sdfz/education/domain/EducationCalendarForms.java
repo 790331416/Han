@@ -18,7 +18,10 @@ public final class EducationCalendarForms {
 
     public record Semester(
             Long id,
-            @NotBlank @Size(max = 64) String semesterCode,
+            @NotNull Long schoolId,
+            @NotNull Long academicYearId,
+            /** 为兼容旧调用方保留字段；创建时由服务按名称生成，编辑时忽略。 */
+            @Size(max = 64) String semesterCode,
             @NotBlank @Size(max = 128) String semesterName,
             @NotNull LocalDate beginDate,
             @NotNull LocalDate endDate,

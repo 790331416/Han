@@ -16,6 +16,8 @@ public class EduDevicePo extends BizEntity {
     private String deviceCode;
     private String deviceName;
     private String deviceType;
+    /** 设备应用类型字典编码，逗号分隔，所有值都必须隶属当前设备类型。 */
+    private String applicationTypes;
     private String model;
     private String serialNumber;
     private String sourceSystem;

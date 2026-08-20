@@ -36,6 +36,7 @@ FROM (
     SELECT 202608120011 AS id, @edu_school_id AS parent_id, '学校删除' AS menu_name, 'education:school:remove' AS perms, 3 AS sort
     UNION ALL SELECT 202608120021, @edu_class_id, '班级删除', 'education:class:remove', 3
     UNION ALL SELECT 202608120031, @edu_person_id, '人员删除', 'education:person:remove', 3
+    UNION ALL SELECT 202608120033, @edu_person_id, '人员导入', 'education:person:import', 4
     UNION ALL SELECT 202608120041, @edu_subject_id, '科目删除', 'education:subject:remove', 3
     UNION ALL SELECT 202608120051, @edu_device_id, '设备删除', 'education:device:remove', 3
     UNION ALL SELECT 202608120061, @edu_semester_id, '学期新增', 'education:semester:add', 1

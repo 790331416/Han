@@ -12,9 +12,16 @@ import java.time.LocalDateTime;
 @TableName("edu_school")
 public class EduSchoolPo extends BizEntity {
     private Long parentId;
+    private String ancestors;
+    private Integer nodeLevel;
     private String schoolCode;
     private String schoolName;
     private String schoolRole;
+    private String orgType;
+    private String schoolManageType;
+    private String schoolProperty;
+    private Long regionId;
+    private Integer autoUpgradeEnabled;
     private String sourceSystem;
     private String externalId;
     private String areaCode;

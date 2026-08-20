@@ -11,6 +11,11 @@ import lombok.EqualsAndHashCode;
 public class EduPersonClassPo extends TenantEntity {
     private Long personId;
     private Long classId;
+    private Long academicYearId;
     private String membershipRole;
+    private String membershipStatus;
+    private java.time.LocalDateTime effectiveStartAt;
+    private java.time.LocalDateTime effectiveEndAt;
+    private Long promotionBatchId;
     private String sourceSystem;
 }

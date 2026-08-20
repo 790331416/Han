@@ -7,11 +7,14 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.sdfz.education.domain.EduDevicePo;
+import com.han.system.sdfz.education.domain.EduAcademicYearPo;
 import com.han.system.sdfz.education.domain.EduRoomPo;
+import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EducationCalendarForms;
 import com.han.system.sdfz.education.domain.SemesterLifecycle;
 import com.han.system.sdfz.education.mapper.EduDeviceMapper;
+import com.han.system.sdfz.education.mapper.EduAcademicYearMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSemesterMapper;
@@ -40,11 +43,21 @@ public class EducationCalendarService {
     private final EduRoomMapper roomMapper;
     private final EduSchoolMapper schoolMapper;
     private final EduDeviceMapper deviceMapper;
+    private final EduAcademicYearMapper academicYearMapper;
+    private final EducationDataScopeService dataScopeService;
 
-    public PageResult<EduSemesterPo> listSemesters(String keyword, Integer status, String lifecycleStatus,
+    public PageResult<EduSemesterPo> listSemesters(Long schoolId, String keyword, Integer status, String lifecycleStatus,
                                                    int pageNum, int pageSize) {
         requireTenant();
+        EducationDataScopeService.Scope scope = dataScopeService.current();
+        if (schoolId != null) {
+            requireTeachingSchool(schoolId);
+        } else if (!scope.all() && scope.schoolIds().isEmpty()) {
+            return new PageResult<>(List.of(), 0, Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100));
+        }
         LambdaQueryWrapper<EduSemesterPo> query = new LambdaQueryWrapper<EduSemesterPo>()
+                .eq(schoolId != null, EduSemesterPo::getSchoolId, schoolId)
+                .in(schoolId == null && !scope.all(), EduSemesterPo::getSchoolId, scope.schoolIds())
                 .eq(status != null, EduSemesterPo::getStatus, status)
                 .eq(notBlank(lifecycleStatus), EduSemesterPo::getLifecycleStatus, lifecycleStatus)
                 .and(notBlank(keyword), item -> item.like(EduSemesterPo::getSemesterCode, keyword)
@@ -62,9 +75,21 @@ public class EducationCalendarService {
         if (form.endDate().isBefore(form.beginDate())) {
             throw new BusinessException("学期结束日期不能早于开始日期");
         }
+        requireTeachingSchool(form.schoolId());
+        requireAcademicYear(form.academicYearId(), form.schoolId());
         EduSemesterPo item = form.id() == null ? new EduSemesterPo() : requireSemester(form.id());
-        item.setSemesterCode(form.semesterCode().trim());
-        item.setSemesterName(form.semesterName().trim());
+        if (item.getId() != null && item.getSchoolId() != null && !item.getSchoolId().equals(form.schoolId())) {
+            throw new BusinessException("已归属学校的学期不允许跨学校调整");
+        }
+        String semesterName = form.semesterName().trim();
+        if (item.getId() == null) {
+            item.setSemesterCode(EducationCodeGenerator.unique("SEMESTER", semesterName, candidate -> semesterMapper.selectCount(
+                    new LambdaQueryWrapper<EduSemesterPo>().eq(EduSemesterPo::getSchoolId, form.schoolId())
+                            .eq(EduSemesterPo::getSemesterCode, candidate)) > 0));
+        }
+        item.setSchoolId(form.schoolId());
+        item.setAcademicYearId(form.academicYearId());
+        item.setSemesterName(semesterName);
         item.setBeginDate(form.beginDate());
         item.setEndDate(form.endDate());
         item.setCurrentFlag(flag(form.currentFlag()));
@@ -78,7 +103,7 @@ public class EducationCalendarService {
             semesterMapper.updateById(item);
         }
         if (item.getCurrentFlag() != null && item.getCurrentFlag() == 1) {
-            clearOtherCurrentFlags(item.getId());
+            clearOtherCurrentFlags(item.getId(), item.getSchoolId());
         }
         return item.getId();
     }
@@ -110,8 +135,16 @@ public class EducationCalendarService {
     public PageResult<EduRoomPo> listRooms(Long schoolId, String keyword, Integer status,
                                            int pageNum, int pageSize) {
         requireTenant();
+        EducationDataScopeService.Scope scope = dataScopeService.current();
+        if (schoolId != null) {
+            requireTeachingSchool(schoolId);
+        } else if (!scope.all() && scope.schoolIds().isEmpty()) {
+            return new PageResult<>(List.of(), 0, Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100));
+        }
         LambdaQueryWrapper<EduRoomPo> query = new LambdaQueryWrapper<EduRoomPo>()
                 .eq(schoolId != null, EduRoomPo::getSchoolId, schoolId)
+                .in(schoolId == null && !scope.all(), EduRoomPo::getSchoolId, scope.schoolIds())
+                .eq(EduRoomPo::getNodeType, "PLACE")
                 .eq(status != null, EduRoomPo::getStatus, status)
                 .and(notBlank(keyword), item -> item.like(EduRoomPo::getRoomCode, keyword)
                         .or().like(EduRoomPo::getRoomName, keyword))
@@ -134,9 +167,14 @@ public class EducationCalendarService {
         requireTenant();
         int removed = 0;
         for (Long id : distinct(ids)) {
-            if (semesterMapper.selectById(id) == null) {
+            EduSemesterPo semester = semesterMapper.selectById(id);
+            if (semester == null) {
                 continue;
             }
+            if (semester.getSchoolId() == null) {
+                throw new BusinessException("历史全租户学期请先完成学校归属迁移后再删除");
+            }
+            requireTeachingSchool(semester.getSchoolId());
             removed += semesterMapper.deleteById(id);
         }
         return removed;
@@ -145,9 +183,7 @@ public class EducationCalendarService {
     @Transactional(rollbackFor = Exception.class)
     public Long saveRoom(EducationCalendarForms.Room form) {
         Long tenantId = requireTenant();
-        if (schoolMapper.selectById(form.schoolId()) == null) {
-            throw new BusinessException("学校不存在或不在当前数据范围");
-        }
+        requireTeachingSchool(form.schoolId());
         EduRoomPo item = form.id() == null ? new EduRoomPo() : requireRoom(form.id());
         if (form.id() != null && !LOCAL_SOURCE.equals(item.getSourceSystem())) {
             throw new BusinessException("教室来自数字校园，请通过同步更新");
@@ -184,6 +220,10 @@ public class EducationCalendarService {
             if (!LOCAL_SOURCE.equals(item.getSourceSystem())) {
                 throw new BusinessException("教室来自数字校园，请通过同步删除");
             }
+            Long children = roomMapper.selectCount(new LambdaQueryWrapper<EduRoomPo>().eq(EduRoomPo::getParentId, id));
+            if (children != null && children > 0) {
+                throw new BusinessException("该场所下仍有 " + children + " 条下级节点，请先处理后再删除");
+            }
             Long devices = deviceMapper.selectCount(new LambdaQueryWrapper<EduDevicePo>()
                     .eq(EduDevicePo::getRoomId, id));
             if (devices != null && devices > 0) {
@@ -201,9 +241,10 @@ public class EducationCalendarService {
         return ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
     }
 
-    private void clearOtherCurrentFlags(Long keepId) {
+    private void clearOtherCurrentFlags(Long keepId, Long schoolId) {
         semesterMapper.update(null, new LambdaUpdateWrapper<EduSemesterPo>()
                 .ne(EduSemesterPo::getId, keepId)
+                .eq(EduSemesterPo::getSchoolId, schoolId)
                 .eq(EduSemesterPo::getCurrentFlag, 1)
                 .set(EduSemesterPo::getCurrentFlag, 0));
     }
@@ -222,6 +263,22 @@ public class EducationCalendarService {
             throw new BusinessException("教室不存在或不在当前数据范围");
         }
         return value;
+    }
+
+    private EduSchoolPo requireTeachingSchool(Long schoolId) {
+        EduSchoolPo school = schoolId == null ? null : schoolMapper.selectById(schoolId);
+        if (!EducationSupport.isOperationalSchool(school)) {
+            throw new BusinessException("学校不存在或不在当前数据范围");
+        }
+        dataScopeService.requireSchool(schoolId);
+        return school;
+    }
+
+    private void requireAcademicYear(Long academicYearId, Long schoolId) {
+        EduAcademicYearPo year = academicYearId == null ? null : academicYearMapper.selectById(academicYearId);
+        if (year == null || !java.util.Objects.equals(year.getSchoolId(), schoolId)) {
+            throw new BusinessException("所选学年不存在或不属于当前学校");
+        }
     }
 
     private static int normalStatus(Integer status) {

@@ -7,6 +7,7 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.system.sdfz.education.domain.EduSchoolPo;
 
 /**
  * 教育主数据服务的公共约束。
@@ -60,6 +61,12 @@ final class EducationSupport {
 
     static String trimToNull(String value) {
         return notBlank(value) ? value.trim() : null;
+    }
+
+    /** 学年、教学组织、场所和设备只能归属实际办学单位。 */
+    static boolean isOperationalSchool(EduSchoolPo school) {
+        return school != null && "SCHOOL".equals(school.getOrgType())
+                && ("CAMPUS".equals(school.getSchoolManageType()) || "INDEPENDENT".equals(school.getSchoolManageType()));
     }
 
     static <T> PageResult<T> page(BaseMapper<T> mapper, Wrapper<T> query, int pageNum, int pageSize) {

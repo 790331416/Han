@@ -5,6 +5,7 @@ import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
+import com.han.system.sdfz.education.domain.EduAcademicYearPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EducationCalendarForms;
 import com.han.system.sdfz.education.domain.SemesterLifecycle;
@@ -12,6 +13,7 @@ import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSemesterMapper;
+import com.han.system.sdfz.education.mapper.EduAcademicYearMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,13 +48,21 @@ class EducationCalendarServiceTest {
     private EduSchoolMapper schoolMapper;
     @Mock
     private EduDeviceMapper deviceMapper;
+    @Mock
+    private EduAcademicYearMapper academicYearMapper;
+    @Mock
+    private EducationDataScopeService dataScopeService;
 
     private EducationCalendarService service;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
-        service = new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper);
+        service = new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper, academicYearMapper, dataScopeService);
+        EduSchoolPo school = new EduSchoolPo(); school.setId(7L); school.setOrgType("SCHOOL"); school.setSchoolManageType("INDEPENDENT");
+        when(schoolMapper.selectById(7L)).thenReturn(school);
+        EduAcademicYearPo year = new EduAcademicYearPo(); year.setId(17L); year.setSchoolId(7L);
+        when(academicYearMapper.selectById(17L)).thenReturn(year);
     }
 
     @AfterEach
@@ -71,14 +81,14 @@ class EducationCalendarServiceTest {
 
         LocalDate today = LocalDate.now();
         service.saveSemester(new EducationCalendarForms.Semester(
-                null, " 2026-1 ", " 上学期 ", today.minusDays(1), today.plusDays(30), 0, 0, null));
+                null, 7L, 17L, "客户端填写的编码应被忽略", " 上学期 ", today.minusDays(1), today.plusDays(30), 0, 0, null));
 
         ArgumentCaptor<EduSemesterPo> captor = ArgumentCaptor.forClass(EduSemesterPo.class);
         verify(semesterMapper).insert(captor.capture());
         EduSemesterPo saved = captor.getValue();
         assertThat(saved.getLifecycleStatus()).isEqualTo(SemesterLifecycle.IN_PROGRESS.name());
         assertThat(saved.getStatus()).as("status 表示记录是否启用，与阶段无关").isZero();
-        assertThat(saved.getSemesterCode()).isEqualTo("2026-1");
+        assertThat(saved.getSemesterCode()).isEqualTo("SEMESTER_SHANG_XUE_QI");
         assertThat(saved.getTenantId()).isEqualTo(1L);
     }
 
@@ -87,7 +97,7 @@ class EducationCalendarServiceTest {
     void rejectsInvertedDateRange() {
         LocalDate today = LocalDate.now();
         EducationCalendarForms.Semester form = new EducationCalendarForms.Semester(
-                null, "2026-1", "上学期", today, today.minusDays(1), 0, 0, null);
+                null, 7L, 17L, null, "上学期", today, today.minusDays(1), 0, 0, null);
 
         assertThatThrownBy(() -> service.saveSemester(form)).isInstanceOf(BusinessException.class);
         verify(semesterMapper, never()).insert(any(EduSemesterPo.class));
@@ -122,7 +132,8 @@ class EducationCalendarServiceTest {
     @Test
     @DisplayName("数字校园同步来的教室不允许在管理端改")
     void rejectsEditingSyncedRoom() {
-        when(schoolMapper.selectById(any())).thenReturn(new EduSchoolPo());
+        EduSchoolPo school = new EduSchoolPo(); school.setOrgType("SCHOOL"); school.setSchoolManageType("INDEPENDENT");
+        when(schoolMapper.selectById(any())).thenReturn(school);
         EduRoomPo existing = new EduRoomPo();
         existing.setId(7L);
         existing.setSourceSystem("DIGITAL_CAMPUS");
@@ -140,7 +151,8 @@ class EducationCalendarServiceTest {
     @Test
     @DisplayName("删除学期时不存在的 ID 直接跳过，保持幂等")
     void deleteSemesterSkipsMissingIds() {
-        when(semesterMapper.selectById(1L)).thenReturn(new EduSemesterPo());
+        EduSemesterPo semester = new EduSemesterPo(); semester.setSchoolId(7L);
+        when(semesterMapper.selectById(1L)).thenReturn(semester);
         when(semesterMapper.selectById(2L)).thenReturn(null);
         when(semesterMapper.deleteById(1L)).thenReturn(1);
 

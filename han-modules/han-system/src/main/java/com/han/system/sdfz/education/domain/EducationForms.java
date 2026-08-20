@@ -3,6 +3,7 @@ package com.han.system.sdfz.education.domain;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -19,7 +20,7 @@ public final class EducationForms {
     public record School(
             Long id,
             Long parentId,
-            @NotBlank @Size(max = 64) String schoolCode,
+            @Size(max = 64) String schoolCode,
             @NotBlank @Size(max = 128) String schoolName,
             @NotBlank @Size(max = 16) String schoolRole,
             @Size(max = 32) String areaCode,
@@ -31,7 +32,7 @@ public final class EducationForms {
             Long id,
             @NotNull Long schoolId,
             @Size(max = 32) String gradeCode,
-            @NotBlank @Size(max = 64) String classCode,
+            @Size(max = 64) String classCode,
             @NotBlank @Size(max = 128) String className,
             @NotBlank @Size(max = 16) String classRole,
             @NotNull Integer status,
@@ -46,7 +47,7 @@ public final class EducationForms {
     public record Person(
             Long id,
             @NotNull Long schoolId,
-            @NotBlank @Size(max = 64) String personNo,
+            @Size(max = 64) String personNo,
             @NotBlank @Size(max = 128) String personName,
             @NotBlank @Size(max = 16) String personType,
             /**
@@ -54,7 +55,7 @@ public final class EducationForms {
              * 与 personType 是两个维度：一个是身份类型，一个是职务。
              */
             @Size(max = 32) String dutyCode,
-            @Size(max = 20) String phone,
+            @NotBlank @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone,
             @NotNull Integer status,
             @Size(max = 500) String remark,
             /** 0=在校 1=离校；缺省按在校处理。与账号停用独立。 */
@@ -97,9 +98,22 @@ public final class EducationForms {
             String initialPassword) {
     }
 
+    /** 批量导入逐行结果；不返回密码，避免初始口令进入批量响应。 */
+    public record PersonImportResult(
+            int rowNumber,
+            String personName,
+            String phone,
+            boolean success,
+            String message,
+            Long personId,
+            Long userId) {
+    }
+
     public record Subject(
             Long id,
-            @NotBlank @Size(max = 64) String subjectCode,
+            @NotNull Long schoolId,
+            /** 新增时由服务端按学校和科目名称生成；编辑时忽略调用方传值以保持编码稳定。 */
+            @Size(max = 64) String subjectCode,
             @NotBlank @Size(max = 128) String subjectName,
             @NotNull Integer sort,
             @NotNull Integer status,
@@ -113,6 +127,7 @@ public final class EducationForms {
             @NotBlank @Size(max = 128) String deviceCode,
             @NotBlank @Size(max = 128) String deviceName,
             @NotBlank @Size(max = 64) String deviceType,
+            @NotEmpty List<@NotBlank @Size(max = 128) String> applicationTypes,
             @Size(max = 128) String model,
             @Size(max = 128) String serialNumber,
             @NotBlank @Size(max = 32) String assetStatus,

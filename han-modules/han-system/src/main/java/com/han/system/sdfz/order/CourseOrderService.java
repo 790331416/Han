@@ -6,10 +6,14 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.sdfz.education.domain.EduClassPo;
+import com.han.system.sdfz.education.domain.EduDevicePo;
+import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSemesterPo;
 import com.han.system.sdfz.education.domain.EduSubjectPo;
 import com.han.system.sdfz.education.domain.SemesterLifecycle;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
+import com.han.system.sdfz.education.mapper.EduDeviceMapper;
+import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSemesterMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import com.han.system.sdfz.order.domain.CourseOrderForms;
@@ -61,6 +65,8 @@ public class CourseOrderService {
     private final EduCourseOrderSubjectMapper orderSubjectMapper;
     private final EduCourseOrderGrantMapper grantMapper;
     private final EduClassMapper classMapper;
+    private final EduRoomMapper roomMapper;
+    private final EduDeviceMapper deviceMapper;
     private final EduSemesterMapper semesterMapper;
     private final EduSubjectMapper subjectMapper;
     private final CourseGrantService grantService;
@@ -165,6 +171,7 @@ public class CourseOrderService {
         if (SemesterLifecycle.FINISHED.name().equals(semester.getLifecycleStatus())) {
             throw new BusinessException("学期已结束，不能新建订购单");
         }
+        requireOrderTopology(listenClass, lectureClass, semester, form.listenRoomId(), form.listenDeviceId());
 
         EduCourseOrderPo conflict = findActiveOrder(
                 form.listenClassId(), form.lectureClassId(), form.semesterId());
@@ -496,6 +503,10 @@ public class CourseOrderService {
         if (value == null) {
             throw new BusinessException(name + "不存在或不在当前数据范围");
         }
+        // 迁移前存量为 null，仍按既有平面班级兼容；迁移后只允许 CLASS 叶子参与课堂。
+        if (value.getNodeType() != null && !"CLASS".equals(value.getNodeType())) {
+            throw new BusinessException(name + "必须选择实际班级叶子节点");
+        }
         return value;
     }
 
@@ -505,6 +516,41 @@ public class CourseOrderService {
             throw new BusinessException("学期不存在或不在当前数据范围");
         }
         return value;
+    }
+
+    /** 在创建单据时校验课堂参与对象，避免错误数据等到授权物化时才暴露。 */
+    private void requireOrderTopology(EduClassPo listenClass, EduClassPo lectureClass, EduSemesterPo semester,
+                                      Long listenRoomId, Long listenDeviceId) {
+        Long semesterYearId = semester.getAcademicYearId();
+        requireAcademicYear(listenClass, semesterYearId, "听讲班");
+        requireAcademicYear(lectureClass, semesterYearId, "主讲班");
+        EduRoomPo room = listenRoomId == null ? null : roomMapper.selectById(listenRoomId);
+        if (room != null && !Objects.equals(room.getSchoolId(), listenClass.getSchoolId())) {
+            throw new BusinessException("听讲场所必须属于听讲学校");
+        }
+        if (room != null && room.getNodeType() != null && !"PLACE".equals(room.getNodeType())) {
+            throw new BusinessException("听讲场所必须选择实际场所叶子节点");
+        }
+        if (listenRoomId != null && room == null) {
+            throw new BusinessException("听讲场所不存在或不在当前数据范围");
+        }
+        EduDevicePo device = listenDeviceId == null ? null : deviceMapper.selectById(listenDeviceId);
+        if (listenDeviceId != null && device == null) {
+            throw new BusinessException("听讲设备不存在或不在当前数据范围");
+        }
+        if (device != null && !Objects.equals(device.getSchoolId(), listenClass.getSchoolId())) {
+            throw new BusinessException("听讲设备必须属于听讲学校");
+        }
+        if (device != null && room != null && !Objects.equals(device.getRoomId(), room.getId())) {
+            throw new BusinessException("听讲设备必须挂在所选听讲场所");
+        }
+    }
+
+    private static void requireAcademicYear(EduClassPo clazz, Long semesterYearId, String name) {
+        if (semesterYearId != null && clazz.getAcademicYearId() != null
+                && !Objects.equals(semesterYearId, clazz.getAcademicYearId())) {
+            throw new BusinessException(name + "与订购学期不属于同一学年");
+        }
     }
 
     private static String generateOrderNo() {

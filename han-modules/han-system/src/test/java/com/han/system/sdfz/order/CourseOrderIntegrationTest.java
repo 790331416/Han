@@ -105,6 +105,20 @@ class CourseOrderIntegrationTest {
     }
 
     @Test
+    @DisplayName("ORDER-01 听讲设备不属于听讲学校时拒绝，不能把跨校设备写入单据")
+    void rejectsDeviceFromAnotherSchool() {
+        fixtures.han().update("UPDATE edu_device SET school_id = ? WHERE id = ?",
+                OrderTestFixtures.LECTURE_SCHOOL, OrderTestFixtures.DEVICE);
+        CourseOrderForms.CreateOrder form = new CourseOrderForms.CreateOrder(
+                null, OrderTestFixtures.LISTEN_CLASS, OrderTestFixtures.ROOM, OrderTestFixtures.DEVICE,
+                OrderTestFixtures.LECTURE_CLASS, SEMESTER, "WHOLE_CLASS", null, false, null);
+
+        assertThatThrownBy(() -> orderService.createOrder(form))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("听讲设备必须属于听讲学校");
+        assertThat(fixtures.countOrders()).isZero();
+    }
+
+    @Test
     @DisplayName("ORDER-02 同一四元组第二张有效单被唯一约束拒绝，错误里带冲突单号")
     void rejectsDuplicateActiveOrder() {
         EduCourseOrderPo first = createWholeClassOrder("ORD-1");

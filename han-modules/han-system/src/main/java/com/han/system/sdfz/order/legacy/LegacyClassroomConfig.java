@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestClient;
@@ -25,6 +26,7 @@ import javax.sql.DataSource;
 public class LegacyClassroomConfig {
 
     @Bean
+    @Primary
     public LegacyClassroomGateway legacyClassroomGateway(LegacyClassroomProperties properties) {
         return switch (properties.getChannel()) {
             case JDBC -> jdbcGateway(properties);
@@ -34,6 +36,14 @@ public class LegacyClassroomConfig {
                 yield new DisabledLegacyClassroomGateway();
             }
         };
+    }
+
+    /** 课表规则与订购物化共用同一个 JDBC 连接池，避免管理端再开第二套到三课堂的连接。 */
+    @Bean
+    public LegacyCourseRuleGateway legacyCourseRuleGateway(LegacyClassroomGateway gateway) {
+        return gateway instanceof LegacyCourseRuleGateway ruleGateway
+                ? ruleGateway
+                : new DisabledLegacyCourseRuleGateway();
     }
 
     private LegacyClassroomGateway jdbcGateway(LegacyClassroomProperties properties) {

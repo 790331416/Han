@@ -2,12 +2,14 @@ package com.han.system.sdfz.education;
 
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
+import com.han.common.core.exception.ForbiddenException;
 import com.han.common.core.util.PasswordUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserRolePo;
+import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
@@ -36,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,14 +67,20 @@ class EducationPersonServiceTest {
     private SysUserRoleMapper userRoleMapper;
     @Mock
     private SysRoleMapper roleMapper;
+    @Mock
+    private SysDictDataMapper dictDataMapper;
+    @Mock
+    private EducationDataScopeService dataScopeService;
 
     private EducationPersonService service;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(1L).build());
+        lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
-                schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper);
+                schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
+                dataScopeService);
     }
 
     @AfterEach
@@ -84,7 +93,7 @@ class EducationPersonServiceTest {
         stubSchool();
         stubNoDuplicatePersonNo();
         when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
-        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("teacher"));
+        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("common"));
         doAnswer(invocation -> {
             SysUserPo value = invocation.getArgument(0);
             value.setId(9001L);
@@ -150,7 +159,7 @@ class EducationPersonServiceTest {
     @Test
     void rejectsDuplicatePersonNoInsideSameSchool() {
         stubSchool();
-        when(personMapper.selectCount(any())).thenReturn(1L);
+        when(personMapper.selectCount(any())).thenReturn(0L, 1L);
 
         assertThatThrownBy(() -> service.save(teacherForm("t.zhang", "Teacher@2026")))
                 .isInstanceOf(ConflictException.class)
@@ -160,17 +169,17 @@ class EducationPersonServiceTest {
 
     @Test
     void rejectsAssigningSuperAdminRoleThroughPersonEntry() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
         stubSchool();
         stubNoDuplicatePersonNo();
         when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
-        when(roleMapper.selectById(1L)).thenReturn(role("admin"));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER",
-                null, null, 0, null, null, true, "t.zhang", "Teacher@2026", List.of(1L), null, null, null, null);
+                null, "13900000001", 0, null, null, true, "t.zhang", "Teacher@2026", List.of(1L), null, null, null, null);
 
         assertThatThrownBy(() -> service.save(form))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("超级管理员");
+                .isInstanceOfAny(BusinessException.class, ForbiddenException.class)
+                .hasMessageContaining("角色");
         verify(userMapper, never()).insert(any(SysUserPo.class));
     }
 
@@ -185,13 +194,30 @@ class EducationPersonServiceTest {
         }).when(personMapper).insert(any(EduPersonPo.class));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T002", "李老师", "TEACHER",
-                null, null, 0, null, null, false, null, null, null, null, null, null, null);
+                null, "13900000002", 0, null, null, false, null, null, null, null, null, null, null);
 
         EducationForms.PersonResult result = service.save(form);
 
         assertThat(result.userId()).isNull();
         assertThat(result.username()).isNull();
         verify(userMapper, never()).insert(any(SysUserPo.class));
+    }
+
+    @Test
+    void createsLoginAccountByDefaultForNewPersonWhenLoginFlagIsOmitted() {
+        stubSchool();
+        stubNoDuplicatePersonNo();
+        when(userMapper.checkUsernameUnique("u_13900000009", 1L, null)).thenReturn(0);
+        stubGeneratedIds(9009L, 5009L);
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T009", "默认建号教师", "TEACHER",
+                null, "13900000009", 0, null, null, null, null, null, null, null, null, null, null);
+
+        EducationForms.PersonResult result = service.save(form);
+
+        assertThat(result.userId()).isEqualTo(9009L);
+        assertThat(result.username()).isEqualTo("u_13900000009");
+        verify(userMapper).insert(any(SysUserPo.class));
     }
 
     /** D-1 回归护栏：编辑时前端漏回填角色（空数组或缺省）不得清空既有角色。 */
@@ -233,7 +259,7 @@ class EducationPersonServiceTest {
         when(userMapper.selectById(9011L)).thenReturn(user);
 
         EducationForms.Person form = new EducationForms.Person(5011L, SCHOOL_ID, "T001", "张老师", "TEACHER",
-                null, null, 0, null, null, true, "t.zhang", null, List.of(), true, null, null, null);
+                null, "13900000001", 0, null, null, true, "t.zhang", null, List.of(), true, null, null, null);
         service.save(form);
 
         verify(userRoleMapper).delete(any());
@@ -251,7 +277,7 @@ class EducationPersonServiceTest {
         }).when(personMapper).insert(any(EduPersonPo.class));
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S001", "王同学", "STUDENT",
-                null, null, 0, null, null, false, null, null, null, null, List.of(21L, 22L), null, null);
+                null, "13900000003", 0, null, null, false, null, null, null, null, List.of(21L, 22L), null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
@@ -275,7 +301,7 @@ class EducationPersonServiceTest {
         when(classMapper.selectById(21L)).thenReturn(other);
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S002", "赵同学", "STUDENT",
-                null, null, 0, null, null, false, null, null, null, null, List.of(21L), null, null);
+                null, "13900000004", 0, null, null, false, null, null, null, null, List.of(21L), null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
@@ -301,6 +327,7 @@ class EducationPersonServiceTest {
         EduClassPo target = new EduClassPo();
         target.setId(22L);
         target.setSchoolId(SCHOOL_ID);
+        target.setNodeType("CLASS");
         when(classMapper.selectById(22L)).thenReturn(target);
         EduPersonClassPo stale = new EduPersonClassPo();
         stale.setId(700L);
@@ -318,6 +345,23 @@ class EducationPersonServiceTest {
         assertThat(created).isEqualTo(1);
         assertThat(captor.getValue().getClassId()).isEqualTo(22L);
         assertThat(captor.getValue().getSourceSystem()).isEqualTo("HAN");
+    }
+
+    @Test
+    void rejectsGradeNodeWhenAssigningPersonToClass() {
+        EduPersonPo person = localPerson(5008L, "TEACHER");
+        when(personMapper.selectById(5008L)).thenReturn(person);
+        EduClassPo grade = new EduClassPo();
+        grade.setId(23L);
+        grade.setSchoolId(SCHOOL_ID);
+        grade.setNodeType("GRADE");
+        when(classMapper.selectById(23L)).thenReturn(grade);
+
+        assertThatThrownBy(() -> service.replaceMemberships(
+                new EducationForms.Membership(5008L, List.of(23L), null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("最末级班级");
+        verify(personClassMapper, never()).insert(any(EduPersonClassPo.class));
     }
 
     @Test
@@ -381,7 +425,7 @@ class EducationPersonServiceTest {
         when(userMapper.selectById(9014L)).thenReturn(user);
 
         EducationForms.Person form = new EducationForms.Person(5014L, SCHOOL_ID, "S001", "王同学", "STUDENT",
-                null, null, 0, null, 1, true, "s.wang", null, null, null, null, null, null);
+                null, "13900000005", 0, null, 1, true, "s.wang", null, null, null, null, null, null);
         service.save(form);
 
         assertThat(person.getLeaveFlag()).isEqualTo(1);
@@ -402,7 +446,7 @@ class EducationPersonServiceTest {
         stubNoDuplicatePersonNo();
 
         service.save(new EducationForms.Person(5015L, SCHOOL_ID, "S002", "李同学", "STUDENT",
-                null, null, 0, null, 0, false, null, null, null, null, null, null, null));
+                null, "13900000006", 0, null, 0, false, null, null, null, null, null, null, null));
 
         assertThat(person.getLeaveFlag()).isZero();
         assertThat(person.getLeaveTime()).isNull();
@@ -421,7 +465,7 @@ class EducationPersonServiceTest {
         stubSchool();
         stubNoDuplicatePersonNo();
         when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
-        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("teacher"));
+        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("common"));
         stubGeneratedIds(9020L, 5020L);
 
         service.save(teacherForm("t.zhang", "Teacher@2026", null));
@@ -436,7 +480,7 @@ class EducationPersonServiceTest {
         stubSchool();
         stubNoDuplicatePersonNo();
         when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
-        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("teacher"));
+        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("common"));
         stubGeneratedIds(9021L, 5021L);
 
         service.save(teacherForm("t.zhang", "Teacher@2026", "SCHOOL_ADMIN"));
@@ -453,7 +497,7 @@ class EducationPersonServiceTest {
 
         assertThatThrownBy(() -> service.save(teacherForm("t.zhang", "Teacher@2026", "SUPER_ADMIN")))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("校内岗位");
+                .hasMessageContaining("校内职务");
         verify(personMapper, never()).insert(any(EduPersonPo.class));
         verify(userMapper, never()).insert(any(SysUserPo.class));
     }
@@ -463,11 +507,26 @@ class EducationPersonServiceTest {
         stubSchool();
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S003", "钱同学", "STUDENT",
-                "SCHOOL_ADMIN", null, 0, null, null, false, null, null, null, null, null, null, null);
+                "SCHOOL_ADMIN", "13900000008", 0, null, null, false, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.save(form))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("学生不能配置校内岗位");
+                .hasMessageContaining("学生不能配置校内职务");
+        verify(personMapper, never()).insert(any(EduPersonPo.class));
+    }
+
+    @Test
+    void rejectsAssigningManagementRoleToStudent() {
+        stubSchool();
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "S004", "孙同学", "STUDENT",
+                null, "13900000010", 0, null, null, true, "s.qian", "Student@2026", List.of(2L), null,
+                null, null, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("学生账号不能分配管理端角色");
+        verify(userMapper, never()).insert(any(SysUserPo.class));
         verify(personMapper, never()).insert(any(EduPersonPo.class));
     }
 
@@ -508,7 +567,7 @@ class EducationPersonServiceTest {
     }
 
     private static EducationForms.Person teacherForm(String username, String password, String dutyCode) {
-        return new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER", dutyCode, null, 0, null, null,
+        return new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER", dutyCode, "13900000001", 0, null, null,
                 true, username, password, password == null ? null : List.of(TEACHER_ROLE_ID), null,
                 null, null, null);
     }

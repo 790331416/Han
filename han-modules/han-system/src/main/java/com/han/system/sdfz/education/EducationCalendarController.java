@@ -34,12 +34,13 @@ public class EducationCalendarController {
     @GetMapping("/semesters/list")
     @PreAuthorize("@ss.hasAuthority('education:semester:list')")
     public R<PageResult<EduSemesterPo>> semesters(
+            @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) String lifecycleStatus,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return R.ok(service.listSemesters(keyword, status, lifecycleStatus, pageNum, pageSize));
+        return R.ok(service.listSemesters(schoolId, keyword, status, lifecycleStatus, pageNum, pageSize));
     }
 
     @RepeatSubmit

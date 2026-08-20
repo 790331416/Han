@@ -56,7 +56,7 @@ import java.util.List;
  * 「先按 {@code (fk_course_id, class_id)} 查重，命中复用 {@code attend_id} 并恢复状态，未命中才插入」。
  */
 @Slf4j
-public class LegacyClassroomJdbcGateway implements LegacyClassroomGateway {
+public class LegacyClassroomJdbcGateway implements LegacyClassroomGateway, LegacyCourseRuleGateway {
 
     private static final DateTimeFormatter LEGACY_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -171,6 +171,68 @@ public class LegacyClassroomJdbcGateway implements LegacyClassroomGateway {
         return !ids.isEmpty();
     }
 
+    @Override
+    public List<LegacyCourseRule> listCourseRules(String templateId) {
+        String sql = "SELECT rule_id, template_id, template_name, start_time, end_time, class_section,"
+                + " status, create_id, create_name, create_time, update_id, update_name, update_time"
+                + " FROM tb_course_rule WHERE template_id = ? ORDER BY CAST(class_section AS UNSIGNED), rule_id";
+        return query(() -> jdbcTemplate.query(sql, courseRuleMapper(), templateId));
+    }
+
+    @Override
+    public LegacyCourseRule findCourseRule(String ruleId) {
+        String sql = "SELECT rule_id, template_id, template_name, start_time, end_time, class_section,"
+                + " status, create_id, create_name, create_time, update_id, update_name, update_time"
+                + " FROM tb_course_rule WHERE rule_id = ?";
+        List<LegacyCourseRule> rows = query(() -> jdbcTemplate.query(sql, courseRuleMapper(), ruleId));
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    @Override
+    public String insertCourseRule(String templateId, String templateName, String startTime, String endTime,
+                                   String classSection, String operatorId, String operatorName) {
+        String ruleId = IdWorker.getIdStr();
+        String now = format(LocalDateTime.now());
+        query(() -> jdbcTemplate.update(
+                "INSERT INTO tb_course_rule (rule_id, template_id, template_name, start_time, end_time,"
+                        + " class_section, status, create_id, create_name, create_time)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ruleId, templateId, templateName, startTime, endTime, classSection,
+                LEGACY_NORMAL, operatorId, operatorName, now));
+        return ruleId;
+    }
+
+    @Override
+    public void updateCourseRule(String ruleId, String templateId, String templateName, String startTime,
+                                 String endTime, String classSection, String operatorId, String operatorName) {
+        query(() -> jdbcTemplate.update(
+                "UPDATE tb_course_rule SET template_id = ?, template_name = ?, start_time = ?, end_time = ?,"
+                        + " class_section = ?, update_id = ?, update_name = ?, update_time = ? WHERE rule_id = ?",
+                templateId, templateName, startTime, endTime, classSection,
+                operatorId, operatorName, format(LocalDateTime.now()), ruleId));
+    }
+
+    @Override
+    public void updateCourseRuleStatus(String ruleId, String status, String operatorId, String operatorName) {
+        query(() -> jdbcTemplate.update(
+                "UPDATE tb_course_rule SET status = ?, update_id = ?, update_name = ?, update_time = ?"
+                        + " WHERE rule_id = ?",
+                status, operatorId, operatorName, format(LocalDateTime.now()), ruleId));
+    }
+
+    @Override
+    public long countCourseReferences(String ruleId) {
+        Long count = query(() -> jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM tb_course_info WHERE rule_id = ? AND status = ?",
+                Long.class, ruleId, LEGACY_NORMAL));
+        return count == null ? 0L : count;
+    }
+
+    @Override
+    public void deleteCourseRule(String ruleId) {
+        query(() -> jdbcTemplate.update("DELETE FROM tb_course_rule WHERE rule_id = ?", ruleId));
+    }
+
     /**
      * 找这对 (课程, 听讲班) 的听课行，<b>不看状态</b>，理由见 {@link #materializeAttend}。
      * 存量数据里万一已经有多行，取状态正常的那条，保证行为可预期。
@@ -199,6 +261,23 @@ public class LegacyClassroomJdbcGateway implements LegacyClassroomGateway {
                 rs.getString("subject_name"),
                 readTime(rs, "time_begin"),
                 readTime(rs, "time_end"));
+    }
+
+    private static RowMapper<LegacyCourseRule> courseRuleMapper() {
+        return (ResultSet rs, int index) -> new LegacyCourseRule(
+                rs.getString("rule_id"),
+                rs.getString("template_id"),
+                rs.getString("template_name"),
+                rs.getString("start_time"),
+                rs.getString("end_time"),
+                rs.getString("class_section"),
+                rs.getString("status"),
+                rs.getString("create_id"),
+                rs.getString("create_name"),
+                rs.getString("create_time"),
+                rs.getString("update_id"),
+                rs.getString("update_name"),
+                rs.getString("update_time"));
     }
 
     /**

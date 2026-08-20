@@ -202,11 +202,13 @@ public class OrderIntegrationTestConfig {
             com.han.system.sdfz.order.mapper.EduCourseOrderSubjectMapper orderSubjectMapper,
             com.han.system.sdfz.order.mapper.EduCourseOrderGrantMapper grantMapper,
             com.han.system.sdfz.education.mapper.EduClassMapper classMapper,
+            com.han.system.sdfz.education.mapper.EduRoomMapper roomMapper,
+            com.han.system.sdfz.education.mapper.EduDeviceMapper deviceMapper,
             com.han.system.sdfz.education.mapper.EduSemesterMapper semesterMapper,
             com.han.system.sdfz.education.mapper.EduSubjectMapper subjectMapper,
             CourseGrantService grantService) {
-        return new CourseOrderService(orderMapper, orderSubjectMapper, grantMapper, classMapper,
-                semesterMapper, subjectMapper, grantService);
+        return new CourseOrderService(orderMapper, orderSubjectMapper, grantMapper, classMapper, roomMapper,
+                deviceMapper, semesterMapper, subjectMapper, grantService);
     }
 
     @Bean
@@ -214,8 +216,10 @@ public class OrderIntegrationTestConfig {
             com.han.system.sdfz.education.mapper.EduSemesterMapper semesterMapper,
             com.han.system.sdfz.education.mapper.EduRoomMapper roomMapper,
             com.han.system.sdfz.education.mapper.EduSchoolMapper schoolMapper,
-            com.han.system.sdfz.education.mapper.EduDeviceMapper deviceMapper) {
-        return new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper);
+            com.han.system.sdfz.education.mapper.EduDeviceMapper deviceMapper,
+            com.han.system.sdfz.education.mapper.EduAcademicYearMapper academicYearMapper) {
+        return new EducationCalendarService(semesterMapper, roomMapper, schoolMapper, deviceMapper, academicYearMapper,
+                org.mockito.Mockito.mock(com.han.system.sdfz.education.EducationDataScopeService.class));
     }
 
     @Bean

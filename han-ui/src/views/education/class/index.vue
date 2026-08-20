@@ -1,4 +1,4 @@
-<template><EducationCrudPage entity="classes" /></template>
+<template><EducationClassTreePage /></template>
 <script setup lang="ts">
-import EducationCrudPage from '../EducationCrudPage.vue'
+import EducationClassTreePage from '../EducationClassTreePage.vue'
 </script>

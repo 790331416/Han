@@ -12,6 +12,14 @@ import java.time.LocalDateTime;
 @TableName("edu_class")
 public class EduClassPo extends BizEntity {
     private Long schoolId;
+    private Long parentId;
+    private String ancestors;
+    private Integer nodeLevel;
+    private Integer sort;
+    private String nodeType;
+    private Long academicYearId;
+    private Integer cohortYear;
+    private String branchCode;
     private String gradeCode;
     private String classCode;
     private String className;

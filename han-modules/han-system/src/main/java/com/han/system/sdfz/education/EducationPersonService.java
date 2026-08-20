@@ -5,10 +5,13 @@ import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
+import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.util.DataOwnerUtil;
+import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserRolePo;
+import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
@@ -57,6 +60,7 @@ import static com.han.system.sdfz.education.EducationSupport.trimToNull;
 public class EducationPersonService {
 
     private static final String ADMIN_ROLE_KEY = "admin";
+    private static final String SCHOOL_DUTY_DICT = "edu_school_duty";
     private static final String STUDENT_TYPE = "STUDENT";
     private static final String TEACHER_TYPE = "TEACHER";
     private static final int GENERATED_PASSWORD_LENGTH = 12;
@@ -64,6 +68,7 @@ public class EducationPersonService {
 
     /** 登录名：字母开头，4~30 位字母、数字、下划线、点或连字符。 */
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_.-]{3,29}$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
 
     private final EduPersonMapper personMapper;
     private final EduPersonClassMapper personClassMapper;
@@ -74,12 +79,23 @@ public class EducationPersonService {
     private final SysUserMapper userMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final SysRoleMapper roleMapper;
+    private final SysDictDataMapper dictDataMapper;
+    private final EducationDataScopeService dataScopeService;
 
     public PageResult<EduPersonPo> list(Long schoolId, String personType, String keyword,
                                         Integer status, int pageNum, int pageSize) {
         requireTenant();
+        EducationDataScopeService.Scope scope = dataScopeService.current();
+        if (schoolId != null) {
+            dataScopeService.requireSchool(schoolId);
+        } else if (!scope.all() && scope.schoolIds().isEmpty()) {
+            int safePage = Math.max(pageNum, 1);
+            int safeSize = Math.min(Math.max(pageSize, 1), 100);
+            return new PageResult<>(List.of(), 0, safePage, safeSize);
+        }
         LambdaQueryWrapper<EduPersonPo> query = new LambdaQueryWrapper<EduPersonPo>()
                 .eq(schoolId != null, EduPersonPo::getSchoolId, schoolId)
+                .in(schoolId == null && !scope.all(), EduPersonPo::getSchoolId, scope.schoolIds())
                 .eq(notBlank(personType), EduPersonPo::getPersonType, personType)
                 .eq(status != null, EduPersonPo::getStatus, status)
                 .and(notBlank(keyword), item -> item.like(EduPersonPo::getPersonNo, keyword)
@@ -113,9 +129,16 @@ public class EducationPersonService {
         if (person.getUserId() == null) {
             return List.of();
         }
+        if (STUDENT_TYPE.equalsIgnoreCase(person.getPersonType())) {
+            return List.of();
+        }
         return userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRolePo>()
                         .eq(SysUserRolePo::getUserId, person.getUserId()))
                 .stream().map(SysUserRolePo::getRoleId).toList();
+    }
+
+    EduSchoolPo requireImportSchool(Long schoolId) {
+        return requireSchool(schoolId);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -125,28 +148,42 @@ public class EducationPersonService {
 
         String personType = form.personType().trim().toUpperCase(Locale.ROOT);
         // 纯入参校验放在建号之前：岗位写错属于请求不合法，不该先把账号建出来再靠事务回滚。
-        EduDuty duty = resolveDuty(form.dutyCode(), personType);
-        String personNo = form.personNo().trim();
+        String duty = resolveDuty(form.dutyCode(), personType);
+        if (STUDENT_TYPE.equals(personType) && form.roleIds() != null && !form.roleIds().isEmpty()) {
+            throw new BusinessException("学生账号不能分配管理端角色");
+        }
         EduPersonPo person = form.id() == null ? new EduPersonPo() : requirePerson(form.id());
         if (form.id() != null) {
             requireLocalSource(person.getSourceSystem(), "人员");
         }
+        String personNo = form.id() == null
+                ? EducationCodeGenerator.unique("PERSON", form.personName(), candidate -> personMapper.selectCount(
+                        new LambdaQueryWrapper<EduPersonPo>()
+                                .eq(EduPersonPo::getSchoolId, form.schoolId())
+                                .eq(EduPersonPo::getPersonNo, candidate)) > 0)
+                : person.getPersonNo();
         requirePersonNoAvailable(form.schoolId(), personNo, form.id());
+        String phone = requiredPhone(form.phone());
 
         Long userId = person.getUserId();
         String username = null;
         String initialPassword = null;
-        if (form.wantsLogin()) {
+        // 新增教育人员默认建号；编辑存量无账号人员时，只有明确勾选后才补建，避免一次资料编辑意外开通登录。
+        boolean createLoginAccount = form.loginEnabled() == null ? form.id() == null : form.wantsLogin();
+        if (createLoginAccount) {
             if (userId == null) {
-                Account account = createAccount(tenantId, form, personType);
+                Account account = createAccount(tenantId, form, personType, phone);
                 userId = account.userId();
                 username = account.username();
                 initialPassword = account.initialPassword();
             } else {
-                username = refreshAccount(userId, form);
+                username = refreshAccount(userId, form, phone);
             }
         } else if (userId != null) {
-            throw new BusinessException("该人员已关联登录账号，请先在账号与权限中处理");
+            disableAccount(userId);
+            if (STUDENT_TYPE.equals(personType)) {
+                clearAccountRoles(userId);
+            }
         }
 
         person.setUserId(userId);
@@ -154,8 +191,8 @@ public class EducationPersonService {
         person.setPersonNo(personNo);
         person.setPersonName(form.personName().trim());
         person.setPersonType(personType);
-        person.setDutyCode(duty.name());
-        person.setPhone(trimToNull(form.phone()));
+        person.setDutyCode(duty);
+        person.setPhone(phone);
         person.setStatus(normalStatus(form.status()));
         person.setRemark(trimToNull(form.remark()));
         applyLeaveState(person, form.leaveFlag());
@@ -185,6 +222,7 @@ public class EducationPersonService {
             if (person == null) {
                 continue;
             }
+            dataScopeService.requireSchool(person.getSchoolId());
             requireLocalSource(person.getSourceSystem(), "人员");
 
             personClassMapper.delete(new LambdaQueryWrapper<EduPersonClassPo>()
@@ -218,25 +256,36 @@ public class EducationPersonService {
      * 解析校内岗位。
      *
      * <p>缺省回落成普通教师，<b>不回落成管理岗</b>：调用方漏传一次就把校级管理权发出去，
-     * 与"校级管理员由管理员显式授予"直接冲突。取值写错则拒绝，不静默降级——
+     * 与"管理员由管理员显式授予"直接冲突。取值写错则拒绝，不静默降级——
      * 静默降级会让管理员以为授权成功，实际上什么也没变。</p>
      *
      * <p>学生不参与岗位授权：岗位是教职工的职务，给学生挂管理岗没有业务含义，
      * 而且会让他在旧前端拿到校级菜单。</p>
      */
-    private static EduDuty resolveDuty(String requested, String personType) {
+    private String resolveDuty(String requested, String personType) {
+        if (STUDENT_TYPE.equals(personType)) {
+            if (trimToNull(requested) != null) {
+                throw new BusinessException("学生不能配置校内职务");
+            }
+            return null;
+        }
         String value = trimToNull(requested);
         if (value == null) {
-            return EduDuty.TEACHER;
+            return EduDuty.TEACHER.name();
         }
-        EduDuty duty = EduDuty.of(value);
-        if (duty == null) {
-            throw new BusinessException("校内岗位取值不合法: " + value);
+        String normalized = value.toUpperCase(Locale.ROOT);
+        Long exactCount = dictDataMapper.selectCount(new LambdaQueryWrapper<SysDictDataPo>()
+                .eq(SysDictDataPo::getDictType, SCHOOL_DUTY_DICT)
+                .eq(SysDictDataPo::getDictValue, normalized)
+                .eq(SysDictDataPo::getStatus, 0));
+        Long dictCount = dictDataMapper.selectCount(new LambdaQueryWrapper<SysDictDataPo>()
+                .eq(SysDictDataPo::getDictType, SCHOOL_DUTY_DICT)
+                .eq(SysDictDataPo::getStatus, 0));
+        if ((dictCount != null && dictCount > 0 && (exactCount == null || exactCount == 0))
+                || (dictCount == null || dictCount == 0) && EduDuty.of(normalized) == null) {
+            throw new BusinessException("校内职务取值不合法: " + value);
         }
-        if (STUDENT_TYPE.equals(personType) && duty != EduDuty.TEACHER) {
-            throw new BusinessException("学生不能配置校内岗位");
-        }
-        return duty;
+        return normalized;
     }
 
     /**
@@ -258,10 +307,18 @@ public class EducationPersonService {
 
     // ---------------------------------------------------------------- 账号
 
-    private Account createAccount(Long tenantId, EducationForms.Person form, String personType) {
+    private static String requiredPhone(String value) {
+        String phone = trimToNull(value);
+        if (phone == null || !PHONE_PATTERN.matcher(phone).matches()) {
+            throw new BusinessException("手机号格式不正确");
+        }
+        return phone;
+    }
+
+    private Account createAccount(Long tenantId, EducationForms.Person form, String personType, String phone) {
         String username = trimToNull(form.username());
         if (username == null) {
-            throw new BusinessException("启用登录时必须填写登录名");
+            username = "u_" + phone;
         }
         if (!USERNAME_PATTERN.matcher(username).matches()) {
             throw new BusinessException("登录名必须以字母开头，长度 4~30 位，只能包含字母、数字、下划线、点或连字符");
@@ -269,8 +326,7 @@ public class EducationPersonService {
         if (userMapper.checkUsernameUnique(username, tenantId, null) > 0) {
             throw new ConflictException("登录名“" + username + "”已存在，请更换后重试");
         }
-        String phone = trimToNull(form.phone());
-        if (phone != null && userMapper.checkPhoneUnique(phone, tenantId, null) > 0) {
+        if (userMapper.checkPhoneUnique(phone, tenantId, null) > 0) {
             throw new ConflictException("手机号“" + phone + "”已被其他账号使用");
         }
         Set<Long> roleIds = resolveRoles(form.roleIds(), personType);
@@ -307,12 +363,17 @@ public class EducationPersonService {
      * <p>只有在调用方明确要改角色时才动 {@code sys_user_role}：空数组按"未提供"处理，
      * 否则前端漏回填一次就会静默清空该账号的全部角色。</p>
      */
-    private String refreshAccount(Long userId, EducationForms.Person form) {
+    private String refreshAccount(Long userId, EducationForms.Person form, String phone) {
         SysUserPo user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
         }
         user.setNickname(truncate(form.personName().trim(), NICKNAME_MAX_LENGTH));
+        if (!Objects.equals(phone, user.getPhone())
+                && userMapper.checkPhoneUnique(phone, requireTenant(), userId) > 0) {
+            throw new ConflictException("手机号“" + phone + "”已被其他账号使用");
+        }
+        user.setPhone(phone);
         // 人员状态到账号状态**只同步停用这一个方向**：人员被停用，账号必须跟着停，
         // 不允许出现「人员已停用但账号还能登录」的中间态。
         //
@@ -324,9 +385,12 @@ public class EducationPersonService {
         }
         userMapper.updateById(user);
 
-        if (form.wantsRoleChange()) {
+        String personType = form.personType().trim().toUpperCase(Locale.ROOT);
+        if (STUDENT_TYPE.equals(personType)) {
+            clearAccountRoles(userId);
+        } else if (form.wantsRoleChange()) {
             Set<Long> roleIds = resolveRoles(form.effectiveRoleIds(),
-                    form.personType().trim().toUpperCase(Locale.ROOT));
+                    personType);
             userRoleMapper.delete(new LambdaQueryWrapper<SysUserRolePo>()
                     .eq(SysUserRolePo::getUserId, userId));
             for (Long roleId : roleIds) {
@@ -362,24 +426,36 @@ public class EducationPersonService {
         if (roleIds.isEmpty()) {
             return roleIds;
         }
+        if (STUDENT_TYPE.equals(personType)) {
+            throw new BusinessException("学生账号不能分配管理端角色");
+        }
         DataOwnerUtil.checkRolePermission(roleIds);
         for (Long roleId : roleIds) {
             SysRolePo role = roleMapper.selectById(roleId);
             if (role == null) {
                 throw new BusinessException("角色不存在或不在当前数据范围: " + roleId);
             }
-            if (ADMIN_ROLE_KEY.equals(role.getRoleKey())) {
+            if (ADMIN_ROLE_KEY.equals(role.getRoleKey()) && !SecurityContextHolder.isAdmin()) {
                 throw new BusinessException("不能通过教育人员入口分配超级管理员角色");
             }
             if (!Objects.equals(role.getStatus(), 0)) {
                 throw new BusinessException("角色已停用: " + role.getRoleName());
             }
-            if (STUDENT_TYPE.equals(personType) && role.getRoleKey() != null
-                    && role.getRoleKey().toLowerCase(Locale.ROOT).contains("admin")) {
-                throw new BusinessException("学生账号不能分配管理类角色");
+            if (role.getRoleKey() != null) {
+                String key = role.getRoleKey().toLowerCase(Locale.ROOT);
+                if ("teacher".equals(key) || "student".equals(key)) {
+                    throw new BusinessException("教师人员入口不能分配学生或历史教师角色");
+                }
             }
         }
         return roleIds;
+    }
+
+    private void clearAccountRoles(Long userId) {
+        if (userId != null) {
+            userRoleMapper.delete(new LambdaQueryWrapper<SysUserRolePo>()
+                    .eq(SysUserRolePo::getUserId, userId));
+        }
     }
 
     // ---------------------------------------------------------------- 关系
@@ -401,6 +477,9 @@ public class EducationPersonService {
             }
             if (!Objects.equals(item.getSchoolId(), person.getSchoolId())) {
                 throw new BusinessException("班级“" + item.getClassName() + "”不属于人员所在学校");
+            }
+            if (!"CLASS".equals(item.getNodeType())) {
+                throw new BusinessException("人员归班只能选择最末级班级节点");
             }
         }
 
@@ -442,6 +521,9 @@ public class EducationPersonService {
             if (subject == null) {
                 throw new BusinessException("科目不存在或不在当前数据范围: " + subjectId);
             }
+            if (!Objects.equals(subject.getSchoolId(), person.getSchoolId())) {
+                throw new BusinessException("任教科目不属于人员所在学校");
+            }
         }
         if (classId != null) {
             EduClassPo item = classMapper.selectById(classId);
@@ -480,9 +562,10 @@ public class EducationPersonService {
 
     private EduSchoolPo requireSchool(Long id) {
         EduSchoolPo value = id != null ? schoolMapper.selectById(id) : null;
-        if (value == null) {
+        if (value == null || "EDU_BUREAU".equals(value.getOrgType())) {
             throw new BusinessException("学校不存在或不在当前数据范围");
         }
+        dataScopeService.requireSchool(value.getId());
         return value;
     }
 
@@ -491,6 +574,7 @@ public class EducationPersonService {
         if (value == null) {
             throw new BusinessException("人员不存在或不在当前数据范围");
         }
+        dataScopeService.requireSchool(value.getSchoolId());
         return value;
     }
 

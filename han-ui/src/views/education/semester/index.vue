@@ -3,7 +3,10 @@
     <el-card shadow="never" class="search-form">
       <el-form :model="query" :inline="true">
         <el-form-item label="关键词">
-          <el-input v-model="query.keyword" clearable placeholder="编码或名称" @keyup.enter="handleQuery" />
+          <el-input v-model="query.keyword" clearable placeholder="学期名称" @keyup.enter="handleQuery" />
+        </el-form-item>
+        <el-form-item label="学校">
+          <EducationSchoolSelector v-model="query.schoolId" :nodes="organizations" clearable style="width:220px" @change="handleQuerySchool" />
         </el-form-item>
         <el-form-item label="学期阶段">
           <el-select v-model="query.lifecycleStatus" clearable style="width: 140px">
@@ -37,7 +40,8 @@
       </template>
 
       <el-table v-loading="loading" :data="records">
-        <el-table-column label="学期编码" prop="semesterCode" min-width="140" show-overflow-tooltip />
+        <el-table-column label="学校" min-width="180"><template #default="{ row }">{{ schoolName(row.schoolId) }}</template></el-table-column>
+        <el-table-column label="所属学年" min-width="150"><template #default="{ row }">{{ yearName(row.academicYearId) }}</template></el-table-column>
         <el-table-column label="学期名称" prop="semesterName" min-width="180" show-overflow-tooltip />
         <el-table-column label="开始日期" prop="beginDate" min-width="120" />
         <el-table-column label="结束日期" prop="endDate" min-width="120" />
@@ -57,7 +61,7 @@
             <el-tag :type="row.status === 0 ? 'success' : 'danger'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="userStore.hasPermission('education:semester:edit')"
@@ -66,6 +70,7 @@
               :icon="Edit"
               @click="handleEdit(row)"
             >编辑</el-button>
+            <el-button v-if="userStore.hasPermission('education:semester:remove')" type="danger" link :icon="Delete" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -87,8 +92,10 @@
         学期阶段由系统按日期自动推进，不需要也不能手工设置；这里的「状态」表示这条学期记录本身是否启用。
       </el-alert>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
-        <el-form-item label="学期编码" prop="semesterCode">
-          <el-input v-model="form.semesterCode" clearable />
+        <el-form-item label="学校" prop="schoolId"><EducationSchoolSelector v-model="form.schoolId" :nodes="organizations" :disabled="Boolean(form.id && form.schoolId)" style="width:100%" @change="loadAcademicYears" /></el-form-item>
+        <el-form-item label="所属学年" prop="academicYearId"><el-select v-model="form.academicYearId" style="width:100%"><el-option v-for="item in academicYears" :key="item.id" :label="item.yearName" :value="item.id!" /></el-select></el-form-item>
+        <el-form-item label="学期编码">
+          <span class="generated-code">{{ form.id ? form.semesterCode : '保存后由系统按学期名称生成' }}</span>
         </el-form-item>
         <el-form-item label="学期名称" prop="semesterName">
           <el-input v-model="form.semesterName" clearable />
@@ -122,17 +129,24 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
   addSemester,
+  listAcademicYears,
+  listOrganizationTree,
   listSemesters,
+  removeSemesters,
   updateSemester,
+  type AcademicYear,
+  type EducationOrganizationNode,
   type Semester,
   type SemesterLifecycle,
   type SemesterQuery
 } from '@/api/education'
 import { useUserStore } from '@/stores/user'
+import EducationSchoolSelector from '@/components/education/EducationSchoolSelector.vue'
+import { schoolOptions, type SchoolOption } from '@/utils/education-school-tree'
 
 const userStore = useUserStore()
 
@@ -145,25 +159,31 @@ const lifecycleOptions: Array<{ value: SemesterLifecycle; label: string }> = [
 const loading = ref(false)
 const submitLoading = ref(false)
 const records = ref<Semester[]>([])
+const organizations = ref<EducationOrganizationNode[]>([])
+const schools = ref<SchoolOption[]>([])
+const academicYears = ref<AcademicYear[]>([])
 const total = ref(0)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
+const query = reactive<SemesterQuery>({ keyword: '', schoolId: undefined, status: '', lifecycleStatus: '', pageNum: 1, pageSize: 20 })
 const form = reactive<Semester>(emptyForm())
-const query = reactive<SemesterQuery>({ keyword: '', status: '', lifecycleStatus: '', pageNum: 1, pageSize: 20 })
 
 const rules: FormRules = {
-  semesterCode: [{ required: true, message: '请输入学期编码', trigger: 'blur' }],
+  schoolId: [{ required: true, message: '请选择学校', trigger: 'change' }],
+  academicYearId: [{ required: true, message: '请选择所属学年', trigger: 'change' }],
   semesterName: [{ required: true, message: '请输入学期名称', trigger: 'blur' }],
   beginDate: [{ required: true, message: '请选择开始日期', trigger: 'change' }],
   endDate: [{ required: true, message: '请选择结束日期', trigger: 'change' }]
 }
 
-onMounted(getList)
+onMounted(async () => { const response = await listOrganizationTree(0); organizations.value = response.data || []; schools.value = schoolOptions(organizations.value); if (schools.value.length === 1) query.schoolId = schools.value[0].id; await loadAcademicYears(query.schoolId); await getList() })
 
 function emptyForm(): Semester {
   return {
-    semesterCode: '',
+    schoolId: query.schoolId || '',
+    academicYearId: academicYears.value.find(item => item.status === 'ACTIVE')?.id || academicYears.value[0]?.id || '',
+    semesterCode: undefined,
     semesterName: '',
     beginDate: '',
     endDate: '',
@@ -172,6 +192,10 @@ function emptyForm(): Semester {
     remark: ''
   }
 }
+
+function schoolName(id?: string | number) { return schools.value.find(item => String(item.id) === String(id))?.schoolName || '—' }
+function yearName(id?: string | number) { return academicYears.value.find(item => String(item.id) === String(id))?.yearName || '—' }
+async function loadAcademicYears(schoolId?: string | number) { if (!schoolId) { academicYears.value = []; return }; const response = await listAcademicYears({ schoolId, pageNum: 1, pageSize: 100 }); academicYears.value = response.data?.rows || []; if (!form.id) form.academicYearId = academicYears.value.find(item => item.status === 'ACTIVE')?.id || academicYears.value[0]?.id || '' }
 
 function lifecycleLabel(value?: SemesterLifecycle) {
   return lifecycleOptions.find(item => item.value === value)?.label || '未知'
@@ -199,21 +223,29 @@ function handleQuery() {
   getList()
 }
 
+async function handleQuerySchool(schoolId?: string | number) {
+  await loadAcademicYears(schoolId)
+  handleQuery()
+}
+
 function resetQuery() {
   query.keyword = ''
+  query.schoolId = undefined
   query.status = ''
   query.lifecycleStatus = ''
   handleQuery()
 }
 
-function handleAdd() {
+async function handleAdd() {
+  await loadAcademicYears(query.schoolId)
   Object.assign(form, emptyForm())
   delete form.id
   dialogTitle.value = '新增学期'
   dialogVisible.value = true
 }
 
-function handleEdit(row: Semester) {
+async function handleEdit(row: Semester) {
+  await loadAcademicYears(row.schoolId)
   Object.assign(form, emptyForm(), row)
   dialogTitle.value = '编辑学期'
   dialogVisible.value = true
@@ -228,14 +260,23 @@ async function submitForm() {
   }
   submitLoading.value = true
   try {
-    if (form.id) await updateSemester(form)
-    else await addSemester(form)
+    const payload = { ...form }
+    delete payload.semesterCode
+    if (form.id) await updateSemester(payload as Semester)
+    else await addSemester(payload as Semester)
     ElMessage.success(form.id ? '修改成功' : '新增成功')
     dialogVisible.value = false
     await getList()
   } finally {
     submitLoading.value = false
   }
+}
+
+async function remove(row: Semester) {
+  await ElMessageBox.confirm(`确认删除学期「${row.semesterName}」吗？关联订单或学年关系存在时系统会拒绝删除。`, '删除确认', { type: 'warning' })
+  await removeSemesters([row.id!])
+  ElMessage.success('删除成功')
+  await getList()
 }
 </script>
 
@@ -245,4 +286,5 @@ async function submitForm() {
 .card-header { display: flex; align-items: center; justify-content: space-between; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
 .hint { margin-bottom: 16px; }
+.generated-code { color: var(--el-text-color-secondary); }
 </style>
