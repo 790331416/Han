@@ -2,22 +2,29 @@ package com.han.system.sdfz.compat;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.han.common.core.exception.BusinessException;
 import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.sdfz.education.domain.EduClassPo;
+import com.han.system.sdfz.education.domain.EduAcademicYearPo;
 import com.han.system.sdfz.education.domain.EduDevicePo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
+import com.han.system.sdfz.education.domain.EduSemesterPo;
+import com.han.system.sdfz.education.domain.EduSubjectPo;
+import com.han.system.sdfz.education.mapper.EduAcademicYearMapper;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
 import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
+import com.han.system.sdfz.education.mapper.EduSemesterMapper;
+import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -56,27 +63,32 @@ public class LegacyDirectoryService {
 
     /** 学校 path 递归拼装的深度上限，兼作父子成环时的熔断。 */
     private static final int MAX_ORG_DEPTH = 16;
-    /** 按区划码反查学校时的取数上限，避免拼出超长 IN 列表。 */
-    private static final int MAX_AREA_SCHOOLS = 500;
-
     private final LegacyCompatProperties properties;
     private final EduSchoolMapper schoolMapper;
     private final EduClassMapper classMapper;
+    private final EduAcademicYearMapper academicYearMapper;
+    private final EduSemesterMapper semesterMapper;
     private final EduPersonMapper personMapper;
     private final EduPersonClassMapper personClassMapper;
     private final EduDeviceMapper deviceMapper;
     private final EduRoomMapper roomMapper;
     private final SysUserMapper userMapper;
     private final SysDictDataMapper dictDataMapper;
+    private final EduSubjectMapper subjectMapper;
 
     // ---------------------------------------------------------------- 人员与身份
 
     /** B1 / B2：旧 {@code UserInfo}，只回填被读取的 pkId 与 realName。 */
     public LegacyPayload userInfo(LegacyRequest request) {
+        LegacyRequest.Scope scope = requireScope(request);
         String pkId = request.firstText("pkId", "userId", "id");
         String phone = request.text("phone");
         EduPersonPo person = pkId != null ? personByUserOrPersonId(pkId) : personByPhone(phone);
         SysUserPo user = person != null ? userById(person.getUserId()) : userByPhone(phone);
+        if ((person != null && !Objects.equals(person.getSchoolId(), scope.schoolId()))
+                || (person == null && user != null && !Objects.equals(user.getId(), scope.userId()))) {
+            return LegacyPayload.same(Map.of());
+        }
         if (person == null && user == null) {
             return LegacyPayload.same(Map.of());
         }
@@ -100,9 +112,10 @@ public class LegacyDirectoryService {
 
     /** B3：{@code getLiveList} 无条件依赖的身份详情，拿不到旧侧直接 500。 */
     public LegacyPayload identity(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         String pkId = request.firstText("pkId", "identityId", "id");
         EduPersonPo person = personByPersonOrUserId(pkId);
-        if (person == null) {
+        if (person == null || !Objects.equals(person.getSchoolId(), schoolId)) {
             return LegacyPayload.same(Map.of());
         }
         return LegacyPayload.same(identityOf(person));
@@ -198,6 +211,7 @@ public class LegacyDirectoryService {
 
     /** B12 / C13：教师下拉框的数据源，元素字段名必须是 {@code teacherName}。 */
     public LegacyPayload teachers(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         // 旧侧的 state 是软删除标志而不是启用状态，筛「已删除」时只能给空集合，见 LegacyStatus。
         if (LegacyStatus.selectsDeleted(request.text("state"))) {
             return LegacyPayload.page(List.of(), 0, request.pageNo(), request.pageSize());
@@ -214,12 +228,7 @@ public class LegacyDirectoryService {
                 // 只在**选择器**里排除；按 ID 查身份（B1/B3）不加这个条件，
                 // 历史课程要能继续显示离校教师的姓名。
                 .eq(EduPersonPo::getLeaveFlag, 0);
-        Long orgId = request.number("orgId");
-        if (orgId != null) {
-            query.eq(EduPersonPo::getSchoolId, orgId);
-        } else {
-            restrictByAreaCode(query, request.text("areaCode"));
-        }
+        query.eq(EduPersonPo::getSchoolId, schoolId);
 
         String keyword = request.firstText("loginName", "loginAlias", "account");
         if (keyword != null) {
@@ -259,27 +268,26 @@ public class LegacyDirectoryService {
 
     /** B5 / B8 / C10：按主键取单个组织。 */
     public LegacyPayload org(LegacyRequest request) {
-        Long orgId = request.number("orgId");
-        EduSchoolPo school = orgId != null ? schoolById(orgId) : null;
+        EduSchoolPo school = requestedSchool(request);
         return LegacyPayload.same(school != null ? orgNode(school) : Map.of());
     }
 
     /** B4：取下级组织。 */
     public LegacyPayload orgChildren(LegacyRequest request) {
-        LambdaQueryWrapper<EduSchoolPo> query = tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
-                .eq(EduSchoolPo::getStatus, 0)
-                .eq(EduSchoolPo::getParentId, request.number("orgId"))
-                .eq(request.text("areaCode") != null, EduSchoolPo::getAreaCode, request.text("areaCode"))
-                .orderByAsc(EduSchoolPo::getSchoolName);
-        return LegacyPayload.list(schoolMapper.selectList(query).stream().map(this::orgNode).toList());
+        EduSchoolPo school = scopedSchool(request);
+        Long requestedParentId = request.number("orgId");
+        if (school == null || (requestedParentId != null && !Objects.equals(requestedParentId, school.getParentId()))) {
+            return LegacyPayload.list(List.of());
+        }
+        return LegacyPayload.list(List.of(orgNode(school)));
     }
 
     /** B6：组织分页列表。{@code path}/{@code orgType}/{@code gridCode}/{@code schoolType} 无对应列，接收后忽略。 */
     public LegacyPayload orgPage(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         LambdaQueryWrapper<EduSchoolPo> query = tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
                 .eq(EduSchoolPo::getStatus, 0)
-                .eq(request.number("orgId") != null, EduSchoolPo::getId, request.number("orgId"))
-                .eq(request.text("areaCode") != null, EduSchoolPo::getAreaCode, request.text("areaCode"))
+                .eq(EduSchoolPo::getId, schoolId)
                 .like(request.text("orgCode") != null, EduSchoolPo::getSchoolCode, request.text("orgCode"))
                 .like(request.text("orgName") != null, EduSchoolPo::getSchoolName, request.text("orgName"))
                 .orderByAsc(EduSchoolPo::getSchoolName);
@@ -288,9 +296,10 @@ public class LegacyDirectoryService {
 
     /** B7：按区划码与校名分页查学校。 */
     public LegacyPayload schoolPage(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         LambdaQueryWrapper<EduSchoolPo> query = tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
                 .eq(EduSchoolPo::getStatus, 0)
-                .eq(request.text("areaCode") != null, EduSchoolPo::getAreaCode, request.text("areaCode"))
+                .eq(EduSchoolPo::getId, schoolId)
                 .like(request.text("schoolName") != null, EduSchoolPo::getSchoolName, request.text("schoolName"))
                 .orderByAsc(EduSchoolPo::getSchoolName);
         return pageOfSchools(query, request);
@@ -298,16 +307,15 @@ public class LegacyDirectoryService {
 
     /** B11 / C9：按关键字与区划码检索组织。 */
     public LegacyPayload orgSearch(LegacyRequest request) {
+        requireScope(request);
         String keyword = request.firstText("conditions", "orgName");
         LambdaQueryWrapper<EduSchoolPo> query = tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
                 .eq(EduSchoolPo::getStatus, 0)
-                .eq(request.text("areaCode") != null, EduSchoolPo::getAreaCode, request.text("areaCode"))
                 .orderByAsc(EduSchoolPo::getSchoolName);
         if (keyword != null) {
             query.and(item -> item.like(EduSchoolPo::getSchoolName, keyword)
                     .or().like(EduSchoolPo::getSchoolCode, keyword));
         }
-        query.last("limit " + MAX_AREA_SCHOOLS);
         return LegacyPayload.list(schoolMapper.selectList(query).stream().map(this::orgNode).toList());
     }
 
@@ -317,30 +325,17 @@ public class LegacyDirectoryService {
      * <p>调用方把区划码塞进了名为 {@code orgName} 的键，这是旧代码的既有缺陷，兼容层照着错的键名接收。
      */
     public LegacyPayload lazyOrgTree(LegacyRequest request) {
-        Long parentId = request.number("orgId");
-        String areaCode = request.text("orgName");
-        LambdaQueryWrapper<EduSchoolPo> query = tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
-                .eq(EduSchoolPo::getStatus, 0)
-                .orderByAsc(EduSchoolPo::getSchoolName);
-        if (parentId != null) {
-            query.eq(EduSchoolPo::getParentId, parentId);
-        } else {
-            query.isNull(EduSchoolPo::getParentId)
-                    .eq(areaCode != null, EduSchoolPo::getAreaCode, areaCode);
+        EduSchoolPo school = scopedSchool(request);
+        Long requestedParentId = request.number("orgId");
+        if (school == null || (requestedParentId != null && !Objects.equals(requestedParentId, school.getParentId()))) {
+            return LegacyPayload.list(List.of());
         }
-
-        List<EduSchoolPo> schools = schoolMapper.selectList(query);
-        Set<Long> withChildren = parentsOf(schools.stream().map(EduSchoolPo::getId).toList());
-        List<Map<String, Object>> nodes = schools.stream().map(school -> {
-            Map<String, Object> node = orgNode(school);
-            boolean leaf = !withChildren.contains(school.getId());
-            node.put("leaf", leaf);
-            node.put("isLeaf", leaf);
-            node.put("hasChildren", !leaf);
-            node.put("children", List.of());
-            return node;
-        }).toList();
-        return LegacyPayload.list(nodes);
+        Map<String, Object> node = orgNode(school);
+        node.put("leaf", true);
+        node.put("isLeaf", true);
+        node.put("hasChildren", false);
+        node.put("children", List.of());
+        return LegacyPayload.list(List.of(node));
     }
 
     /**
@@ -349,14 +344,20 @@ public class LegacyDirectoryService {
      * <p>旧前端读元素的 {@code branchCode} 与 {@code standardName}，并过滤掉 {@code standardName === '毕业年级'}。
      */
     public LegacyPayload orgBranchTree(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         LambdaQueryWrapper<EduClassPo> query = tenantScoped(new LambdaQueryWrapper<EduClassPo>())
                 .eq(EduClassPo::getStatus, 0)
-                .eq(request.number("orgId") != null, EduClassPo::getSchoolId, request.number("orgId"))
+                .eq(EduClassPo::getSchoolId, schoolId)
+                .eq(EduClassPo::getNodeType, "CLASS")
                 .orderByAsc(EduClassPo::getGradeCode)
                 .orderByAsc(EduClassPo::getClassName);
 
+        Set<Long> studentClassIds = studentClassIdsOf(schoolId);
         Map<String, List<EduClassPo>> byGrade = new LinkedHashMap<>();
         for (EduClassPo item : classMapper.selectList(query)) {
+            if (!studentClassIds.contains(item.getId())) {
+                continue;
+            }
             byGrade.computeIfAbsent(blankToEmpty(item.getGradeCode()), key -> new ArrayList<>()).add(item);
         }
 
@@ -373,13 +374,48 @@ public class LegacyDirectoryService {
         return LegacyPayload.list(grades);
     }
 
+    /** 只展示当前学校确实有在校学生归班的年级，不按学年裁剪历史有效关系。 */
+    private Set<Long> studentClassIdsOf(long schoolId) {
+        List<EduPersonPo> students = personMapper.selectList(
+                tenantScoped(new LambdaQueryWrapper<EduPersonPo>())
+                        .eq(EduPersonPo::getSchoolId, schoolId)
+                        .eq(EduPersonPo::getPersonType, STUDENT)
+                        .eq(EduPersonPo::getStatus, 0)
+                        .eq(EduPersonPo::getDelFlag, 0));
+        Set<Long> studentIds = students == null ? Set.of() : students.stream()
+                .map(EduPersonPo::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (studentIds.isEmpty()) {
+            return Set.of();
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        List<EduPersonClassPo> memberships = personClassMapper.selectList(
+                tenantScoped(new LambdaQueryWrapper<EduPersonClassPo>())
+                        .in(EduPersonClassPo::getPersonId, studentIds)
+                        .eq(EduPersonClassPo::getMembershipStatus, "ACTIVE")
+                        .and(item -> item.isNull(EduPersonClassPo::getEffectiveStartAt)
+                                .or().le(EduPersonClassPo::getEffectiveStartAt, now))
+                        .and(item -> item.isNull(EduPersonClassPo::getEffectiveEndAt)
+                                .or().ge(EduPersonClassPo::getEffectiveEndAt, now)));
+        return memberships == null ? Set.of() : memberships.stream()
+                .map(EduPersonClassPo::getClassId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
     // ---------------------------------------------------------------- 场所与设备
 
     /** B13 / C15：教室场所。{@code buildingId}/{@code floorId} 无对应列，接收后忽略。 */
     public LegacyPayload places(LegacyRequest request) {
+        Long schoolId = requestedEnabledSchoolId(request);
+        if (schoolId == null) {
+            return LegacyPayload.list(List.of());
+        }
         LambdaQueryWrapper<EduRoomPo> query = tenantScoped(new LambdaQueryWrapper<EduRoomPo>())
                 .eq(EduRoomPo::getStatus, 0)
-                .eq(request.number("orgId") != null, EduRoomPo::getSchoolId, request.number("orgId"))
+                .eq(EduRoomPo::getSchoolId, schoolId)
                 .eq(request.text("placeCode") != null, EduRoomPo::getRoomCode, request.text("placeCode"))
                 .eq(request.text("placeType") != null, EduRoomPo::getRoomType, request.text("placeType"))
                 .like(request.text("placeName") != null, EduRoomPo::getRoomName, request.text("placeName"))
@@ -399,6 +435,10 @@ public class LegacyDirectoryService {
 
     /** B14 / C12：会场设备选择器，旧前端把 {@code result} 直接当数组用。 */
     public LegacyPayload devices(LegacyRequest request) {
+        Long schoolId = requestedEnabledSchoolId(request);
+        if (schoolId == null) {
+            return LegacyPayload.list(List.of());
+        }
         String applicationType = request.text("applicationType");
         List<String> deviceTypes = deviceTypesOf(applicationType);
         if (deviceTypes == null) {
@@ -406,7 +446,7 @@ public class LegacyDirectoryService {
         }
         LambdaQueryWrapper<EduDevicePo> query = tenantScoped(new LambdaQueryWrapper<EduDevicePo>())
                 .eq(EduDevicePo::getStatus, 0)
-                .eq(request.number("orgId") != null, EduDevicePo::getSchoolId, request.number("orgId"))
+                .eq(EduDevicePo::getSchoolId, schoolId)
                 .like(request.text("deviceName") != null, EduDevicePo::getDeviceName, request.text("deviceName"))
                 .in(!deviceTypes.isEmpty(), EduDevicePo::getDeviceType, deviceTypes)
                 .orderByAsc(EduDevicePo::getDeviceName);
@@ -418,12 +458,14 @@ public class LegacyDirectoryService {
 
     /** B15：按设备编码取单台设备。 */
     public LegacyPayload device(LegacyRequest request) {
+        long schoolId = requireScope(request).schoolId();
         String deviceCode = request.text("deviceCode");
         if (deviceCode == null) {
             return LegacyPayload.same(Map.of());
         }
         EduDevicePo device = deviceMapper.selectOne(tenantScoped(new LambdaQueryWrapper<EduDevicePo>())
-                .eq(EduDevicePo::getDeviceCode, deviceCode).last("limit 1"));
+                .eq(EduDevicePo::getDeviceCode, deviceCode)
+                .eq(EduDevicePo::getSchoolId, schoolId).last("limit 1"));
         return LegacyPayload.same(device != null ? deviceNode(device, null) : Map.of());
     }
 
@@ -462,10 +504,28 @@ public class LegacyDirectoryService {
 
     // ---------------------------------------------------------------- 字典
 
-    /** C14：旧字典项接口，dictCode 经配置映射到 sys_dict_data.dict_type。 */
-    public LegacyPayload dictItems(String dictCode) {
+    /** C14：旧字典项接口；course 从管理端学校科目主数据读取，其它字典仍走系统字典。 */
+    public LegacyPayload dictItems(LegacyRequest request, String dictCode) {
         if (dictCode == null || dictCode.isBlank()) {
-            return LegacyPayload.list(List.of());
+            return LegacyPayload.list(List.of()).withUiCode(0);
+        }
+        if ("course".equalsIgnoreCase(dictCode)) {
+            long schoolId = requireScope(request).schoolId();
+            List<Map<String, Object>> values = subjectMapper.selectList(
+                            tenantScoped(new LambdaQueryWrapper<EduSubjectPo>()
+                                    .eq(EduSubjectPo::getSchoolId, schoolId)
+                                    .eq(EduSubjectPo::getStatus, 0)
+                                    .orderByAsc(EduSubjectPo::getSort)
+                                    .orderByAsc(EduSubjectPo::getSubjectName)))
+                    .stream().map(item -> {
+                        Map<String, Object> value = new LinkedHashMap<>();
+                        value.put("value", blankToEmpty(item.getSubjectCode()));
+                        value.put("text", blankToEmpty(item.getSubjectName()));
+                        value.put("title", blankToEmpty(item.getSubjectName()));
+                        value.put("label", blankToEmpty(item.getSubjectName()));
+                        return value;
+                    }).toList();
+            return LegacyPayload.list(values).withUiCode(0);
         }
         String dictType = properties.getDictType().getOrDefault(dictCode, dictCode);
         List<SysDictDataPo> items = dictDataMapper.selectList(
@@ -481,7 +541,7 @@ public class LegacyDirectoryService {
             value.put("label", blankToEmpty(item.getDictLabel()));
             return value;
         }).toList();
-        return LegacyPayload.list(values);
+        return LegacyPayload.list(values).withUiCode(0);
     }
 
     // ---------------------------------------------------------------- 查询原语
@@ -541,9 +601,15 @@ public class LegacyDirectoryService {
         if (personId == null) {
             return List.of();
         }
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
         List<EduPersonClassPo> memberships = personClassMapper.selectList(
                 tenantScoped(new LambdaQueryWrapper<EduPersonClassPo>())
                         .eq(EduPersonClassPo::getPersonId, personId)
+                        .eq(EduPersonClassPo::getMembershipStatus, "ACTIVE")
+                        .and(item -> item.isNull(EduPersonClassPo::getEffectiveStartAt)
+                                .or().le(EduPersonClassPo::getEffectiveStartAt, now))
+                        .and(item -> item.isNull(EduPersonClassPo::getEffectiveEndAt)
+                                .or().ge(EduPersonClassPo::getEffectiveEndAt, now))
                         .orderByAsc(EduPersonClassPo::getId));
         List<Long> classIds = memberships.stream()
                 .map(EduPersonClassPo::getClassId)
@@ -554,7 +620,9 @@ public class LegacyDirectoryService {
             return List.of();
         }
         List<EduClassPo> classes = classMapper.selectList(tenantScoped(new LambdaQueryWrapper<EduClassPo>())
-                .in(EduClassPo::getId, classIds));
+                .in(EduClassPo::getId, classIds)
+                .eq(EduClassPo::getNodeType, "CLASS")
+                .eq(EduClassPo::getStatus, 0));
         Map<Long, EduClassPo> byId = classes.stream()
                 .collect(Collectors.toMap(EduClassPo::getId, Function.identity(), (first, second) -> first));
         return classIds.stream().map(byId::get).filter(Objects::nonNull).toList();
@@ -598,6 +666,8 @@ public class LegacyDirectoryService {
         value.put("id", string(school.getId()));
         value.put("orgId", string(school.getId()));
         value.put("orgName", blankToEmpty(school.getSchoolName()));
+        value.put("key", string(school.getId()));
+        value.put("value", blankToEmpty(school.getSchoolName()));
         value.put("label", blankToEmpty(school.getSchoolName()));
         value.put("orgCode", blankToEmpty(school.getSchoolCode()));
         value.put("parentId", string(school.getParentId()));
@@ -645,17 +715,6 @@ public class LegacyDirectoryService {
         return properties.getGradeName().getOrDefault(gradeCode, gradeCode);
     }
 
-    private Set<Long> parentsOf(Collection<Long> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return Set.of();
-        }
-        List<EduSchoolPo> children = schoolMapper.selectList(tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
-                .select(EduSchoolPo::getParentId)
-                .in(EduSchoolPo::getParentId, ids));
-        return children.stream().map(EduSchoolPo::getParentId).filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-    }
-
     private Map<Long, EduSchoolPo> schoolsByIds(Collection<Long> ids) {
         Set<Long> unique = ids == null ? Set.of()
                 : ids.stream().filter(Objects::nonNull).collect(Collectors.toSet());
@@ -667,20 +726,58 @@ public class LegacyDirectoryService {
                 .collect(Collectors.toMap(EduSchoolPo::getId, Function.identity(), (first, second) -> first));
     }
 
-    private void restrictByAreaCode(LambdaQueryWrapper<EduPersonPo> query, String areaCode) {
-        if (areaCode == null) {
-            return;
+    private LegacyRequest.Scope requireScope(LegacyRequest request) {
+        if (request == null || request.scope() == null || request.scope().schoolId() <= 0) {
+            throw new BusinessException("登录状态已失效，请重新登录");
         }
-        List<EduSchoolPo> schools = schoolMapper.selectList(tenantScoped(new LambdaQueryWrapper<EduSchoolPo>())
-                .select(EduSchoolPo::getId)
-                .eq(EduSchoolPo::getAreaCode, areaCode)
-                .last("limit " + MAX_AREA_SCHOOLS));
-        List<Long> ids = schools.stream().map(EduSchoolPo::getId).toList();
-        if (ids.isEmpty()) {
-            query.eq(EduPersonPo::getSchoolId, -1L);
-        } else {
-            query.in(EduPersonPo::getSchoolId, ids);
+        return request.scope();
+    }
+
+    private EduSchoolPo scopedSchool(LegacyRequest request) {
+        return schoolById(requireScope(request).schoolId());
+    }
+
+    private EduSchoolPo requestedSchool(LegacyRequest request) {
+        long scopedSchoolId = requireScope(request).schoolId();
+        Long requestedSchoolId = request.number("orgId");
+        if (requestedSchoolId == null || requestedSchoolId == scopedSchoolId) {
+            return schoolById(scopedSchoolId);
         }
+        EduSchoolPo school = schoolById(requestedSchoolId);
+        return school != null && Objects.equals(school.getStatus(), 0) ? school : null;
+    }
+
+    private Long requestedEnabledSchoolId(LegacyRequest request) {
+        long scopedSchoolId = requireScope(request).schoolId();
+        Long requestedSchoolId = request.number("orgId");
+        if (requestedSchoolId == null || requestedSchoolId == scopedSchoolId) {
+            return scopedSchoolId;
+        }
+        return requestedSchool(request) != null ? requestedSchoolId : null;
+    }
+
+    /**
+     * 校端只读取“当前学期 -> 活动学年”的唯一链路；配置不完整或并存时返回业务失败，
+     * 绝不退回到历史全量班级和人员关系。
+     */
+    private long currentAcademicYearId() {
+        List<Long> ids = semesterMapper.selectList(tenantScoped(new LambdaQueryWrapper<EduSemesterPo>())
+                        .eq(EduSemesterPo::getCurrentFlag, 1)
+                        .eq(EduSemesterPo::getStatus, 0))
+                .stream()
+                .map(EduSemesterPo::getAcademicYearId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.size() != 1) {
+            throw new BusinessException("校端未配置唯一有效的当前学年");
+        }
+        EduAcademicYearPo year = academicYearMapper.selectById(ids.getFirst());
+        if (year == null || !Objects.equals(year.getTenantId(), properties.getTenantId())
+                || !"ACTIVE".equals(year.getStatus())) {
+            throw new BusinessException("校端未配置唯一有效的当前学年");
+        }
+        return year.getId();
     }
 
     private EduPersonPo personByUserOrPersonId(String rawId) {

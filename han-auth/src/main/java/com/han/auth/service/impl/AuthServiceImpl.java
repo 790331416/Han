@@ -69,10 +69,11 @@ public class AuthServiceImpl implements IAuthService {
 
     @Override
     public LoginVO login(LoginDTO dto) {
-        // 消费 sys.account.captchaEnabled：开启时 PC 登录验证码必填必校验，关闭时跳过（E3 修复，此前空 code 可绕过校验）。
+        // 消费 sys.account.captchaEnabled：浏览器入口（PC/H5）验证码必填必校验，关闭时跳过。
         // App / 微信登录无验证码控件，保持原「传了才校验」行为。
         if (captchaSettingService.isCaptchaEnabled()) {
-            if (dto.getClientType() == ClientType.PC && XuStrUtil.isBlank(dto.getCode())) {
+            boolean browserLogin = dto.getClientType() == ClientType.PC || dto.getClientType() == ClientType.H5;
+            if (browserLogin && XuStrUtil.isBlank(dto.getCode())) {
                 throw new BusinessException("验证码不能为空");
             }
             if (XuStrUtil.isNotBlank(dto.getCode())) {
@@ -154,6 +155,7 @@ public class AuthServiceImpl implements IAuthService {
             recordLoginFail(user.getUsername(), user.getTenantId(), "账号已停用");
             throw new BusinessException("账号已停用，请联系管理员");
         }
+        requireManagementRole(user, clientType);
 
         if (user.getTenantId() != null && user.getTenantId() != 1L) {
             try {
@@ -197,6 +199,21 @@ public class AuthServiceImpl implements IAuthService {
 
         return buildLoginVO(accessToken, refreshToken, tokenExpire, forceChangePassword, user.getUserId(),
                 user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
+    }
+
+    /** 管理端 PC 登录必须有管理端角色；校端登录走独立兼容凭证，不复用此门禁。 */
+    private static void requireManagementRole(UserVO user, ClientType clientType) {
+        if (clientType != ClientType.PC || user.isAdmin()) {
+            return;
+        }
+        Set<String> roleKeys = user.getRoleKeys();
+        boolean hasManagementRole = roleKeys != null && roleKeys.stream()
+                .filter(key -> key != null && !key.isBlank())
+                .map(key -> key.toLowerCase(java.util.Locale.ROOT))
+                .anyMatch(key -> !Set.of("teacher", "student").contains(key));
+        if (!hasManagementRole) {
+            throw new BusinessException("该账号未配置管理端权限，不能登录管理端");
+        }
     }
 
     @Override

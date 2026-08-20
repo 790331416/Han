@@ -11,10 +11,16 @@ import java.util.Map;
  * @param params   由 {@code param} 密文解出的业务参数
  */
 public record LegacyRequest(LegacyProtocol.Consumer consumer, String token, String path,
-                            Map<String, String> params) {
+                            Map<String, String> params, Scope scope) {
 
     public LegacyRequest {
         params = params != null ? Map.copyOf(params) : Map.of();
+    }
+
+    /** 保留给不经过 HTTP 兼容入口的单元测试与匿名登录、字典调用。 */
+    public LegacyRequest(LegacyProtocol.Consumer consumer, String token, String path,
+                         Map<String, String> params) {
+        this(consumer, token, path, params, null);
     }
 
     public boolean fromLegacyApi() {
@@ -62,5 +68,9 @@ public record LegacyRequest(LegacyProtocol.Consumer consumer, String token, Stri
             }
         }
         return null;
+    }
+
+    /** 已验签兼容凭证中冻结的最小目录范围。 */
+    public record Scope(long tenantId, long schoolId, long identityId, long userId) {
     }
 }

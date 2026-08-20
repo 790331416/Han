@@ -101,12 +101,43 @@ class ClassroomTokenServiceTest {
         ClassroomTokenVO result = service(true).exchangeLocal(
                 LoginUser.builder().userId(100L).tenantId(1L).username("teacher01").build());
 
-        assertThat(ClassroomTokenCodec.verify(result.accessToken(), SECRET,
-                Instant.now().getEpochSecond()).claims())
+        var claims = ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims();
+        assertThat(claims)
                 .containsEntry("userId", "100")
                 .containsEntry("identityId", "11")
                 .containsEntry("userType", "USER");
+        assertThat(((Number) claims.get("tenantId")).longValue()).isEqualTo(1L);
         verifyNoInteractions(loginService);
+    }
+
+    @Test
+    void issuesTheExplicitlySelectedIdentityOwnedByCurrentHanUser() {
+        when(systemServiceClient.getClassroomIdentity(100L, "12")).thenReturn(R.ok(ClassroomIdentityVO.builder()
+                .userId("100").identityId("12").userName("Teacher Two").roleType("2")
+                .schoolId("8").status(0).roles(List.of("2", "TEACHER")).build()));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO result = service(true).exchangeLocal(
+                LoginUser.builder().userId(100L).tenantId(1L).username("teacher01").build(), "12");
+
+        assertThat(ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims())
+                .containsEntry("identityId", "12")
+                .containsEntry("schoolId", "8");
+    }
+
+    @Test
+    void listsAllCurrentUserEducationIdentitiesBeforeSelection() {
+        List<ClassroomIdentityVO> identities = List.of(
+                ClassroomIdentityVO.builder().identityId("11").personType("TEACHER").loginAllowed(true).build(),
+                ClassroomIdentityVO.builder().identityId("21").personType("STUDENT").loginAllowed(false).build());
+        when(systemServiceClient.listClassroomIdentities(100L)).thenReturn(R.ok(identities));
+
+        assertThat(service(true).listLocalIdentities(
+                LoginUser.builder().userId(100L).tenantId(1L).username("teacher01").build()))
+                .extracting(ClassroomIdentityVO::getIdentityId)
+                .containsExactly("11", "21");
     }
 
     @Test
@@ -122,6 +153,24 @@ class ClassroomTokenServiceTest {
     }
 
     @Test
+    void issuesStudentTokenWhenTheStudentRoleIsEnabledAndCarriesItsClassScope() {
+        ClassroomTokenService studentEnabled = new ClassroomTokenService(
+                loginService, systemServiceClient, redisTemplate, true, SECRET, 900, "2,4");
+        when(systemServiceClient.getClassroomIdentity(200L)).thenReturn(R.ok(ClassroomIdentityVO.builder()
+                .userId("200").identityId("21").userName("Student One").roleType("4")
+                .schoolId("7").status(0).classIds(List.of("class-1")).roles(List.of("4", "STUDENT")).build()));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO result = studentEnabled.exchangeLocal(
+                LoginUser.builder().userId(200L).tenantId(1L).username("student01").build());
+
+        assertThat(ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims())
+                .containsEntry("roleType", "4")
+                .containsEntry("classIds", List.of("class-1"));
+    }
+
+    @Test
     void refusesLocalExchangeWithoutAnEducationIdentityOrLoginSession() {
         when(systemServiceClient.getClassroomIdentity(300L)).thenReturn(R.ok(null));
 
@@ -131,6 +180,10 @@ class ClassroomTokenServiceTest {
                 .hasMessage("当前账号未开通三个课堂身份");
         assertThatThrownBy(() -> service(true).exchangeLocal(null))
                 .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service(true).exchangeLocal(
+                LoginUser.builder().userId(301L).build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前没有可用的 Han 登录态");
     }
 
     @Test

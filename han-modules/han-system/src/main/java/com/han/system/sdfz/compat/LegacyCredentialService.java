@@ -41,6 +41,7 @@ public class LegacyCredentialService {
     private final LegacyDirectoryService directoryService;
     private final LegacyTokenIssuer tokenIssuer;
     private final StringRedisTemplate redisTemplate;
+    private final LegacyCipher cipher;
 
     /** C1：图形验证码，前端按 {@code code == 0 && success} 判定，与其它接口不同。 */
     public LegacyPayload captcha(String key) {
@@ -52,8 +53,8 @@ public class LegacyCredentialService {
 
     /** C2：账号密码登录，返回中间态凭证。 */
     public LegacyPayload login(LegacyRequest request) {
-        String loginName = request.firstText("phone", "username", "account", "loginName");
-        String password = request.text("password");
+        String loginName = decryptUiCredential(request.firstText("phone", "username", "account", "loginName"));
+        String password = decryptUiCredential(request.text("password"));
         if (loginName == null || password == null) {
             throw new BusinessException(GENERIC_LOGIN_FAILURE);
         }
@@ -76,7 +77,7 @@ public class LegacyCredentialService {
             throw new BusinessException("当前账号未开通三个课堂身份");
         }
         // 这里判的是 Han 的启用状态；已逻辑删除的人员根本查不出来，不需要另判 del_flag。
-        if (person.getStatus() != null && person.getStatus() != 0) {
+        if (person.getStatus() == null || person.getStatus() != 0) {
             recordFailure(loginName);
             throw new BusinessException("当前账号的三个课堂身份已停用");
         }
@@ -131,7 +132,7 @@ public class LegacyCredentialService {
             persons = byIdentity != null ? List.of(byIdentity) : List.of();
         }
         return persons.stream()
-                .filter(person -> person.getStatus() == null || person.getStatus() == 0)
+                .filter(person -> person.getStatus() != null && person.getStatus() == 0)
                 .toList();
     }
 
@@ -150,6 +151,20 @@ public class LegacyCredentialService {
         }
         if (!expected.equalsIgnoreCase(captcha.trim())) {
             throw new BusinessException("验证码错误");
+        }
+    }
+
+    /**
+     * 旧校端会先分别加密账号和密码，再加密整个 param 信封；管理端测试或较早调用方可能传明文。
+     */
+    private String decryptUiCredential(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return cipher.decrypt(value, null);
+        } catch (RuntimeException ignored) {
+            return value.trim();
         }
     }
 

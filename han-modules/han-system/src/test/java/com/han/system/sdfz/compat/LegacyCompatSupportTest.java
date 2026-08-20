@@ -12,8 +12,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class LegacyCompatSupportTest {
 
@@ -23,6 +26,7 @@ class LegacyCompatSupportTest {
 
     private LegacyCompatProperties properties;
     private LegacyCipher cipher;
+    private LegacyTokenIssuer tokenIssuer;
     private LegacyCompatSupport support;
 
     @BeforeEach
@@ -33,7 +37,8 @@ class LegacyCompatSupportTest {
         properties.setAnonymousKey(ANON_KEY);
         properties.setAnonymousIv(ANON_IV);
         cipher = new LegacyCipher(properties);
-        support = new LegacyCompatSupport(properties, cipher);
+        tokenIssuer = mock(LegacyTokenIssuer.class);
+        support = new LegacyCompatSupport(properties, cipher, tokenIssuer);
     }
 
     // ------------------------------------------------------------ 两种输出形态
@@ -156,6 +161,14 @@ class LegacyCompatSupportTest {
         assertThat(decryptToMap(body, null)).containsEntry("code", 0);
     }
 
+    @Test
+    void dictionaryKeepsTheZeroCodeTheFrontendAccepts() {
+        Map<String, Object> body = support.handle(post(LegacyPaths.UI_DICT_ITEMS), LegacyPaths.UI_DICT_ITEMS,
+                ignored -> LegacyPayload.list(List.of(Map.of("value", "MATH", "text", "数学"))).withUiCode(0));
+
+        assertThat(decryptToMap(body, null)).containsEntry("code", 0);
+    }
+
     // ------------------------------------------------------------ 参数解密
 
     @Test
@@ -183,6 +196,37 @@ class LegacyCompatSupportTest {
                 legacyRequest -> LegacyPayload.same(Map.of("seen", legacyRequest.text("phone"))));
 
         assertThat(asMap(decryptToMap(body, null).get("result"))).containsEntry("seen", "teacher01");
+    }
+
+    @Test
+    void directoryRejectsMissingTokenBeforeTheHandlerCanReadData() {
+        AtomicBoolean handled = new AtomicBoolean(false);
+
+        Map<String, Object> body = support.handleDirectory(get(LegacyPaths.DEVICE_LIST), LegacyPaths.DEVICE_LIST,
+                ignored -> {
+                    handled.set(true);
+                    return LegacyPayload.list(List.of());
+                });
+
+        assertThat(body).containsEntry("code", 500);
+        assertThat(handled).isFalse();
+    }
+
+    @Test
+    void directoryPassesOnlyTheVerifiedTokenSchoolScopeToTheHandler() {
+        String token = ClassroomTokenCodec.issue(Map.of("userId", "100"), SECRET,
+                Instant.now().getEpochSecond(), 3600, "jti-scope");
+        when(tokenIssuer.verify(token)).thenReturn(new ClassroomTokenCodec.VerifiedToken(
+                Map.of("tenantId", 1L, "schoolId", "7", "identityId", "11", "hanUserId", "100"),
+                "jti-scope", Instant.now().plusSeconds(3600).getEpochSecond()));
+        MockHttpServletRequest request = get(LegacyPaths.DEVICE_LIST);
+        request.addHeader(LegacyProtocol.TOKEN_HEADER, token);
+
+        Map<String, Object> body = support.handleDirectory(request, LegacyPaths.DEVICE_LIST,
+                legacyRequest -> LegacyPayload.list(List.of(Map.of("schoolId", legacyRequest.scope().schoolId()))));
+
+        String plaintext = ClassroomAesCodec.decryptWithToken((String) body.get("result"), token);
+        assertThat(plaintext).contains("\"schoolId\":7");
     }
 
     @Test

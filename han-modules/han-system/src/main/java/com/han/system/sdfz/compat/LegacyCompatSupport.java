@@ -1,6 +1,7 @@
 package com.han.system.sdfz.compat;
 
 import com.han.common.core.util.HanJsonUtil;
+import com.han.common.core.util.ClassroomTokenCodec;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,21 +28,66 @@ public class LegacyCompatSupport {
 
     private final LegacyCompatProperties properties;
     private final LegacyCipher cipher;
+    private final LegacyTokenIssuer tokenIssuer;
 
     public Map<String, Object> handle(HttpServletRequest request, String path,
                                       Function<LegacyRequest, LegacyPayload> handler) {
+        return handle(request, path, false, handler);
+    }
+
+    /** 旧校端经 CommonService 调用的目录接口：必须先验签，再把令牌学校范围交给查询层。 */
+    public Map<String, Object> handleDirectory(HttpServletRequest request, String path,
+                                               Function<LegacyRequest, LegacyPayload> handler) {
+        return handle(request, path, true, handler);
+    }
+
+    private Map<String, Object> handle(HttpServletRequest request, String path, boolean directory,
+                                       Function<LegacyRequest, LegacyPayload> handler) {
         LegacyProtocol.Consumer consumer = LegacyProtocol.detectConsumer(request, path);
         String token = LegacyProtocol.token(request);
         if (!properties.isEnabled()) {
             return failure(consumer, token, "三课堂兼容层未启用");
         }
         try {
-            LegacyRequest legacyRequest = new LegacyRequest(consumer, token, path, readParams(request, token));
+            LegacyRequest.Scope scope = directory ? verifiedScope(token) : null;
+            LegacyRequest legacyRequest = new LegacyRequest(consumer, token, path, readParams(request, token), scope);
             return success(consumer, token, handler.apply(legacyRequest));
         } catch (RuntimeException e) {
             log.warn("三课堂兼容接口处理失败: path={}, reason={}", path, e.getMessage());
             return failure(consumer, token, message(e));
         }
+    }
+
+    /**
+     * 目录不能只把 token 当 AES 密钥：签名、Redis 会话、租户和学校范围必须全部可用。
+     * 学校范围只来自已签凭证，绝不从 orgId、areaCode 等请求参数推导。
+     */
+    private LegacyRequest.Scope verifiedScope(String token) {
+        if (token == null) {
+            throw new IllegalArgumentException("登录状态已失效，请重新登录");
+        }
+        ClassroomTokenCodec.VerifiedToken verified = tokenIssuer.verify(token);
+        long tenantId = claimAsPositiveLong(verified, "tenantId");
+        long schoolId = claimAsPositiveLong(verified, "schoolId");
+        long identityId = claimAsPositiveLong(verified, "identityId");
+        long userId = claimAsPositiveLong(verified, "hanUserId");
+        if (tenantId != properties.getTenantId()) {
+            throw new IllegalArgumentException("登录状态已失效，请重新登录");
+        }
+        return new LegacyRequest.Scope(tenantId, schoolId, identityId, userId);
+    }
+
+    private static long claimAsPositiveLong(ClassroomTokenCodec.VerifiedToken verified, String name) {
+        Object value = verified.claims().get(name);
+        try {
+            long parsed = value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
+            if (parsed > 0) {
+                return parsed;
+            }
+        } catch (NumberFormatException ignored) {
+            // 统一按登录状态失效返回，避免把内部 claim 结构暴露给旧调用方。
+        }
+        throw new IllegalArgumentException("登录状态已失效，请重新登录");
     }
 
     /** 本期未启用的旧接口：仍按旧信封应答，避免前端拿到 404 或 HTML 错误页。 */

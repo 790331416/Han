@@ -132,7 +132,7 @@ public class LegacyTokenIssuer {
                 person.getSchoolId() == null ? "" : String.valueOf(person.getSchoolId()),
                 userId));
         claims.put("tenantId", properties.getTenantId());
-        // 岗位与身份类型分开签：roleType 是身份（教师 2），dutyType 是校内岗位码（普通教师 3 / 校级管理员 1）。
+        // 岗位与身份类型分开签：roleType 是身份（教师 2），dutyType 是校内岗位码（普通教师 3 / 管理员 1）。
         // 凭证里带上岗位，下游要按岗位做服务端判定时不必再回查管理端。
         claims.put("dutyType", properties.dutyCodeOf(person.getDutyCode()));
 

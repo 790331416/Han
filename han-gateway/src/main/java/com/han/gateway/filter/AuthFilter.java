@@ -12,6 +12,7 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -31,9 +32,12 @@ import java.util.List;
 public class AuthFilter implements GlobalFilter, Ordered {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String PUBLIC_BRAND_PATH = "/system/public/brand";
+    private static final String PUBLIC_BRAND_LOGO_PATH = "/system/public/brand/logo";
 
     private static final List<String> WHITE_LIST = List.of(
             "/auth/login",
+            "/auth/h5/login",
             "/auth/app/login",
             "/auth/wechat/mp/login",
             "/auth/wechat/oa/login",
@@ -59,6 +63,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/open/oauth2/introspect",
             "/open/oauth2/userinfo",
             "/open/oauth2/.well-known/",
+            // 开放目录由 han-open 校验 OAuth2 Client Credentials Token，不能按 Han 用户 Token 处理。
+            "/open/api/",
             "/sso/login",
             "/sso/logout",
             "/sso/check",
@@ -99,7 +105,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest sanitizedRequest = stripSpoofedHeaders(exchange.getRequest());
         String path = sanitizedRequest.getURI().getPath();
 
-        if (isWhitelist(path)) {
+        if (isPublicBrandRead(sanitizedRequest) || isWhitelist(path)) {
             return chain.filter(exchange.mutate().request(sanitizedRequest).build());
         }
 
@@ -147,6 +153,16 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private boolean isWhitelist(String path) {
         return WHITE_LIST.stream().anyMatch(path::startsWith)
                 || CLASSROOM_AUTHENTICATED_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
+    /**
+     * 登录页只需要读取不含敏感信息的品牌文案。
+     * 必须严格限定为精确路径的 GET，不能把整个 /system/public/** 前缀放进白名单。
+     */
+    private boolean isPublicBrandRead(ServerHttpRequest request) {
+        return HttpMethod.GET.equals(request.getMethod())
+                && (PUBLIC_BRAND_PATH.equals(request.getURI().getPath())
+                || PUBLIC_BRAND_LOGO_PATH.equals(request.getURI().getPath()));
     }
 
     private String getToken(ServerHttpRequest request) {

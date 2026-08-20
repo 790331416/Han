@@ -32,6 +32,8 @@ import static org.mockito.Mockito.when;
 class LegacyCredentialServiceTest {
 
     private static final String SECRET = "0123456789abcdef0123456789abcdef";
+    private static final String ANONYMOUS_KEY = "1234123412ABCDEF";
+    private static final String ANONYMOUS_IV = "ABCDEF1234123412";
     private static final String RAW_PASSWORD = "Sdfz@Compat1";
 
     @Mock
@@ -51,11 +53,14 @@ class LegacyCredentialServiceTest {
         properties.setEnabled(true);
         properties.setTenantId(1L);
         properties.setTokenSecret(SECRET);
+        properties.setAnonymousKey(ANONYMOUS_KEY);
+        properties.setAnonymousIv(ANONYMOUS_IV);
         properties.setCaptchaEnabled(false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(redisTemplate.hasKey(anyString())).thenReturn(true);
         tokenIssuer = new LegacyTokenIssuer(properties, redisTemplate);
-        service = new LegacyCredentialService(properties, directoryService, tokenIssuer, redisTemplate);
+        service = new LegacyCredentialService(properties, directoryService, tokenIssuer, redisTemplate,
+                new LegacyCipher(properties));
     }
 
     // ------------------------------------------------------------ C2 登录
@@ -78,17 +83,26 @@ class LegacyCredentialServiceTest {
     }
 
     @Test
-    void refusesToIssueCredentialsForStudentsThisPhase() {
+    void acceptsTheLegacyUiDoubleEncryptedCredentials() {
+        SysUserPo user = user(100L, 0);
+        when(directoryService.userByLoginName("teacher01")).thenReturn(user);
+        when(directoryService.personByUserId(100L)).thenReturn(person(11L, 100L, LegacyDirectoryService.TEACHER, 0));
+        LegacyCipher cipher = new LegacyCipher(properties);
+        LegacyRequest request = new LegacyRequest(LegacyProtocol.Consumer.LEGACY_UI, null, LegacyPaths.UI_LOGIN,
+                Map.of("phone", cipher.encrypt("teacher01", null), "password", cipher.encrypt(RAW_PASSWORD, null)));
+
+        assertThat(asMap(service.login(request).value())).containsKey("token");
+    }
+
+    @Test
+    void issuesCredentialsForStudentsButLeavesBusinessEndpointRestrictionsToTheGateway() {
         when(directoryService.userByLoginName("student01")).thenReturn(user(200L, 0));
         when(directoryService.personByUserId(200L))
                 .thenReturn(person(21L, 200L, LegacyDirectoryService.STUDENT, 0));
 
-        assertThatThrownBy(() -> service.login(loginRequest("student01", RAW_PASSWORD)))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage(LegacyTokenIssuer.STUDENT_LOGIN_UNSUPPORTED);
-        verify(valueOperations, never()).set(
-                org.mockito.ArgumentMatchers.startsWith(ClassroomTokenCodec.SESSION_KEY_PREFIX),
-                anyString(), any(java.time.Duration.class));
+        Map<String, Object> result = asMap(service.login(loginRequest("student01", RAW_PASSWORD)).value());
+
+        assertThat(result.get("token")).isInstanceOf(String.class);
     }
 
     @Test
@@ -117,6 +131,14 @@ class LegacyCredentialServiceTest {
         when(directoryService.personByUserId(101L)).thenReturn(person(12L, 101L, LegacyDirectoryService.TEACHER, 1));
 
         assertThatThrownBy(() -> service.login(loginRequest("suspended", RAW_PASSWORD)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前账号的三个课堂身份已停用");
+
+        when(directoryService.userByLoginName("missingStatus")).thenReturn(user(102L, 0));
+        when(directoryService.personByUserId(102L))
+                .thenReturn(person(13L, 102L, LegacyDirectoryService.TEACHER, null));
+
+        assertThatThrownBy(() -> service.login(loginRequest("missingStatus", RAW_PASSWORD)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("当前账号的三个课堂身份已停用");
     }
@@ -194,15 +216,18 @@ class LegacyCredentialServiceTest {
     }
 
     @Test
-    void refusesWhenTheAccountOnlyHasStudentIdentities() {
+    void buildsAStudentSessionWhenTheAccountOnlyHasStudentIdentities() {
         EduPersonPo teacher = person(11L, 100L, LegacyDirectoryService.TEACHER, 0);
         EduPersonPo student = person(21L, 100L, LegacyDirectoryService.STUDENT, 0);
         String interim = tokenIssuer.issueInterim(teacher).token();
         when(directoryService.personsByUserId(100L)).thenReturn(List.of(student));
+        when(directoryService.roleOf(student)).thenReturn(Map.of("roleType", 4, "userId", "100"));
+        when(directoryService.externalUserId(student)).thenReturn("100");
 
-        assertThatThrownBy(() -> service.currentUser(currentUserRequest(interim)))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage(LegacyTokenIssuer.STUDENT_LOGIN_UNSUPPORTED);
+        Map<String, Object> result = asMap(service.currentUser(currentUserRequest(interim)).value());
+
+        assertThat((List<?>) result.get("roles")).hasSize(1);
+        assertThat(((Map<?, ?>) ((List<?>) result.get("roles")).get(0)).get("roleType")).isEqualTo(4);
     }
 
     @Test

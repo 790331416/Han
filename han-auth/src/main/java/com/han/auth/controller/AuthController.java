@@ -61,6 +61,20 @@ public class AuthController {
     }
 
     /**
+     * H5 登录。
+     *
+     * <p>H5 属于浏览器暴露面，和 PC 一样要求验证码；认证、锁定和 Token 签发仍统一交给
+     * {@link IAuthService}，不建立第二套校端账号体系。</p>
+     */
+    @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)
+    @PostMapping("/h5/login")
+    @PermissionExempt("H5 登录入口，登录前公开访问，方法内完成验证码、密码和租户校验")
+    public R<LoginVO> h5Login(@RequestBody @Valid LoginDTO dto) {
+        dto.setClientType(ClientType.H5);
+        return R.ok(authService.login(dto));
+    }
+
+    /**
      * 微信小程序登录
      */
     @RateLimiter(key = "login", time = 60, count = 10, limitType = LimitType.IP)

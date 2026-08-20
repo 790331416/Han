@@ -8,6 +8,9 @@ import com.han.api.system.domain.UserVO;
 import com.han.api.system.domain.RoleVO;
 import com.han.api.system.domain.DeptVO;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
+import com.han.api.system.domain.EducationDeviceDirectoryVO;
+import com.han.api.system.domain.EducationPersonDirectoryVO;
+import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -19,6 +22,7 @@ import org.springframework.web.service.annotation.PostExchange;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDateTime;
 
 /**
  * 系统服务HTTP接口（@HttpExchange声明式客户端）
@@ -180,4 +184,34 @@ public interface SystemServiceClient {
      */
     @GetExchange("/external/classroom/identity")
     R<ClassroomIdentityVO> getClassroomIdentity(@RequestParam("userId") Long userId);
+
+    /** 指定当前账号的教育身份；identityId 不属于账号或不可登录时返回空。 */
+    @GetExchange("/external/classroom/identity")
+    R<ClassroomIdentityVO> getClassroomIdentity(@RequestParam("userId") Long userId,
+                                                @RequestParam("identityId") String identityId);
+
+    /** 当前账号全部有效教育身份，供 H5/App 选择后换取课堂凭证。 */
+    @GetExchange("/external/classroom/identities")
+    R<List<ClassroomIdentityVO>> listClassroomIdentities(@RequestParam("userId") Long userId);
+
+    /** 已授权开放应用读取教师或学生目录，tenantId 与 schoolIds 必须由应用授权上下文恢复。 */
+    @GetExchange("/external/directory/people")
+    R<PageResult<EducationPersonDirectoryVO>> listOpenDirectoryPeople(
+            @RequestParam("tenantId") Long tenantId,
+            @RequestParam("schoolIds") List<Long> schoolIds,
+            @RequestParam(value = "personType", required = false) String personType,
+            @RequestParam(value = "status", required = false) Integer status,
+            @RequestParam(value = "updatedAfter", required = false) LocalDateTime updatedAfter,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize);
+
+    /** 已授权开放应用读取设备目录。 */
+    @GetExchange("/external/directory/devices")
+    R<PageResult<EducationDeviceDirectoryVO>> listOpenDirectoryDevices(
+            @RequestParam("tenantId") Long tenantId,
+            @RequestParam("schoolIds") List<Long> schoolIds,
+            @RequestParam(value = "status", required = false) Integer status,
+            @RequestParam(value = "updatedAfter", required = false) LocalDateTime updatedAfter,
+            @RequestParam(value = "pageNum", required = false) Integer pageNum,
+            @RequestParam(value = "pageSize", required = false) Integer pageSize);
 }

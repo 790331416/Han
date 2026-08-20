@@ -5,6 +5,7 @@ import com.han.api.system.domain.UserVO;
 import com.han.api.tenant.TenantServiceClient;
 import com.han.api.tenant.domain.TenantVO;
 import com.han.auth.config.SecurityProperties;
+import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.CaptchaSettingService;
@@ -147,6 +148,51 @@ class AuthServiceImplTest {
                 .hasMessageContaining("租户服务不可用");
     }
 
+    @Test
+    void requiresCaptchaForH5WhenCaptchaIsEnabled() {
+        CaptchaSettingService captchaSettingService = mock(CaptchaSettingService.class);
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(true);
+        AuthServiceImpl service = new AuthServiceImpl(
+                redisTemplate,
+                systemServiceClient,
+                tenantServiceClient,
+                new SecurityProperties(),
+                mock(TotpService.class),
+                captchaSettingService
+        );
+        LoginDTO dto = new LoginDTO();
+        dto.setUsername("u_13900000001");
+        dto.setPassword("not-used");
+        dto.setClientType(ClientType.H5);
+
+        assertThatThrownBy(() -> service.login(dto))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("验证码不能为空");
+        verify(systemServiceClient, never()).getUserByUsername(anyString());
+    }
+
+    @Test
+    void rejectsManagementLoginWithoutManagementRole() {
+        UserVO user = user(9L, 1L);
+        user.setRoleKeys(Set.of("teacher"));
+
+        assertThatThrownBy(() -> authService.issueLoginForUser(user, ClientType.PC, false))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("未配置管理端权限");
+    }
+
+    @Test
+    void allowsManagementLoginWithConfiguredRole() {
+        UserVO user = user(9L, 1L);
+        user.setRoleKeys(Set.of("common"));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of("system:user:list")));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
+
+        assertThat(authService.issueLoginForUser(user, ClientType.PC, false).accessToken()).isNotBlank();
+    }
+
     private UserVO user(Long userId, Long tenantId) {
         UserVO user = new UserVO();
         user.setUserId(userId);
@@ -154,6 +200,7 @@ class AuthServiceImplTest {
         user.setUsername("admin");
         user.setNickname("Admin");
         user.setStatus(0);
+        user.setRoleKeys(Set.of("common"));
         return user;
     }
 

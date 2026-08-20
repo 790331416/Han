@@ -7,8 +7,12 @@ import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.annotation.RateLimiter;
 import com.han.common.security.context.SecurityContextHolder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 本地账号的三课堂兼容凭证入口。
@@ -27,7 +31,13 @@ public class ClassroomTokenController {
             limitType = RateLimiter.LimitType.IP)
     @PermissionExempt("已登录用户为自己换取三课堂兼容凭证，身份取自当前登录态而非请求参数")
     @PostMapping("/auth/external/classroom/local-token")
-    public R<ClassroomTokenVO> localToken() {
-        return R.ok(classroomTokenService.exchangeLocal(SecurityContextHolder.getLoginUser()));
+    public R<ClassroomTokenVO> localToken(@RequestParam(value = "identityId", required = false) String identityId) {
+        return R.ok(classroomTokenService.exchangeLocal(SecurityContextHolder.getLoginUser(), identityId));
+    }
+
+    @GetMapping("/auth/external/classroom/identities")
+    @PermissionExempt("当前登录用户查看本人教育身份，由网关 Token 校验和服务端归属校验控制")
+    public R<List<com.han.api.system.domain.ClassroomIdentityVO>> identities() {
+        return R.ok(classroomTokenService.listLocalIdentities(SecurityContextHolder.getLoginUser()));
     }
 }

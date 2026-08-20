@@ -59,15 +59,32 @@ public class ISysUserController {
     @GetMapping("/user/info/{username}")
     public R<UserVO> getUserByUsername(@PathVariable("username") String username,
                                        @RequestParam(value = "tenantId", required = false) Long tenantId) {
+        String loginName = username == null ? "" : username.trim();
+        if (loginName.isEmpty()) {
+            return R.fail("用户不存在");
+        }
         SysUserPo po = TenantHelper.ignore(() -> {
             LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
-                    .eq(SysUserPo::getUsername, username);
+                    .eq(SysUserPo::getUsername, loginName);
             if (tenantId != null) {
                 wrapper.eq(SysUserPo::getTenantId, tenantId);
             }
             wrapper.last("LIMIT 1");
             return sysUserMapper.selectOne(wrapper);
         });
+        if (po == null) {
+            List<SysUserPo> phoneMatches = TenantHelper.ignore(() -> {
+                LambdaQueryWrapper<SysUserPo> wrapper = new LambdaQueryWrapper<SysUserPo>()
+                        .eq(SysUserPo::getPhone, loginName);
+                if (tenantId != null) {
+                    wrapper.eq(SysUserPo::getTenantId, tenantId);
+                }
+                return sysUserMapper.selectList(wrapper.last("LIMIT 2"));
+            });
+            if (phoneMatches.size() == 1) {
+                po = phoneMatches.getFirst();
+            }
+        }
         if (po == null) {
             return R.fail("用户不存在");
         }

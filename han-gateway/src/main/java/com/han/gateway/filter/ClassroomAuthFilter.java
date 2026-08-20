@@ -37,6 +37,11 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
 
     private static final String TOKEN_HEADER = "access-token";
     private static final String IDENTITY_HEADER = "x-identity-id";
+    private static final String STUDENT_ROLE_TYPE = "4";
+    private static final java.util.List<String> STUDENT_READ_ONLY_SUFFIXES = java.util.List.of(
+            "/tb-course-info/getCourseInfoList",
+            "/tb-course-info/getMyCourseInfoList",
+            "/tb-course-info/getCourseTableInfo");
 
     private final ReactiveStringRedisTemplate redisTemplate;
     private final WebClient webClient;
@@ -73,7 +78,11 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
             return error(exchange, HttpStatus.UNAUTHORIZED, "Missing classroom token");
         }
         String identityId = exchange.getRequest().getHeaders().getFirst(IDENTITY_HEADER);
-        if (verify(incomingToken) != null) {
+        ClassroomTokenCodec.VerifiedToken verified = verify(incomingToken);
+        if (verified != null) {
+            if (isStudent(verified) && !isStudentReadOnlyPath(path)) {
+                return error(exchange, HttpStatus.FORBIDDEN, "Student identity is not allowed to access this classroom endpoint");
+            }
             return relayInternalToken(exchange, chain, incomingToken);
         }
         return exchangeExternalToken(exchange, chain, incomingToken, identityId);
@@ -210,6 +219,15 @@ public class ClassroomAuthFilter implements GlobalFilter, Ordered {
 
     private static boolean isAnonymousBusinessPath(String path) {
         return ANONYMOUS_BUSINESS_SUFFIXES.stream().anyMatch(path::endsWith);
+    }
+
+    private static boolean isStudent(ClassroomTokenCodec.VerifiedToken verified) {
+        Object roleType = verified.claims().get("roleType");
+        return STUDENT_ROLE_TYPE.equals(String.valueOf(roleType));
+    }
+
+    private static boolean isStudentReadOnlyPath(String path) {
+        return STUDENT_READ_ONLY_SUFFIXES.stream().anyMatch(path::endsWith);
     }
 
     private static boolean isSingleLogin(String path) {

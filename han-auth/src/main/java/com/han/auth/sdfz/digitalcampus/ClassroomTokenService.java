@@ -20,6 +20,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -37,8 +39,8 @@ import java.util.stream.Collectors;
 @Service
 public class ClassroomTokenService {
 
-    /** 非教师身份请求凭证时的固定文案，与兼容层保持一致。 */
-    public static final String NON_TEACHER_LOGIN_UNSUPPORTED = "本期仅支持教师登录三个课堂，学生登录暂未开放";
+    /** 身份不在当前部署允许名单时的固定文案。 */
+    public static final String NON_TEACHER_LOGIN_UNSUPPORTED = "当前身份暂未开放三个课堂登录";
 
     private final DigitalCampusLoginService loginService;
     private final SystemServiceClient systemServiceClient;
@@ -55,7 +57,7 @@ public class ClassroomTokenService {
             @Value("${sdfz.classroom-gateway.enabled:false}") boolean enabled,
             @Value("${sdfz.classroom-gateway.token-secret:}") String secret,
             @Value("${sdfz.classroom-gateway.token-ttl-seconds:900}") long ttlSeconds,
-            @Value("${sdfz.classroom-gateway.login-role-types:2}") String loginRoleTypes) {
+            @Value("${sdfz.classroom-gateway.login-role-types:2,4}") String loginRoleTypes) {
         this.loginService = loginService;
         this.systemServiceClient = systemServiceClient;
         this.redisTemplate = redisTemplate;
@@ -71,17 +73,24 @@ public class ClassroomTokenService {
     /**
      * 用 Han 本地登录态换发兼容凭证。
      *
-     * <p>本地教师就是 {@code sys_user} + {@code edu_person} 两条记录，claims 直接由这两条记录组装，
-     * 不走任何外部身份查找。本期只对教师签发，其它身份返回
-     * {@link #NON_TEACHER_LOGIN_UNSUPPORTED}——这只限制登录，不影响该身份在兼容目录里的可见性。
+     * <p>本地教师或学生均由 {@code sys_user} + {@code edu_person} 组装 claims，
+     * 不走任何外部身份查找。允许的 roleType 由部署配置控制，校端业务权限仍须服务端另行校验。
      */
     public ClassroomTokenVO exchangeLocal(LoginUser loginUser) {
+        return exchangeLocal(loginUser, null);
+    }
+
+    /** 当前 Han 登录账号选择教育身份后换取 Classroom Token。 */
+    public ClassroomTokenVO exchangeLocal(LoginUser loginUser, String identityId) {
         requireConfigured();
-        if (loginUser == null || loginUser.getUserId() == null) {
+        if (loginUser == null || loginUser.getUserId() == null
+                || loginUser.getTenantId() == null || loginUser.getTenantId() <= 0) {
             throw new BusinessException("当前没有可用的 Han 登录态");
         }
 
-        R<ClassroomIdentityVO> result = systemServiceClient.getClassroomIdentity(loginUser.getUserId());
+        R<ClassroomIdentityVO> result = identityId == null || identityId.isBlank()
+                ? systemServiceClient.getClassroomIdentity(loginUser.getUserId())
+                : systemServiceClient.getClassroomIdentity(loginUser.getUserId(), identityId.trim());
         if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
             throw new BusinessException("当前账号未开通三个课堂身份");
         }
@@ -95,15 +104,29 @@ public class ClassroomTokenService {
 
         String userId = identity.getUserId() != null
                 ? identity.getUserId() : String.valueOf(loginUser.getUserId());
-        Map<String, Object> claims = ClassroomClaims.build(
+        Map<String, Object> claims = new LinkedHashMap<>(ClassroomClaims.build(
                 userId,
                 identity.getUserName(),
                 identity.getRoleType(),
                 identity.getRoles(),
                 identity.getIdentityId(),
                 identity.getSchoolId(),
-                String.valueOf(loginUser.getUserId()));
+                String.valueOf(loginUser.getUserId())));
+        claims.put("tenantId", loginUser.getTenantId());
+        claims.put("classIds", identity.getClassIds() == null ? List.of() : identity.getClassIds());
         return sign(claims, userId);
+    }
+
+    /** 返回当前账号可展示的教育身份；是否可签发由 {@code loginAllowed} 标识。 */
+    public List<ClassroomIdentityVO> listLocalIdentities(LoginUser loginUser) {
+        if (loginUser == null || loginUser.getUserId() == null) {
+            throw new BusinessException("当前没有可用的 Han 登录态");
+        }
+        R<List<ClassroomIdentityVO>> result = systemServiceClient.listClassroomIdentities(loginUser.getUserId());
+        if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
+            throw new BusinessException("当前账号未开通三个课堂身份");
+        }
+        return result.getData();
     }
 
     public ClassroomTokenVO exchange(String externalToken, String identityId) {

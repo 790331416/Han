@@ -37,77 +37,77 @@ public class LegacyCompatController {
 
     @RequestMapping(value = LegacyPaths.USER_INFO_GET_BY_ID, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> userInfoById(HttpServletRequest request) {
-        return handle(request, LegacyPaths.USER_INFO_GET_BY_ID, directory::userInfo);
+        return handleDirectory(request, LegacyPaths.USER_INFO_GET_BY_ID, directory::userInfo);
     }
 
     @RequestMapping(value = LegacyPaths.USER_INFO_GET_USER_INFO, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> userInfoByPhone(HttpServletRequest request) {
-        return handle(request, LegacyPaths.USER_INFO_GET_USER_INFO, directory::userInfo);
+        return handleDirectory(request, LegacyPaths.USER_INFO_GET_USER_INFO, directory::userInfo);
     }
 
     @RequestMapping(value = LegacyPaths.IDENTITY_GET_BY_PK_ID, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> identity(HttpServletRequest request) {
-        return handle(request, LegacyPaths.IDENTITY_GET_BY_PK_ID, directory::identity);
+        return handleDirectory(request, LegacyPaths.IDENTITY_GET_BY_PK_ID, directory::identity);
     }
 
     @RequestMapping(value = LegacyPaths.ORG_CHILD_LIST, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> orgChildren(HttpServletRequest request) {
-        return handle(request, LegacyPaths.ORG_CHILD_LIST, directory::orgChildren);
+        return handleDirectory(request, LegacyPaths.ORG_CHILD_LIST, directory::orgChildren);
     }
 
     @RequestMapping(value = LegacyPaths.ORG_GET_BY_ID, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> orgById(HttpServletRequest request) {
-        return handle(request, LegacyPaths.ORG_GET_BY_ID, directory::org);
+        return handleDirectory(request, LegacyPaths.ORG_GET_BY_ID, directory::org);
     }
 
     @RequestMapping(value = LegacyPaths.ORG_LIST_BY_PAGE, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> orgPage(HttpServletRequest request) {
-        return handle(request, LegacyPaths.ORG_LIST_BY_PAGE, directory::orgPage);
+        return handleDirectory(request, LegacyPaths.ORG_LIST_BY_PAGE, directory::orgPage);
     }
 
     @RequestMapping(value = LegacyPaths.ORG_SCHOOL_INFO, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> schoolInfo(HttpServletRequest request) {
-        return handle(request, LegacyPaths.ORG_SCHOOL_INFO, directory::schoolPage);
+        return handleDirectory(request, LegacyPaths.ORG_SCHOOL_INFO, directory::schoolPage);
     }
 
     @RequestMapping(value = LegacyPaths.MANAGER_ORG_INFO_FOR_EXTERNAL, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> managerOrgForExternal(HttpServletRequest request) {
-        return handle(request, LegacyPaths.MANAGER_ORG_INFO_FOR_EXTERNAL, directory::org);
+        return handleDirectory(request, LegacyPaths.MANAGER_ORG_INFO_FOR_EXTERNAL, directory::org);
     }
 
     @RequestMapping(value = LegacyPaths.MANAGER_LAZY_ORG_TREE, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> managerLazyOrgTree(HttpServletRequest request) {
-        return handle(request, LegacyPaths.MANAGER_LAZY_ORG_TREE, directory::lazyOrgTree);
+        return handleDirectory(request, LegacyPaths.MANAGER_LAZY_ORG_TREE, directory::lazyOrgTree);
     }
 
     @RequestMapping(value = LegacyPaths.MANAGER_ORG_BRANCH_TREE, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> managerOrgBranchTree(HttpServletRequest request) {
-        return handle(request, LegacyPaths.MANAGER_ORG_BRANCH_TREE, directory::orgBranchTree);
+        return handleDirectory(request, LegacyPaths.MANAGER_ORG_BRANCH_TREE, directory::orgBranchTree);
     }
 
     @RequestMapping(value = LegacyPaths.PINYIN_ORG_RESULT, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> orgResultByAreaCode(HttpServletRequest request) {
-        return handle(request, LegacyPaths.PINYIN_ORG_RESULT, directory::orgSearch);
+        return handleDirectory(request, LegacyPaths.PINYIN_ORG_RESULT, directory::orgSearch);
     }
 
     @RequestMapping(value = LegacyPaths.MANAGER_TEACHER_LIST, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> managerTeachers(HttpServletRequest request) {
-        return handle(request, LegacyPaths.MANAGER_TEACHER_LIST, directory::teachers);
+        return handleDirectory(request, LegacyPaths.MANAGER_TEACHER_LIST, directory::teachers);
     }
 
     @RequestMapping(value = LegacyPaths.SELECT_PLACE, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> selectPlace(HttpServletRequest request) {
-        return handle(request, LegacyPaths.SELECT_PLACE, directory::places);
+        return handleDirectory(request, LegacyPaths.SELECT_PLACE, directory::places);
     }
 
     @RequestMapping(value = LegacyPaths.DEVICE_LIST, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> deviceList(HttpServletRequest request) {
-        return handle(request, LegacyPaths.DEVICE_LIST, directory::devices);
+        return handleDirectory(request, LegacyPaths.DEVICE_LIST, directory::devices);
     }
 
     @RequestMapping(value = LegacyPaths.DEVICE_BY_CODE, method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> deviceByCode(HttpServletRequest request) {
-        return handle(request, LegacyPaths.DEVICE_BY_CODE, directory::device);
+        return handleDirectory(request, LegacyPaths.DEVICE_BY_CODE, directory::device);
     }
 
     // ------------------------------------------------------------ 通道 C：旧前端 userRequest
@@ -130,7 +130,7 @@ public class LegacyCompatController {
 
     @RequestMapping(value = LegacyPaths.UI_DICT_ITEMS + "/{dictCode}", method = {RequestMethod.GET, RequestMethod.POST})
     public Map<String, Object> dictItems(HttpServletRequest request, @PathVariable String dictCode) {
-        return handle(request, LegacyPaths.UI_DICT_ITEMS, ignored -> directory.dictItems(dictCode));
+        return handleDirectory(request, LegacyPaths.UI_DICT_ITEMS, scoped -> directory.dictItems(scoped, dictCode));
     }
 
     // ------------------------------------------------------------ 本期未启用的通道 C 接口
@@ -163,5 +163,10 @@ public class LegacyCompatController {
     private Map<String, Object> handle(HttpServletRequest request, String path,
                                        Function<LegacyRequest, LegacyPayload> handler) {
         return support.handle(request, path, handler);
+    }
+
+    private Map<String, Object> handleDirectory(HttpServletRequest request, String path,
+                                                Function<LegacyRequest, LegacyPayload> handler) {
+        return support.handleDirectory(request, path, handler);
     }
 }

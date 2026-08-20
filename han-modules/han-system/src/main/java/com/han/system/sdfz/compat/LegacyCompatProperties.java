@@ -76,9 +76,9 @@ public class LegacyCompatProperties {
      *
      * <p>旧前端的控制台菜单按 {@code isSchool + '-' + dutyType[].roleType} 匹配 {@code meta.role}
      * （见 {@code consolr-menu/index.vue}），路由表注释给出的编码空间是：
-     * 教师 3/4/5、校级管理员 1/9、教育局管理员 1/2/5/9。
+     * 教师 3/4/5、管理员 1/9、教育局管理员 1/2/5/9。
      * 因此普通教师取 {@code 3}（拼出 {@code 2-3}，不命中任何校级菜单），
-     * 校级管理员取 {@code 1}（拼出 {@code 2-1}，命中课程预约、授课统计、学校设置、学校直播间、学校结对）。
+     * 管理员取 {@code 1}（拼出 {@code 2-1}，命中课程预约、授课统计、学校设置、学校直播间、学校结对）。
      *
      * <p>没选 {@code 1} 之外的 {@code 9}：{@code 2-9} 会额外让前端把课程列表切成"全校口径"
      * （{@code roleType.includes('2-9')} 分支走 {@code getCourseInfoList}），
@@ -93,7 +93,7 @@ public class LegacyCompatProperties {
      */
     private Map<String, String> dutyName = new LinkedHashMap<>(Map.of(
             "TEACHER", "普通教师",
-            "SCHOOL_ADMIN", "校级管理员"));
+            "SCHOOL_ADMIN", "管理员"));
 
     /**
      * {@code duty_code} 为空时的兜底岗位。
@@ -106,10 +106,10 @@ public class LegacyCompatProperties {
     /**
      * 允许换取三课堂兼容凭证的 person_type。
      *
-     * <p>本期只放行教师：旧前端的身份过滤仍是 {@code roleType == 2 || roleType == 5}，
-     * 学生登录留到下一期。学生数据仍然出现在兼容目录里，只是拿不到凭证。
+     * <p>默认放行教师和学生。旧前端仍只渲染教师角色，学生应接入新的 H5/App；
+     * 学生可访问的校端路径由管理端网关和校端服务共同限制。
      */
-    private Set<String> loginPersonTypes = new LinkedHashSet<>(Set.of("TEACHER"));
+    private Set<String> loginPersonTypes = new LinkedHashSet<>(Set.of("TEACHER", "STUDENT"));
 
     /** person_type 到旧 identityName 的映射。 */
     private Map<String, String> identityName = new LinkedHashMap<>(Map.of(
@@ -122,8 +122,26 @@ public class LegacyCompatProperties {
     /** 为 true 时未配置映射的 applicationType 返回空集合，而不是不过滤。 */
     private boolean deviceApplicationTypeStrict = false;
 
-    /** edu_class.grade_code 到年级中文名的映射，未命中时直接回落成 grade_code。 */
-    private Map<String, String> gradeName = new LinkedHashMap<>();
+    /** edu_class.grade_code 到年级中文名的映射；默认覆盖教育基础数据中的标准年级编码。 */
+    private Map<String, String> gradeName = new LinkedHashMap<>(Map.ofEntries(
+            Map.entry("G001", "小班"),
+            Map.entry("G002", "中班"),
+            Map.entry("G003", "大班"),
+            Map.entry("G004", "一年级"),
+            Map.entry("G005", "二年级"),
+            Map.entry("G006", "三年级"),
+            Map.entry("G007", "四年级"),
+            Map.entry("G008", "五年级"),
+            Map.entry("G009", "六年级"),
+            Map.entry("G010", "七年级"),
+            Map.entry("G011", "八年级"),
+            Map.entry("G012", "九年级"),
+            Map.entry("G013", "高一年级"),
+            Map.entry("G014", "高二年级"),
+            Map.entry("G015", "高三年级"),
+            Map.entry("G920", "学前班"),
+            Map.entry("G930", "毕业年级"),
+            Map.entry("G940", "其他年级")));
 
     /** grade_code 为空的班级归入的年级名。 */
     private String ungradedName = "其他年级";

@@ -5,18 +5,24 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysUserMapper;
+import com.han.system.sdfz.education.domain.EduAcademicYearPo;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduDevicePo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
+import com.han.system.sdfz.education.domain.EduSemesterPo;
+import com.han.system.sdfz.education.domain.EduSubjectPo;
+import com.han.system.sdfz.education.mapper.EduAcademicYearMapper;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
 import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
+import com.han.system.sdfz.education.mapper.EduSemesterMapper;
+import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +50,10 @@ class LegacyDirectoryServiceTest {
     @Mock
     private EduClassMapper classMapper;
     @Mock
+    private EduAcademicYearMapper academicYearMapper;
+    @Mock
+    private EduSemesterMapper semesterMapper;
+    @Mock
     private EduPersonMapper personMapper;
     @Mock
     private EduPersonClassMapper personClassMapper;
@@ -55,6 +65,8 @@ class LegacyDirectoryServiceTest {
     private SysUserMapper userMapper;
     @Mock
     private SysDictDataMapper dictDataMapper;
+    @Mock
+    private EduSubjectMapper subjectMapper;
 
     private LegacyCompatProperties properties;
     private LegacyDirectoryService service;
@@ -69,8 +81,10 @@ class LegacyDirectoryServiceTest {
         properties = new LegacyCompatProperties();
         properties.setEnabled(true);
         properties.setTenantId(1L);
-        service = new LegacyDirectoryService(properties, schoolMapper, classMapper, personMapper,
-                personClassMapper, deviceMapper, roomMapper, userMapper, dictDataMapper);
+        service = new LegacyDirectoryService(properties, schoolMapper, classMapper, academicYearMapper, semesterMapper, personMapper,
+                personClassMapper, deviceMapper, roomMapper, userMapper, dictDataMapper, subjectMapper);
+        when(semesterMapper.selectList(any())).thenReturn(List.of(currentSemester()));
+        when(academicYearMapper.selectById(2026L)).thenReturn(activeYear());
     }
 
     // ------------------------------------------------------------ 身份
@@ -154,7 +168,7 @@ class LegacyDirectoryServiceTest {
         assertThat(role).containsEntry("roleType", 2).containsEntry("isSchool", "2");
         assertThat(firstDuty(role))
                 .containsEntry("roleType", "1")
-                .containsEntry("positionName", "校级管理员");
+                .containsEntry("positionName", "管理员");
     }
 
     /**
@@ -264,6 +278,28 @@ class LegacyDirectoryServiceTest {
                 .containsEntry("deviceName", "主讲设备");
     }
 
+    @Test
+    void listeningDeviceListUsesTheSelectedSchoolWithinTheTenant() {
+        when(schoolMapper.selectOne(any())).thenReturn(school(8L, "听讲学校", "500100"));
+        when(deviceMapper.selectList(any())).thenReturn(List.of(device(31L, "DEV-1", "听讲设备")));
+
+        service.devices(request(Map.of("orgId", "8")));
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduDevicePo>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(deviceMapper).selectList(captor.capture());
+        captor.getValue().getSqlSegment();
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains(8L);
+    }
+
+    @Test
+    void listeningDeviceListRejectsAnUnknownSchool() {
+        when(schoolMapper.selectOne(any())).thenReturn(null);
+
+        assertThat((List<?>) service.devices(request(Map.of("orgId", "8"))).value()).isEmpty();
+        verify(deviceMapper, never()).selectList(any());
+    }
+
     /**
      * DEF-004：离校教师必须从排课下拉里消失。
      *
@@ -332,7 +368,12 @@ class LegacyDirectoryServiceTest {
     void gradeTreeExposesBranchCodeAndStandardNameTheFrontendFiltersOn() {
         EduClassPo first = classOf(41L, "G7", "七年级一班");
         EduClassPo second = classOf(42L, "G7", "七年级二班");
+        EduPersonPo student = teacher(21L, 200L, 7L, 0);
+        student.setPersonType(LegacyDirectoryService.STUDENT);
         when(classMapper.selectList(any())).thenReturn(List.of(first, second));
+        when(personMapper.selectList(any())).thenReturn(List.of(student));
+        when(personClassMapper.selectList(any())).thenReturn(List.of(
+                membership(61L, 21L, 41L), membership(62L, 21L, 42L)));
         properties.getGradeName().put("G7", "七年级");
 
         List<?> grades = (List<?>) service.orgBranchTree(request(Map.of("orgId", "7"))).value();
@@ -342,6 +383,36 @@ class LegacyDirectoryServiceTest {
                 .containsEntry("branchCode", "G7")
                 .containsEntry("standardName", "七年级");
         assertThat((List<?>) grade.get("children")).hasSize(2);
+    }
+
+    @Test
+    void gradeTreeDoesNotRequireTheCurrentAcademicYear() {
+        when(semesterMapper.selectList(any())).thenReturn(List.of());
+        when(classMapper.selectList(any())).thenReturn(List.of(classOf(41L, "G7", "七年级一班")));
+        EduPersonPo student = teacher(21L, 200L, 7L, 0);
+        student.setPersonType(LegacyDirectoryService.STUDENT);
+        when(personMapper.selectList(any())).thenReturn(List.of(student));
+        when(personClassMapper.selectList(any())).thenReturn(List.of(membership(61L, 21L, 41L)));
+
+        assertThat((List<?>) service.orgBranchTree(request(Map.of("orgId", "7"))).value()).hasSize(1);
+        verify(classMapper).selectList(any());
+    }
+
+    @Test
+    void gradeTreeQueriesAllEnabledClassesForTheSchool() {
+        when(classMapper.selectList(any())).thenReturn(List.of(classOf(41L, "G7", "七年级一班")));
+        EduPersonPo student = teacher(21L, 200L, 7L, 0);
+        student.setPersonType(LegacyDirectoryService.STUDENT);
+        when(personMapper.selectList(any())).thenReturn(List.of(student));
+        when(personClassMapper.selectList(any())).thenReturn(List.of(membership(61L, 21L, 41L)));
+
+        service.orgBranchTree(request(Map.of("orgId", "8")));
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduClassPo>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(classMapper).selectList(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).doesNotContain("academic_year_id");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains(7L);
     }
 
     @Test
@@ -363,7 +434,7 @@ class LegacyDirectoryServiceTest {
         item.setDictLabel("启用");
         when(dictDataMapper.selectList(any())).thenReturn(List.of(item));
 
-        List<?> items = (List<?>) service.dictItems("course_status").value();
+        List<?> items = (List<?>) service.dictItems(request(Map.of()), "course_status").value();
 
         assertThat(asMap(items.getFirst()))
                 .containsEntry("value", "1")
@@ -372,19 +443,65 @@ class LegacyDirectoryServiceTest {
 
     @Test
     void unknownDictCodeYieldsAnEmptyListRatherThanAnError() {
-        assertThat((List<?>) service.dictItems(null).value()).isEmpty();
+        assertThat((List<?>) service.dictItems(request(Map.of()), null).value()).isEmpty();
     }
 
     @Test
-    void lazyOrgTreeReadsAreaCodeFromTheMisnamedOrgNameKey() {
-        when(schoolMapper.selectList(any())).thenReturn(List.of(school(7L, "附中", "620100")));
+    void courseDictItemsReadEnabledSubjectsFromTheSchool() {
+        EduSubjectPo item = new EduSubjectPo();
+        item.setSubjectCode("MATH");
+        item.setSubjectName("数学");
+        when(subjectMapper.selectList(any())).thenReturn(List.of(item));
 
-        service.lazyOrgTree(request(Map.of("orgName", "620100")));
+        LegacyPayload payload = service.dictItems(request(Map.of()), "course");
+        List<?> items = (List<?>) payload.value();
 
-        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduSchoolPo>> captor =
-                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(schoolMapper, org.mockito.Mockito.atLeastOnce()).selectList(captor.capture());
-        assertThat(captor.getAllValues().getFirst().getSqlSegment()).contains("area_code");
+        assertThat(asMap(items.getFirst()))
+                .containsEntry("value", "MATH")
+                .containsEntry("text", "数学");
+        assertThat(payload.uiCode()).isZero();
+        verify(subjectMapper).selectList(any());
+    }
+
+    @Test
+    void listeningSchoolSearchReturnsEnabledSchoolsAcrossTheTenant() {
+        when(schoolMapper.selectList(any())).thenReturn(List.of(
+                school(7L, "主讲学校", "500100"), school(8L, "听讲学校", "500100")));
+
+        List<?> schools = (List<?>) service.orgSearch(request(Map.of())).value();
+
+        assertThat(schools).hasSize(2);
+        assertThat(asMap(schools.get(1)))
+                .containsEntry("key", "8")
+                .containsEntry("value", "听讲学校");
+    }
+
+    @Test
+    void gradeTreeOnlyReturnsGradesThatHaveActiveStudents() {
+        EduPersonPo student = teacher(21L, 200L, 7L, 0);
+        student.setPersonType(LegacyDirectoryService.STUDENT);
+        EduClassPo populated = classOf(41L, "G004", "一年级一班");
+        EduClassPo empty = classOf(42L, "G005", "二年级一班");
+        when(personMapper.selectList(any())).thenReturn(List.of(student));
+        when(personClassMapper.selectList(any())).thenReturn(List.of(membership(61L, 21L, 41L)));
+        when(classMapper.selectList(any())).thenReturn(List.of(populated, empty));
+
+        List<?> grades = (List<?>) service.orgBranchTree(request(Map.of())).value();
+
+        assertThat(grades).hasSize(1);
+        assertThat(asMap(grades.getFirst()))
+                .containsEntry("branchCode", "G004")
+                .containsEntry("standardName", "一年级");
+    }
+
+    @Test
+    void lazyOrgTreeTreatsTheTokenSchoolAsTheOnlyVisibleRoot() {
+        when(schoolMapper.selectOne(any())).thenReturn(school(7L, "附中", "620100"));
+
+        List<?> nodes = (List<?>) service.lazyOrgTree(request(Map.of("orgName", "999999"))).value();
+
+        assertThat(nodes).hasSize(1);
+        assertThat(asMap(nodes.getFirst())).containsEntry("orgId", "7");
     }
 
     @Test
@@ -398,10 +515,53 @@ class LegacyDirectoryServiceTest {
         assertThat(service.classesOf(11L)).hasSize(1);
     }
 
+    @Test
+    void identityClassLookupDoesNotRequireACurrentAcademicYear() {
+        when(semesterMapper.selectList(any())).thenReturn(List.of());
+        when(personClassMapper.selectList(any())).thenReturn(List.of(membership(61L, 11L, 41L)));
+        when(classMapper.selectList(any())).thenReturn(List.of(classOf(41L, "G7", "七年级一班")));
+
+        assertThat(service.classesOf(11L)).hasSize(1);
+        verify(semesterMapper, never()).selectList(any());
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduPersonClassPo>> membershipQuery =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(personClassMapper).selectList(membershipQuery.capture());
+        assertThat(membershipQuery.getValue().getSqlSegment()).doesNotContain("academic_year_id");
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduClassPo>> classQuery =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(classMapper).selectList(classQuery.capture());
+        assertThat(classQuery.getValue().getSqlSegment()).doesNotContain("academic_year_id");
+    }
+
+    @Test
+    void directoryQueriesIgnoreTheRequestedSchoolAndUseTheTokenSchool() {
+        Page<EduPersonPo> page = new Page<>(1, 20);
+        page.setRecords(List.of());
+        when(personMapper.selectPage(any(), any())).thenReturn(page);
+
+        service.teachers(request(Map.of("orgId", "8", "areaCode", "999999")));
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<EduPersonPo>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(personMapper).selectPage(any(), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("school_id");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains(7L).doesNotContain(8L);
+    }
+
+    @Test
+    void identityFromAnotherSchoolIsReturnedAsAnEmptyObject() {
+        when(personMapper.selectOne(any())).thenReturn(teacher(12L, 200L, 8L, 0));
+
+        assertThat(asMap(service.identity(request(Map.of("pkId", "12"))).value())).isEmpty();
+    }
+
     // ------------------------------------------------------------ 夹具
 
     private static LegacyRequest request(Map<String, String> params) {
-        return new LegacyRequest(LegacyProtocol.Consumer.LEGACY_API, null, "test", params);
+        return new LegacyRequest(LegacyProtocol.Consumer.LEGACY_API, null, "test", params,
+                new LegacyRequest.Scope(1L, 7L, 11L, 100L));
     }
 
     @SuppressWarnings("unchecked")
@@ -441,6 +601,8 @@ class LegacyDirectoryServiceTest {
         EduClassPo item = new EduClassPo();
         item.setId(id);
         item.setSchoolId(7L);
+        item.setAcademicYearId(2026L);
+        item.setNodeType("CLASS");
         item.setGradeCode(gradeCode);
         item.setClassCode("C" + id);
         item.setClassName(name);
@@ -478,8 +640,29 @@ class LegacyDirectoryServiceTest {
         item.setId(id);
         item.setPersonId(personId);
         item.setClassId(classId);
+        item.setAcademicYearId(2026L);
         item.setMembershipRole("MEMBER");
+        item.setMembershipStatus("ACTIVE");
         item.setDelFlag(0);
         return item;
+    }
+
+    private static EduSemesterPo currentSemester() {
+        EduSemesterPo semester = new EduSemesterPo();
+        semester.setId(2025L);
+        semester.setAcademicYearId(2026L);
+        semester.setCurrentFlag(1);
+        semester.setStatus(0);
+        semester.setDelFlag(0);
+        return semester;
+    }
+
+    private static EduAcademicYearPo activeYear() {
+        EduAcademicYearPo year = new EduAcademicYearPo();
+        year.setId(2026L);
+        year.setTenantId(1L);
+        year.setStatus("ACTIVE");
+        year.setDelFlag(0);
+        return year;
     }
 }

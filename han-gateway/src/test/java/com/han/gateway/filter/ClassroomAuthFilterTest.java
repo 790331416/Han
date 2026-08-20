@@ -128,6 +128,33 @@ class ClassroomAuthFilterTest {
     }
 
     @Test
+    void limitsStudentTokensToTheClassScopedReadEndpoints() {
+        long now = Instant.now().getEpochSecond();
+        String studentToken = ClassroomTokenCodec.issue(
+                Map.of("userId", "200", "userType", "USER", "roleType", "4", "classIds", java.util.List.of("class-1")),
+                SECRET, now, 3600, "jti-student");
+        ReactiveStringRedisTemplate redis = mock(ReactiveStringRedisTemplate.class);
+        when(redis.hasKey(ClassroomTokenCodec.SESSION_KEY_PREFIX + "jti-student")).thenReturn(Mono.just(true));
+        ClassroomAuthFilter filter = new ClassroomAuthFilter(redis, WebClient.builder(), true, SECRET,
+                "http://127.0.0.1:1/auth/external/digital-campus/classroom-token");
+
+        MockServerWebExchange readExchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/ysfz-tcapi/tb-course-info/getMyCourseInfoList")
+                .header("access-token", studentToken).build());
+        AtomicBoolean readForwarded = new AtomicBoolean();
+        filter.filter(readExchange, ignored -> { readForwarded.set(true); return Mono.empty(); }).block();
+        assertThat(readForwarded).isTrue();
+
+        MockServerWebExchange writeExchange = MockServerWebExchange.from(MockServerHttpRequest
+                .post("/ysfz-tcapi/tb-course-info/saveCourseInfo")
+                .header("access-token", studentToken).build());
+        AtomicBoolean writeForwarded = new AtomicBoolean();
+        filter.filter(writeExchange, ignored -> { writeForwarded.set(true); return Mono.empty(); }).block();
+        assertThat(writeExchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(writeForwarded).isFalse();
+    }
+
+    @Test
     void rejectsHanIssuedTokenWhoseSessionWasRevoked() {
         long now = Instant.now().getEpochSecond();
         String internalToken = ClassroomTokenCodec.issue(
