@@ -28,7 +28,7 @@ public class ASysLoginLogController {
     private final ISysLoginLogService loginLogService;
 
     @GetMapping("/list")
-    @PreAuthorize("@ss.hasAuthority('monitor:logininfor:list')")
+    @PreAuthorize("@ss.hasAuthority('monitor:loginlog:list')")
     public R<PageResult<SysLoginLogPo>> list(
             @RequestParam(value = "pageNum", defaultValue = "1") Integer pageNum,
             @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
@@ -36,21 +36,21 @@ public class ASysLoginLogController {
     }
 
     @PostMapping("/remove")
-    @PreAuthorize("@ss.hasAuthority('monitor:logininfor:remove')")
+    @PreAuthorize("@ss.hasAuthority('monitor:loginlog:remove')")
     public R<Void> remove(@RequestBody List<Long> ids) {
         loginLogService.deleteByIds(ids);
         return R.ok();
     }
 
     @PostMapping("/clean")
-    @PreAuthorize("@ss.hasAuthority('monitor:logininfor:remove')")
+    @PreAuthorize("@ss.hasAuthority('monitor:loginlog:remove')")
     public R<Void> clean() {
         loginLogService.cleanAll();
         return R.ok();
     }
 
     @GetMapping("/export")
-    @PreAuthorize("@ss.hasAuthority('monitor:logininfor:export')")
+    @PreAuthorize("@ss.hasAuthority('monitor:loginlog:export')")
     @OperLog(module = "登录日志", type = OperLog.OperType.EXPORT)
     public void export(HttpServletResponse response) throws IOException {
         List<LoginLogExportVo> list = loginLogService.selectPage(1, 10000).getRows().stream()

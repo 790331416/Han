@@ -43,6 +43,16 @@ public class PermissionService {
     }
 
     /**
+     * 仅平台超级管理员可执行的高风险系统操作。
+     *
+     * <p>不能用前端菜单隐藏替代该判断；仅用于不能下放给普通角色的高风险操作。</p>
+     */
+    public boolean isSuperAdmin() {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        return user != null && user.isAdmin();
+    }
+
+    /**
      * 判断当前用户是否拥有任一权限
      */
     public boolean hasAnyAuthority(String... authorities) {

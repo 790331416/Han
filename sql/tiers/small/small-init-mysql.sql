@@ -436,7 +436,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1, 0, '0', '系统管理', 'M', 'system', NULL, NULL, 'system', 1, 0, 0),
 (2, 0, '0', '系统监控', 'M', 'monitor', NULL, NULL, 'monitor', 2, 0, 0),
 (3, 0, '0', '系统工具', 'M', 'tool', NULL, NULL, 'tool', 3, 0, 0),
-(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0);
+(4, 0, '0', '租户管理', 'M', 'tenant', NULL, NULL, 'peoples', 4, 0, 0),
+(202608200011, 0, '0', '首页', 'C', 'dashboard', 'dashboard/index', 'dashboard:view', 'house', 0, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (100, 1, '0,1', '用户管理', 'C', 'user', 'system/user/index', 'system:user:list', 'user', 1, 0, 0),
@@ -447,7 +448,7 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (105, 1, '0,1', '字典管理', 'C', 'dict', 'system/dict/index', 'system:dict:list', 'dict', 6, 0, 0),
 (106, 1, '0,1', '参数设置', 'C', 'config', 'system/config/index', 'system:config:list', 'edit', 7, 0, 0),
 (107, 1, '0,1', '通知公告', 'C', 'notice', 'system/notice/index', 'system:notice:list', 'message', 8, 0, 0),
-(108, 1, '0,1', '客户端管理', 'C', 'client', 'system/client/index', 'system:client:list', 'client', 9, 0, 0);
+(202608200009, 1, '0,1', '系统设置', 'C', 'brand', 'system/brand/index', 'system:brand:query', 'setting', 9, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (200, 2, '0,2', '在线用户', 'C', 'online', 'monitor/online/index', 'monitor:online:list', 'online', 1, 0, 0),
@@ -457,8 +458,7 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (204, 2, '0,2', '服务监控', 'C', 'server', 'monitor/server/index', 'monitor:server:list', 'server', 5, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
-(300, 3, '0,3', '代码生成', 'C', 'gen', 'tool/gen/index', 'tool:gen:list', 'code', 1, 0, 0),
-(301, 3, '0,3', '系统接口', 'C', 'swagger', 'tool/swagger/index', 'tool:swagger:list', 'swagger', 2, 0, 0);
+(300, 3, '0,3', '代码生成', 'C', 'gen', 'tool/gen/index', 'tool:gen:list', 'code', 1, 0, 0);
 
 INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, component, perms, icon, sort, visible, status) VALUES
 (400, 4, '0,4', '租户列表', 'C', 'list', 'tenant/list/index', 'tenant:list', 'list', 1, 0, 0),
@@ -504,7 +504,8 @@ INSERT INTO sys_menu (id, parent_id, ancestors, menu_name, menu_type, path, comp
 (1071, 107, '0,1,107', '公告查询', 'F', '', NULL, 'system:notice:query', '#', 1, 0, 0),
 (1072, 107, '0,1,107', '公告新增', 'F', '', NULL, 'system:notice:add', '#', 2, 0, 0),
 (1073, 107, '0,1,107', '公告修改', 'F', '', NULL, 'system:notice:edit', '#', 3, 0, 0),
-(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0);
+(1074, 107, '0,1,107', '公告删除', 'F', '', NULL, 'system:notice:remove', '#', 4, 0, 0),
+(202608200010, 202608200009, '0,1,202608200009', '修改系统设置', 'F', '', NULL, 'system:brand:edit', '#', 1, 0, 0);
 
 -- 8. 用户角色关联
 INSERT INTO sys_user_role (user_id, role_id) VALUES (1, 1), (2, 2);

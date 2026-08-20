@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-button :icon="Refresh" @click="getData" style="margin-bottom: 16px">刷新</el-button>
+    <el-button :icon="Refresh" @click="refresh" style="margin-bottom: 16px">刷新</el-button>
 
     <el-row :gutter="16">
       <el-col :span="24">
@@ -44,7 +44,7 @@
         </el-table-column>
         <el-table-column label="操作" min-width="100">
           <template #default="{ row }">
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row.key)">删除</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:cache:remove')" type="danger" link :icon="Delete" @click="handleDelete(row.key)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -57,11 +57,13 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Search, Delete } from '@element-plus/icons-vue'
 import { getCacheInfo, getCacheKeys, deleteCache } from '@/api/system/monitor'
+import { useUserStore } from '@/stores/user'
 
 const cacheInfo = ref<any>(null)
 const keyList = ref<any[]>([])
 const keyLoading = ref(false)
-const keyPattern = ref('HAN:*')
+const keyPattern = ref('han:*')
+const userStore = useUserStore()
 
 const hitRate = computed(() => {
   if (!cacheInfo.value) return '-'
@@ -95,9 +97,13 @@ const handleDelete = async (key: string) => {
   getKeys()
 }
 
-onMounted(() => {
+const refresh = () => {
   getData()
   getKeys()
+}
+
+onMounted(() => {
+  refresh()
 })
 </script>
 

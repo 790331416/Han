@@ -69,8 +69,8 @@ public class ASysDashboardController {
                 .onlineCount(has(user, "monitor:online:list") ? countOnlineUsers() : null)
                 .dictCount(has(user, "system:dict:list") ? toInt(dictTypeMapper.selectCount(null)) : null)
                 .noticeCount(has(user, "system:notice:list") ? toInt(noticeMapper.selectCount(null)) : null)
-                .recentLogins(has(user, "system:loginlog:list") ? recentLogins() : null)
-                .recentOperLogs(has(user, "system:operlog:list") ? recentOperLogs() : null)
+                .recentLogins(has(user, "monitor:loginlog:list") ? recentLogins() : null)
+                .recentOperLogs(has(user, "monitor:operlog:list") ? recentOperLogs() : null)
                 .springBootVersion(org.springframework.boot.SpringBootVersion.getVersion())
                 .build();
 
@@ -83,10 +83,10 @@ public class ASysDashboardController {
         LoginUser user = SecurityContextHolder.getLoginUser();
         Map<String, Object> result = new LinkedHashMap<>();
 
-        if (has(user, "system:loginlog:list")) {
+        if (has(user, "monitor:loginlog:list")) {
             result.put("loginTrend", loginTrend());
         }
-        if (has(user, "system:operlog:list")) {
+        if (has(user, "monitor:operlog:list")) {
             result.put("operModules", operModuleDistribution());
         }
 

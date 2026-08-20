@@ -7,6 +7,7 @@ import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.builtin.SysBuiltinDictRegistry;
+import com.han.common.mybatis.helper.TenantHelper;
 import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.domain.po.SysDictTypePo;
 import com.han.system.mapper.SysDictDataMapper;
@@ -132,11 +133,19 @@ public class ASysDictController {
     @GetMapping("/data/type/{dictType}")
     public R<List<SysDictDataPo>> listDataByType(@PathVariable String dictType) {
         builtinDictRegistry.ensureBuiltInDictionaries();
-        LambdaQueryWrapper<SysDictDataPo> wrapper = new LambdaQueryWrapper<SysDictDataPo>()
+        LambdaQueryWrapper<SysDictDataPo> query = new LambdaQueryWrapper<SysDictDataPo>()
                 .eq(SysDictDataPo::getDictType, dictType)
                 .eq(SysDictDataPo::getStatus, 0)
                 .orderByAsc(SysDictDataPo::getDictSort);
-        return R.ok(dictDataMapper.selectList(wrapper));
+        List<SysDictDataPo> values = dictDataMapper.selectList(query);
+        if (values.isEmpty()) {
+            values = TenantHelper.ignore(() -> dictDataMapper.selectList(new LambdaQueryWrapper<SysDictDataPo>()
+                    .isNull(SysDictDataPo::getTenantId)
+                    .eq(SysDictDataPo::getDictType, dictType)
+                    .eq(SysDictDataPo::getStatus, 0)
+                    .orderByAsc(SysDictDataPo::getDictSort)));
+        }
+        return R.ok(values);
     }
 
     /**

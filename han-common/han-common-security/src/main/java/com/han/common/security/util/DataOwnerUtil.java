@@ -83,7 +83,7 @@ public final class DataOwnerUtil {
         if (user == null) {
             throw new ForbiddenException("未登录");
         }
-        if (user.isAdmin() || user.hasRole("tenantAdmin")) {
+        if (user.isAdmin() || user.hasRole("admin") || user.hasRole("tenantAdmin")) {
             return;
         }
 

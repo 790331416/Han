@@ -1,8 +1,9 @@
 <template>
   <div class="sidebar">
     <div class="logo">
-      <div class="logo-icon">H</div>
-      <span v-if="appStore.sidebar.opened" class="logo-text">HAN Cloud</span>
+      <img v-if="brandStore.logoUrl" class="logo-icon logo-image" :src="brandStore.logoUrl" alt="" />
+      <div v-else class="logo-icon">{{ brandStore.shortName.slice(0, 1) || 'H' }}</div>
+      <span v-if="appStore.sidebar.opened" class="logo-text">{{ brandStore.displayName }}</span>
     </div>
 
     <el-scrollbar>
@@ -17,34 +18,12 @@
         mode="vertical"
         router
       >
-        <template v-for="route in routes" :key="route.path">
-          <template v-if="!route.meta?.hidden">
-            <el-menu-item
-              v-if="visibleChildren(route).length <= 1"
-              :index="resolvePath(route.path, visibleChildren(route)[0]?.path)"
-              :data-testid="menuTestId(route, visibleChildren(route)[0])"
-            >
-              <el-icon v-if="menuMeta(route).icon"><component :is="menuMeta(route).icon" /></el-icon>
-              <template #title>{{ menuMeta(route).title }}</template>
-            </el-menu-item>
-
-            <el-sub-menu v-else :index="route.path" :data-testid="menuTestId(route)">
-              <template #title>
-                <el-icon v-if="route.meta?.icon"><component :is="route.meta.icon" /></el-icon>
-                <span>{{ route.meta?.title }}</span>
-              </template>
-              <el-menu-item
-                v-for="child in visibleChildren(route)"
-                :key="child.path"
-                :index="resolvePath(route.path, child.path)"
-                :data-testid="menuTestId(route, child)"
-              >
-                <el-icon v-if="child.meta?.icon"><component :is="child.meta.icon" /></el-icon>
-                <template #title>{{ child.meta?.title }}</template>
-              </el-menu-item>
-            </el-sub-menu>
-          </template>
-        </template>
+        <SidebarMenuNode
+          v-for="route in routes"
+          :key="route.path"
+          :route="route"
+          parent-path=""
+        />
       </el-menu>
     </el-scrollbar>
   </div>
@@ -54,15 +33,13 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, type RouteRecordRaw } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import { useUserStore } from '@/stores/user'
-import { constantRoutes } from '@/router'
+import { useBrandStore } from '@/stores/brand'
+import { dynamicMenuRoutes } from '@/router'
+import SidebarMenuNode from './SidebarMenuNode.vue'
 
 const route = useRoute()
 const appStore = useAppStore()
-const userStore = useUserStore()
-
-const TIER_LEVEL: Record<string, number> = { small: 0, medium: 1, full: 2 }
-const currentTierLevel = computed(() => TIER_LEVEL[appStore.deployTier || import.meta.env.VITE_DEPLOY_TIER || 'full'] ?? 2)
+const brandStore = useBrandStore()
 
 onMounted(() => {
   if (!appStore.capabilitiesLoaded) {
@@ -70,91 +47,23 @@ onMounted(() => {
   }
 })
 
-function isTierAvailable(tier?: string): boolean {
-  return (TIER_LEVEL[tier || 'small'] ?? 0) <= currentTierLevel.value
-}
-
-function isModuleEnabled(moduleName?: string): boolean {
-  if (!moduleName) {
-    return true
-  }
-  if (!appStore.capabilitiesLoaded || appStore.enabledModules.length === 0) {
-    return true
-  }
-  return appStore.enabledModules.includes(moduleName)
-}
-
-function isFeatureAvailable(featureName?: string): boolean {
-  if (!featureName) {
-    return true
-  }
-  if (!appStore.capabilitiesLoaded) {
-    return true
-  }
-  return appStore.isFeatureEnabled(featureName)
-}
-
-function isRuntimeAvailable(route: RouteRecordRaw): boolean {
-  return isModuleEnabled(route.meta?.module as string | undefined) &&
-    isFeatureAvailable(route.meta?.feature as string | undefined)
-}
-
-function hasPermission(route: RouteRecordRaw): boolean {
-  if (!route.meta?.permission) return true
-  return userStore.hasPermission(route.meta.permission as string)
-}
-
 function filterRoutes(routes: RouteRecordRaw[]): RouteRecordRaw[] {
   return routes
     .filter((r) => {
-      if (r.path === '/login' || r.path === '/404') return false
-      if (!isTierAvailable(r.meta?.tier as string)) return false
-      if (!isRuntimeAvailable(r)) return false
-      if (!hasPermission(r) && !r.children?.some((c) => hasPermission(c))) return false
-      return true
+      return !r.meta?.hidden
     })
     .map((r) => {
       if (r.children) {
-        return {
-          ...r,
-          children: r.children.filter((c) =>
-            isTierAvailable(c.meta?.tier as string) &&
-            isRuntimeAvailable(c) &&
-            hasPermission(c)
-          )
-        }
+        return { ...r, children: r.children.filter((c) => !c.meta?.hidden) }
       }
       return r
     })
     .filter((r) => !r.children || r.children.length > 0)
 }
 
-const routes = computed(() => filterRoutes(constantRoutes))
+const routes = computed(() => filterRoutes(dynamicMenuRoutes.value))
 const activeMenu = computed(() => route.path)
 
-function visibleChildren(route: RouteRecordRaw) {
-  return (route.children || []).filter((c) => !c.meta?.hidden)
-}
-
-function menuMeta(route: RouteRecordRaw) {
-  const children = visibleChildren(route)
-  if (children.length === 1) {
-    return children[0].meta || {}
-  }
-  return route.meta || {}
-}
-
-function resolvePath(parentPath: string, childPath?: string) {
-  if (!childPath) return parentPath
-  if (parentPath === '/') return '/' + childPath
-  return parentPath + '/' + childPath
-}
-
-function menuTestId(route: RouteRecordRaw, child?: RouteRecordRaw) {
-  const target = child ?? route
-  const name = typeof target.name === 'string' ? target.name : resolvePath(route.path, child?.path || target.path)
-  return `sidebar-menu-${name.toLowerCase()}`
-}
 </script>
 
 <style lang="scss" scoped>
@@ -192,6 +101,11 @@ function menuTestId(route: RouteRecordRaw, child?: RouteRecordRaw) {
     font-weight: 700;
     letter-spacing: -0.02em;
     white-space: nowrap;
+  }
+
+  .logo-image {
+    object-fit: contain;
+    background: transparent;
   }
 }
 

@@ -1,7 +1,10 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, RouterView, type RouteRecordRaw } from 'vue-router'
+import { ref } from 'vue'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
+import { getRouters } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import type { RouteMenu } from '@/types'
 import type { RequestRuntimeError } from '@/utils/request'
 
 NProgress.configure({ showSpinner: false })
@@ -42,14 +45,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/',
     name: 'Layout',
     component: () => import('@/layout/index.vue'),
-    redirect: '/dashboard',
     children: [
-      {
-        path: 'dashboard',
-        name: 'Dashboard',
-        component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: '首页', icon: 'HomeFilled', affix: true }
-      },
       {
         path: 'profile',
         name: 'Profile',
@@ -59,395 +55,195 @@ export const constantRoutes: RouteRecordRaw[] = [
     ]
   },
   {
-    path: '/job',
-    name: 'Job',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/job/list',
-    meta: { title: '任务调度', icon: 'Timer', tier: 'small', module: 'job' },
-    children: [
-      {
-        path: 'list',
-        name: 'JobList',
-        component: () => import('@/views/job/index.vue'),
-        meta: { title: '定时任务', icon: 'Clock', permission: 'job:list' }
-      },
-      {
-        path: 'log',
-        name: 'JobLog',
-        component: () => import('@/views/job/log.vue'),
-        meta: { title: '调度日志', icon: 'Document', permission: 'job:log:list' }
-      }
-    ]
-  },
-  {
-    path: '/workflow',
-    name: 'Workflow',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/workflow/definition',
-    meta: { title: '工作流', icon: 'Connection', tier: 'medium', module: 'workflow', feature: 'workflow' },
-    children: [
-      {
-        path: 'definition',
-        name: 'ProcessDefinition',
-        component: () => import('@/views/workflow/definition/index.vue'),
-        meta: { title: '流程定义', icon: 'Document', permission: 'workflow:definition:list' }
-      },
-      {
-        path: 'instance',
-        name: 'ProcessInstance',
-        component: () => import('@/views/workflow/instance/index.vue'),
-        meta: { title: '流程实例', icon: 'Histogram', permission: 'workflow:instance:list' }
-      },
-      {
-        path: 'todo',
-        name: 'TodoTask',
-        component: () => import('@/views/workflow/task/index.vue'),
-        meta: { title: '待办任务', icon: 'Bell', permission: 'workflow:task:todo' }
-      },
-      {
-        path: 'done',
-        name: 'DoneTask',
-        component: () => import('@/views/workflow/task/done.vue'),
-        meta: { title: '已办任务', icon: 'Finished', permission: 'workflow:task:done' }
-      }
-    ]
-  },
-  {
-    path: '/system',
-    name: 'System',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/system/user',
-    meta: { title: '系统管理', icon: 'Setting' },
-    children: [
-      {
-        path: 'user',
-        name: 'User',
-        component: () => import('@/views/system/user/index.vue'),
-        meta: { title: '用户管理', icon: 'User', permission: 'system:user:list' }
-      },
-      {
-        path: 'role',
-        name: 'Role',
-        component: () => import('@/views/system/role/index.vue'),
-        meta: { title: '角色管理', icon: 'UserFilled', permission: 'system:role:list' }
-      },
-      {
-        path: 'role/authUser',
-        name: 'AuthUser',
-        component: () => import('@/views/system/role/authUser.vue'),
-        meta: { title: '分配用户', hidden: true, activeMenu: '/system/role' }
-      },
-      {
-        path: 'menu',
-        name: 'Menu',
-        component: () => import('@/views/system/menu/index.vue'),
-        meta: { title: '菜单管理', icon: 'Menu', permission: 'system:menu:list' }
-      },
-      {
-        path: 'dept',
-        name: 'Dept',
-        component: () => import('@/views/system/dept/index.vue'),
-        meta: { title: '部门管理', icon: 'OfficeBuilding', permission: 'system:dept:list' }
-      },
-      {
-        path: 'post',
-        name: 'Post',
-        component: () => import('@/views/system/post/index.vue'),
-        meta: { title: '岗位管理', icon: 'Postcard', permission: 'system:post:list' }
-      },
-      {
-        path: 'dict',
-        name: 'Dict',
-        component: () => import('@/views/system/dict/index.vue'),
-        meta: { title: '字典管理', icon: 'Notebook', permission: 'system:dict:list' }
-      },
-      {
-        path: 'dict-data',
-        name: 'DictData',
-        component: () => import('@/views/system/dict/data.vue'),
-        meta: { title: '字典数据', icon: 'Notebook', hidden: true, permission: 'system:dict:list' }
-      },
-      {
-        path: 'tenant',
-        name: 'Tenant',
-        component: () => import('@/views/system/tenant/index.vue'),
-        meta: { title: '租户管理', icon: 'Coin', permission: 'tenant:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
-      },
-      {
-        path: 'tenant-package',
-        name: 'TenantPackage',
-        component: () => import('@/views/system/tenant/package.vue'),
-        meta: { title: '租户套餐', icon: 'ShoppingBag', permission: 'tenant:package:list', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
-      },
-      {
-        path: 'tenant-quota',
-        name: 'TenantQuota',
-        component: () => import('@/views/system/tenant/quota.vue'),
-        meta: { title: '资源配额', icon: 'PieChart', permission: 'tenant:quota:query', tier: 'medium', module: 'tenant', feature: 'tenantSelect' }
-      },
-      {
-        path: 'config',
-        name: 'Config',
-        component: () => import('@/views/system/config/index.vue'),
-        meta: { title: '参数配置', icon: 'Tools', permission: 'system:config:list' }
-      },
-      {
-        path: 'notice',
-        name: 'Notice',
-        component: () => import('@/views/system/notice/index.vue'),
-        meta: { title: '通知公告', icon: 'Bell', permission: 'system:notice:list' }
-      },
-      {
-        path: 'operlog',
-        name: 'OperLog',
-        component: () => import('@/views/system/operlog/index.vue'),
-        meta: { title: '操作日志', icon: 'Document', permission: 'system:operlog:list' }
-      },
-      {
-        path: 'loginlog',
-        name: 'LoginLog',
-        component: () => import('@/views/system/loginlog/index.vue'),
-        meta: { title: '登录日志', icon: 'Tickets', permission: 'system:loginlog:list' }
-      },
-      {
-        path: 'online',
-        name: 'Online',
-        component: () => import('@/views/system/online/index.vue'),
-        meta: { title: '在线用户', icon: 'Connection', permission: 'monitor:online:list' }
-      },
-      {
-        path: 'server',
-        name: 'Server',
-        component: () => import('@/views/system/server/index.vue'),
-        meta: { title: '服务监控', icon: 'Monitor', permission: 'system:monitor:server' }
-      },
-      {
-        path: 'cache-monitor',
-        name: 'CacheMonitor',
-        component: () => import('@/views/system/cache-monitor/index.vue'),
-        meta: { title: '缓存监控', icon: 'Coin', permission: 'system:monitor:cache' }
-      },
-      {
-        path: 'oss-config',
-        name: 'OssConfig',
-        component: () => import('@/views/system/oss-config/index.vue'),
-        meta: { title: 'OSS配置', icon: 'Upload', permission: 'system:oss:list', tier: 'medium', feature: 'ossConfig' }
-      },
-      {
-        path: 'file',
-        name: 'FileManage',
-        component: () => import('@/views/system/file/index.vue'),
-        meta: { title: '文件管理', icon: 'FolderOpened', permission: 'file:list', tier: 'medium' }
-      }
-    ]
-  },
-  {
-    path: '/education',
-    name: 'Education',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/education/school',
-    meta: { title: '教育管理', icon: 'School' },
-    children: [
-      {
-        path: 'school',
-        name: 'EducationSchool',
-        component: () => import('@/views/education/school/index.vue'),
-        meta: { title: '学校管理', icon: 'OfficeBuilding', permission: 'education:school:list' }
-      },
-      {
-        path: 'class',
-        name: 'EducationClass',
-        component: () => import('@/views/education/class/index.vue'),
-        meta: { title: '班级管理', icon: 'Collection', permission: 'education:class:list' }
-      },
-      {
-        path: 'person',
-        name: 'EducationPerson',
-        component: () => import('@/views/education/person/index.vue'),
-        meta: { title: '人员管理', icon: 'User', permission: 'education:person:list' }
-      },
-      {
-        path: 'subject',
-        name: 'EducationSubject',
-        component: () => import('@/views/education/subject/index.vue'),
-        meta: { title: '科目管理', icon: 'Notebook', permission: 'education:subject:list' }
-      },
-      {
-        path: 'device',
-        name: 'EducationDevice',
-        component: () => import('@/views/education/device/index.vue'),
-        meta: { title: '设备管理', icon: 'Monitor', permission: 'education:device:list' }
-      },
-      {
-        path: 'semester',
-        name: 'EducationSemester',
-        component: () => import('@/views/education/semester/index.vue'),
-        meta: { title: '学期管理', icon: 'Calendar', permission: 'education:semester:list' }
-      },
-      {
-        path: 'room',
-        name: 'EducationRoom',
-        component: () => import('@/views/education/room/index.vue'),
-        meta: { title: '教室管理', icon: 'House', permission: 'education:room:list' }
-      }
-    ]
-  },
-  {
-    path: '/order',
-    name: 'CourseOrder',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/order/course',
-    meta: { title: '课程订购', icon: 'ShoppingCart' },
-    children: [
-      {
-        path: 'course',
-        name: 'CourseOrderList',
-        component: () => import('@/views/order/course/index.vue'),
-        meta: { title: '订购单管理', icon: 'Tickets', permission: 'order:course:list' }
-      },
-      {
-        path: 'grant',
-        name: 'CourseOrderGrant',
-        component: () => import('@/views/order/grant/index.vue'),
-        meta: { title: '授权台账', icon: 'DocumentChecked', permission: 'order:grant:list' }
-      }
-    ]
-  },
-  {
-    path: '/ai',
-    name: 'AI',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/ai/application',
-    meta: { title: 'AI智能', icon: 'MagicStick', tier: 'full', module: 'ai', feature: 'ai' },
-    children: [
-      {
-        path: 'application',
-        name: 'AiApplication',
-        component: () => import('@/views/ai/application/index.vue'),
-        meta: { title: 'AI应用', icon: 'Grid' }
-      },
-      {
-        path: 'application/:type/:id',
-        name: 'AiApplicationDetail',
-        component: () => import('@/views/ai/application/detail.vue'),
-        meta: { title: '应用详情', icon: 'Grid', hidden: true }
-      },
-      {
-        path: 'model',
-        name: 'AiModel',
-        component: () => import('@/views/ai/model/index.vue'),
-        meta: { title: 'AI模型管理', icon: 'Cpu', permission: 'ai:model:list' }
-      },
-      {
-        path: 'knowledge',
-        name: 'Knowledge',
-        component: () => import('@/views/ai/knowledge/index.vue'),
-        meta: { title: '知识库', icon: 'Collection', permission: 'ai:kb:list' }
-      },
-      {
-        path: 'mcp',
-        name: 'McpServer',
-        component: () => import('@/views/ai/mcp/index.vue'),
-        meta: { title: 'MCP管理', icon: 'Link', permission: 'ai:mcp:list' }
-      },
-      {
-        path: 'agent',
-        name: 'AiAgent',
-        component: () => import('@/views/ai/agent/index.vue'),
-        meta: { title: '智能体', icon: 'UserFilled', permission: 'ai:agent:list' }
-      },
-      {
-        path: 'workflow',
-        name: 'AiWorkflow',
-        component: () => import('@/views/ai/workflow/index.vue'),
-        meta: { title: 'AI工作流', icon: 'ChatDotRound', permission: 'ai:workflow:list' }
-      },
-      {
-        path: 'workflow/designer/:workflowId',
-        name: 'AiWorkflowDesigner',
-        component: () => import('@/views/ai/workflow/designer.vue'),
-        meta: { title: '流程设计器', icon: 'SetUp', permission: 'ai:workflow:edit', hidden: true }
-      },
-      {
-        path: 'prompt',
-        name: 'AiPrompt',
-        component: () => import('@/views/ai/prompt/index.vue'),
-        meta: { title: 'Prompt模板', icon: 'Document', permission: 'ai:prompt:list' }
-      },
-      {
-        path: 'token',
-        name: 'AiToken',
-        component: () => import('@/views/ai/token/index.vue'),
-        meta: { title: 'Token统计', icon: 'DataAnalysis', permission: 'ai:token:stats' }
-      },
-      // {
-      //   path: 'graph/:kbId',
-      //   name: 'AiGraph',
-      //   component: () => import('@/views/ai/graph/index.vue'),
-      //   meta: { title: '知识图谱', icon: 'Share', permission: 'ai:graph:query', hidden: true }
-      // },
-      {
-        path: 'chat',
-        name: 'AiChat',
-        component: () => import('@/views/ai/chat/index.vue'),
-        meta: { title: 'AI对话', icon: 'ChatLineSquare' }
-      }
-    ]
-  },
-  {
-    path: '/open',
-    name: 'Open',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/open/app',
-    meta: { title: '开放平台', icon: 'Platform', tier: 'medium', module: 'open', feature: 'openPlatform' },
-    children: [
-      {
-        path: 'app',
-        name: 'OpenApp',
-        component: () => import('@/views/open/app/index.vue'),
-        meta: { title: '应用管理', icon: 'Grid', permission: 'open:app:list' }
-      }
-    ]
-  },
-  {
-    path: '/tool',
-    name: 'Tool',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/tool/gen',
-    meta: { title: '开发工具', icon: 'Tools', tier: 'medium', module: 'gen', feature: 'gen' },
-    children: [
-      {
-        path: 'gen',
-        name: 'ToolGen',
-        component: () => import('@/views/tool/gen/index.vue'),
-        meta: { title: '代码生成', icon: 'Tools', permission: 'tool:gen:list' }
-      }
-    ]
-  },
-  {
     path: '/chat/share/:shareKey',
     name: 'ShareChat',
     component: () => import('@/views/share/chat.vue'),
     meta: { title: 'AI对话', hidden: true }
   },
-  {
-    path: '/:pathMatch(.*)*',
-    redirect: '/404',
-    meta: { hidden: true }
-  }
 ]
 
+const viewModules = import.meta.glob('/src/views/**/*.vue')
+const componentAliases: Record<string, string> = {
+  'monitor/online/index': 'system/online/index',
+  'monitor/operlog/index': 'system/operlog/index',
+  'monitor/loginlog/index': 'system/loginlog/index',
+  'monitor/cache/index': 'system/cache-monitor/index',
+  'monitor/server/index': 'system/server/index',
+  'tenant/list/index': 'system/tenant/index',
+  'tenant/package/index': 'system/tenant/package',
+  'tenant/quota/index': 'system/tenant/quota',
+  'education/region/index': 'education/EducationRegionTreePage',
+  'education/promotion/index': 'education/EducationPromotionPage'
+}
+const iconAliases: Record<string, string> = {
+  system: 'Setting',
+  peoples: 'UserFilled',
+  'tree-table': 'Grid',
+  tree: 'Share',
+  post: 'Postcard',
+  dict: 'Notebook',
+  edit: 'Edit',
+  message: 'Message',
+  client: 'Platform',
+  tool: 'Tools',
+  list: 'List',
+  component: 'Grid',
+  'office-building': 'OfficeBuilding',
+  collection: 'Collection',
+  user: 'User',
+  tickets: 'Tickets',
+  clock: 'Clock',
+  logininfor: 'Tickets',
+  online: 'Connection',
+  form: 'Document',
+  redis: 'Coin',
+  server: 'Monitor',
+  code: 'Tools',
+  swagger: 'Document',
+  school: 'School',
+  notebook: 'Notebook',
+  monitor: 'Monitor',
+  calendar: 'Calendar',
+  house: 'House',
+  lock: 'Lock',
+  top: 'Top',
+  'document-checked': 'DocumentChecked',
+  'shopping-cart': 'ShoppingCart'
+}
+
+function menuIcon(icon?: string | null) {
+  if (!icon || icon === '#') return 'Menu'
+  return iconAliases[icon] || icon.replace(/(^|-)([a-z])/g, (_, __, letter) => letter.toUpperCase())
+}
+
+function cleanPath(path?: string | null) {
+  return String(path || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/[?#].*$/, '')
+    .replace(/^\/+|\/+$/g, '')
+}
+
+/**
+ * 菜单表里的子路径历史上既有相对值，也有带父级前缀的绝对值。
+ * 路由注册时统一转换成当前父路由下的相对段，避免 /system/system/user。
+ */
+export function normalizeMenuPath(path: string | null | undefined, parentPath = '') {
+  const value = cleanPath(path)
+  const parent = cleanPath(parentPath)
+  if (!parent) return value || '/'
+  if (value === parent) return ''
+  if (value.startsWith(`${parent}/`)) return value.slice(parent.length + 1)
+  return value
+}
+
+export function resolveMenuPath(parentPath: string, childPath?: string) {
+  const parent = cleanPath(parentPath)
+  const child = cleanPath(childPath)
+  if (!child) return `/${parent}`.replace(/\/+/g, '/') || '/'
+  if (!parent || child === parent || child.startsWith(`${parent}/`)) {
+    return `/${child}`.replace(/\/+/g, '/')
+  }
+  return `/${parent}/${child}`.replace(/\/+/g, '/')
+}
+
+function viewComponent(component?: string | null) {
+  if (!component || component === 'Layout' || component === 'ParentView') return RouterView
+  const normalizedComponent = component
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^@\/views\//, '')
+    .replace(/^\/?src\/views\//, '')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.vue$/i, '')
+  const normalized = componentAliases[normalizedComponent] || normalizedComponent
+  const loader = viewModules[`/src/views/${normalized}.vue`]
+  // DB 中不存在的组件安全落到 404，不能因为组件路径异常暴露静态页面。
+  return loader || (() => import('@/views/error/404.vue'))
+}
+
+function toDynamicRoute(menu: RouteMenu, parentPath = ''): RouteRecordRaw {
+  const path = normalizeMenuPath(menu.path, parentPath)
+  const fullPath = resolveMenuPath(parentPath, path).replace(/^\//, '')
+  const children = (menu.children || []).map((child) => toDynamicRoute(child, fullPath))
+  return {
+    path,
+    name: menu.name || `menu-${menu.id}`,
+    component: viewComponent(menu.component),
+    meta: {
+      title: menu.meta?.title || menu.menuName,
+      icon: menuIcon(menu.meta?.icon || menu.icon),
+      hidden: Boolean(menu.hidden) || menu.visible === 1,
+      noCache: Boolean(menu.meta?.noCache)
+    },
+    ...(children.length ? { children } : {}),
+    ...(menu.redirect && menu.redirect !== 'noRedirect' ? { redirect: menu.redirect } : {})
+  } as RouteRecordRaw
+}
+
+// 仅保留公共路由和应用外壳，业务路由在登录后从菜单树注册。
+const initialRoutes = constantRoutes.filter((route) =>
+  ['Login', 'SocialCallback', '404', 'Layout', 'ShareChat'].includes(String(route.name)) || route.path === '/redirect'
+)
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: constantRoutes,
+  routes: initialRoutes,
   scrollBehavior: () => ({ top: 0 })
 })
+
+const notFoundRoute: RouteRecordRaw = { path: '/:pathMatch(.*)*', name: 'NotFound', redirect: '/404', meta: { hidden: true } }
+export const dynamicMenuRoutes = ref<RouteRecordRaw[]>([])
+let dynamicRouteNames: string[] = []
+let notFoundAdded = false
+
+export function clearDynamicRoutes() {
+  dynamicRouteNames.forEach((name) => router.hasRoute(name) && router.removeRoute(name))
+  dynamicRouteNames = []
+  dynamicMenuRoutes.value = []
+  if (notFoundAdded) {
+    router.removeRoute(String(notFoundRoute.name))
+    notFoundAdded = false
+  }
+}
+
+export async function loadDynamicRoutes() {
+  clearDynamicRoutes()
+  const response = await getRouters()
+  const routes = (response.data || []).flatMap((menu) => {
+    const route = toDynamicRoute(menu)
+    // 顶级菜单由后端包装成 path="/" + 单个实际页面；展开后首页仍由菜单表控制，
+    // 同时避免在 Layout 下再嵌套一个空的根路由。
+    if (route.path === '/' && route.children?.length === 1) {
+      return route.children
+    }
+    return [route]
+  })
+  routes.forEach((route) => {
+    router.addRoute('Layout', route)
+    if (route.name) dynamicRouteNames.push(String(route.name))
+  })
+  dynamicMenuRoutes.value = routes
+  router.addRoute(notFoundRoute)
+  notFoundAdded = true
+  return routes
+}
 
 // 白名单
 const whiteList = ['/login', '/social/callback', '/404']
 
 // 嵌入式/公开分享对话路径前缀（免登录）
 const isEmbedPath = (path: string) => path.startsWith('/embed/') || path.startsWith('/chat/share/')
+let routesLoaded = false
+
+function firstMenuPath(routes: RouteRecordRaw[]): string | null {
+  for (const route of routes) {
+    if (route.meta?.hidden) continue
+    const child = route.children?.length ? firstMenuPath(route.children) : null
+    if (child) return `${route.path === '/' ? '' : route.path}/${child}`.replace(/\/+/g, '/')
+    if (!route.children?.length) return `/${String(route.path).replace(/^\/+/, '')}`
+  }
+  return null
+}
 
 // 路由守卫
 router.beforeEach(async (to, _from, next) => {
@@ -455,41 +251,41 @@ router.beforeEach(async (to, _from, next) => {
   
   const userStore = useUserStore()
   
-  if (userStore.token) {
-    if (to.path === '/login') {
-      next({ path: '/' })
-      NProgress.done()
-    } else {
-      if (!userStore.userInfo) {
-        try {
-          await userStore.getInfo()
-          next({ ...to, replace: true })
-        } catch (error) {
-          const requestError = error as RequestRuntimeError
-          const isUnauthorized =
-            requestError?.unauthorized === true ||
-            requestError?.httpStatus === 401 ||
-            requestError?.bizCode === 401
-
-          if (isUnauthorized) {
-            userStore.resetToken()
-            next(`/login?redirect=${to.path}`)
-            NProgress.done()
-            return
-          }
-
-          next()
-        }
-      } else {
-        next()
-      }
+  if (!userStore.token) {
+    if (whiteList.includes(to.path) || isEmbedPath(to.path)) next()
+    else next(`/login?redirect=${to.path}`)
+    NProgress.done()
+    return
+  }
+  if (to.path === '/login') {
+    next({ path: '/' })
+    NProgress.done()
+    return
+  }
+  try {
+    if (!userStore.userInfo) {
+      clearDynamicRoutes()
+      routesLoaded = false
+      await userStore.getInfo()
     }
-  } else {
-    if (whiteList.includes(to.path) || isEmbedPath(to.path)) {
-      next()
-    } else {
+    if (!routesLoaded) {
+      const routes = await loadDynamicRoutes()
+      routesLoaded = true
+      const firstPath = firstMenuPath(routes)
+      next(to.path === '/' && firstPath ? { path: firstPath, replace: true } : { ...to, replace: true })
+      return
+    }
+    next()
+  } catch (error) {
+    const requestError = error as RequestRuntimeError
+    const isUnauthorized = requestError?.unauthorized === true || requestError?.httpStatus === 401 || requestError?.bizCode === 401
+    if (isUnauthorized) {
+      userStore.resetToken()
+      routesLoaded = false
+      clearDynamicRoutes()
       next(`/login?redirect=${to.path}`)
-      NProgress.done()
+    } else {
+      next()
     }
   }
 })

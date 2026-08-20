@@ -30,6 +30,12 @@ export const useUserStore = defineStore('user', () => {
    * 统一写入访问令牌、刷新令牌和调试身份锚点。
    */
   function applySession(accessToken: string, refreshToken?: string | null, runtimeUserId?: string | number | null) {
+    // 切换账号后必须让路由守卫重新拉取菜单和权限，不能复用上一个账号的动态路由。
+    userInfo.value = null
+    tenantId.value = null
+    tenantName.value = ''
+    roles.value = []
+    permissions.value = []
     token.value = accessToken
     _userId.value = runtimeUserId ?? null
     setToken(accessToken)

@@ -8,6 +8,7 @@ import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.domain.po.SysConfigPo;
 import com.han.system.mapper.SysConfigMapper;
+import com.han.system.service.SystemBrandService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 public class ASysConfigController {
 
     private final SysConfigMapper configMapper;
+    private final SystemBrandService systemBrandService;
 
     @GetMapping("/list")
     @PreAuthorize("@ss.hasAuthority('system:config:list')")
@@ -47,6 +49,7 @@ public class ASysConfigController {
     }
 
     @GetMapping("/key/{configKey}")
+    @PreAuthorize("@ss.hasAuthority('system:config:query')")
     public R<String> getByKey(@PathVariable String configKey) {
         LambdaQueryWrapper<SysConfigPo> wrapper = new LambdaQueryWrapper<SysConfigPo>()
                 .eq(SysConfigPo::getConfigKey, configKey);
@@ -58,6 +61,7 @@ public class ASysConfigController {
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:config:add')")
     public R<Void> add(@RequestBody SysConfigPo config) {
+        systemBrandService.assertGenericConfigMutationAllowed(null, config.getConfigKey());
         configMapper.insert(config);
         return R.ok();
     }
@@ -66,6 +70,7 @@ public class ASysConfigController {
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('system:config:edit')")
     public R<Void> edit(@RequestBody SysConfigPo config) {
+        systemBrandService.assertGenericConfigMutationAllowed(config.getId(), config.getConfigKey());
         configMapper.updateById(config);
         return R.ok();
     }
@@ -74,6 +79,7 @@ public class ASysConfigController {
     @PostMapping("/remove/{configId}")
     @PreAuthorize("@ss.hasAuthority('system:config:remove')")
     public R<Void> remove(@PathVariable Long configId) {
+        systemBrandService.assertGenericConfigMutationAllowed(configId, null);
         configMapper.deleteById(configId);
         return R.ok();
     }

@@ -44,7 +44,7 @@
         </el-table-column>
         <el-table-column label="操作" min-width="120">
           <template #default="{ row }">
-            <el-button type="danger" link :icon="SwitchButton" @click="handleForceLogout(row)">强制下线</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:online:forceLogout')" type="danger" link :icon="SwitchButton" @click="handleForceLogout(row)">强制下线</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -57,9 +57,11 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, SwitchButton } from '@element-plus/icons-vue'
 import { listOnlineUser, forceLogout, type OnlineUser } from '@/api/system/online'
+import { useUserStore } from '@/stores/user'
 
 const loading = ref(false)
 const onlineList = ref<OnlineUser[]>([])
+const userStore = useUserStore()
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 const queryParams = reactive({

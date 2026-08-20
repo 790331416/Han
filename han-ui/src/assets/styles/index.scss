@@ -318,6 +318,56 @@ html.dark {
     background: #4b5563;
     &:hover { background: #6b7280; }
   }
+
+  // 教育管理的树、范围授权等业务页使用同一组语义色，避免局部浅色常量在暗色模式下残留。
+  .operation-page {
+    background: var(--el-bg-color-page);
+    color: var(--el-text-color-regular);
+
+    .page-header h2,
+    .card-title,
+    .panel-header,
+    .node-name,
+    .tree-node-name,
+    .node {
+      color: var(--el-text-color-primary);
+    }
+
+    .page-header p,
+    .selection-summary,
+    .range-separator,
+    .table-footer {
+      color: var(--el-text-color-secondary);
+    }
+
+    .region-panel,
+    .tree-card,
+    .filter-card,
+    .list-card,
+    .selector-card,
+    .scope-panel {
+      background: var(--el-bg-color);
+      border-color: var(--el-border-color);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+    }
+
+    .panel-toolbar,
+    .tree-card .el-card__header,
+    .list-card .el-card__header,
+    .scope-panel .el-card__header {
+      border-color: var(--el-border-color);
+    }
+
+    .tree-node.active,
+    .tree-node:hover {
+      background: #172554;
+    }
+
+    .list-card .el-table th.el-table__cell {
+      color: var(--el-text-color-primary);
+      background: #1f2937;
+    }
+  }
 }
 
 // ============================================================

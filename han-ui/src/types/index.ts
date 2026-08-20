@@ -62,17 +62,21 @@ export interface LoginVO {
 
 // 路由菜单
 export interface RouteMenu {
-  id: string | number
-  parentId: string | number
-  menuName: string
-  menuType: string
+  id?: string | number
+  parentId?: string | number
+  menuName?: string
+  menuType?: string
+  name?: string
   path: string
   component: string | null
-  perms: string | null
-  icon: string
-  sort: number
-  visible: number
-  status: number
+  perms?: string | null
+  icon?: string
+  sort?: number
+  visible?: number
+  hidden?: boolean
+  redirect?: string | null
+  meta?: { title?: string; icon?: string; noCache?: boolean; link?: string | null }
+  status?: number
   children?: RouteMenu[]
 }
 

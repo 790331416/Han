@@ -41,9 +41,9 @@
         <div class="card-header">
           <span>操作日志</span>
           <div class="table-operations">
-            <el-button type="warning" :icon="Download" @click="handleExport">导出</el-button>
-            <el-button type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
-            <el-button type="danger" :icon="Delete" @click="handleClean">清空</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:operlog:export')" type="warning" :icon="Download" @click="handleExport">导出</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:operlog:remove')" type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:operlog:remove')" type="danger" :icon="Delete" @click="handleClean">清空</el-button>
           </div>
         </div>
       </template>
@@ -125,6 +125,7 @@ import { listOperLog, deleteOperLog, cleanOperLog } from '@/api/system/operlog'
 import { downloadExcel } from '@/utils/download'
 import type { OperLog } from '@/api/system/operlog'
 import type { FormInstance } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const loading = ref(false)
 const logList = ref<OperLog[]>([])
@@ -132,6 +133,7 @@ const total = ref(0)
 const selectedIds = ref<(string | number)[]>([])
 const detailVisible = ref(false)
 const detailData = ref<OperLog>({} as OperLog)
+const userStore = useUserStore()
 
 const queryFormRef = ref<FormInstance>()
 

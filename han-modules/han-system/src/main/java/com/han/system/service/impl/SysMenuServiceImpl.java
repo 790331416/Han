@@ -73,14 +73,25 @@ public class SysMenuServiceImpl implements ISysMenuService {
             if (menuIds.isEmpty()) {
                 return List.of();
             }
-            menus = menuMapper.selectList(
+            // 角色只配置了叶子菜单时，补回其目录祖先用于构造树；祖先本身不增加任何叶子权限。
+            List<SysMenuPo> allMenus = menuMapper.selectList(
                     new LambdaQueryWrapper<SysMenuPo>()
-                            .in(SysMenuPo::getId, menuIds)
                             .in(SysMenuPo::getMenuType, TYPE_DIR, TYPE_MENU)
                             .eq(SysMenuPo::getStatus, 0)
                             .orderByAsc(SysMenuPo::getParentId)
                             .orderByAsc(SysMenuPo::getSort)
             );
+            Set<Long> visibleIds = new java.util.LinkedHashSet<>(menuIds);
+            boolean changed;
+            do {
+                changed = false;
+                for (SysMenuPo menu : allMenus) {
+                    if (visibleIds.contains(menu.getId()) && menu.getParentId() != null && menu.getParentId() != 0L) {
+                        changed |= visibleIds.add(menu.getParentId());
+                    }
+                }
+            } while (changed);
+            menus = allMenus.stream().filter(menu -> visibleIds.contains(menu.getId())).toList();
         }
         return buildTree(menus);
     }

@@ -29,8 +29,8 @@
         <div class="card-header">
           <span>登录日志</span>
           <div class="table-operations">
-            <el-button type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
-            <el-button type="danger" :icon="Delete" @click="handleClean">清空</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:loginlog:remove')" type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
+            <el-button v-if="userStore.hasPermission('monitor:loginlog:remove')" type="danger" :icon="Delete" @click="handleClean">清空</el-button>
           </div>
         </div>
       </template>
@@ -73,11 +73,13 @@ import { Search, Refresh, Delete } from '@element-plus/icons-vue'
 import { listLoginLog, deleteLoginLog, cleanLoginLog } from '@/api/system/loginlog'
 import type { LoginLog } from '@/api/system/loginlog'
 import type { FormInstance } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const loading = ref(false)
 const logList = ref<LoginLog[]>([])
 const total = ref(0)
 const selectedIds = ref<(string | number)[]>([])
+const userStore = useUserStore()
 
 const queryFormRef = ref<FormInstance>()
 
