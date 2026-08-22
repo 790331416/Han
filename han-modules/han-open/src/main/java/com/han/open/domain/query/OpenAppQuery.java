@@ -38,4 +38,12 @@ public class OpenAppQuery extends BaseQuery {
     /** 状态 */
     @Schema(description = "状态(0正常 1停用)")
     private Integer status;
+
+    /** 生命周期状态：0草稿 1待审核 2沙箱开通 3调测中 4生产待审 5生产开通 6暂停 7撤销。 */
+    @Schema(description = "应用生命周期状态")
+    private Integer lifecycleStatus;
+
+    /** 厂商 ID；普通厂商用户只能查询自己所属厂商。 */
+    @Schema(description = "厂商ID")
+    private Long vendorId;
 }

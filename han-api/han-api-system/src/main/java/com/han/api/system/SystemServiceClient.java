@@ -10,6 +10,7 @@ import com.han.api.system.domain.DeptVO;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.api.system.domain.EducationDeviceDirectoryVO;
 import com.han.api.system.domain.EducationPersonDirectoryVO;
+import com.han.api.system.domain.OpenVendorAccountCreateDTO;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -214,4 +215,16 @@ public interface SystemServiceClient {
             @RequestParam(value = "updatedAfter", required = false) LocalDateTime updatedAfter,
             @RequestParam(value = "pageNum", required = false) Integer pageNum,
             @RequestParam(value = "pageSize", required = false) Integer pageSize);
+
+    /** 创建禁用的开放平台厂商门户账号。 */
+    @PostExchange("/vendor/portal/account")
+    R<Long> createOpenVendorAccount(@RequestBody OpenVendorAccountCreateDTO dto);
+
+    /** 审核通过后激活仅绑定 openVendor 角色的门户账号。 */
+    @PostExchange("/vendor/portal/account/{userId}/activate")
+    R<Void> activateOpenVendorAccount(@PathVariable("userId") Long userId);
+
+    /** 公开申请后续开放表落库失败时，安全补偿删除新建的禁用门户账号。 */
+    @PostExchange("/vendor/portal/account/{userId}/compensate")
+    R<Void> compensateOpenVendorAccount(@PathVariable("userId") Long userId);
 }

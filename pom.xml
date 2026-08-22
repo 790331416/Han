@@ -206,6 +206,11 @@
                 <artifactId>han-api-file</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.han</groupId>
+                <artifactId>han-api-open</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- ==================== 第三方依赖 ==================== -->
             <!-- Spring Boot Starters (显式声明) -->

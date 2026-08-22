@@ -18,6 +18,7 @@
         <module>han-api-tenant</module>
         <module>han-api-file</module>
         <module>han-api-ai</module>
+        <module>han-api-open</module>
     </modules>
 
 </project>

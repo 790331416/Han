@@ -3,6 +3,7 @@ package com.han.open.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
+import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.open.domain.dto.OpenAppDTO;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,8 +35,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OpenAppController {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private final ObjectMapper objectMapper;
     private final IOpenAppService openAppService;
 
     /**
@@ -61,6 +62,7 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('open:app:add')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.INSERT, saveParams = false, saveResult = false)
     public R<OpenAppCredentialVO> add(@Validated @RequestBody OpenAppDTO dto) {
         return R.ok(openAppService.createWithCredentials(dto));
     }
@@ -71,8 +73,9 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping("/edit")
     @PreAuthorize("@ss.hasAuthority('open:app:edit')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE)
     public R<Void> edit(@RequestBody Map<String, Object> requestBody) {
-        OpenAppDTO dto = OBJECT_MAPPER.convertValue(requestBody, OpenAppDTO.class);
+        OpenAppDTO dto = objectMapper.convertValue(requestBody, OpenAppDTO.class);
         bindCompatibleAppId(dto, requestBody);
         openAppService.update(dto);
         return R.ok();
@@ -84,6 +87,7 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping("/remove/{appId}")
     @PreAuthorize("@ss.hasAuthority('open:app:remove')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.DELETE)
     public R<Void> remove(@PathVariable Long appId) {
         openAppService.deleteById(appId);
         return R.ok();
@@ -95,6 +99,7 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping("/resetSecret/{appId}")
     @PreAuthorize("@ss.hasAuthority('open:app:resetSecret')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE, saveParams = false, saveResult = false)
     public R<String> resetSecret(@PathVariable Long appId) {
         return R.ok(openAppService.resetAppSecret(appId));
     }
@@ -105,8 +110,22 @@ public class OpenAppController {
     @RepeatSubmit
     @PostMapping("/changeStatus")
     @PreAuthorize("@ss.hasAuthority('open:app:edit')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE)
     public R<Void> changeStatus(@RequestBody OpenAppStatusUpdateRequest request) {
         openAppService.updateStatus(request.getAppId(), request.resolveStatus());
+        return R.ok();
+    }
+
+    /**
+     * 推进应用生命周期；管理员审批与厂商自助提交共用服务层状态机。
+     */
+    @RepeatSubmit
+    @PostMapping("/changeLifecycleStatus")
+    @PreAuthorize("@ss.hasAuthority('open:app:edit')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE)
+    public R<Void> changeLifecycleStatus(@RequestParam Long appId,
+                                         @RequestParam Integer lifecycleStatus) {
+        openAppService.updateLifecycleStatus(appId, lifecycleStatus);
         return R.ok();
     }
 

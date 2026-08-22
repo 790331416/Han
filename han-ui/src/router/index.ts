@@ -18,6 +18,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '登录', hidden: true }
   },
   {
+    path: '/open/vendor-apply',
+    name: 'VendorApply',
+    component: () => import('@/views/open/vendor-apply/index.vue'),
+    meta: { title: '厂商入驻申请', hidden: true }
+  },
+  {
     path: '/social/callback',
     name: 'SocialCallback',
     component: () => import('@/views/login/social-callback.vue'),
@@ -183,7 +189,7 @@ function toDynamicRoute(menu: RouteMenu, parentPath = ''): RouteRecordRaw {
 
 // 仅保留公共路由和应用外壳，业务路由在登录后从菜单树注册。
 const initialRoutes = constantRoutes.filter((route) =>
-  ['Login', 'SocialCallback', '404', 'Layout', 'ShareChat'].includes(String(route.name)) || route.path === '/redirect'
+  ['Login', 'VendorApply', 'SocialCallback', '404', 'Layout', 'ShareChat'].includes(String(route.name)) || route.path === '/redirect'
 )
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -229,7 +235,7 @@ export async function loadDynamicRoutes() {
 }
 
 // 白名单
-const whiteList = ['/login', '/social/callback', '/404']
+const whiteList = ['/login', '/open/vendor-apply', '/social/callback', '/404']
 
 // 嵌入式/公开分享对话路径前缀（免登录）
 const isEmbedPath = (path: string) => path.startsWith('/embed/') || path.startsWith('/chat/share/')

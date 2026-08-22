@@ -41,6 +41,11 @@ public interface IOpenAppService extends IBaseService<OpenAppQuery, OpenAppDTO> 
     void updateStatus(Long appId, Integer status);
 
     /**
+     * 按应用生命周期状态机推进应用。
+     */
+    void updateLifecycleStatus(Long appId, Integer lifecycleStatus);
+
+    /**
      * 验证客户端凭证
      */
     boolean validateClient(String clientId, String clientSecret);

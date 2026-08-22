@@ -74,4 +74,13 @@ public class OpenAppPo extends BizEntity {
 
     /** 联系邮箱 */
     private String contactEmail;
+
+    /** 厂商ID */
+    private Long vendorId;
+
+    /** 生命周期状态：0草稿 1待审核 2沙箱已开通 3调测中 4生产待审核 5生产已开通 6暂停 7撤销 */
+    private Integer lifecycleStatus;
+
+    /** 环境策略：SANDBOX_FIRST仅沙箱、PROD_ONLY仅生产、ALL所有环境 */
+    private String environmentPolicy;
 }

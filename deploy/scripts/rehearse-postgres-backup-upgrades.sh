@@ -81,6 +81,7 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260715_sys_dict_type_exact_duplicate_alignment.sql"
   "sql/upgrades/postgres/20260720_ai_agent_chat_tuning.sql"
   "sql/upgrades/postgres/20260720_wechat_social_login.sql"
+  "sql/upgrades/postgres/20260823_open_platform_tables.sql"
 )
 BACKUP_INPUTS=()
 COMPOSE_TIER=""
@@ -285,6 +286,108 @@ END $$;
 SQL
 }
 
+replay_open_platform() {
+  local file="sql/upgrades/postgres/20260823_open_platform_tables.sql"
+  echo "[backup-rehearsal] ${DATABASE_NAME} <- (replay) ${file}"
+  psql_db -f "/workspace/${file}" >/dev/null
+}
+
+assert_open_platform() {
+  psql_db -At <<'SQL'
+DO $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'open_app'
+    ) THEN
+        RAISE EXCEPTION 'open_app missing';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'open_user_authorization'
+    ) THEN
+        RAISE EXCEPTION 'open_user_authorization missing';
+    END IF;
+
+    SELECT COUNT(*) INTO v_count
+    FROM (
+        SELECT unnest(ARRAY[
+            'open_api_resource',
+            'open_api_resource_version',
+            'open_vendor',
+            'open_vendor_user',
+            'open_vendor_application',
+            'open_app_resource_grant',
+            'open_authorization_request',
+            'open_app_credential',
+            'open_api_test_run'
+        ]) AS table_name
+        EXCEPT
+        SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
+    ) missing;
+    IF v_count > 0 THEN
+        RAISE EXCEPTION 'open platform tables missing: %', v_count;
+    END IF;
+
+    SELECT COUNT(*) INTO v_count
+    FROM (
+        SELECT unnest(ARRAY['school_scope', 'vendor_id', 'lifecycle_status', 'environment_policy']) AS column_name
+        EXCEPT
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'open_app'
+    ) missing;
+    IF v_count > 0 THEN
+        RAISE EXCEPTION 'open_app open-platform columns missing: %', v_count;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND t.relname = 'open_app_resource_grant'
+          AND c.conname = 'uk_open_app_resource_grant'
+    ) THEN
+        RAISE EXCEPTION 'open_app_resource_grant.uk_open_app_resource_grant missing';
+    END IF;
+
+    SELECT COUNT(*) INTO v_count
+    FROM open_api_resource
+    WHERE id IN (1, 2, 3);
+    IF v_count <> 3 THEN
+        RAISE EXCEPTION 'open_api_resource seeds missing: %', v_count;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'sys_role' AND column_name = 'tenant_id')
+       AND EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'sys_role' AND column_name = 'role_name')
+       AND EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'sys_menu' AND column_name = 'menu_type') THEN
+        IF NOT EXISTS (SELECT 1 FROM sys_role WHERE tenant_id = 1 AND role_key = 'openVendor' AND del_flag = 0) THEN
+            RAISE EXCEPTION 'openVendor role missing';
+        END IF;
+        SELECT COUNT(*) INTO v_count
+        FROM sys_role role
+        JOIN sys_role_menu rm ON rm.role_id = role.id
+        JOIN sys_menu menu ON menu.id = rm.menu_id
+        WHERE role.tenant_id = 1 AND role.role_key = 'openVendor'
+          AND menu.id IN (5, 202608230010, 202608230101, 202608230102, 202608230103,
+                          202608230201, 202608230202, 202608230203, 202608230204, 202608230205,
+                          202608230301, 202608230302, 202608230303,
+                          202608230401, 202608230402, 202608230501, 202608230502);
+        IF v_count <> 17 THEN
+            RAISE EXCEPTION 'openVendor portal menu permissions missing: %', v_count;
+        END IF;
+    END IF;
+END $$;
+SQL
+}
+
 assert_has_tables() {
   local table_count
   table_count="$(psql_db -At <<'SQL'
@@ -404,6 +507,8 @@ done
 
 assert_has_tables
 run_upgrades
+replay_open_platform
+assert_open_platform
 assert_no_deleted_columns
 assert_no_duplicate_dictionary_rows
 assert_required_columns

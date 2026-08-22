@@ -1,5 +1,6 @@
 -- 巴蜀云校开放平台应用表。
 -- 适用于首次启用 han-open；不预置第三方应用或密钥。
+SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS open_app (
     id                   BIGINT        NOT NULL PRIMARY KEY COMMENT '主键',
     tenant_id            BIGINT        NULL COMMENT '租户ID',

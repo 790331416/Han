@@ -6,15 +6,22 @@ import com.han.auth.config.SecurityProperties;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
+import com.han.auth.domain.VendorPublicRegisterDTO;
 import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.IAuthService;
+import com.han.auth.service.VendorRegistrationService;
+import com.han.api.open.domain.OpenVendorApplicationStatusVO;
 import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
 import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.annotation.RateLimiter;
 import com.han.common.security.annotation.RateLimiter.LimitType;
+import com.han.common.security.annotation.RepeatSubmit;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import org.springframework.validation.annotation.Validated;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +37,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/auth")
+@Validated
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -37,6 +45,7 @@ public class AuthController {
     private final StringRedisTemplate redisTemplate;
     private final SecurityProperties securityProperties;
     private final CaptchaSettingService captchaSettingService;
+    private final VendorRegistrationService vendorRegistrationService;
 
     /**
      * PC端登录
@@ -128,6 +137,35 @@ public class AuthController {
             result.put("publicKey", securityProperties.getPublicKey());
         }
         return R.ok(result);
+    }
+
+    /** 厂商注册专用公钥；始终返回，不能用旧登录开关关闭。 */
+    @GetMapping("/vendor/publicKey")
+    @PermissionExempt("厂商注册前获取专用 RSA 公钥，只返回公钥")
+    public R<Map<String, Object>> vendorPublicKey() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enabled", true);
+        result.put("publicKey", securityProperties.getPublicKey());
+        return R.ok(result);
+    }
+
+    /** 厂商公开注册入口，验证码和密码解密统一由 auth 完成。 */
+    @PostMapping("/vendor/register")
+    @PermissionExempt("厂商公开注册入口，方法内完成验证码、RSA 密码和账号申请校验")
+    @RateLimiter(key = "vendorRegister", time = 60, count = 5, limitType = LimitType.IP)
+    @RepeatSubmit(interval = 10, message = "请勿重复提交厂商申请")
+    public R<String> vendorRegister(@RequestBody @Valid VendorPublicRegisterDTO dto) {
+        return R.ok(vendorRegistrationService.register(dto));
+    }
+
+    /** 厂商公开查询申请状态，申请编号和联系电话必须同时匹配。 */
+    @GetMapping("/vendor/application/status")
+    @PermissionExempt("厂商公开状态查询，必须同时匹配申请编号和联系电话")
+    @RateLimiter(key = "vendorStatus", time = 60, count = 30, limitType = LimitType.IP)
+    public R<OpenVendorApplicationStatusVO> vendorStatus(
+            @RequestParam @Size(min = 1, max = 32) @Pattern(regexp = "[A-Za-z0-9-]{1,32}") String applicationNo,
+            @RequestParam @Size(min = 6, max = 20) @Pattern(regexp = "[0-9+()\\- ]{6,20}") String contactPhone) {
+        return R.ok(vendorRegistrationService.queryStatus(applicationNo, contactPhone));
     }
 
     /**

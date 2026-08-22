@@ -34,6 +34,9 @@ public class OpenDirectoryController {
     private static final String TEACHER_SCOPE = "edu.teacher.read";
     private static final String STUDENT_SCOPE = "edu.student.read";
     private static final String DEVICE_SCOPE = "edu.device.read";
+    private static final String TEACHER_RESOURCE = "directory.teachers.read";
+    private static final String STUDENT_RESOURCE = "directory.students.read";
+    private static final String DEVICE_RESOURCE = "directory.devices.read";
 
     private final IOAuth2Service oauth2Service;
     private final SystemServiceClient systemServiceClient;
@@ -47,7 +50,7 @@ public class OpenDirectoryController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
             @RequestParam(required = false) Integer pageNum,
             @RequestParam(required = false) Integer pageSize) {
-        OpenAccessTokenContext context = context(authorization, TEACHER_SCOPE);
+        OpenAccessTokenContext context = context(authorization, TEACHER_SCOPE, TEACHER_RESOURCE);
         return systemServiceClient.listOpenDirectoryPeople(context.tenantId(), schools(context, schoolId), "TEACHER",
                 status, updatedAfter, pageNum, pageSize);
     }
@@ -61,7 +64,7 @@ public class OpenDirectoryController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
             @RequestParam(required = false) Integer pageNum,
             @RequestParam(required = false) Integer pageSize) {
-        OpenAccessTokenContext context = context(authorization, STUDENT_SCOPE);
+        OpenAccessTokenContext context = context(authorization, STUDENT_SCOPE, STUDENT_RESOURCE);
         return systemServiceClient.listOpenDirectoryPeople(context.tenantId(), schools(context, schoolId), "STUDENT",
                 status, updatedAfter, pageNum, pageSize);
     }
@@ -75,16 +78,16 @@ public class OpenDirectoryController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
             @RequestParam(required = false) Integer pageNum,
             @RequestParam(required = false) Integer pageSize) {
-        OpenAccessTokenContext context = context(authorization, DEVICE_SCOPE);
+        OpenAccessTokenContext context = context(authorization, DEVICE_SCOPE, DEVICE_RESOURCE);
         return systemServiceClient.listOpenDirectoryDevices(context.tenantId(), schools(context, schoolId),
                 status, updatedAfter, pageNum, pageSize);
     }
 
-    private OpenAccessTokenContext context(String authorization, String scope) {
+    private OpenAccessTokenContext context(String authorization, String scope, String resourceCode) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             throw new BusinessException("缺少开放平台 Bearer Token");
         }
-        return oauth2Service.requireAccessToken(authorization.substring("Bearer ".length()).trim(), scope);
+        return oauth2Service.requireAccessToken(authorization.substring("Bearer ".length()).trim(), scope, resourceCode);
     }
 
     private List<Long> schools(OpenAccessTokenContext context, Long schoolId) {

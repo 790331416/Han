@@ -18,6 +18,11 @@
             <el-option label="停用" :value="1" />
           </el-select>
         </el-form-item>
+        <el-form-item label="生命周期" prop="lifecycleStatus">
+          <el-select v-model="queryParams.lifecycleStatus" placeholder="全部" clearable style="width: 140px">
+            <el-option v-for="item in lifecycleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" data-testid="open-app-search-button" @click="handleQuery">搜索</el-button>
           <el-button :icon="Refresh" data-testid="open-app-reset-button" @click="resetQuery">重置</el-button>
@@ -29,13 +34,16 @@
       <template #header>
         <div class="card-header">
           <span>开放应用列表</span>
-          <el-button type="primary" :icon="Plus" data-testid="open-app-add-button" @click="handleAdd">新增应用</el-button>
+          <el-button v-if="canAdd" type="primary" :icon="Plus" data-testid="open-app-add-button" @click="handleAdd">新增应用</el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="appList" data-testid="open-app-table">
+      <el-table v-loading="loading" :data="appList" :empty-text="canList ? '暂无应用数据' : '无权限查看应用数据'" data-testid="open-app-table">
         <el-table-column label="应用名称" prop="appName" min-width="180" show-overflow-tooltip />
         <el-table-column label="AppKey" prop="appKey" min-width="250" show-overflow-tooltip />
+        <el-table-column label="所属厂商" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.vendorName || row.vendorId || '-' }}</template>
+        </el-table-column>
         <el-table-column label="应用类型" prop="appType" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.appType === 'web'">Web</el-tag>
@@ -47,20 +55,30 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch
+              v-if="canEdit"
               :model-value="row.status === 0"
               :data-testid="`open-app-status-switch-${row.appId}`"
               @change="(val: any) => handleStatusChange(row, !!val)"
             />
+            <el-tag v-else size="small" :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
+        </el-table-column>
+        <el-table-column label="生命周期" width="120" align="center">
+          <template #default="{ row }"><el-tag :type="lifecycleTagType(row.lifecycleStatus)">{{ lifecycleLabel(row.lifecycleStatus) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="环境策略" prop="environmentPolicy" min-width="130" show-overflow-tooltip>
+          <template #default="{ row }">{{ environmentPolicyLabel(row.environmentPolicy) }}</template>
         </el-table-column>
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" :data-testid="`open-app-edit-button-${row.appId}`" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="warning" link :icon="RefreshRight" :data-testid="`open-app-reset-secret-button-${row.appId}`" @click="handleResetSecret(row)">重置密钥</el-button>
-            <el-button type="danger" link :icon="Delete" :data-testid="`open-app-delete-button-${row.appId}`" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="canEdit" type="primary" link :icon="Edit" :data-testid="`open-app-edit-button-${row.appId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="canResetSecret" type="warning" link :icon="RefreshRight" :data-testid="`open-app-reset-secret-button-${row.appId}`" @click="handleResetSecret(row)">重置密钥</el-button>
+            <el-button v-if="canRemove" type="danger" link :icon="Delete" :data-testid="`open-app-delete-button-${row.appId}`" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="canEdit && nextLifecycleStatus(row) !== undefined" type="success" link @click="handleLifecycleChange(row)">推进生命周期</el-button>
           </template>
         </el-table-column>
+        <template #empty><el-empty :description="canList ? '暂无应用数据' : '无权限查看应用数据'" :image-size="80" /></template>
       </el-table>
 
       <el-pagination
@@ -94,15 +112,26 @@
         <el-form-item label="回调地址">
           <el-input v-model="redirectUrisStr" type="textarea" placeholder="多个地址用换行分隔" :rows="3" data-testid="open-app-form-redirect-uris" />
         </el-form-item>
-        <el-form-item label="授权范围">
-          <el-checkbox-group v-model="form.scopes">
+        <el-form-item label="协议范围">
+          <el-checkbox-group v-model="selectedProtocolScopes">
             <el-checkbox label="openid">OpenID</el-checkbox>
             <el-checkbox label="profile">基础资料</el-checkbox>
-            <el-checkbox label="edu.teacher.read">教师目录</el-checkbox>
-            <el-checkbox label="edu.student.read">学生目录</el-checkbox>
-            <el-checkbox label="edu.device.read">设备目录</el-checkbox>
-            <el-checkbox label="edu.contact.read">联系方式（需审批）</el-checkbox>
           </el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="授权接口">
+          <div class="api-resource-list">
+            <div v-for="(resources, category) in apiResourcesByCategory" :key="category" class="api-resource-group">
+              <div class="api-resource-category">{{ category }}</div>
+              <el-checkbox-group v-model="selectedApiResourceIds">
+                <el-checkbox v-for="resource in resources" :key="resource.id" :label="resource.id">
+                  <span>{{ resource.resourceName }}</span>
+                  <el-tag size="small" effect="plain" class="api-resource-method">{{ resource.httpMethod }}</el-tag>
+                  <span class="api-resource-path">{{ resource.path }}</span>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+            <el-empty v-if="!apiResources.length" description="暂无可授权接口" :image-size="60" />
+          </div>
         </el-form-item>
         <el-form-item v-if="needsSchoolScope" label="授权学校" prop="schoolIds">
           <el-select v-model="form.schoolIds" multiple filterable clearable placeholder="选择可读取目录的学校" style="width: 100%">
@@ -132,16 +161,71 @@
         <el-button type="primary" data-testid="open-app-dialog-submit" @click="submitForm" :loading="submitLoading">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="credentialDialogVisible"
+      :title="credentialDialogTitle"
+      width="560px"
+      destroy-on-close
+      data-testid="open-app-credential-dialog"
+    >
+      <el-alert
+        title="Client Secret 只显示一次，请立即保存。重置密钥后，旧密钥会立即失效。"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="credential-warning"
+      />
+      <el-form label-width="120px" class="credential-form">
+        <el-form-item label="Client ID">
+          <el-input :model-value="credential.appKey" readonly data-testid="open-app-credential-id">
+            <template #append>
+              <el-button :icon="CopyDocument" @click="copyCredential(credential.appKey, 'Client ID')">复制</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="Client Secret">
+          <el-input
+            :model-value="credential.appSecret"
+            readonly
+            show-password
+            type="password"
+            autocomplete="off"
+            data-testid="open-app-credential-secret"
+          >
+            <template #append>
+              <el-button :icon="CopyDocument" @click="copyCredential(credential.appSecret, 'Client Secret')">复制</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="credentialDialogVisible = false">关闭</el-button>
+        <el-button type="primary" data-testid="open-app-credential-confirm" @click="confirmCredential">
+          我已记录并复制密钥
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Search, Refresh, Plus, Edit, Delete, RefreshRight } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete, RefreshRight, CopyDocument } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, resetAppSecret, changeAppStatus, type OpenApp, type OpenAppForm } from '@/api/open/app'
+import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, resetAppSecret, changeAppStatus, changeAppLifecycleStatus, listOpenApiResources, type OpenApp, type OpenAppForm, type OpenApiResource } from '@/api/open/app'
 import { listOrganizationTree } from '@/api/education'
 import { schoolOptions as flattenSchoolOptions } from '@/utils/education-school-tree'
+import { useUserStore } from '@/stores/user'
+
+type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
+
+const userStore = useUserStore()
+const canList = computed(() => userStore.hasPermission('open:app:list'))
+const canAdd = computed(() => userStore.hasPermission('open:app:add'))
+const canEdit = computed(() => userStore.hasPermission('open:app:edit'))
+const canRemove = computed(() => userStore.hasPermission('open:app:remove'))
+const canResetSecret = computed(() => userStore.hasPermission('open:app:resetSecret'))
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -151,10 +235,22 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 
-const queryParams = reactive({ appName: '', appType: '' as string | undefined, status: undefined as number | undefined, pageNum: 1, pageSize: 10 })
+const queryParams = reactive({ appName: '', appType: '' as string | undefined, status: undefined as number | undefined, lifecycleStatus: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
 const form = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', redirectUris: [], scopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'], schoolIds: [], contactName: '', accessTokenTtl: 7200, refreshTokenTtl: 604800, status: 0 })
 const schools = ref<Array<{ label: string; value: string | number }>>([])
+const credentialDialogVisible = ref(false)
+const credentialDialogTitle = ref('应用凭证')
+const credential = reactive({ appKey: '', appSecret: '' })
+const apiResources = ref<OpenApiResource[]>([])
+const selectedProtocolScopes = ref<string[]>(['openid', 'profile'])
+const selectedApiResourceIds = ref<Array<string | number>>([])
+const lifecycleOptions = [
+  { value: 0, label: '草稿' }, { value: 1, label: '待审核' }, { value: 2, label: '沙箱开通' },
+  { value: 3, label: '调测中' }, { value: 4, label: '生产待审' }, { value: 5, label: '生产开通' },
+  { value: 6, label: '暂停' }, { value: 7, label: '撤销' }
+]
+const lifecycleTransitions: Record<number, number[]> = { 0: [1], 1: [2], 2: [3], 3: [4], 4: [5], 5: [6], 6: [2], 7: [] }
 
 const redirectUrisStr = computed({
   get: () => (form.redirectUris || []).join('\n'),
@@ -163,6 +259,20 @@ const redirectUrisStr = computed({
 
 const needsSchoolScope = computed(() => (form.scopes || []).some(scope =>
   scope === 'edu.teacher.read' || scope === 'edu.student.read' || scope === 'edu.device.read'))
+
+const apiResourcesByCategory = computed<Record<string, OpenApiResource[]>>(() => apiResources.value.reduce((groups, resource) => {
+  const category = resource.category || '其他接口'
+  groups[category] = groups[category] || []
+  groups[category].push(resource)
+  return groups
+}, {} as Record<string, OpenApiResource[]>))
+
+watch([selectedProtocolScopes, selectedApiResourceIds, apiResources], () => {
+  const selectedScopes = apiResources.value
+    .filter(resource => selectedApiResourceIds.value.some(id => String(id) === String(resource.id)))
+    .map(resource => resource.scopeCode)
+  form.scopes = [...new Set([...selectedProtocolScopes.value, ...selectedScopes])]
+}, { deep: true })
 
 watch(() => form.appType, (appType) => {
   form.grantTypes = appType === 'server' ? ['client_credentials'] : ['authorization_code', 'refresh_token']
@@ -173,23 +283,33 @@ const rules: FormRules = {
   appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }]
 }
 
-onMounted(async () => { await loadSchools(); await getList() })
+onMounted(async () => { await loadSchools(); await loadApiResources(); await getList() })
 
 async function loadSchools() {
-  const response = await listOrganizationTree(0)
-  schools.value = flattenSchoolOptions(response.data || []).map(item => ({
-    label: `${item.schoolName}（${item.schoolCode}）`, value: item.id
-  }))
+  try {
+    const response = await listOrganizationTree(0)
+    schools.value = flattenSchoolOptions(response.data || []).map(item => ({
+      label: `${item.schoolName}（${item.schoolCode}）`, value: item.id
+    }))
+  } catch (error) { schools.value = []; notifyError(error, '加载学校范围失败') }
+}
+
+async function loadApiResources() {
+  try {
+    const response = await listOpenApiResources()
+    apiResources.value = ((response as any).data || []).filter((resource: OpenApiResource) => resource.status === 0)
+  } catch (error) { apiResources.value = []; notifyError(error, '加载接口目录失败') }
 }
 
 async function getList() {
+  if (!canList.value) { appList.value = []; total.value = 0; return }
   loading.value = true
   try {
     const res = await listOpenApp(queryParams)
     const data = (res as any).data
     appList.value = data?.records || data?.rows || []
     total.value = data?.total || 0
-  } catch { /* 接口不可用 */ } finally {
+  } catch (error) { appList.value = []; total.value = 0; notifyError(error, '加载应用列表失败') } finally {
     loading.value = false
   }
 }
@@ -197,7 +317,7 @@ async function getList() {
 function handleQuery() { queryParams.pageNum = 1; getList() }
 
 function resetQuery() {
-  queryParams.appName = ''; queryParams.appType = undefined; queryParams.status = undefined
+  queryParams.appName = ''; queryParams.appType = undefined; queryParams.status = undefined; queryParams.lifecycleStatus = undefined
   handleQuery()
 }
 
@@ -214,7 +334,9 @@ async function handleEdit(row: OpenApp) {
     const res = await getOpenApp(row.appId)
     const d = (res as any).data
     Object.assign(form, { appId: d.appId, appName: d.appName, appDesc: d.appDesc, appType: d.appType, redirectUris: d.redirectUris || [], scopes: d.scopes || [], grantTypes: d.grantTypes || [], schoolIds: d.schoolIds || [], contactName: d.contactName, accessTokenTtl: d.accessTokenTtl, refreshTokenTtl: d.refreshTokenTtl, status: d.status })
-  } catch { /* ignore */ }
+    selectedProtocolScopes.value = (d.scopes || []).filter((scope: string) => scope === 'openid' || scope === 'profile')
+    selectedApiResourceIds.value = apiResources.value.filter(resource => (d.scopes || []).includes(resource.scopeCode)).map(resource => resource.id)
+  } catch (error) { notifyError(error, '加载应用详情失败') }
   dialogVisible.value = true
 }
 
@@ -224,7 +346,7 @@ async function handleDelete(row: OpenApp) {
     await deleteOpenApp(row.appId)
     ElMessage.success('删除成功')
     getList()
-  } catch { /* cancel */ }
+  } catch (error) { if (!isCancel(error)) notifyError(error, '删除应用失败') }
 }
 
 async function handleStatusChange(row: OpenApp, val: boolean) {
@@ -233,7 +355,7 @@ async function handleStatusChange(row: OpenApp, val: boolean) {
     await changeAppStatus(row.appId, newStatus)
     ElMessage.success(val ? '启用成功' : '停用成功')
     getList()
-  } catch { /* ignore */ }
+  } catch (error) { if (!isCancel(error)) notifyError(error, '变更应用状态失败') }
 }
 
 async function handleResetSecret(row: OpenApp) {
@@ -241,8 +363,8 @@ async function handleResetSecret(row: OpenApp) {
     await ElMessageBox.confirm(`确认重置应用"${row.appName}"的密钥？重置后旧密钥将失效。`, '提示', { type: 'warning' })
     const res = await resetAppSecret(row.appId)
     const newSecret = (res as any).data
-    ElMessageBox.alert(`新密钥: ${newSecret}`, '密钥已重置', { confirmButtonText: '已复制', type: 'success' })
-  } catch { /* cancel */ }
+    openCredentialDialog(row.appKey || '', newSecret || '', '密钥已重置')
+  } catch (error) { if (!isCancel(error)) notifyError(error, '重置应用密钥失败') }
 }
 
 async function submitForm() {
@@ -260,10 +382,12 @@ async function submitForm() {
     } else {
       const response = await addOpenApp(form)
       const credential = (response as any).data
-      await ElMessageBox.alert(`Client ID：${credential?.appKey || ''}\nClient Secret：${credential?.appSecret || ''}\n\n密钥只显示这一次，请立即安全保存。`, '应用创建成功', { type: 'success', confirmButtonText: '我已记录' })
+      openCredentialDialog(credential?.appKey || '', credential?.appSecret || '', '应用创建成功')
     }
     dialogVisible.value = false
     getList()
+  } catch (error) {
+    notifyError(error, form.appId ? '修改应用失败' : '创建应用失败')
   } finally {
     submitLoading.value = false
   }
@@ -271,6 +395,69 @@ async function submitForm() {
 
 function resetForm() {
   form.appId = undefined; form.appName = ''; form.appDesc = ''; form.appType = 'web'; form.redirectUris = []; form.scopes = ['openid', 'profile']; form.grantTypes = ['authorization_code', 'refresh_token']; form.schoolIds = []; form.contactName = ''; form.accessTokenTtl = 7200; form.refreshTokenTtl = 604800; form.status = 0
+  selectedProtocolScopes.value = ['openid', 'profile']
+  selectedApiResourceIds.value = []
+}
+
+function openCredentialDialog(appKey: string, appSecret: string, title: string) {
+  credential.appKey = appKey
+  credential.appSecret = appSecret
+  credentialDialogTitle.value = title
+  credentialDialogVisible.value = true
+}
+
+async function copyCredential(value: string, label: string) {
+  if (!value) return
+  try {
+    await navigator.clipboard.writeText(value)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    textarea.remove()
+  }
+  ElMessage.success(`${label}已复制，可直接粘贴`)
+}
+
+async function confirmCredential() {
+  await copyCredential(credential.appSecret, 'Client Secret')
+  credentialDialogVisible.value = false
+}
+
+function nextLifecycleStatus(row: OpenApp) {
+  return (lifecycleTransitions[row.lifecycleStatus ?? 0] || [])[0]
+}
+
+async function handleLifecycleChange(row: OpenApp) {
+  const next = nextLifecycleStatus(row)
+  if (next === undefined) return
+  try {
+    await ElMessageBox.confirm(`确认将应用推进到“${lifecycleLabel(next)}”？`, '生命周期推进', { type: 'warning' })
+    await changeAppLifecycleStatus(row.appId, next)
+    ElMessage.success('生命周期推进成功')
+    await getList()
+  } catch (error) { if (!isCancel(error)) notifyError(error, '推进应用生命周期失败') }
+}
+
+function lifecycleLabel(status?: number) { return lifecycleOptions.find(item => item.value === status)?.label || '未知' }
+function lifecycleTagType(status?: number): TagType {
+  if (status === 5) return 'success'
+  if (status === 6) return 'warning'
+  if (status === 7) return 'danger'
+  if (status === 1 || status === 4) return 'warning'
+  return 'primary'
+}
+function environmentPolicyLabel(value?: string) {
+  return ({ SANDBOX_FIRST: '先沙箱', PROD_ONLY: '仅生产', ALL: '全部环境' } as Record<string, string>)[value || ''] || value || '-'
+}
+function isCancel(error: unknown) { return error === 'cancel' || (error as any)?.message === 'cancel' }
+function notifyError(error: unknown, fallback: string) {
+  const message = error instanceof Error && error.message && error.message !== '请求失败' ? error.message : fallback
+  ElMessage.error(message)
 }
 </script>
 
@@ -280,4 +467,11 @@ function resetForm() {
 .search-form { margin-bottom: 16px; }
 .mt-pagination { margin-top: 16px; justify-content: flex-end; }
 .form-hint { margin-left: 8px; color: #999; font-size: 12px; }
+.credential-warning { margin-bottom: 20px; }
+.credential-form :deep(.el-input-group__append) { padding: 0; }
+.api-resource-list { width: 100%; max-height: 220px; overflow: auto; padding: 8px 12px; border: 1px solid var(--el-border-color); border-radius: 4px; }
+.api-resource-group + .api-resource-group { margin-top: 10px; }
+.api-resource-category { margin-bottom: 4px; color: var(--el-text-color-primary); font-weight: 600; }
+.api-resource-method { margin-left: 8px; }
+.api-resource-path { margin-left: 6px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>

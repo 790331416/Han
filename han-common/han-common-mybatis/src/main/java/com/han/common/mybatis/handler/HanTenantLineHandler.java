@@ -31,7 +31,9 @@ public class HanTenantLineHandler implements TenantLineHandler {
             "sys_user_role",
             "sys_user_post",
             "sys_role_menu",
-            "sys_role_dept"
+            "sys_role_dept",
+            "open_api_resource",
+            "open_api_resource_version"
     );
 
     private final TenantProperties tenantProperties;

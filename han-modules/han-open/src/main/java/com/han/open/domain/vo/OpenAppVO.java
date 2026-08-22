@@ -32,6 +32,9 @@ public class OpenAppVO implements Serializable {
     /** 应用所属租户，仅用于授权链路内部恢复数据范围。 */
     private Long tenantId;
 
+    /** 应用所属厂商。 */
+    private Long vendorId;
+
     /**
      * 应用图标
      */
@@ -94,6 +97,12 @@ public class OpenAppVO implements Serializable {
      * 状态
      */
     private Integer status;
+
+    /** 生命周期状态：0草稿 1待审核 2沙箱开通 3调测中 4生产待审 5生产开通 6暂停 7撤销。 */
+    private Integer lifecycleStatus;
+
+    /** 环境策略：SANDBOX_FIRST、PROD_ONLY 或 ALL。 */
+    private String environmentPolicy;
 
     /**
      * 联系人

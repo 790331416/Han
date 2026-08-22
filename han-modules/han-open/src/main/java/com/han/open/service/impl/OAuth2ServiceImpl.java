@@ -10,15 +10,20 @@ import com.han.open.domain.vo.OAuth2TokenVO;
 import com.han.open.domain.vo.OAuth2UserInfoVO;
 import com.han.open.service.IOpenAppService;
 import com.han.open.service.IOAuth2Service;
-import lombok.RequiredArgsConstructor;
+import com.han.open.service.OpenAppAuthorizationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -26,7 +31,6 @@ import java.util.UUID;
  * OAuth2 授权服务实现。
  */
 @Service
-@RequiredArgsConstructor
 public class OAuth2ServiceImpl implements IOAuth2Service {
 
     private static final int STATUS_ENABLED = 0;
@@ -39,6 +43,21 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
 
     private final IOpenAppService openAppService;
     private final StringRedisTemplate redisTemplate;
+    private final OpenAppAuthorizationService authorizationService;
+
+    @Autowired
+    public OAuth2ServiceImpl(IOpenAppService openAppService,
+                             StringRedisTemplate redisTemplate,
+                             OpenAppAuthorizationService authorizationService) {
+        this.openAppService = openAppService;
+        this.redisTemplate = redisTemplate;
+        this.authorizationService = authorizationService;
+    }
+
+    /** 保留旧单元测试和旧调用方的两参数构造入口。 */
+    public OAuth2ServiceImpl(IOpenAppService openAppService, StringRedisTemplate redisTemplate) {
+        this(openAppService, redisTemplate, null);
+    }
 
     @Override
     public String authorize(OAuth2AuthorizeDTO dto, Long userId) {
@@ -67,7 +86,6 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         if (grantType == null || grantType.isBlank()) {
             throw new BusinessException("grant_type 不能为空");
         }
-        requireGrantTypeAllowed(dto.getClientId(), grantType);
         return switch (grantType) {
             case "authorization_code" -> issueAuthorizationCodeToken(dto);
             case "refresh_token" -> refreshToken(dto.getRefreshToken(), dto.getClientId(), dto.getClientSecret());
@@ -78,46 +96,47 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
 
     @Override
     public OAuth2TokenVO refreshToken(String refreshToken, String clientId, String clientSecret) {
-        if (!openAppService.validateClient(clientId, clientSecret)) {
-            throw new BusinessException("客户端凭证无效");
-        }
+        ClientAuthentication authentication = authenticateClient(clientId, clientSecret);
         RefreshTokenRecord record = read(REFRESH_TOKEN_KEY + refreshToken, RefreshTokenRecord.class);
-        if (record == null || !record.clientId().equals(clientId)) {
+        if (record == null || !Objects.equals(record.clientId(), authentication.clientId()) || record.isExpired()) {
             redisTemplate.delete(REFRESH_TOKEN_KEY + refreshToken);
             throw new BusinessException("RefreshToken 无效或已过期");
         }
-        OpenAppVO app = requireEnabledApp(clientId);
-        return buildToken(record.userId(), app, record.scope());
+        requireGrantTypeAllowed(authentication.app(), "refresh_token");
+        return buildToken(record.userId(), authentication.app(), record.scope(),
+                authentication.clientId(), authentication.appId(), authentication.environment());
     }
 
     @Override
     public void revokeToken(String token, String tokenTypeHint, String clientId, String clientSecret) {
-        requireClient(clientId, clientSecret);
+        ClientAuthentication authentication = authenticateClient(clientId, clientSecret);
         AccessTokenRecord accessTokenRecord = read(ACCESS_TOKEN_KEY + token, AccessTokenRecord.class);
         if (accessTokenRecord != null) {
-            requireSameClient(accessTokenRecord.clientId(), clientId);
+            requireSameClient(accessTokenRecord.clientId(), authentication.clientId());
             redisTemplate.delete(List.of(ACCESS_TOKEN_KEY + token, REFRESH_TOKEN_KEY + accessTokenRecord.refreshToken()));
             return;
         }
         RefreshTokenRecord refreshTokenRecord = read(REFRESH_TOKEN_KEY + token, RefreshTokenRecord.class);
         if (refreshTokenRecord != null) {
-            requireSameClient(refreshTokenRecord.clientId(), clientId);
+            requireSameClient(refreshTokenRecord.clientId(), authentication.clientId());
         }
         redisTemplate.delete(REFRESH_TOKEN_KEY + token);
     }
 
     @Override
     public Object introspectToken(String token, String clientId, String clientSecret) {
-        requireClient(clientId, clientSecret);
+        ClientAuthentication authentication = authenticateClient(clientId, clientSecret);
         AccessTokenRecord record = read(ACCESS_TOKEN_KEY + token, AccessTokenRecord.class);
-        if (record == null) {
+        if (record == null || record.isExpired()) {
             redisTemplate.delete(ACCESS_TOKEN_KEY + token);
             return Map.of("active", false);
         }
-        requireSameClient(record.clientId(), clientId);
+        requireSameClient(record.clientId(), authentication.clientId());
         return Map.of(
                 "active", true,
                 "client_id", record.clientId(),
+                "app_id", record.appId() == null ? authentication.appId() : record.appId(),
+                "environment", record.environment() == null ? authentication.environment() : record.environment(),
                 "scope", record.scope(),
                 "exp", record.expiresAt().getEpochSecond(),
                 "sub", String.valueOf(record.userId())
@@ -126,24 +145,60 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
 
     @Override
     public OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope) {
+        return requireAccessToken(accessToken, requiredScope, null, false);
+    }
+
+    @Override
+    public OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope, String resourceCode) {
+        return requireAccessToken(accessToken, requiredScope, resourceCode, true);
+    }
+
+    private OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope,
+                                                      String resourceCode, boolean requireResource) {
         if (accessToken == null || accessToken.isBlank()) {
             throw new BusinessException("AccessToken 不能为空");
         }
-        AccessTokenRecord record = read(ACCESS_TOKEN_KEY + accessToken.trim(), AccessTokenRecord.class);
-        if (record == null) {
+        String token = accessToken.trim();
+        AccessTokenRecord record = read(ACCESS_TOKEN_KEY + token, AccessTokenRecord.class);
+        if (record == null || record.isExpired()) {
+            redisTemplate.delete(ACCESS_TOKEN_KEY + token);
             throw new BusinessException("AccessToken 无效或已过期");
         }
-        OpenAppVO app = requireEnabledApp(record.clientId());
+        OpenAppVO app = resolveTokenApp(record);
+        Long appId = record.appId() != null ? record.appId() : app.getAppId();
+        String environment = normalizeEnvironment(record.environment());
+        requireUsableApp(app, environment);
         if (!applicationVersion(app).equals(record.applicationVersion())) {
-            redisTemplate.delete(List.of(ACCESS_TOKEN_KEY + accessToken.trim(), REFRESH_TOKEN_KEY + record.refreshToken()));
+            redisTemplate.delete(List.of(ACCESS_TOKEN_KEY + token, REFRESH_TOKEN_KEY + record.refreshToken()));
             throw new BusinessException("应用授权已变更，请重新获取 AccessToken");
         }
         Set<String> scopes = scopeSet(record.scope());
         if (requiredScope != null && !requiredScope.isBlank() && !scopes.contains(requiredScope)) {
             throw new BusinessException("应用未获授权范围: " + requiredScope);
         }
+        List<Long> schoolIds = record.schoolIds() == null ? List.of() : record.schoolIds();
+        if (app.getVendorId() != null && StringUtils.hasText(requiredScope)) {
+            if (authorizationService == null || appId == null || record.tenantId() == null) {
+                throw new BusinessException("应用授权上下文缺失");
+            }
+            String dataScope;
+            if (requireResource) {
+                if (!StringUtils.hasText(resourceCode)) {
+                    throw new BusinessException("资源编码不能为空");
+                }
+                dataScope = authorizationService.resolveAuthorizedDataScope(
+                        record.tenantId(), appId, environment, requiredScope.trim(), resourceCode.trim());
+            } else {
+                dataScope = authorizationService.resolveAuthorizedDataScope(
+                        record.tenantId(), appId, environment, requiredScope.trim());
+            }
+            if (dataScope == null) {
+                throw new BusinessException("应用未获授权资源或授权已失效");
+            }
+            schoolIds = resolveSchoolIds(dataScope, schoolIds);
+        }
         return new OpenAccessTokenContext(record.userId(), record.tenantId(), record.clientId(), scopes,
-                record.schoolIds(), record.applicationVersion(), record.refreshToken());
+                schoolIds, record.applicationVersion(), record.refreshToken(), appId, environment);
     }
 
     @Override
@@ -179,26 +234,25 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
     }
 
     private OAuth2TokenVO issueAuthorizationCodeToken(OAuth2TokenDTO dto) {
-        if (!openAppService.validateClient(dto.getClientId(), dto.getClientSecret())) {
-            throw new BusinessException("客户端凭证无效");
-        }
-        OpenAppVO app = requireEnabledApp(dto.getClientId());
+        ClientAuthentication authentication = authenticateClient(dto.getClientId(), dto.getClientSecret());
+        requireGrantTypeAllowed(authentication.app(), "authorization_code");
         Long userId = validateAuthorizationCode(dto.getCode(), dto.getClientId(), dto.getRedirectUri(), dto.getCodeVerifier());
         if (userId == null) {
             throw new BusinessException("授权码无效或已过期");
         }
-        return buildToken(userId, app, dto.getScope());
+        return buildToken(userId, authentication.app(), dto.getScope(), authentication.clientId(),
+                authentication.appId(), authentication.environment());
     }
 
     private OAuth2TokenVO issueClientCredentialsToken(OAuth2TokenDTO dto) {
-        if (!openAppService.validateClient(dto.getClientId(), dto.getClientSecret())) {
-            throw new BusinessException("客户端凭证无效");
-        }
-        OpenAppVO app = requireEnabledApp(dto.getClientId());
-        return buildToken(0L, app, dto.getScope());
+        ClientAuthentication authentication = authenticateClient(dto.getClientId(), dto.getClientSecret());
+        requireGrantTypeAllowed(authentication.app(), "client_credentials");
+        return buildToken(0L, authentication.app(), dto.getScope(), authentication.clientId(),
+                authentication.appId(), authentication.environment());
     }
 
-    private OAuth2TokenVO buildToken(Long userId, OpenAppVO app, String scope) {
+    private OAuth2TokenVO buildToken(Long userId, OpenAppVO app, String scope,
+                                     String clientId, Long appId, String environment) {
         long accessTokenTtl = app.getAccessTokenTtl() != null ? app.getAccessTokenTtl() : DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
         long refreshTokenTtl = app.getRefreshTokenTtl() != null ? app.getRefreshTokenTtl() : DEFAULT_REFRESH_TOKEN_TTL_SECONDS;
         String resolvedScope = resolveScope(app, scope);
@@ -207,18 +261,22 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         String applicationVersion = applicationVersion(app);
         AccessTokenRecord access = new AccessTokenRecord(
                 userId,
-                app.getAppKey(),
+                clientId,
                 resolvedScope,
                 refreshToken,
                 app.getTenantId(),
                 app.getSchoolIds() == null ? List.of() : app.getSchoolIds(),
                 applicationVersion,
-                Instant.now().plusSeconds(accessTokenTtl));
+                Instant.now().plusSeconds(accessTokenTtl),
+                appId,
+                environment);
         RefreshTokenRecord refresh = new RefreshTokenRecord(
                 userId,
-                app.getAppKey(),
+                clientId,
                 resolvedScope,
-                Instant.now().plusSeconds(refreshTokenTtl));
+                Instant.now().plusSeconds(refreshTokenTtl),
+                appId,
+                environment);
         write(ACCESS_TOKEN_KEY + accessToken, access, accessTokenTtl);
         write(REFRESH_TOKEN_KEY + refreshToken, refresh, refreshTokenTtl);
         return OAuth2TokenVO.builder()
@@ -238,10 +296,29 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         return app;
     }
 
-    private void requireClient(String clientId, String clientSecret) {
-        if (!openAppService.validateClient(clientId, clientSecret)) {
+    private ClientAuthentication authenticateClient(String clientId, String clientSecret) {
+        if (!StringUtils.hasText(clientId) || !StringUtils.hasText(clientSecret)) {
             throw new BusinessException("客户端凭证无效");
         }
+        if (authorizationService != null) {
+            OpenAppAuthorizationService.CredentialContext credential =
+                    authorizationService.validateCredentialContext(clientId.trim(), clientSecret);
+            if (credential != null) {
+                OpenAppVO app = openAppService.selectVoById(credential.appId());
+                if (app == null) {
+                    throw new BusinessException("客户端所属应用不存在");
+                }
+                requireUsableApp(app, credential.environment());
+                return new ClientAuthentication(credential.clientId(), credential.appId(),
+                        credential.environment(), app);
+            }
+        }
+        if (!openAppService.validateClient(clientId.trim(), clientSecret)) {
+            throw new BusinessException("客户端凭证无效");
+        }
+        OpenAppVO app = requireEnabledApp(clientId.trim());
+        requireUsableApp(app, "PROD");
+        return new ClientAuthentication(app.getAppKey(), app.getAppId(), "PROD", app);
     }
 
     private static void requireSameClient(String tokenClientId, String requestingClientId) {
@@ -254,8 +331,7 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
      * 按应用配置校验 grant_type：应用配置了授权类型列表时，仅允许列表内的类型签发。
      * 列表为空视为未收紧配置，保持放行以兼容存量应用。
      */
-    private void requireGrantTypeAllowed(String clientId, String grantType) {
-        OpenAppVO app = requireEnabledApp(clientId);
+    private void requireGrantTypeAllowed(OpenAppVO app, String grantType) {
         List<String> grantTypes = app.getGrantTypes();
         if (grantTypes != null && !grantTypes.isEmpty() && !grantTypes.contains(grantType)) {
             throw new BusinessException("该应用未启用此授权类型: " + grantType);
@@ -282,6 +358,91 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             }
         }
         return Set.copyOf(scopes);
+    }
+
+    private OpenAppVO resolveTokenApp(AccessTokenRecord record) {
+        if (record.appId() != null) {
+            OpenAppVO app = openAppService.selectVoById(record.appId());
+            if (app != null) {
+                return app;
+            }
+        }
+        return requireEnabledApp(record.clientId());
+    }
+
+    private void requireUsableApp(OpenAppVO app, String environment) {
+        if (app == null || app.getStatus() == null || app.getStatus() != STATUS_ENABLED) {
+            throw new BusinessException("客户端不存在或已停用");
+        }
+        String normalized = normalizeEnvironment(environment);
+        if (app.getVendorId() == null) {
+            if (!"PROD".equals(normalized)) {
+                throw new BusinessException("非厂商旧应用仅支持PROD环境");
+            }
+            return;
+        }
+        Integer lifecycle = app.getLifecycleStatus();
+        if (lifecycle == null || lifecycle == 6 || lifecycle == 7
+                || ("SANDBOX".equals(normalized) && lifecycle < 2)
+                || ("PROD".equals(normalized) && lifecycle != 5)) {
+            throw new BusinessException("应用尚未开通" + normalized + "环境");
+        }
+    }
+
+    private String normalizeEnvironment(String environment) {
+        if (!StringUtils.hasText(environment)) {
+            return "PROD";
+        }
+        String normalized = environment.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!Set.of("SANDBOX", "PROD").contains(normalized)) {
+            throw new BusinessException("环境类型仅支持SANDBOX或PROD");
+        }
+        return normalized;
+    }
+
+    private List<Long> resolveSchoolIds(String dataScope, List<Long> fallback) {
+        if (!StringUtils.hasText(dataScope)) {
+            return fallback;
+        }
+        final Map<String, Object> map;
+        try {
+            map = HanJsonUtil.parseMap(dataScope);
+        } catch (RuntimeException e) {
+            throw new BusinessException("授权数据范围格式非法");
+        }
+        if (!map.containsKey("schoolIds")) {
+            return fallback;
+        }
+        Object raw = map.get("schoolIds");
+        if (!(raw instanceof Collection<?> values)) {
+            throw new BusinessException("授权学校范围格式非法");
+        }
+        List<Long> schoolIds = new ArrayList<>();
+        for (Object value : values) {
+            long id;
+            try {
+                if (value instanceof Number number) {
+                    double numeric = number.doubleValue();
+                    if (!Double.isFinite(numeric) || numeric != Math.rint(numeric)) {
+                        throw new NumberFormatException();
+                    }
+                    id = number.longValue();
+                } else if (value instanceof String text && StringUtils.hasText(text)) {
+                    id = Long.parseLong(text.trim());
+                } else {
+                    throw new NumberFormatException();
+                }
+            } catch (NumberFormatException e) {
+                throw new BusinessException("授权学校范围格式非法");
+            }
+            if (id <= 0L || !schoolIds.contains(id)) {
+                if (id <= 0L) {
+                    throw new BusinessException("授权学校范围格式非法");
+                }
+                schoolIds.add(id);
+            }
+        }
+        return List.copyOf(schoolIds);
     }
 
     private static String applicationVersion(OpenAppVO app) {
@@ -318,10 +479,12 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             Long tenantId,
             List<Long> schoolIds,
             String applicationVersion,
-            Instant expiresAt
+            Instant expiresAt,
+            Long appId,
+            String environment
     ) {
         private boolean isExpired() {
-            return expiresAt.isBefore(Instant.now());
+            return expiresAt != null && expiresAt.isBefore(Instant.now());
         }
     }
 
@@ -329,10 +492,15 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             Long userId,
             String clientId,
             String scope,
-            Instant expiresAt
+            Instant expiresAt,
+            Long appId,
+            String environment
     ) {
         private boolean isExpired() {
-            return expiresAt.isBefore(Instant.now());
+            return expiresAt != null && expiresAt.isBefore(Instant.now());
         }
+    }
+
+    private record ClientAuthentication(String clientId, Long appId, String environment, OpenAppVO app) {
     }
 }

@@ -5,6 +5,8 @@ export interface OpenApp {
   appId: string | number
   appName: string
   appKey: string
+  vendorId?: string | number
+  vendorName?: string
   appIcon?: string
   appDesc?: string
   appType?: string
@@ -15,6 +17,8 @@ export interface OpenApp {
   accessTokenTtl?: number
   refreshTokenTtl?: number
   status: number
+  lifecycleStatus?: number
+  environmentPolicy?: string
   contactName?: string
   createTime?: string
 }
@@ -23,10 +27,12 @@ export interface OpenAppQuery extends PageQuery {
   appName?: string
   appType?: string
   status?: number
+  lifecycleStatus?: number
 }
 
 export interface OpenAppForm {
   appId?: string | number
+  vendorId?: string | number
   appName: string
   appDesc?: string
   appType?: string
@@ -37,7 +43,23 @@ export interface OpenAppForm {
   accessTokenTtl?: number
   refreshTokenTtl?: number
   status?: number
+  lifecycleStatus?: number
+  environmentPolicy?: string
   contactName?: string
+}
+
+export interface OpenApiResource {
+  id: string | number
+  resourceCode: string
+  resourceName: string
+  category: string
+  httpMethod: string
+  path: string
+  scopeCode: string
+  description?: string
+  sensitivity?: string
+  status: number
+  sort?: number
 }
 
 export function listOpenApp(query: OpenAppQuery) {
@@ -75,4 +97,12 @@ export function resetAppSecret(appId: string | number) {
 
 export function changeAppStatus(appId: string | number, status: number) {
   return post<void>('/open/app/changeStatus', { appId, base: { status } })
+}
+
+export function changeAppLifecycleStatus(appId: string | number, lifecycleStatus: number) {
+  return post<void>('/open/app/changeLifecycleStatus', undefined, { params: { appId, lifecycleStatus } })
+}
+
+export function listOpenApiResources() {
+  return get<OpenApiResource[]>('/open/app/api-resources')
 }

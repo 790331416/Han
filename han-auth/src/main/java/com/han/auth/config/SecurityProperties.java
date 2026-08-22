@@ -40,13 +40,20 @@ public class SecurityProperties {
      */
     @jakarta.annotation.PostConstruct
     public void init() {
+        // ponytail: 密钥先保存在 auth 进程内；扩为多副本前改为共享 key-id/密钥服务。
+        // 注册专用密钥始终生成；enabled 只控制旧登录链路是否要求密文，保持兼容。
+        rsaKeyPair = HanSecureUtil.generateRsaKeyPair();
+        publicKey = HanSecureUtil.getPublicKeyBase64(rsaKeyPair);
+        privateKey = HanSecureUtil.getPrivateKeyBase64(rsaKeyPair);
         if (enabled) {
-            rsaKeyPair = HanSecureUtil.generateRsaKeyPair();
-            publicKey = HanSecureUtil.getPublicKeyBase64(rsaKeyPair);
-            privateKey = HanSecureUtil.getPrivateKeyBase64(rsaKeyPair);
             log.info("密码加密传输已启用，RSA 密钥对已生成");
         } else {
-            log.info("密码加密传输未启用（开发/测试模式）");
+            log.info("密码加密传输未启用（开发/测试模式），已生成厂商注册专用密钥");
         }
+    }
+
+    /** 注册入口始终需要可用的 RSA 密钥。 */
+    public boolean isRegistrationKeyReady() {
+        return publicKey != null && !publicKey.isBlank() && privateKey != null && !privateKey.isBlank();
     }
 }

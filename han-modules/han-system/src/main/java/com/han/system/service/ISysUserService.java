@@ -2,6 +2,7 @@ package com.han.system.service;
 
 import com.han.common.core.domain.PageResult;
 import com.han.common.web.service.IBaseService;
+import com.han.api.system.domain.OpenVendorAccountCreateDTO;
 import com.han.system.domain.dto.ProfileDto;
 import com.han.system.domain.dto.SysUserDto;
 import com.han.system.domain.vo.UserImportVo;
@@ -76,4 +77,13 @@ public interface ISysUserService extends IBaseService<SysUserQuery, SysUserDto> 
      * 返回当前租户下正常状态用户的 userId/nickname/phone/email
      */
     java.util.List<java.util.Map<String, Object>> selectSimpleUserList();
+
+    /** 创建平台租户下禁用的开放平台厂商账号。 */
+    Long createOpenVendorAccount(OpenVendorAccountCreateDTO dto);
+
+    /** 激活仅绑定 openVendor 角色的开放平台厂商账号。 */
+    void activateOpenVendorAccount(Long userId);
+
+    /** 仅补偿删除本次新建的、仍处于禁用状态的开放平台厂商账号。 */
+    void compensateOpenVendorAccount(Long userId);
 }

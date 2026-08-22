@@ -40,6 +40,8 @@
 - `20260703_ai_agent_share_key.sql`：`ai_agent` 增 `share_key` 分享链接 key，配套应用发布公开对话接口与免登录分享页
 - `20260715_aivideo_admin_menu_alignment.sql`：补齐 AI 短剧任务监管、基础配置菜单及查询/编辑权限，并只关联有效超管角色
 - `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除同租户、同类型且名称/状态/备注完全一致的重复字典类型，保留最小 ID；内容冲突的重复继续由升级演练拦截
+- `20260823_open_platform_tables.sql`：开放平台（han-open）厂商/授权/审批/凭证/接口目录 9 张新表 + `open_app` 补 `school_scope`/`vendor_id`/`lifecycle_status`/`environment_policy` 4 列 + 接口目录 3 条种子 + tenant=1 的 `openVendor` 门户角色及最小自服务权限，与 `sql/tiers/{medium,full}/*-init.sql` 的 open 段保持同步（结构冻结见下文「开放平台表结构冻结矩阵」）
+- `sdfz/mysql/20260823_open_vendor_portal.sql`：附中 MySQL 厂商门户 `openVendor` 角色、门户路由及最小自服务权限；不授予厂商审核/管理员权限
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
@@ -100,6 +102,27 @@ bash deploy/scripts/rehearse-postgres-backup-upgrades.sh --backup /path/to/backu
   - PostgreSQL：`sql/tiers/full/full-init.sql`
   - Nacos：`sql/tiers/full/full-nacos-derby-import.sql`
   - AI 短剧：MVP 0 表结构、MVP 1 默认 Prompt 模板和 `han-aivideo.yml` 运行配置只进入 full tier，表名前缀为 `ai_video_`
+
+## 开放平台（han-open）表结构冻结矩阵
+
+T05-R2 冻结。约定：租户表 `tenant_id BIGINT NOT NULL`；逻辑删除统一 `del_flag`（禁止 `is_deleted`/`deleted`）；`BizEntity` 表必须齐备 `create_by/create_name/create_dept/create_time/update_by/update_name/update_time/del_flag/remark`；PO 基类与表列一一对应。审计列长度跟随各库既有 `open_app` 约定（MySQL name=100 / PostgreSQL name=50）。
+
+| 表 | 范围 | 主键 | 唯一键 | tenant_id | del_flag | 审计列 | 备注 |
+|---|---|---|---|---|---|---|---|
+| open_app | 租户 | id | app_key | 有(NULL) | 有 | 全套 | 既有范本，含 vendor_id/lifecycle_status/environment_policy |
+| open_vendor | 租户 | id | (tenant_id, name)；(tenant_id, qualification_no) | NOT NULL | 有 | 全套(BizEntity) | PO 不得重复声明 tenantId |
+| open_vendor_user | 租户 | **id**(单主键) | **(tenant_id, vendor_id, user_id)** | NOT NULL | 有 | id/tenant_id/时间 | PO 继承 TenantEntity；禁止用 vendor_id 冒充单主键 |
+| open_vendor_application | 租户 | id | application_no | NOT NULL | 有 | 全套(BizEntity) | |
+| open_app_resource_grant | 租户 | id | **(tenant_id, app_id, resource_id, environment)** | NOT NULL | 有 | 全套(BizEntity) | 必含 environment；续权=按唯一键 upsert 更新同一行（键不含 status） |
+| open_authorization_request | 租户 | id | 无(仅索引 app_id+status) | NOT NULL | 有 | 全套(BizEntity) | 审批历史，不强制唯一；增 environment 列 |
+| open_app_credential | 租户 | id | client_id(全局唯一) | NOT NULL | 有 | 全套(BizEntity) | environment 已有 |
+| open_api_resource | 全局目录 | id | resource_code；(http_method, path) | 无 | 无 | 无 | 平台级接口目录，status 管理启停 |
+| open_api_resource_version | 全局目录版本 | id | (resource_id, version) | 无 | 有 | 最小基类 BaseEntity(create_by/update_by/create_time/update_time/del_flag，无 create_name/create_dept/update_name/remark) | 对齐 PO BaseEntity；服务按 del_flag 过滤 |
+| open_api_test_run | 租户审计 | id | 无 | NOT NULL | 无 | 仅 create_time | append-only 调测审计，无逻辑删除 |
+
+字段类型约定：`apply_data`（open_vendor_application）、`request_data`（open_authorization_request）、`data_scope`（open_app_resource_grant）统一使用 TEXT（不用 JSON/JSONB），应用侧以 JSON 字符串存取。
+
+续权策略：`open_app_resource_grant` 唯一键不含 `status`，撤销（status=4）/过期（status=3）后重新申请同一 `(tenant, app, resource, environment)` 时，须按该唯一键 upsert 复用同一行（MySQL `INSERT ... ON DUPLICATE KEY UPDATE` / PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`），不得盲目 `INSERT` 新行。运行时接入在 T05-R3 实现。
 
 ## 归档说明
 

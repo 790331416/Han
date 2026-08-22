@@ -105,7 +105,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest sanitizedRequest = stripSpoofedHeaders(exchange.getRequest());
         String path = sanitizedRequest.getURI().getPath();
 
-        if (isPublicBrandRead(sanitizedRequest) || isWhitelist(path)) {
+        if (isPublicBrandRead(sanitizedRequest) || isWhitelist(path)
+                || isPublicVendorAuthRequest(sanitizedRequest)) {
             return chain.filter(exchange.mutate().request(sanitizedRequest).build());
         }
 
@@ -163,6 +164,21 @@ public class AuthFilter implements GlobalFilter, Ordered {
         return HttpMethod.GET.equals(request.getMethod())
                 && (PUBLIC_BRAND_PATH.equals(request.getURI().getPath())
                 || PUBLIC_BRAND_LOGO_PATH.equals(request.getURI().getPath()));
+    }
+
+    /** 厂商注册只公开精确 auth 路径，不能放行整个 vendor 前缀。 */
+    private boolean isPublicVendorAuthRequest(ServerHttpRequest request) {
+        String path = request.getURI().getPath();
+        if (HttpMethod.GET.equals(request.getMethod())
+                && "/auth/vendor/publicKey".equals(path)) {
+            return true;
+        }
+        if (HttpMethod.POST.equals(request.getMethod())
+                && "/auth/vendor/register".equals(path)) {
+            return true;
+        }
+        return HttpMethod.GET.equals(request.getMethod())
+                && "/auth/vendor/application/status".equals(path);
     }
 
     private String getToken(ServerHttpRequest request) {

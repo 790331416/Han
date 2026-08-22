@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.han.common.core.domain.PageResult;
 import com.han.api.tenant.TenantServiceClient;
+import com.han.api.system.domain.OpenVendorAccountCreateDTO;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
@@ -26,9 +27,12 @@ import com.han.system.domain.vo.UserVO;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserPostMapper;
 import com.han.system.mapper.SysUserRoleMapper;
+import com.han.system.mapper.SysRoleMapper;
+import com.han.system.domain.po.SysRolePo;
 import com.han.system.service.ISysUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,10 +48,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> implements ISysUserService {
 
+    private static final long OPEN_PLATFORM_TENANT_ID = 1L;
+    private static final String OPEN_VENDOR_ROLE_KEY = "openVendor";
+
     private final SysUserMapper sysUserMapper;
     private final SysUserConverter sysUserConverter;
     private final SysUserRoleMapper userRoleMapper;
     private final SysUserPostMapper userPostMapper;
+    private final SysRoleMapper sysRoleMapper;
     private final TenantServiceClient tenantServiceClient;
 
     @Override
@@ -425,5 +433,174 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
             map.put("email", u.getEmail());
             return map;
         }).toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createOpenVendorAccount(OpenVendorAccountCreateDTO dto) {
+        if (dto == null || !java.util.Objects.equals(dto.getTenantId(), OPEN_PLATFORM_TENANT_ID)) {
+            throw new BusinessException("开放平台厂商账号只能创建在平台租户");
+        }
+        String username = dto.getUsername() == null ? "" : dto.getUsername().trim();
+        String nickname = dto.getNickname() == null ? "" : dto.getNickname().trim();
+        String phone = dto.getPhone() == null ? null : dto.getPhone().trim();
+        if (username.isBlank()) {
+            throw new BusinessException("用户名不能为空");
+        }
+        if (nickname.isBlank()) {
+            nickname = username;
+        }
+        PasswordUtil.validate(dto.getPassword());
+
+        final String finalUsername = username;
+        long globalUsernameCount = TenantHelper.ignore(() -> sysUserMapper.selectCount(
+                new LambdaQueryWrapper<SysUserPo>()
+                        .eq(SysUserPo::getUsername, finalUsername)
+                        .eq(SysUserPo::getDelFlag, 0)));
+        if (globalUsernameCount > 0) {
+            Long existingUserId = findIdempotentOpenVendorAccount(username, phone, dto.getEmail(), dto.getPassword());
+            if (existingUserId != null) {
+                return existingUserId;
+            }
+            throw new ConflictException("用户名“" + username + "”已存在，请更换后重试");
+        }
+        if (HanStrUtil.isNotBlank(phone)) {
+            long tenantPhoneCount = TenantHelper.ignore(() -> sysUserMapper.selectCount(
+                    new LambdaQueryWrapper<SysUserPo>()
+                            .eq(SysUserPo::getTenantId, OPEN_PLATFORM_TENANT_ID)
+                            .eq(SysUserPo::getPhone, phone)
+                            .eq(SysUserPo::getDelFlag, 0)));
+            if (tenantPhoneCount > 0) {
+                throw new ConflictException("手机号“" + phone + "”已存在，请更换后重试");
+            }
+        }
+
+        SysRolePo role = TenantHelper.ignore(() -> sysRoleMapper.selectOne(
+                new LambdaQueryWrapper<SysRolePo>()
+                        .eq(SysRolePo::getTenantId, OPEN_PLATFORM_TENANT_ID)
+                        .eq(SysRolePo::getRoleKey, OPEN_VENDOR_ROLE_KEY)
+                        .eq(SysRolePo::getStatus, 0)
+                        .eq(SysRolePo::getDelFlag, 0)
+                        .last("LIMIT 1")));
+        if (role == null) {
+            throw new BusinessException("开放平台厂商角色未初始化");
+        }
+
+        SysUserPo user = new SysUserPo();
+        user.setTenantId(OPEN_PLATFORM_TENANT_ID);
+        user.setUsername(username);
+        user.setNickname(nickname);
+        user.setPassword(PasswordUtil.encode(dto.getPassword()));
+        user.setPhone(phone);
+        user.setEmail(dto.getEmail() == null ? null : dto.getEmail().trim());
+        user.setStatus(1); // 审核通过前禁止登录
+        user.setPwdUpdateTime(java.time.LocalDateTime.now());
+        user.setPwdResetFlag(0);
+        try {
+            TenantHelper.ignore(() -> {
+                sysUserMapper.insert(user);
+                userRoleMapper.insert(new SysUserRolePo(user.getId(), role.getId()));
+            });
+        } catch (DataIntegrityViolationException e) {
+            Long existingUserId = findIdempotentOpenVendorAccount(username, phone, dto.getEmail(), dto.getPassword());
+            if (existingUserId != null) {
+                return existingUserId;
+            }
+            throw new ConflictException("用户名或手机号已存在，请更换后重试");
+        }
+        return user.getId();
+    }
+
+    /** 仅把同一份公开申请重试识别为幂等；不同联系方式、密码、状态或角色都继续冲突。 */
+    private Long findIdempotentOpenVendorAccount(String username, String phone, String email, String password) {
+        List<SysUserPo> candidates = TenantHelper.ignore(() -> sysUserMapper.selectList(
+                new LambdaQueryWrapper<SysUserPo>()
+                        .eq(SysUserPo::getUsername, username)
+                        .eq(SysUserPo::getDelFlag, 0)
+                        .last("LIMIT 5")));
+        if (candidates == null) {
+            return null;
+        }
+        String normalizedEmail = email == null ? "" : email.trim();
+        for (SysUserPo candidate : candidates) {
+            if (!java.util.Objects.equals(OPEN_PLATFORM_TENANT_ID, candidate.getTenantId())
+                    || !Integer.valueOf(1).equals(candidate.getStatus())
+                    || !java.util.Objects.equals(phone, candidate.getPhone())
+                    || !java.util.Objects.equals(normalizedEmail,
+                    candidate.getEmail() == null ? "" : candidate.getEmail().trim())
+                    || !PasswordUtil.matches(password, candidate.getPassword())
+                    || !isOnlyOpenVendorRole(candidate.getId())) {
+                continue;
+            }
+            return candidate.getId();
+        }
+        return null;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void activateOpenVendorAccount(Long userId) {
+        SysUserPo user = requireOpenVendorAccount(userId);
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return;
+        }
+        if (user.getStatus() == null || user.getStatus() != 1) {
+            throw new BusinessException("开放平台厂商账号状态不允许激活");
+        }
+        SysUserPo update = new SysUserPo();
+        update.setId(userId);
+        update.setStatus(0);
+        TenantHelper.ignore(() -> sysUserMapper.updateById(update));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void compensateOpenVendorAccount(Long userId) {
+        SysUserPo user = requireOpenVendorAccount(userId);
+        if (user.getStatus() == null || user.getStatus() != 1) {
+            throw new BusinessException("仅允许补偿删除禁用的开放平台厂商账号");
+        }
+        TenantHelper.ignore(() -> {
+            SysUserPo rename = new SysUserPo();
+            rename.setId(userId);
+            rename.setUsername("vendor_compensated_" + userId);
+            // MyBatis-Plus 默认忽略 null 更新；空串才能在逻辑删除前真正清除申请人的联系方式。
+            rename.setPhone("");
+            rename.setEmail("");
+            if (sysUserMapper.updateById(rename) <= 0) {
+                throw new BusinessException("开放平台厂商账号补偿失败");
+            }
+            userRoleMapper.delete(new LambdaQueryWrapper<SysUserRolePo>()
+                    .eq(SysUserRolePo::getUserId, userId));
+            sysUserMapper.deleteById(userId);
+        });
+    }
+
+    private SysUserPo requireOpenVendorAccount(Long userId) {
+        if (userId == null) {
+            throw new BusinessException("用户ID不能为空");
+        }
+        SysUserPo user = TenantHelper.ignore(() -> sysUserMapper.selectOne(
+                new LambdaQueryWrapper<SysUserPo>()
+                        .eq(SysUserPo::getId, userId)
+                        .eq(SysUserPo::getTenantId, OPEN_PLATFORM_TENANT_ID)
+                        .eq(SysUserPo::getDelFlag, 0)
+                        .last("LIMIT 1")));
+        if (user == null || !isOnlyOpenVendorRole(userId)) {
+            throw new BusinessException("账号不是开放平台厂商账号");
+        }
+        return user;
+    }
+
+    private boolean isOnlyOpenVendorRole(Long userId) {
+        Set<Long> roleIds = TenantHelper.ignore(() -> sysUserMapper.selectRoleIdsByUserId(userId));
+        if (roleIds == null || roleIds.size() != 1) {
+            return false;
+        }
+        SysRolePo role = TenantHelper.ignore(() -> sysRoleMapper.selectById(roleIds.iterator().next()));
+        return role != null
+                && OPEN_PLATFORM_TENANT_ID == (role.getTenantId() == null ? -1L : role.getTenantId())
+                && OPEN_VENDOR_ROLE_KEY.equals(role.getRoleKey())
+                && role.getDelFlag() != null && role.getDelFlag() == 0;
     }
 }

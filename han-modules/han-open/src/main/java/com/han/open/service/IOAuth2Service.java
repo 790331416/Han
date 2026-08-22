@@ -40,6 +40,13 @@ public interface IOAuth2Service {
     OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope);
 
     /**
+     * 验证 Bearer Token，并将厂商授权限定到指定的开放资源编码。
+     *
+     * <p>保留两参数重载兼容旧调用方；新开放接口必须传入资源编码，避免同一 Scope 的资源互相串权。</p>
+     */
+    OpenAccessTokenContext requireAccessToken(String accessToken, String requiredScope, String resourceCode);
+
+    /**
      * 获取用户信息(OpenID Connect UserInfo)
      */
     OAuth2UserInfoVO getUserInfo(String accessToken);

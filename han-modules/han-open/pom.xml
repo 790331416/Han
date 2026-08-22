@@ -37,6 +37,10 @@
             <groupId>com.han</groupId>
             <artifactId>han-api-system</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.han</groupId>
+            <artifactId>han-api-open</artifactId>
+        </dependency>
 
         <!-- Spring Boot -->
         <dependency>

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.api.system.domain.DeptVO;
 import com.han.api.system.domain.RoleVO;
 import com.han.api.system.domain.UserVO;
+import com.han.api.system.domain.OpenVendorAccountCreateDTO;
 import com.han.common.core.domain.R;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.annotation.InnerAuth;
@@ -22,9 +23,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -154,6 +157,23 @@ public class ISysUserController {
                 new LambdaQueryWrapper<SysUserPo>().eq(SysUserPo::getTenantId, tenantId)
         ));
         return R.ok((int) count);
+    }
+
+    @PostMapping("/vendor/portal/account")
+    public R<Long> createOpenVendorAccount(@RequestBody @Valid OpenVendorAccountCreateDTO dto) {
+        return R.ok(sysUserService.createOpenVendorAccount(dto));
+    }
+
+    @PostMapping("/vendor/portal/account/{userId}/activate")
+    public R<Void> activateOpenVendorAccount(@PathVariable("userId") Long userId) {
+        sysUserService.activateOpenVendorAccount(userId);
+        return R.ok();
+    }
+
+    @PostMapping("/vendor/portal/account/{userId}/compensate")
+    public R<Void> compensateOpenVendorAccount(@PathVariable("userId") Long userId) {
+        sysUserService.compensateOpenVendorAccount(userId);
+        return R.ok();
     }
 
     @GetMapping("/user/tenants")

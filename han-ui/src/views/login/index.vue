@@ -84,6 +84,12 @@
         </el-button>
       </el-form-item>
 
+      <div class="vendor-apply-link">
+        <el-link type="primary" :underline="false" data-testid="vendor-apply-link" @click="router.push('/open/vendor-apply')">
+          厂商入驻申请
+        </el-link>
+      </div>
+
       <div v-if="socialProviders.github || socialProviders.wechat" class="social-login">
         <el-divider>其他登录方式</el-divider>
         <div class="social-icons">
@@ -434,6 +440,12 @@ onMounted(async () => {
   font-size: 15px;
   font-weight: 600;
   border-radius: 10px;
+}
+
+.vendor-apply-link {
+  margin: -2px 0 12px;
+  text-align: center;
+  font-size: 13px;
 }
 
 .footer {
