@@ -1,7 +1,11 @@
 package com.han.open;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.han.common.core.util.HanJsonUtil;
 import com.han.common.web.http.EnableHttpClients;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.SpringApplication;
+import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
@@ -13,6 +17,12 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 @EnableDiscoveryClient
 @EnableHttpClients
 public class HanOpenApplication {
+
+    @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper objectMapper() {
+        return HanJsonUtil.getObjectMapper();
+    }
 
     public static void main(String[] args) {
         SpringApplication.run(HanOpenApplication.class, args);
