@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -132,6 +133,16 @@ class OpenApiTestRunServiceImplTest {
 
         assertThatThrownBy(() -> service.add(request()))
                 .hasMessage("应用未获得该环境的有效接口授权");
+    }
+
+    @Test
+    void stoppedVendorCannotSubmitOnlineDebugRun() {
+        doThrow(new com.han.common.core.exception.BusinessException("厂商不存在或已停用"))
+                .when(authorizationService).requireActiveVendor(7L, 99L);
+
+        assertThatThrownBy(() -> service.add(request()))
+                .isInstanceOf(com.han.common.core.exception.BusinessException.class)
+                .hasMessage("厂商不存在或已停用");
     }
 
     @Test

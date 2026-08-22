@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -244,6 +245,57 @@ class OAuth2ServiceImplTest {
         assertThatThrownBy(() -> service.requireAccessToken(token.getAccessToken(), "edu.teacher.read"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("客户端不存在或已停用");
+    }
+
+    @Test
+    void rejectsNewTokenWhenVendorIsStopped() {
+        IOpenAppService apps = mock(IOpenAppService.class);
+        OpenAppAuthorizationService authorization = mock(OpenAppAuthorizationService.class);
+        StringRedisTemplate redis = recordingRedis();
+        OpenAppVO app = app(List.of("edu.teacher.read"));
+        app.setAppId(55L);
+        app.setVendorId(77L);
+        app.setLifecycleStatus(5);
+        when(authorization.validateCredentialContext("prod-client", "secret"))
+                .thenReturn(new OpenAppAuthorizationService.CredentialContext(55L, "prod-client", "PROD"));
+        when(apps.selectVoById(55L)).thenReturn(app);
+        doThrow(new BusinessException("厂商不存在或已停用"))
+                .when(authorization).requireActiveVendor(77L, 1L);
+
+        OAuth2TokenDTO request = tokenRequest("edu.teacher.read");
+        request.setClientId("prod-client");
+
+        assertThatThrownBy(() -> new OAuth2ServiceImpl(apps, redis, authorization).token(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("厂商不存在或已停用");
+    }
+
+    @Test
+    void cachedTokenRechecksVendorStatusBeforeResourceAccess() {
+        IOpenAppService apps = mock(IOpenAppService.class);
+        OpenAppAuthorizationService authorization = mock(OpenAppAuthorizationService.class);
+        StringRedisTemplate redis = recordingRedis();
+        OpenAppVO app = app(List.of("edu.teacher.read"));
+        app.setAppId(55L);
+        app.setVendorId(77L);
+        app.setLifecycleStatus(5);
+        when(authorization.validateCredentialContext("prod-client", "secret"))
+                .thenReturn(new OpenAppAuthorizationService.CredentialContext(55L, "prod-client", "PROD"));
+        when(apps.selectVoById(55L)).thenReturn(app);
+        when(authorization.resolveAuthorizedDataScope(1L, 55L, "PROD", "edu.teacher.read"))
+                .thenReturn("");
+
+        OAuth2ServiceImpl service = new OAuth2ServiceImpl(apps, redis, authorization);
+        OAuth2TokenDTO request = tokenRequest("edu.teacher.read");
+        request.setClientId("prod-client");
+        OAuth2TokenVO token = service.token(request);
+
+        doThrow(new BusinessException("厂商不存在或已停用"))
+                .when(authorization).requireActiveVendor(77L, 1L);
+
+        assertThatThrownBy(() -> service.requireAccessToken(token.getAccessToken(), "edu.teacher.read"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("厂商不存在或已停用");
     }
 
     @Test

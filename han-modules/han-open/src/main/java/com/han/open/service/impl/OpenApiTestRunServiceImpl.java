@@ -134,6 +134,8 @@ public class OpenApiTestRunServiceImpl extends ServiceImpl<OpenApiTestRunMapper,
         if (app == null || app.getVendorId() == null) {
             throw new BusinessException("应用不存在或无权调测");
         }
+        // 调测属于厂商能力，厂商停用后即使应用和授权仍在，也必须立即拒绝。
+        authorizationService.requireActiveVendor(app.getVendorId(), tenantId);
         if (app.getLifecycleStatus() != null && TERMINAL_APP_LIFECYCLES.contains(app.getLifecycleStatus())) {
             throw new BusinessException("应用当前生命周期不可调测");
         }

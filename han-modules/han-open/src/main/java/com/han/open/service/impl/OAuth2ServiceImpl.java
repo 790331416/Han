@@ -381,6 +381,11 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             }
             return;
         }
+        if (authorizationService == null) {
+            throw new BusinessException("厂商状态校验未配置");
+        }
+        // 每次签发和校验都实时读取厂商状态，不能因 AccessToken 已在 Redis 中而绕过停用。
+        authorizationService.requireActiveVendor(app.getVendorId(), app.getTenantId());
         Integer lifecycle = app.getLifecycleStatus();
         if (lifecycle == null || lifecycle == 6 || lifecycle == 7
                 || ("SANDBOX".equals(normalized) && lifecycle < 2)

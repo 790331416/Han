@@ -82,7 +82,7 @@ class OpenAdminQueryServiceTest {
 
         OpenAppAuthorizationServiceImpl service = new OpenAppAuthorizationServiceImpl(
                 mapper, mock(OpenAppCredentialMapper.class), new ObjectMapper(), mock(OpenAppMapper.class),
-                mock(OpenVendorUserMapper.class), mock(OpenApiResourceMapper.class));
+                mock(OpenVendorUserMapper.class), mock(OpenApiResourceMapper.class), mock(OpenVendorMapper.class));
         ReflectionTestUtils.setField(service, "baseMapper", mock(OpenAppResourceGrantMapper.class));
 
         var result = service.listRequestPage(303L, 0, "prod", 1, 10);
@@ -109,7 +109,7 @@ class OpenAdminQueryServiceTest {
 
         OpenAppAuthorizationServiceImpl service = new OpenAppAuthorizationServiceImpl(
                 mock(OpenAuthorizationRequestMapper.class), mapper, new ObjectMapper(), mock(OpenAppMapper.class),
-                mock(OpenVendorUserMapper.class), mock(OpenApiResourceMapper.class));
+                mock(OpenVendorUserMapper.class), mock(OpenApiResourceMapper.class), mock(OpenVendorMapper.class));
 
         List<OpenAppCredentialAdminVO> rows = service.listCredentials(303L);
 

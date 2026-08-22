@@ -8,6 +8,7 @@ import com.han.open.domain.po.OpenApiResourcePo;
 import com.han.open.domain.po.OpenAppPo;
 import com.han.open.domain.po.OpenAppResourceGrantPo;
 import com.han.open.domain.po.OpenAuthorizationRequestPo;
+import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.po.OpenVendorUserPo;
 import com.han.open.domain.vo.GrantApplyVO;
 import com.han.open.mapper.OpenApiResourceMapper;
@@ -16,6 +17,7 @@ import com.han.open.mapper.OpenAppCredentialMapper;
 import com.han.open.mapper.OpenAppResourceGrantMapper;
 import com.han.open.mapper.OpenAuthorizationRequestMapper;
 import com.han.open.mapper.OpenVendorUserMapper;
+import com.han.open.mapper.OpenVendorMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,7 @@ class OpenAppAuthorizationEnvironmentTest {
     private OpenAppCredentialMapper appCredentialMapper;
     private OpenAppMapper appMapper;
     private OpenVendorUserMapper vendorUserMapper;
+    private OpenVendorMapper vendorMapper;
     private OpenApiResourceMapper resourceMapper;
     private OpenAppResourceGrantMapper baseMapper;
     private OpenAppAuthorizationServiceImpl service;
@@ -52,13 +55,15 @@ class OpenAppAuthorizationEnvironmentTest {
         appCredentialMapper = mock(OpenAppCredentialMapper.class);
         appMapper = mock(OpenAppMapper.class);
         vendorUserMapper = mock(OpenVendorUserMapper.class);
+        vendorMapper = mock(OpenVendorMapper.class);
         resourceMapper = mock(OpenApiResourceMapper.class);
         baseMapper = mock(OpenAppResourceGrantMapper.class);
         service = new OpenAppAuthorizationServiceImpl(authorizationRequestMapper, appCredentialMapper,
-                new ObjectMapper(), appMapper, vendorUserMapper, resourceMapper);
+                new ObjectMapper(), appMapper, vendorUserMapper, resourceMapper, vendorMapper);
         ReflectionTestUtils.setField(service, "baseMapper", baseMapper);
         when(appMapper.selectOne(any())).thenReturn(ownedApp());
         when(vendorUserMapper.selectOne(any())).thenReturn(vendorMembership());
+        when(vendorMapper.selectOne(any())).thenReturn(activeVendor());
         when(resourceMapper.selectOne(any())).thenReturn(publishedResource());
         when(authorizationRequestMapper.update(any(), any())).thenReturn(1);
     }
@@ -211,6 +216,33 @@ class OpenAppAuthorizationEnvironmentTest {
     }
 
     @Test
+    void stoppedVendorCannotUseExistingGrant() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenApiResourcePo resource = publishedResource();
+        OpenAppResourceGrantPo grant = new OpenAppResourceGrantPo();
+        grant.setEnvironment("SANDBOX");
+        grant.setStatus(1);
+        grant.setScopes("edu.teacher.read");
+        when(baseMapper.selectOne(any())).thenReturn(grant);
+        OpenVendorPo stopped = activeVendor();
+        stopped.setStatus(6);
+        when(vendorMapper.selectOne(any())).thenReturn(stopped);
+
+        assertThat(service.hasPermission(123L, resource.getId(), "SANDBOX", "edu.teacher.read")).isFalse();
+    }
+
+    @Test
+    void stoppedVendorFailsTheSharedRuntimeGate() {
+        OpenVendorPo stopped = activeVendor();
+        stopped.setStatus(6);
+        when(vendorMapper.selectOne(any())).thenReturn(stopped);
+
+        assertThatThrownBy(() -> service.requireActiveVendor(789L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("厂商不存在或已停用");
+    }
+
+    @Test
     void hasPermissionThrowsWhenTenantContextMissing() {
         assertThatThrownBy(() -> service.hasPermission(123L, 456L, "SANDBOX", "edu.teacher.read"))
                 .isInstanceOf(BusinessException.class)
@@ -310,6 +342,15 @@ class OpenAppAuthorizationEnvironmentTest {
         membership.setRole("OWNER");
         membership.setStatus(0);
         return membership;
+    }
+
+    private static OpenVendorPo activeVendor() {
+        OpenVendorPo vendor = new OpenVendorPo();
+        vendor.setId(789L);
+        vendor.setTenantId(99L);
+        vendor.setStatus(4);
+        vendor.setDelFlag(0);
+        return vendor;
     }
 
     private static OpenApiResourcePo publishedResource() {

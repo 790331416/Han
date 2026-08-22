@@ -9,6 +9,7 @@ import com.han.open.domain.po.OpenAppCredentialPo;
 import com.han.open.domain.po.OpenAppPo;
 import com.han.open.domain.po.OpenAppResourceGrantPo;
 import com.han.open.domain.po.OpenAuthorizationRequestPo;
+import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.po.OpenVendorUserPo;
 import com.han.open.domain.vo.AppCredentialVO;
 import com.han.open.domain.vo.GrantApplyVO;
@@ -18,6 +19,7 @@ import com.han.open.mapper.OpenAppMapper;
 import com.han.open.mapper.OpenAppResourceGrantMapper;
 import com.han.open.mapper.OpenAuthorizationRequestMapper;
 import com.han.open.mapper.OpenVendorUserMapper;
+import com.han.open.mapper.OpenVendorMapper;
 import com.han.open.service.OpenAppAuthorizationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +44,7 @@ class OpenAppAuthorizationServiceImplTest {
     private OpenAppCredentialMapper appCredentialMapper;
     private OpenAppMapper appMapper;
     private OpenVendorUserMapper vendorUserMapper;
+    private OpenVendorMapper vendorMapper;
     private OpenApiResourceMapper resourceMapper;
     private OpenAppResourceGrantMapper baseMapper;
     private OpenAppAuthorizationServiceImpl service;
@@ -52,13 +55,15 @@ class OpenAppAuthorizationServiceImplTest {
         appCredentialMapper = mock(OpenAppCredentialMapper.class);
         appMapper = mock(OpenAppMapper.class);
         vendorUserMapper = mock(OpenVendorUserMapper.class);
+        vendorMapper = mock(OpenVendorMapper.class);
         resourceMapper = mock(OpenApiResourceMapper.class);
         baseMapper = mock(OpenAppResourceGrantMapper.class);
         service = new OpenAppAuthorizationServiceImpl(authorizationRequestMapper, appCredentialMapper,
-                new ObjectMapper(), appMapper, vendorUserMapper, resourceMapper);
+                new ObjectMapper(), appMapper, vendorUserMapper, resourceMapper, vendorMapper);
         ReflectionTestUtils.setField(service, "baseMapper", baseMapper);
         when(appMapper.selectOne(any())).thenReturn(ownedApp());
         when(vendorUserMapper.selectOne(any())).thenReturn(vendorMembership());
+        when(vendorMapper.selectOne(any())).thenReturn(activeVendor());
         when(resourceMapper.selectOne(any())).thenReturn(publishedResource());
         when(authorizationRequestMapper.update(any(), any())).thenReturn(1);
     }
@@ -469,6 +474,15 @@ class OpenAppAuthorizationServiceImplTest {
         membership.setRole("OWNER");
         membership.setStatus(0);
         return membership;
+    }
+
+    private static OpenVendorPo activeVendor() {
+        OpenVendorPo vendor = new OpenVendorPo();
+        vendor.setId(789L);
+        vendor.setTenantId(99L);
+        vendor.setStatus(4);
+        vendor.setDelFlag(0);
+        return vendor;
     }
 
     private static OpenApiResourcePo publishedResource() {

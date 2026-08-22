@@ -69,6 +69,14 @@ public interface OpenAppAuthorizationService extends IService<OpenAppResourceGra
     boolean hasPermission(Long appId, Long resourceId, String environment, String scope);
 
     /**
+     * 校验厂商是否仍处于审核通过状态。vendorId 为空表示历史非厂商应用，保持兼容。
+     *
+     * @param vendorId 厂商 ID
+     * @param tenantId 应用所属租户 ID
+     */
+    void requireActiveVendor(Long vendorId, Long tenantId);
+
+    /**
      * 撤销应用授权
      * @param grantId 授权ID
      * @param reason 撤销原因

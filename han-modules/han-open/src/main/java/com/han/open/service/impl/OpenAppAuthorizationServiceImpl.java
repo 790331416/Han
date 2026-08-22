@@ -17,6 +17,7 @@ import com.han.open.domain.po.OpenAppCredentialPo;
 import com.han.open.domain.po.OpenAppPo;
 import com.han.open.domain.po.OpenAppResourceGrantPo;
 import com.han.open.domain.po.OpenAuthorizationRequestPo;
+import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.po.OpenVendorUserPo;
 import com.han.open.domain.vo.AppCredentialVO;
 import com.han.open.domain.vo.AppGrantDetailVO;
@@ -29,6 +30,7 @@ import com.han.open.mapper.OpenAppMapper;
 import com.han.open.mapper.OpenAppResourceGrantMapper;
 import com.han.open.mapper.OpenAuthorizationRequestMapper;
 import com.han.open.mapper.OpenVendorUserMapper;
+import com.han.open.mapper.OpenVendorMapper;
 import com.han.open.service.OpenAppAuthorizationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -39,6 +41,7 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -64,6 +67,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
     private static final int LIFECYCLE_PRODUCTION = 5;
     private static final int LIFECYCLE_SUSPENDED = 6;
     private static final int LIFECYCLE_REVOKED = 7;
+    private static final int VENDOR_STATUS_APPROVED = 4;
 
     private final OpenAuthorizationRequestMapper authorizationRequestMapper;
     private final OpenAppCredentialMapper appCredentialMapper;
@@ -71,6 +75,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
     private final OpenAppMapper appMapper;
     private final OpenVendorUserMapper vendorUserMapper;
     private final OpenApiResourceMapper resourceMapper;
+    private final OpenVendorMapper vendorMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
@@ -297,6 +302,9 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         if (!StringUtils.hasText(scope)) {
             return false;
         }
+        if (!isRuntimeAppUsable(appId, tenantId)) {
+            return false;
+        }
         OpenAppResourceGrantPo grant = baseMapper.selectOne(new LambdaQueryWrapper<OpenAppResourceGrantPo>()
                 .eq(OpenAppResourceGrantPo::getTenantId, tenantId)
                 .eq(OpenAppResourceGrantPo::getAppId, appId)
@@ -321,9 +329,33 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
     }
 
     @Override
+    public void requireActiveVendor(Long vendorId, Long tenantId) {
+        if (vendorId == null) {
+            return;
+        }
+        if (tenantId == null) {
+            throw new BusinessException("获取当前租户信息失败");
+        }
+        if (vendorMapper == null) {
+            throw new BusinessException("厂商状态校验未配置");
+        }
+        OpenVendorPo vendor = vendorMapper.selectOne(new LambdaQueryWrapper<OpenVendorPo>()
+                .eq(OpenVendorPo::getId, vendorId)
+                .eq(OpenVendorPo::getTenantId, tenantId)
+                .eq(OpenVendorPo::getDelFlag, 0)
+                .last("LIMIT 1"));
+        if (vendor == null || !Objects.equals(vendor.getStatus(), VENDOR_STATUS_APPROVED)) {
+            throw new BusinessException("厂商不存在或已停用");
+        }
+    }
+
+    @Override
     public String resolveAuthorizedDataScope(Long tenantId, Long appId, String environment, String scope) {
         if (tenantId == null) {
             throw new BusinessException("获取当前租户信息失败");
+        }
+        if (!isRuntimeAppUsable(appId, tenantId)) {
+            return null;
         }
         environment = normalizeEnvironment(environment);
         if (!StringUtils.hasText(scope)) {
@@ -357,6 +389,9 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
                                              String scope, String resourceCode) {
         if (tenantId == null) {
             throw new BusinessException("获取当前租户信息失败");
+        }
+        if (!isRuntimeAppUsable(appId, tenantId)) {
+            return null;
         }
         environment = normalizeEnvironment(environment);
         if (!StringUtils.hasText(scope) || !StringUtils.hasText(resourceCode)) {
@@ -906,6 +941,27 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
         Set<String> roleKeys = user.getRoleKeys();
         return roleKeys != null && roleKeys.stream().anyMatch(ADMIN_ROLES::contains);
+    }
+
+    private boolean isRuntimeAppUsable(Long appId, Long tenantId) {
+        OpenAppPo app = appMapper.selectOne(new LambdaQueryWrapper<OpenAppPo>()
+                .eq(OpenAppPo::getId, appId)
+                .eq(OpenAppPo::getTenantId, tenantId)
+                .eq(OpenAppPo::getStatus, APP_STATUS_ENABLED)
+                .eq(OpenAppPo::getDelFlag, 0)
+                .last("LIMIT 1"));
+        if (app == null) {
+            return false;
+        }
+        if (app.getVendorId() == null) {
+            return true;
+        }
+        try {
+            requireActiveVendor(app.getVendorId(), tenantId);
+            return true;
+        } catch (BusinessException e) {
+            return false;
+        }
     }
 
     private void requireAdministrator() {
