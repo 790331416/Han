@@ -9,7 +9,9 @@ import com.han.common.core.exception.BusinessException;
 import com.han.open.domain.vo.OpenAccessTokenContext;
 import com.han.open.service.IOAuth2Service;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.RequestHeader;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 
@@ -24,6 +26,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class OpenDirectoryControllerTest {
+
+    @Test
+    void bearerHeaderBindingLetsControllerReturnTheOpenPlatformErrorContract() {
+        for (String name : List.of("teachers", "students", "devices")) {
+            Method method = java.util.Arrays.stream(OpenDirectoryController.class.getDeclaredMethods())
+                    .filter(candidate -> candidate.getName().equals(name))
+                    .findFirst()
+                    .orElseThrow();
+            RequestHeader header = method.getParameters()[0].getAnnotation(RequestHeader.class);
+            assertThat(header.required()).isFalse();
+        }
+    }
 
     private final IOAuth2Service oauth2Service = mock(IOAuth2Service.class);
     private final SystemServiceClient systemServiceClient = mock(SystemServiceClient.class);

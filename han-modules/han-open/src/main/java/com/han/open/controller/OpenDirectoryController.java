@@ -44,7 +44,7 @@ public class OpenDirectoryController {
     @GetMapping("/teachers")
     @RateLimiter(key = "openDirectory", time = 60, count = 300, limitType = RateLimiter.LimitType.IP)
     public R<PageResult<EducationPersonDirectoryVO>> teachers(
-            @RequestHeader("Authorization") String authorization,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
@@ -58,7 +58,7 @@ public class OpenDirectoryController {
     @GetMapping("/students")
     @RateLimiter(key = "openDirectory", time = 60, count = 300, limitType = RateLimiter.LimitType.IP)
     public R<PageResult<EducationPersonDirectoryVO>> students(
-            @RequestHeader("Authorization") String authorization,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
@@ -72,7 +72,7 @@ public class OpenDirectoryController {
     @GetMapping("/devices")
     @RateLimiter(key = "openDirectory", time = 60, count = 300, limitType = RateLimiter.LimitType.IP)
     public R<PageResult<EducationDeviceDirectoryVO>> devices(
-            @RequestHeader("Authorization") String authorization,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime updatedAfter,
