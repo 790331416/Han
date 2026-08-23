@@ -46,6 +46,29 @@ services:
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812b_education_active_unique_index.sql:/docker-entrypoint-initdb.d/23-sdfz-education-active-index.sql:ro
       # 乱码修数脚本。全新库上没有可修的行，空跑无害；挂进来是为了让「sdfz 脚本必须全部挂载」这条检查保持无豁免。
       - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260812c_fix_education_name_mojibake.sql:/docker-entrypoint-initdb.d/24-sdfz-education-mojibake-fix.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260813_education_person_duty.sql:/docker-entrypoint-initdb.d/25-sdfz-education-person-duty.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260817_education_tree_phase1.sql:/docker-entrypoint-initdb.d/26-sdfz-education-tree-phase1.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_education_region_lazy_tree_index.sql:/docker-entrypoint-initdb.d/27-sdfz-education-region-lazy-tree-index.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_education_school_duty.sql:/docker-entrypoint-initdb.d/28-sdfz-education-school-duty.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_education_school_scope_and_region.sql:/docker-entrypoint-initdb.d/29-sdfz-education-school-scope-region.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_education_sort_device_catalog.sql:/docker-entrypoint-initdb.d/30-sdfz-education-sort-device-catalog.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_open_app.sql:/docker-entrypoint-initdb.d/31-sdfz-open-app.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260818_open_app_school_scope.sql:/docker-entrypoint-initdb.d/32-sdfz-open-app-school-scope.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260819_education_course_rule.sql:/docker-entrypoint-initdb.d/33-sdfz-education-course-rule.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260819_menu_component_cleanup.sql:/docker-entrypoint-initdb.d/34-sdfz-menu-component-cleanup.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260819_person_import_permission.sql:/docker-entrypoint-initdb.d/35-sdfz-person-import-permission.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260820_fix_mojibake_menu_and_device_dict.sql:/docker-entrypoint-initdb.d/36-sdfz-menu-device-mojibake-fix.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260820_menu_permission_reconcile.sql:/docker-entrypoint-initdb.d/37-sdfz-menu-permission-reconcile.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260820_user_type_menu_split.sql:/docker-entrypoint-initdb.d/38-sdfz-user-type-menu-split.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260821_menu_permission_kind.sql:/docker-entrypoint-initdb.d/39-sdfz-menu-permission-kind.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260821_open_api_catalog.sql:/docker-entrypoint-initdb.d/40-sdfz-open-api-catalog.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260821_open_api_resource_menu.sql:/docker-entrypoint-initdb.d/41-sdfz-open-api-resource-menu.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260821_open_platform_mysql.sql:/docker-entrypoint-initdb.d/42-sdfz-open-platform-mysql.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260821_user_query_permission_labels.sql:/docker-entrypoint-initdb.d/43-sdfz-user-query-permission-labels.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260822_open_api_resource_extend.sql:/docker-entrypoint-initdb.d/44-sdfz-open-api-resource-extend.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260822_open_vendor_and_grant_tables.sql:/docker-entrypoint-initdb.d/45-sdfz-open-vendor-grant-tables.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260823_open_platform_admin_menus.sql:/docker-entrypoint-initdb.d/46-sdfz-open-platform-admin-menus.sql:ro
+      - ${HAN_SQL_ROOT:-../../sql}/sdfz/mysql/20260823_open_vendor_portal.sql:/docker-entrypoint-initdb.d/47-sdfz-open-vendor-portal.sql:ro
     networks:
       - han-network
     healthcheck:
