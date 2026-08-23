@@ -21,3 +21,10 @@ spring:
         username: ${NACOS_USERNAME:nacos}
         password: ${NACOS_PASSWORD:han@2026}
         file-extension: yml
+
+han:
+  security:
+    inner-auth:
+      enabled: ${HAN_INNER_AUTH_ENABLED:true}
+      secret: ${HAN_INNER_AUTH_SECRET:han-cloud-inner-auth}
+      clock-skew-seconds: ${HAN_INNER_AUTH_CLOCK_SKEW_SECONDS:300}
