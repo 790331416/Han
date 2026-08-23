@@ -16,21 +16,27 @@ export interface SystemBrandForm {
   shortName: string
   displayMode: BrandDisplayMode
   loginSubtitle: string
+  allowInsecureVendorRegistration?: boolean
+}
+
+/** 管理端专用系统设置；测试安全开关不属于公开品牌信息。 */
+export interface SystemBrandSettings extends SystemBrand {
+  allowInsecureVendorRegistration: boolean
 }
 
 /** 由系统设置菜单权限控制，服务端会再次校验。 */
 export function getSystemBrand() {
-  return get<SystemBrand>('/system/brand')
+  return get<SystemBrandSettings>('/system/brand')
 }
 
 export function updateSystemBrand(data: SystemBrandForm) {
-  return post<SystemBrand>('/system/brand', data)
+  return post<SystemBrandSettings>('/system/brand', data)
 }
 
 export function uploadSystemBrandLogo(file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return post<SystemBrand>('/system/brand/logo', formData, {
+  return post<SystemBrandSettings>('/system/brand/logo', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }

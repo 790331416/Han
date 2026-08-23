@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 public class VendorRegistrationService {
 
     private static final long PLATFORM_TENANT_ID = 1L;
+    public static final String INSECURE_HTTP_REGISTRATION_KEY = "sys.open.vendorRegistration.allowInsecureHttp";
 
     private final StringRedisTemplate redisTemplate;
     private final SecurityProperties securityProperties;
@@ -43,7 +44,7 @@ public class VendorRegistrationService {
         String contactPhone = required(dto.getContactPhone(), "联系电话不能为空");
         String accountPhone = required(dto.getPhone(), "账号手机号不能为空");
         String username = required(dto.getUsername(), "登录用户名不能为空");
-        String password = decryptPassword(dto.getEncryptedPassword());
+        String password = resolveRegistrationPassword(dto);
 
         OpenVendorAccountCreateDTO account = new OpenVendorAccountCreateDTO();
         account.setTenantId(PLATFORM_TENANT_ID);
@@ -147,6 +148,33 @@ public class VendorRegistrationService {
             return message;
         }
         return "厂商申请创建失败，请稍后重试";
+    }
+
+    /**
+     * 测试环境可由平台系统设置显式开启 HTTP 兼容；读取失败必须保持关闭。
+     */
+    public boolean isInsecureHttpRegistrationAllowed() {
+        try {
+            R<String> result = systemServiceClient.getConfigValue(INSECURE_HTTP_REGISTRATION_KEY);
+            return result != null && result.getCode() == Constants.SUCCESS
+                    && "true".equalsIgnoreCase(result.getData() == null ? "" : result.getData().trim());
+        } catch (Exception e) {
+            log.warn("读取厂商 HTTP 注册兼容开关失败，默认关闭: exception={}", e.getClass().getName());
+            return false;
+        }
+    }
+
+    private String resolveRegistrationPassword(VendorPublicRegisterDTO dto) {
+        if (StringUtils.hasText(dto.getEncryptedPassword())) {
+            return decryptPassword(dto.getEncryptedPassword());
+        }
+        if (isInsecureHttpRegistrationAllowed() && StringUtils.hasText(dto.getPlainPassword())) {
+            return dto.getPlainPassword();
+        }
+        if (StringUtils.hasText(dto.getPlainPassword())) {
+            throw new BusinessException("当前环境未开启HTTP测试兼容，密码必须使用注册公钥加密");
+        }
+        throw new BusinessException("登录密码不能为空");
     }
 
     private String decryptPassword(String encryptedPassword) {

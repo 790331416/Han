@@ -5,7 +5,7 @@ import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.domain.dto.SystemBrandDto;
-import com.han.system.domain.vo.SystemBrandVo;
+import com.han.system.domain.vo.SystemBrandSettingsVo;
 import com.han.system.service.SystemBrandService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,24 +29,25 @@ public class ASystemBrandController {
 
     @GetMapping
     @PreAuthorize("@ss.hasAuthority('system:brand:query')")
-    public R<SystemBrandVo> getBrand() {
-        return R.ok(systemBrandService.getBrand());
+    public R<SystemBrandSettingsVo> getBrand() {
+        return R.ok(systemBrandService.getSettings());
     }
 
     @RepeatSubmit
     @PostMapping
     @PreAuthorize("@ss.hasAuthority('system:brand:edit')")
     @OperLog(module = "系统品牌设置", type = OperLog.OperType.UPDATE)
-    public R<SystemBrandVo> updateBrand(@Valid @RequestBody SystemBrandDto form) {
-        return R.ok(systemBrandService.updateBrand(form));
+    public R<SystemBrandSettingsVo> updateBrand(@Valid @RequestBody SystemBrandDto form) {
+        systemBrandService.updateBrand(form);
+        return R.ok(systemBrandService.getSettings());
     }
 
     @RepeatSubmit
     @PostMapping("/logo")
     @PreAuthorize("@ss.hasAuthority('system:brand:edit')")
     @OperLog(module = "系统品牌设置", type = OperLog.OperType.UPDATE)
-    public R<SystemBrandVo> updateLogo(@RequestPart("file") MultipartFile file) {
+    public R<SystemBrandSettingsVo> updateLogo(@RequestPart("file") MultipartFile file) {
         systemBrandService.updateLogo(file);
-        return R.ok(systemBrandService.getBrand());
+        return R.ok(systemBrandService.getSettings());
     }
 }

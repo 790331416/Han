@@ -7,6 +7,7 @@ import com.han.common.security.context.SecurityContextHolder;
 import com.han.system.domain.dto.SystemBrandDto;
 import com.han.system.domain.po.SysConfigPo;
 import com.han.system.domain.vo.SystemBrandVo;
+import com.han.system.domain.vo.SystemBrandSettingsVo;
 import com.han.system.mapper.SysConfigMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -39,8 +40,10 @@ public class SystemBrandService {
     private static final String KEY_SHORT_NAME = "sys.brand.shortName";
     private static final String KEY_DISPLAY_MODE = "sys.brand.displayMode";
     private static final String KEY_LOGIN_SUBTITLE = "sys.brand.loginSubtitle";
+    private static final String KEY_ALLOW_INSECURE_VENDOR_REGISTRATION = "sys.open.vendorRegistration.allowInsecureHttp";
     private static final Set<String> RESERVED_KEYS = Set.of(
-            KEY_FULL_NAME, KEY_SHORT_NAME, KEY_DISPLAY_MODE, KEY_LOGIN_SUBTITLE);
+            KEY_FULL_NAME, KEY_SHORT_NAME, KEY_DISPLAY_MODE, KEY_LOGIN_SUBTITLE,
+            KEY_ALLOW_INSECURE_VENDOR_REGISTRATION);
 
     private static final String DEFAULT_FULL_NAME = "HAN Cloud";
     private static final String DEFAULT_SHORT_NAME = "HAN";
@@ -67,6 +70,16 @@ public class SystemBrandService {
         ));
     }
 
+    /** 管理端设置专用视图；不复用登录前公开品牌接口返回测试安全开关。 */
+    public SystemBrandSettingsVo getSettings() {
+        SystemBrandVo brand = getBrand();
+        boolean allowInsecureVendorRegistration = TenantHelper.ignore(() -> Boolean.parseBoolean(
+                valueOf(KEY_ALLOW_INSECURE_VENDOR_REGISTRATION, "false").trim()));
+        return new SystemBrandSettingsVo(
+                brand.fullName(), brand.shortName(), brand.displayMode(), brand.displayName(),
+                brand.loginSubtitle(), brand.logoUrl(), allowInsecureVendorRegistration);
+    }
+
     /** 四项品牌字段必须作为一个事务一起保存，避免前端读到半套配置。 */
     @Transactional(rollbackFor = Exception.class)
     public SystemBrandVo updateBrand(SystemBrandDto form) {
@@ -81,6 +94,10 @@ public class SystemBrandService {
             upsert(KEY_SHORT_NAME, "系统品牌简称", brand.shortName());
             upsert(KEY_DISPLAY_MODE, "系统品牌统一展示方式", brand.displayMode());
             upsert(KEY_LOGIN_SUBTITLE, "登录页副标题", brand.loginSubtitle());
+            if (form.getAllowInsecureVendorRegistration() != null) {
+                upsert(KEY_ALLOW_INSECURE_VENDOR_REGISTRATION, "测试环境允许厂商HTTP注册",
+                        String.valueOf(form.getAllowInsecureVendorRegistration()));
+            }
         });
         return brand;
     }
@@ -168,7 +185,7 @@ public class SystemBrandService {
             config.setConfigKey(key);
             config.setConfigValue(value);
             config.setConfigType("Y");
-            config.setRemark("平台全局品牌配置，仅超级管理员可维护");
+            config.setRemark("平台全局系统设置，仅超级管理员可维护");
             configMapper.insert(config);
             return;
         }

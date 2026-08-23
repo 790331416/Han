@@ -7,6 +7,7 @@ type PublicKeyMode = 'enabled' | 'disabled' | 'error'
 interface MockOptions {
   captcha?: CaptchaMode
   publicKey?: PublicKeyMode
+  insecureHttpAllowed?: boolean
   statusError?: boolean
   onRegister?: (body: Record<string, unknown>) => void
 }
@@ -52,7 +53,9 @@ async function mockAuthAndPublicApi(page: Page, options: MockOptions = {}) {
       await route.fulfill({ status: 503, contentType: 'application/json', body: responseBody(null, 503, 'public key unavailable') })
       return
     }
-    const data = keyMode === 'disabled' ? { enabled: false } : { enabled: true, publicKey: key }
+    const data = keyMode === 'disabled'
+      ? { enabled: false, allowInsecureHttp: Boolean(options.insecureHttpAllowed) }
+      : { enabled: true, publicKey: key, allowInsecureHttp: Boolean(options.insecureHttpAllowed) }
     await route.fulfill({ contentType: 'application/json', body: responseBody(data) })
   })
   await page.route('**/auth/vendor/register', async (route) => {
@@ -114,6 +117,36 @@ test.describe('厂商入驻公开入口', () => {
     await expect(page.getByTestId('vendor-apply-public-key-error')).toBeVisible()
     await expect(page.getByTestId('vendor-apply-submit')).toBeDisabled()
     await expect(page).not.toHaveURL(/\/auth\/vendor\/register/)
+  })
+
+  test('HTTP 环境默认禁止提交密码', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false })
+    })
+    await mockAuthAndPublicApi(page)
+    await page.goto('/open/vendor-apply')
+
+    await expect(page.getByTestId('vendor-apply-public-key-error')).toContainText('系统未开启测试兼容')
+    await expect(page.getByTestId('vendor-apply-submit')).toBeDisabled()
+  })
+
+  test('HTTP 测试兼容开启时提交明文密码且显示警示', async ({ page }) => {
+    let registerBody: Record<string, unknown> | undefined
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false })
+    })
+    await mockAuthAndPublicApi(page, {
+      insecureHttpAllowed: true,
+      onRegister: (body) => { registerBody = body }
+    })
+    await page.goto('/open/vendor-apply')
+    await fillRequired(page)
+
+    await expect(page.getByTestId('vendor-apply-insecure-http-warning')).toBeVisible()
+    await page.getByTestId('vendor-apply-submit').click()
+    await expect(page.locator('.el-message--success')).toContainText(applicationNo)
+    expect(typeof registerBody?.plainPassword).toBe('string')
+    expect(registerBody?.encryptedPassword).toBeUndefined()
   })
 
   test('成功提交显示申请编号并清空密码，状态查询错误有提示', async ({ page }) => {

@@ -69,6 +69,34 @@ class VendorRegistrationServiceTest {
     }
 
     @Test
+    void allowsPlainPasswordOnlyWhenHttpTestCompatibilityIsEnabled() {
+        when(systemServiceClient.getConfigValue(VendorRegistrationService.INSECURE_HTTP_REGISTRATION_KEY))
+                .thenReturn(R.ok("true"));
+        when(systemServiceClient.createOpenVendorAccount(any())).thenReturn(R.ok(42L));
+        when(openServiceClient.createPortalApplication(any())).thenReturn(R.ok("application-1"));
+        VendorPublicRegisterDTO dto = request();
+        dto.setPlainPassword("Strong@123");
+
+        assertThat(service.register(dto)).isEqualTo("application-1");
+        var captor = org.mockito.ArgumentCaptor.forClass(OpenVendorAccountCreateDTO.class);
+        verify(systemServiceClient).createOpenVendorAccount(captor.capture());
+        assertThat(captor.getValue().getPassword()).isEqualTo("Strong@123");
+    }
+
+    @Test
+    void rejectsPlainPasswordWhenHttpTestCompatibilityIsDisabled() {
+        when(systemServiceClient.getConfigValue(VendorRegistrationService.INSECURE_HTTP_REGISTRATION_KEY))
+                .thenReturn(R.ok("false"));
+        VendorPublicRegisterDTO dto = request();
+        dto.setPlainPassword("Strong@123");
+
+        assertThatThrownBy(() -> service.register(dto))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前环境未开启HTTP测试兼容，密码必须使用注册公钥加密");
+        verify(systemServiceClient, never()).createOpenVendorAccount(any());
+    }
+
+    @Test
     void rejectsCaptchaBeforeCreatingAccount() {
         when(captchaSettingService.isCaptchaEnabled()).thenReturn(true);
         when(valueOperations.get(any())).thenReturn(null);
@@ -129,10 +157,12 @@ class VendorRegistrationServiceTest {
     void sensitiveRegistrationFieldsAreExcludedFromDtoStrings() {
         VendorPublicRegisterDTO request = request();
         request.setEncryptedPassword("ciphertext-marker");
+        request.setPlainPassword("plaintext-marker");
         OpenVendorAccountCreateDTO account = new OpenVendorAccountCreateDTO();
         account.setPassword("plaintext-marker");
 
         assertThat(request.toString()).doesNotContain("ciphertext-marker");
+        assertThat(request.toString()).doesNotContain("plaintext-marker");
         assertThat(account.toString()).doesNotContain("plaintext-marker");
     }
 

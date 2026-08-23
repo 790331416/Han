@@ -23,4 +23,7 @@ public class SystemBrandDto {
 
     @Size(max = 128, message = "登录页副标题不能超过128个字符")
     private String loginSubtitle;
+
+    /** 仅用于测试环境的厂商 HTTP 注册兼容开关；未提交时保持原值。 */
+    private Boolean allowInsecureVendorRegistration;
 }

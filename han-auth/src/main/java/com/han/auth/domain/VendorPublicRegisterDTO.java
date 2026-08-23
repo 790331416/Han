@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.ToString;
 
-/** 厂商公开注册请求；密码必须是 auth 注册公钥加密后的密文。 */
+/** 厂商公开注册请求；默认使用 auth 注册公钥加密，测试兼容模式才允许明文。 */
 @Data
 public class VendorPublicRegisterDTO {
 
@@ -58,12 +58,17 @@ public class VendorPublicRegisterDTO {
     @Size(max = 30, message = "昵称长度不能超过30个字符")
     private String nickname;
 
-    /** 始终按 RSA 密文处理，禁止兼容明文。 */
-    @NotBlank(message = "登录密码不能为空")
+    /** RSA 密文；正式环境必须提供。 */
     @Size(max = 4096, message = "密码密文长度不能超过4096个字符")
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     private String encryptedPassword;
+
+    /** 仅在系统设置显式开启 HTTP 测试兼容时接收，绝不回传或记录。 */
+    @Size(min = 8, max = 4096, message = "登录密码长度应为8-4096个字符")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
+    private String plainPassword;
 
     @Size(max = 20, message = "验证码长度不能超过20个字符")
     @Pattern(regexp = "[A-Za-z0-9]*", message = "验证码格式不正确")

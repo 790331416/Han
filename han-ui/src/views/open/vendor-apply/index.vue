@@ -16,66 +16,85 @@
         show-icon
         class="notice"
       />
+      <el-alert
+        v-if="httpTestMode"
+        title="当前为 HTTP 测试兼容模式，密码会以明文提交。仅限受控测试环境，请在正式环境关闭该开关并使用 HTTPS。"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="notice"
+        data-testid="vendor-apply-insecure-http-warning"
+      />
 
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px" class="apply-form">
-        <el-divider content-position="left">账号信息</el-divider>
-        <div class="form-grid">
-          <el-form-item label="登录账号" prop="username">
-            <el-input v-model="form.username" data-testid="vendor-apply-username" autocomplete="username" placeholder="请输入登录账号" />
-          </el-form-item>
-          <el-form-item label="昵称" prop="nickname">
-            <el-input v-model="form.nickname" data-testid="vendor-apply-nickname" placeholder="请输入联系人昵称" />
-          </el-form-item>
-          <el-form-item label="登录密码" prop="password">
-            <el-input v-model="form.password" data-testid="vendor-apply-password" type="password" show-password autocomplete="new-password" placeholder="请输入登录密码" />
-          </el-form-item>
-          <el-form-item label="联系电话" prop="phone">
-            <el-input v-model="form.phone" data-testid="vendor-apply-phone" autocomplete="tel" placeholder="用于查询审核结果" />
-          </el-form-item>
-          <el-form-item label="联系邮箱" prop="email">
-            <el-input v-model="form.email" autocomplete="email" placeholder="请输入邮箱" />
-          </el-form-item>
-          <el-form-item v-if="captchaEnabled" label="验证码" prop="code" data-testid="vendor-apply-captcha">
-            <div class="captcha-row">
-              <el-input v-model="form.code" data-testid="vendor-apply-code" placeholder="请输入验证码" />
-              <img :src="captchaImg" alt="验证码" class="captcha-img" @click="loadCaptcha" />
-            </div>
-          </el-form-item>
-          <el-alert v-if="captchaError" :title="captchaError" type="error" :closable="false" show-icon class="field-alert" data-testid="vendor-apply-captcha-error" />
-        </div>
+        <section class="form-section">
+          <div class="section-heading"><strong>账号信息</strong><span>用于登录厂商门户和查询申请进度</span></div>
+          <div class="form-grid">
+            <el-form-item label="登录账号" prop="username">
+              <el-input v-model="form.username" data-testid="vendor-apply-username" autocomplete="username" placeholder="请输入登录账号" />
+            </el-form-item>
+            <el-form-item label="昵称" prop="nickname">
+              <el-input v-model="form.nickname" data-testid="vendor-apply-nickname" placeholder="请输入联系人昵称" />
+            </el-form-item>
+            <el-form-item label="登录密码" prop="password">
+              <el-input v-model="form.password" data-testid="vendor-apply-password" type="password" show-password autocomplete="new-password" placeholder="请输入登录密码" />
+            </el-form-item>
+            <el-form-item label="联系电话" prop="phone">
+              <el-input v-model="form.phone" data-testid="vendor-apply-phone" autocomplete="tel" placeholder="用于查询审核结果" />
+            </el-form-item>
+            <el-form-item v-if="captchaEnabled" label="验证码" prop="code" data-testid="vendor-apply-captcha">
+              <div class="captcha-row">
+                <el-input v-model="form.code" data-testid="vendor-apply-code" placeholder="请输入验证码" />
+                <img :src="captchaImg" alt="验证码" class="captcha-img" @click="loadCaptcha" />
+              </div>
+            </el-form-item>
+            <el-alert v-if="captchaError" :title="captchaError" type="error" :closable="false" show-icon class="field-alert" data-testid="vendor-apply-captcha-error" />
+          </div>
+        </section>
 
-        <el-divider content-position="left">厂商资料</el-divider>
-        <div class="form-grid">
-          <el-form-item label="厂商名称" prop="name">
-            <el-input v-model="form.name" data-testid="vendor-apply-name" placeholder="请输入企业/机构名称" />
-          </el-form-item>
-          <el-form-item label="统一社会信用代码" prop="qualificationNo">
-            <el-input v-model="form.qualificationNo" data-testid="vendor-apply-qualification" placeholder="请输入统一社会信用代码" />
-          </el-form-item>
-          <el-form-item label="所属行业">
-            <el-input v-model="form.industry" placeholder="请输入所属行业" />
-          </el-form-item>
-          <el-form-item label="官网地址">
-            <el-input v-model="form.website" placeholder="https://" />
-          </el-form-item>
-          <el-form-item label="企业联系人" prop="contactName">
-            <el-input v-model="form.contactName" data-testid="vendor-apply-contact-name" placeholder="请输入企业联系人" />
-          </el-form-item>
-          <el-form-item label="联系人电话" prop="contactPhone">
-            <el-input v-model="form.contactPhone" data-testid="vendor-apply-contact-phone" placeholder="请输入联系人电话" />
-          </el-form-item>
-          <el-form-item label="联系人邮箱">
-            <el-input v-model="form.contactEmail" placeholder="请输入联系人邮箱" />
-          </el-form-item>
-          <el-form-item label="申请说明" class="full-row">
-            <el-input v-model="form.applyReason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="请说明接入场景和申请原因" />
-          </el-form-item>
-        </div>
+        <section class="form-section">
+          <div class="section-heading"><strong>企业资料</strong><span>带 <em>*</em> 的项目为必填</span></div>
+          <div class="form-grid">
+            <el-form-item label="厂商名称" prop="name">
+              <el-input v-model="form.name" data-testid="vendor-apply-name" placeholder="请输入企业/机构名称" />
+            </el-form-item>
+            <el-form-item label="统一社会信用代码" prop="qualificationNo">
+              <el-input v-model="form.qualificationNo" data-testid="vendor-apply-qualification" placeholder="请输入统一社会信用代码" />
+            </el-form-item>
+            <el-form-item label="企业联系人" prop="contactName">
+              <el-input v-model="form.contactName" data-testid="vendor-apply-contact-name" placeholder="请输入企业联系人" />
+            </el-form-item>
+            <el-form-item label="联系人电话" prop="contactPhone">
+              <el-input v-model="form.contactPhone" data-testid="vendor-apply-contact-phone" placeholder="请输入联系人电话" />
+            </el-form-item>
+          </div>
+          <el-collapse class="optional-section">
+            <el-collapse-item title="补充信息（选填）" name="optional">
+              <div class="form-grid optional-grid">
+                <el-form-item label="联系邮箱" prop="email">
+                  <el-input v-model="form.email" autocomplete="email" placeholder="请输入账号邮箱" />
+                </el-form-item>
+                <el-form-item label="所属行业">
+                  <el-input v-model="form.industry" placeholder="请输入所属行业" />
+                </el-form-item>
+                <el-form-item label="官网地址">
+                  <el-input v-model="form.website" placeholder="https://" />
+                </el-form-item>
+                <el-form-item label="联系人邮箱">
+                  <el-input v-model="form.contactEmail" placeholder="请输入联系人邮箱" />
+                </el-form-item>
+                <el-form-item label="申请说明" class="full-row">
+                  <el-input v-model="form.applyReason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="请说明接入场景和申请原因" />
+                </el-form-item>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </section>
 
         <el-alert v-if="publicKeyError" :title="publicKeyError" type="error" :closable="false" show-icon class="field-alert" data-testid="vendor-apply-public-key-error" />
         <div class="form-actions">
           <el-button @click="router.push('/login')">取消</el-button>
-          <el-button type="primary" :loading="submitting" :disabled="submitting || (captchaEnabled && !captchaReady) || !encryptEnabled || !rsaPublicKey" data-testid="vendor-apply-submit" @click="submitApplication">提交申请</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="!canSubmit" data-testid="vendor-apply-submit" @click="submitApplication">提交申请</el-button>
         </div>
       </el-form>
 
@@ -101,12 +120,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { getCaptcha } from '@/api/auth'
 import { getVendorPublicKey, submitPublicVendorApplication, getPublicVendorApplication, type PublicVendorApplicationForm, type PublicVendorApplicationRequest, type PublicVendorApplicationStatus } from '@/api/open/portal'
-import { rsaEncrypt } from '@/utils/crypto'
+import { isWebCryptoAvailable, rsaEncrypt } from '@/utils/crypto'
 import { formatDate } from '@/utils/request'
 
 const router = useRouter()
@@ -121,6 +140,12 @@ const encryptEnabled = ref(false)
 const rsaPublicKey = ref('')
 const publicKeyError = ref('')
 const statusResult = ref<PublicVendorApplicationStatus>()
+const webCryptoAvailable = isWebCryptoAvailable()
+const allowInsecureHttp = ref(false)
+const httpTestMode = computed(() => !webCryptoAvailable && allowInsecureHttp.value)
+const canSubmit = computed(() => !submitting.value
+  && (!captchaEnabled.value || captchaReady.value)
+  && (webCryptoAvailable ? encryptEnabled.value && Boolean(rsaPublicKey.value) : httpTestMode.value))
 
 const form = reactive<PublicVendorApplicationForm>({
   username: '', nickname: '', password: '', phone: '', email: '', name: '', qualificationNo: '', industry: '',
@@ -176,8 +201,16 @@ async function loadPublicKey() {
   encryptEnabled.value = false
   rsaPublicKey.value = ''
   publicKeyError.value = ''
+  allowInsecureHttp.value = false
   try {
     const response = await getVendorPublicKey()
+    allowInsecureHttp.value = response.data?.allowInsecureHttp === true
+    if (!webCryptoAvailable) {
+      if (!allowInsecureHttp.value) {
+        publicKeyError.value = '当前站点使用HTTP，系统未开启测试兼容。请使用HTTPS，或由管理员在系统设置中临时开启测试兼容。'
+      }
+      return
+    }
     if (response.data?.enabled && response.data.publicKey) {
       encryptEnabled.value = true
       rsaPublicKey.value = response.data.publicKey
@@ -200,13 +233,19 @@ async function submitApplication() {
       ElMessage.error(captchaError.value)
       return
     }
-    if (!encryptEnabled.value || !rsaPublicKey.value) {
-      publicKeyError.value = publicKeyError.value || '注册加密公钥加载失败，请刷新页面后重试'
+    submitting.value = true
+    if (webCryptoAvailable) {
+      if (!encryptEnabled.value || !rsaPublicKey.value) {
+        publicKeyError.value = publicKeyError.value || '注册加密公钥加载失败，请刷新页面后重试'
+        ElMessage.error(publicKeyError.value)
+        return
+      }
+      encryptedPassword = await rsaEncrypt(form.password, rsaPublicKey.value)
+    } else if (!httpTestMode.value) {
+      publicKeyError.value = publicKeyError.value || '当前环境不允许HTTP明文提交注册密码'
       ElMessage.error(publicKeyError.value)
       return
     }
-    submitting.value = true
-    encryptedPassword = await rsaEncrypt(form.password, rsaPublicKey.value)
     payload = {
       username: form.username,
       nickname: form.nickname,
@@ -221,6 +260,7 @@ async function submitApplication() {
       website: form.website,
       applyReason: form.applyReason,
       encryptedPassword,
+      plainPassword: webCryptoAvailable ? undefined : form.password,
       captchaCode: form.code || undefined,
       captchaUuid: form.uuid || undefined
     }
@@ -238,7 +278,10 @@ async function submitApplication() {
   } finally {
     submitting.value = false
     form.password = ''
-    if (payload) payload.encryptedPassword = ''
+    if (payload) {
+      payload.encryptedPassword = undefined
+      payload.plainPassword = undefined
+    }
     payload = undefined
     encryptedPassword = undefined
   }
@@ -275,23 +318,33 @@ onMounted(() => { loadCaptcha(); loadPublicKey() })
 
 <style lang="scss" scoped>
 .public-page { min-height: 100vh; padding: 32px 16px; background: #f5f7fa; }
-.public-card { max-width: 1040px; margin: 0 auto; padding: 28px 32px; background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgb(15 23 42 / 0.06); }
+.public-card { max-width: 980px; margin: 0 auto; padding: 28px 32px; background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgb(15 23 42 / 0.06); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .page-header h1 { margin: 0 0 8px; color: #1f2937; font-size: 24px; }
 .page-header p { margin: 0; color: #6b7280; font-size: 13px; }
-.notice { margin: 24px 0; }
+.notice { margin: 16px 0; }
+.apply-form { display: grid; gap: 16px; }
+.form-section { padding: 20px 20px 4px; border: 1px solid #e9edf3; border-radius: 10px; background: #fff; }
+.section-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.section-heading strong { color: #1f2937; font-size: 15px; }
+.section-heading span { color: #909399; font-size: 12px; }
+.section-heading em { color: var(--el-color-danger); font-style: normal; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
 .full-row { grid-column: 1 / -1; }
+.optional-section { margin: 0 0 16px; border-top: 1px solid #ebeef5; }
+.optional-section :deep(.el-collapse-item__header) { color: #606266; font-size: 13px; }
+.optional-section :deep(.el-collapse-item__wrap) { border-bottom: 0; }
 .captcha-row { display: flex; gap: 10px; width: 100%; }
 .captcha-row :deep(.el-input) { flex: 1; }
 .captcha-img { width: 118px; height: 32px; cursor: pointer; border: 1px solid var(--el-border-color); border-radius: 4px; object-fit: cover; }
-.form-actions { display: flex; justify-content: center; gap: 12px; margin: 16px 0 28px; }
+.form-actions { display: flex; justify-content: center; gap: 12px; margin: 4px 0 18px; }
 .field-alert { grid-column: 1 / -1; margin: 0 0 12px; }
 .status-form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .status-form :deep(.el-form-item) { margin-bottom: 12px; }
 .status-result { margin-top: 8px; }
 @media (max-width: 720px) {
   .public-card { padding: 20px 16px; }
+  .form-section { padding: 16px 14px 2px; }
   .form-grid { grid-template-columns: 1fr; }
   .full-row { grid-column: auto; }
   .page-header { align-items: center; }

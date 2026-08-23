@@ -60,6 +60,7 @@ class SystemBrandServiceTest {
         assertThat(brand.displayName()).isEqualTo("HAN Cloud");
         assertThat(brand.loginSubtitle()).isEqualTo("企业级多租户微服务平台");
         assertThat(brand.logoUrl()).isEmpty();
+        assertThat(service.getSettings().allowInsecureVendorRegistration()).isFalse();
     }
 
     @Test
@@ -84,6 +85,27 @@ class SystemBrandServiceTest {
         assertThat(record.getAllValues())
                 .extracting(SysConfigPo::getConfigValue)
                 .contains("巴蜀云校", "巴蜀", SystemBrandService.DISPLAY_SHORT_NAME, "");
+    }
+
+    @Test
+    void storesHttpVendorRegistrationCompatibilityAsProtectedGlobalSetting() {
+        when(configMapper.selectOne(any())).thenReturn(null);
+        SystemBrandDto form = new SystemBrandDto();
+        form.setFullName("巴蜀云校");
+        form.setShortName("巴蜀");
+        form.setDisplayMode(SystemBrandService.DISPLAY_SHORT_NAME);
+        form.setLoginSubtitle("");
+        form.setAllowInsecureVendorRegistration(true);
+
+        service.updateBrand(form);
+
+        ArgumentCaptor<SysConfigPo> record = ArgumentCaptor.forClass(SysConfigPo.class);
+        verify(configMapper, org.mockito.Mockito.times(5)).insert(record.capture());
+        assertThat(record.getAllValues())
+                .extracting(SysConfigPo::getConfigKey, SysConfigPo::getConfigValue)
+                .contains(org.assertj.core.groups.Tuple.tuple(
+                        "sys.open.vendorRegistration.allowInsecureHttp", "true"));
+        assertThat(SystemBrandService.isReservedConfigKey("sys.open.vendorRegistration.allowInsecureHttp")).isTrue();
     }
 
     @Test

@@ -21,7 +21,9 @@ export interface PublicVendorApplicationForm {
 }
 
 export interface PublicVendorApplicationRequest extends Omit<PublicVendorApplicationForm, 'password' | 'code' | 'uuid'> {
-  encryptedPassword: string
+  encryptedPassword?: string
+  /** 仅在系统设置明确开启 HTTP 测试兼容时发送，正式 HTTPS 环境不会使用。 */
+  plainPassword?: string
   captchaCode?: string
   captchaUuid?: string
 }
@@ -36,7 +38,7 @@ export interface PublicVendorApplicationStatus {
 }
 
 export function getVendorPublicKey() {
-  return get<{ enabled: boolean; publicKey?: string }>('/auth/vendor/publicKey')
+  return get<{ enabled: boolean; publicKey?: string; allowInsecureHttp?: boolean }>('/auth/vendor/publicKey')
 }
 
 export function submitPublicVendorApplication(data: PublicVendorApplicationRequest) {

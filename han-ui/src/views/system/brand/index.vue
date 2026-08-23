@@ -5,7 +5,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">系统设置</div>
-            <div class="card-desc">统一维护管理端与校端的系统名称、简称、Logo 和登录页副标题。</div>
+            <div class="card-desc">统一维护系统名称、Logo、登录页文案和开放平台测试安全开关。</div>
           </div>
         </div>
       </template>
@@ -72,6 +72,23 @@
             <span v-if="form.loginSubtitle">{{ form.loginSubtitle }}</span>
           </div>
         </el-form-item>
+        <el-divider content-position="left">开放平台测试</el-divider>
+        <el-form-item label="允许 HTTP 厂商注册">
+          <div class="security-setting">
+            <el-switch
+              v-model="form.allowInsecureVendorRegistration"
+              :disabled="!canEdit"
+              active-text="测试兼容已开启"
+              inactive-text="默认强制加密"
+            />
+            <el-alert
+              title="仅测试环境临时开启。开启后，HTTP 访问的厂商注册可提交明文密码；正式环境请保持关闭并使用 HTTPS。"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+          </div>
+        </el-form-item>
         <el-form-item>
           <el-button v-if="canEdit" type="primary" :loading="saving" @click="submit">保存设置</el-button>
           <el-button @click="load">重置</el-button>
@@ -101,7 +118,8 @@ const form = reactive({
   fullName: '',
   shortName: '',
   displayMode: 'FULL_NAME' as BrandDisplayMode,
-  loginSubtitle: ''
+  loginSubtitle: '',
+  allowInsecureVendorRegistration: false
 })
 
 const rules: FormRules = {
@@ -143,7 +161,8 @@ async function load() {
     fullName: data.fullName,
     shortName: data.shortName,
     displayMode: data.displayMode,
-    loginSubtitle: data.loginSubtitle || ''
+    loginSubtitle: data.loginSubtitle || '',
+    allowInsecureVendorRegistration: Boolean(data.allowInsecureVendorRegistration)
   })
   logoFile.value = null
   setLogoPreview(data.logoUrl || '')
@@ -182,6 +201,7 @@ onBeforeUnmount(() => { if (objectLogoUrl) URL.revokeObjectURL(objectLogoUrl) })
 .logo-setting { display: flex; align-items: center; gap: 14px; }
 .logo-preview { width: 72px; height: 72px; border: 1px solid #dcdfe6; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #909399; font-size: 12px; overflow: hidden; }
 .logo-preview img { width: 100%; height: 100%; object-fit: contain; }
+.security-setting { display: grid; gap: 12px; width: min(100%, 520px); }
 html.dark .card-title, html.dark .brand-preview strong { color: #f9fafb; }
 html.dark .brand-preview { background: #1f2937; color: #9ca3af; }
 html.dark .logo-preview { border-color: #4c4d4f; }

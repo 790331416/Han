@@ -6,6 +6,9 @@
  * 将 Base64 编码的 SPKI 公钥导入为 CryptoKey
  */
 async function importPublicKey(base64Key: string): Promise<CryptoKey> {
+  if (!isWebCryptoAvailable()) {
+    throw new Error('当前浏览器未启用安全加密能力，请使用HTTPS访问')
+  }
   const binaryString = atob(base64Key)
   const bytes = new Uint8Array(binaryString.length)
   for (let i = 0; i < binaryString.length; i++) {
@@ -18,6 +21,11 @@ async function importPublicKey(base64Key: string): Promise<CryptoKey> {
     false,
     ['encrypt']
   )
+}
+
+/** Web Crypto 仅在 HTTPS 或受信任本地环境可用。 */
+export function isWebCryptoAvailable(): boolean {
+  return globalThis.isSecureContext && typeof globalThis.crypto?.subtle?.importKey === 'function'
 }
 
 /**

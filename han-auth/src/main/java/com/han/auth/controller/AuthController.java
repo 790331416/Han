@@ -141,17 +141,18 @@ public class AuthController {
 
     /** 厂商注册专用公钥；始终返回，不能用旧登录开关关闭。 */
     @GetMapping("/vendor/publicKey")
-    @PermissionExempt("厂商注册前获取专用 RSA 公钥，只返回公钥")
+    @PermissionExempt("厂商注册前获取专用 RSA 公钥和测试兼容开关")
     public R<Map<String, Object>> vendorPublicKey() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("enabled", true);
         result.put("publicKey", securityProperties.getPublicKey());
+        result.put("allowInsecureHttp", vendorRegistrationService.isInsecureHttpRegistrationAllowed());
         return R.ok(result);
     }
 
     /** 厂商公开注册入口，验证码和密码解密统一由 auth 完成。 */
     @PostMapping("/vendor/register")
-    @PermissionExempt("厂商公开注册入口，方法内完成验证码、RSA 密码和账号申请校验")
+    @PermissionExempt("厂商公开注册入口，方法内完成验证码、密码安全模式和账号申请校验")
     @RateLimiter(key = "vendorRegister", time = 60, count = 5, limitType = LimitType.IP)
     @RepeatSubmit(interval = 10, message = "请勿重复提交厂商申请")
     public R<String> vendorRegister(@RequestBody @Valid VendorPublicRegisterDTO dto) {
