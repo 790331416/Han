@@ -18,6 +18,9 @@ public class AppGrantDetailVO {
     /** 资源ID */
     private Long resourceId;
 
+    /** 授权环境：SANDBOX/PROD */
+    private String environment;
+
     /** 资源编码 */
     private String resourceCode;
 

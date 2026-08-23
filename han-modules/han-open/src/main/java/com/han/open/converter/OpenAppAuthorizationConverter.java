@@ -49,6 +49,7 @@ public final class OpenAppAuthorizationConverter {
         target.setId(source.getId());
         target.setAppId(source.getAppId());
         target.setResourceId(source.getResourceId());
+        target.setEnvironment(source.getEnvironment());
         target.setVersionId(source.getVersionId());
         target.setScopes(source.getScopes());
         target.setDataScope(source.getDataScope());

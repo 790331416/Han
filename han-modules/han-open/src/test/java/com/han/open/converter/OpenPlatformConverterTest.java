@@ -77,6 +77,7 @@ class OpenPlatformConverterTest {
         assertThat(requestVO.getRequestId()).isEqualTo(11L);
         assertThat(requestVO.getReason()).isEqualTo("需要教师目录");
         assertThat(grantVO.getResourceId()).isEqualTo(14L);
+        assertThat(grantVO.getEnvironment()).isEqualTo("SANDBOX");
         assertThat(grantVO.getScopes()).isEqualTo("edu.teacher.read");
     }
 }
