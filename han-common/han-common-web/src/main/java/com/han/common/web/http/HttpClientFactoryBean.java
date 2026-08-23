@@ -10,9 +10,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.support.HttpRequestWrapper;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.support.RestClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 
@@ -33,7 +35,13 @@ public class HttpClientFactoryBean<T> implements FactoryBean<T>, ApplicationCont
     @Override
     public T getObject() {
         LoadBalancerClient loadBalancerClient = applicationContext.getBean(LoadBalancerClient.class);
-        RestClient restClient = RestClient.builder()
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        JsonMapper jsonMapper = applicationContext.getBeanProvider(JsonMapper.class).getIfAvailable();
+        if (jsonMapper != null) {
+            restClientBuilder.configureMessageConverters(converters ->
+                    converters.withJsonConverter(new JacksonJsonHttpMessageConverter(jsonMapper)));
+        }
+        RestClient restClient = restClientBuilder
                 .baseUrl("http://" + serviceName)
                 .requestInterceptor((request, body, execution) -> {
                     ServiceInstance instance = loadBalancerClient.choose(serviceName);
