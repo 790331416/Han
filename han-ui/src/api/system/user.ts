@@ -25,6 +25,7 @@ export interface UserQuery extends PageQuery {
   phone?: string
   status?: number
   deptId?: string | number
+  accountType?: 'SYSTEM' | 'CLIENT'
 }
 
 export interface UserForm {

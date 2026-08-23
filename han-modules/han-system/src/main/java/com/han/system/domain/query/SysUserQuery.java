@@ -35,6 +35,10 @@ public class SysUserQuery extends TenantQuery {
     @Schema(description = "部门ID")
     private Long deptId;
 
+    /** 账号类型：SYSTEM=系统用户，CLIENT=关联教育人员的客户端用户。 */
+    @Schema(description = "账号类型（SYSTEM系统用户 CLIENT客户端用户）")
+    private String accountType;
+
     /** 开始时间（范围查询） */
     @Schema(description = "开始时间")
     private LocalDateTime beginTime;
