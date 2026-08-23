@@ -110,6 +110,9 @@ public class VendorRegistrationService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            log.warn("厂商申请状态内部查询异常: exception={}, cause={}",
+                    e.getClass().getName(),
+                    e.getCause() == null ? "none" : e.getCause().getClass().getName());
             throw new BusinessException("申请不存在或校验信息不匹配");
         }
     }
