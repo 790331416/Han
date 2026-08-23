@@ -172,29 +172,31 @@ class OpenVendorPortalServiceTest {
     }
 
     @Test
-    void anonymousStatusDoesNotExposeLegacyApplication() {
+    void phoneOnlyStatusDoesNotExposeLegacyApplication() {
         OpenVendorApplicationPo application = new OpenVendorApplicationPo();
         application.setApplicationNo("legacy");
         application.setApplyData(null);
+        OpenVendorPo vendor = new OpenVendorPo();
+        vendor.setId(100L);
+        vendor.setTenantId(1L);
+        vendor.setDelFlag(0);
+        vendor.setContactPhone("13800000000");
+        when(vendorMapper.selectOne(any())).thenReturn(vendor);
         when(applicationMapper.selectOne(any())).thenReturn(application);
 
-        assertThatThrownBy(() -> service.queryPublicApplication("legacy", "13800000000"))
+        assertThatThrownBy(() -> service.queryPublicApplication("13800000000"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("申请不存在或校验信息不匹配");
-        verify(vendorMapper, never()).selectById(any());
     }
 
     @Test
     void publicStatusLookupScopesVendorToPlatformTenantAndNotDeletedRows() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new Configuration(), "test"), OpenVendorPo.class);
         OpenVendorApplicationPo application = new OpenVendorApplicationPo();
-        application.setApplicationNo("public-001");
         application.setApplyData("PUBLIC_PORTAL");
         application.setStatus(1);
         application.setVendorId(100L);
         application.setCreateTime(java.time.LocalDateTime.now());
-        when(applicationMapper.selectOne(any())).thenReturn(application);
-
         OpenVendorPo vendor = new OpenVendorPo();
         vendor.setId(100L);
         vendor.setTenantId(1L);
@@ -202,14 +204,15 @@ class OpenVendorPortalServiceTest {
         vendor.setContactPhone("13800000000");
         vendor.setName("公开厂商");
         when(vendorMapper.selectOne(any())).thenReturn(vendor);
+        when(applicationMapper.selectOne(any())).thenReturn(application);
 
-        assertThat(service.queryPublicApplication("public-001", "13800000000").getVendorName())
+        assertThat(service.queryPublicApplication("13800000000").getVendorName())
                 .isEqualTo("公开厂商");
 
         org.mockito.ArgumentCaptor<Wrapper<OpenVendorPo>> captor =
                 org.mockito.ArgumentCaptor.forClass(Wrapper.class);
         verify(vendorMapper).selectOne(captor.capture());
-        assertThat(captor.getValue().getSqlSegment()).contains("tenantId", "delFlag");
+        assertThat(captor.getValue().getSqlSegment()).contains("contactPhone", "tenantId", "delFlag");
     }
 
     private static OpenVendorApplicationCreateDTO request() {

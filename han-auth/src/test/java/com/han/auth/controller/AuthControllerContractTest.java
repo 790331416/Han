@@ -17,7 +17,7 @@ class AuthControllerContractTest {
     @Test
     void vendorPublicEndpointsAreExplicitlyExemptAndUseExpectedHttpMethods() throws Exception {
         assertPublicGet("vendorPublicKey");
-        assertPublicGet("vendorStatus", String.class, String.class);
+        assertPublicGet("vendorStatus", String.class);
         assertPublicPost("vendorRegister", VendorPublicRegisterDTO.class);
 
         Method register = AuthController.class.getDeclaredMethod("vendorRegister", VendorPublicRegisterDTO.class);

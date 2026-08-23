@@ -141,7 +141,7 @@ class OpenPlatformControllerStandardsTest {
                 com.han.api.open.domain.OpenVendorApplicationCreateDTO.class)
                 .getAnnotation(PostMapping.class)).isNotNull();
         assertThat(IOpenVendorController.class.getDeclaredMethod("queryPortalApplication",
-                String.class, String.class).getAnnotation(PreAuthorize.class)).isNull();
+                String.class).getAnnotation(PreAuthorize.class)).isNull();
     }
 
     @Test

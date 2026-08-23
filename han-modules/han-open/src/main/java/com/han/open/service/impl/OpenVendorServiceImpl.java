@@ -270,26 +270,27 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
     }
 
     @Override
-    public OpenVendorApplicationStatusVO queryPublicApplication(String applicationNo, String contactPhone) {
-        String no = requiredText(applicationNo, "申请编号不能为空");
+    public OpenVendorApplicationStatusVO queryPublicApplication(String contactPhone) {
         String phone = requiredText(contactPhone, "联系电话不能为空");
+        OpenVendorPo vendor = TenantHelper.ignore(() -> baseMapper.selectOne(
+                new LambdaQueryWrapper<OpenVendorPo>()
+                        .eq(OpenVendorPo::getContactPhone, phone)
+                        .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
+                        .eq(OpenVendorPo::getDelFlag, 0)
+                        .orderByDesc(OpenVendorPo::getCreateTime)
+                        .last("LIMIT 1")));
+        if (vendor == null) {
+            throw new BusinessException("申请不存在或校验信息不匹配");
+        }
         OpenVendorApplicationPo application = TenantHelper.ignore(() -> vendorApplicationMapper.selectOne(
                 new LambdaQueryWrapper<OpenVendorApplicationPo>()
-                        .eq(OpenVendorApplicationPo::getApplicationNo, no)
+                        .eq(OpenVendorApplicationPo::getVendorId, vendor.getId())
                         .eq(OpenVendorApplicationPo::getTenantId, PLATFORM_TENANT_ID)
                         .eq(OpenVendorApplicationPo::getApplyData, PUBLIC_APPLICATION_MARKER)
                         .eq(OpenVendorApplicationPo::getDelFlag, 0)
+                        .orderByDesc(OpenVendorApplicationPo::getCreateTime)
                         .last("LIMIT 1")));
         if (application == null || !PUBLIC_APPLICATION_MARKER.equals(application.getApplyData())) {
-            throw new BusinessException("申请不存在或校验信息不匹配");
-        }
-        OpenVendorPo vendor = TenantHelper.ignore(() -> baseMapper.selectOne(
-                new LambdaQueryWrapper<OpenVendorPo>()
-                        .eq(OpenVendorPo::getId, application.getVendorId())
-                        .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
-                        .eq(OpenVendorPo::getDelFlag, 0)
-                        .last("LIMIT 1")));
-        if (vendor == null || !phone.equals(vendor.getContactPhone())) {
             throw new BusinessException("申请不存在或校验信息不匹配");
         }
         OpenVendorApplicationStatusVO result = new OpenVendorApplicationStatusVO();

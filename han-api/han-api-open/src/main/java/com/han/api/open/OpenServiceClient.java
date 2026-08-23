@@ -18,6 +18,5 @@ public interface OpenServiceClient {
 
     @GetExchange("/application/status")
     R<OpenVendorApplicationStatusVO> queryPortalApplication(
-            @RequestParam("applicationNo") String applicationNo,
             @RequestParam("contactPhone") String contactPhone);
 }

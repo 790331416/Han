@@ -4,7 +4,7 @@
       <div class="page-header">
         <div>
           <h1>厂商入驻申请</h1>
-          <p>提交资料后由平台审核，审核结果可凭申请编号和联系电话查询。</p>
+          <p>提交资料后由平台审核，审核结果可凭联系人电话查询。</p>
         </div>
         <el-button link @click="router.push('/login')">返回登录</el-button>
       </div>
@@ -100,16 +100,12 @@
 
       <el-divider content-position="left">查询申请进度</el-divider>
       <el-form :model="statusQuery" :inline="true" class="status-form" @submit.prevent="queryStatus">
-        <el-form-item label="申请编号">
-          <el-input v-model="statusQuery.applicationNo" data-testid="vendor-apply-application-no" placeholder="如 VA..." clearable />
-        </el-form-item>
         <el-form-item label="联系人电话">
           <el-input v-model="statusQuery.contactPhone" data-testid="vendor-apply-status-phone" placeholder="提交申请时的联系人电话" clearable />
         </el-form-item>
         <el-button type="primary" :loading="queryLoading" @click="queryStatus">查询</el-button>
       </el-form>
       <el-descriptions v-if="statusResult" :column="2" border class="status-result">
-        <el-descriptions-item label="申请编号">{{ statusResult.applicationNo || statusQuery.applicationNo }}</el-descriptions-item>
         <el-descriptions-item label="状态"><el-tag :type="statusTagType(statusResult.status)">{{ statusLabel(statusResult.status, statusResult.statusName) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="申请时间">{{ formatDate(statusResult.createTime) || '-' }}</el-descriptions-item>
         <el-descriptions-item label="审核时间">{{ formatDate(statusResult.reviewTime) || '-' }}</el-descriptions-item>
@@ -151,7 +147,7 @@ const form = reactive<PublicVendorApplicationForm>({
   username: '', nickname: '', password: '', phone: '', email: '', name: '', qualificationNo: '', industry: '',
   contactName: '', contactPhone: '', contactEmail: '', website: '', applyReason: '', code: '', uuid: ''
 })
-const statusQuery = reactive({ applicationNo: '', contactPhone: '' })
+const statusQuery = reactive({ contactPhone: '' })
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入登录账号', trigger: 'blur' }],
@@ -268,10 +264,9 @@ async function submitApplication() {
     const data = response.data
     const applicationNo = typeof data === 'string' ? data : data?.applicationNo
     if (!applicationNo) throw new Error('申请已提交，但未返回申请编号')
-    statusQuery.applicationNo = applicationNo
     statusQuery.contactPhone = form.contactPhone
     statusResult.value = undefined
-    ElMessage.success(`申请已提交，申请编号：${applicationNo}`)
+    ElMessage.success('申请已提交，可凭联系人电话查询审核进度')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '提交入驻申请失败')
     if (captchaEnabled.value) await loadCaptcha()
@@ -288,13 +283,13 @@ async function submitApplication() {
 }
 
 async function queryStatus() {
-  if (!statusQuery.applicationNo || !statusQuery.contactPhone) {
-    ElMessage.warning('请输入申请编号和联系电话')
+  if (!statusQuery.contactPhone) {
+    ElMessage.warning('请输入联系人电话')
     return
   }
   queryLoading.value = true
   try {
-    const response = await getPublicVendorApplication(statusQuery.applicationNo.trim(), statusQuery.contactPhone.trim())
+    const response = await getPublicVendorApplication(statusQuery.contactPhone.trim())
     statusResult.value = response.data
   } catch (error) {
     statusResult.value = undefined

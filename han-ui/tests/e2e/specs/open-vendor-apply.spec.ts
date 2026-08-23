@@ -144,31 +144,37 @@ test.describe('厂商入驻公开入口', () => {
 
     await expect(page.getByTestId('vendor-apply-insecure-http-warning')).toBeVisible()
     await page.getByTestId('vendor-apply-submit').click()
-    await expect(page.locator('.el-message--success')).toContainText(applicationNo)
+    await expect(page.locator('.el-message--success')).toContainText('可凭联系人电话查询审核进度')
     expect(typeof registerBody?.plainPassword).toBe('string')
     expect(registerBody?.encryptedPassword).toBeUndefined()
   })
 
-  test('成功提交显示申请编号并清空密码，状态查询错误有提示', async ({ page }) => {
+  test('成功提交后只按手机号查询进度并清空密码', async ({ page }) => {
     let registerBody: Record<string, unknown> | undefined
+    let statusRequestUrl = ''
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await mockAuthAndPublicApi(page, { onRegister: (body) => { registerBody = body }, statusError: true })
+    await mockAuthAndPublicApi(page, { onRegister: (body) => { registerBody = body } })
+    await page.route('**/auth/vendor/application/status**', async (route) => {
+      statusRequestUrl = route.request().url()
+      await route.fulfill({ contentType: 'application/json', body: responseBody({ status: 1, statusName: '待审核' }) })
+    })
     await page.goto('/open/vendor-apply')
     await fillRequired(page)
 
     await page.getByTestId('vendor-apply-submit').click()
-    await expect(page.locator('.el-message--success')).toContainText(applicationNo)
+    await expect(page.locator('.el-message--success')).toContainText('可凭联系人电话查询审核进度')
     await expect(page.getByRole('textbox', { name: '登录密码' })).toHaveValue('')
     expect(typeof registerBody?.encryptedPassword).toBe('string')
     expect(registerBody?.password).toBeUndefined()
     expect(registerBody?.captchaCode).toBe('ABCD')
     expect(registerBody?.captchaUuid).toBe('e2e-captcha')
 
-    await page.getByRole('textbox', { name: '申请编号' }).fill(applicationNo)
     await page.getByRole('textbox', { name: '联系人电话' }).last().fill('13800000002')
     await page.getByRole('button', { name: '查询' }).click()
-    await expect(page.locator('.el-message--error').filter({ hasText: '申请不存在' }).last()).toBeVisible()
+    await expect(page.getByText('待审核')).toBeVisible()
+    expect(statusRequestUrl).toContain('contactPhone=13800000002')
+    expect(statusRequestUrl).not.toContain('applicationNo=')
     expect(pageErrors).toEqual([])
   })
 })

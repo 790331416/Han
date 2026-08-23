@@ -238,11 +238,11 @@ const handleLoginSuccess = (loginRes: any) => {
   persistRememberedAccount()
   if (loginRes.data.forceChangePassword) {
     ElMessage.warning('您的密码需要修改，请先修改密码')
-    router.push('/user/profile?tab=password')
+    router.push('/profile?tab=password&force=1')
   } else {
     ElMessage.success('登录成功')
-    const redirect = (route.query.redirect as string) || '/'
-    router.push(redirect)
+    const redirect = route.query.redirect as string | undefined
+    router.replace(!redirect || redirect === '/404' || redirect.endsWith('/404') ? '/' : redirect)
   }
 }
 

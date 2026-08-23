@@ -99,11 +99,10 @@ public class VendorRegistrationService {
         return result.getData();
     }
 
-    public OpenVendorApplicationStatusVO queryStatus(String applicationNo, String contactPhone) {
-        String no = required(applicationNo, "申请编号不能为空");
+    public OpenVendorApplicationStatusVO queryStatus(String contactPhone) {
         String phone = required(contactPhone, "联系电话不能为空");
         try {
-            R<OpenVendorApplicationStatusVO> result = openServiceClient.queryPortalApplication(no, phone);
+            R<OpenVendorApplicationStatusVO> result = openServiceClient.queryPortalApplication(phone);
             if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
                 throw new BusinessException("申请不存在或校验信息不匹配");
             }

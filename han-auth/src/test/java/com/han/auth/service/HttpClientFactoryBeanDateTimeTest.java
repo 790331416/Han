@@ -66,7 +66,7 @@ class HttpClientFactoryBeanDateTimeTest {
             factory.setApplicationContext(context);
 
             R<OpenVendorApplicationStatusVO> response = factory.getObject()
-                    .queryPortalApplication("APP-1", "13800000000");
+                    .queryPortalApplication("13800000000");
 
             assertThat(response.getCode()).isEqualTo(200);
             assertThat(response.getData().getCreateTime())

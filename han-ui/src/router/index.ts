@@ -268,6 +268,11 @@ router.beforeEach(async (to, _from, next) => {
     NProgress.done()
     return
   }
+  if (to.path === '/404') {
+    next({ path: '/', replace: true })
+    NProgress.done()
+    return
+  }
   try {
     if (!userStore.userInfo) {
       clearDynamicRoutes()
@@ -298,6 +303,24 @@ router.beforeEach(async (to, _from, next) => {
 
 router.afterEach(() => {
   NProgress.done()
+})
+
+router.onError((error, to) => {
+  NProgress.done()
+  const message = String(error instanceof Error ? error.message : error)
+  const chunkLoadFailed = /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|fetch.*module/i.test(message)
+  if (!chunkLoadFailed) {
+    console.error('路由加载失败:', error)
+    return
+  }
+  const reloadKey = `HAN-route-reload:${to.fullPath}`
+  if (!sessionStorage.getItem(reloadKey)) {
+    sessionStorage.setItem(reloadKey, '1')
+    window.location.reload()
+    return
+  }
+  sessionStorage.removeItem(reloadKey)
+  console.error('页面版本已更新，请刷新后重试:', error)
 })
 
 export default router

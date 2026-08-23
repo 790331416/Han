@@ -28,8 +28,7 @@ public class IOpenVendorController {
     }
 
     @GetMapping("/application/status")
-    public R<OpenVendorApplicationStatusVO> queryPortalApplication(
-            @RequestParam String applicationNo, @RequestParam String contactPhone) {
-        return R.ok(vendorService.queryPublicApplication(applicationNo, contactPhone));
+    public R<OpenVendorApplicationStatusVO> queryPortalApplication(@RequestParam String contactPhone) {
+        return R.ok(vendorService.queryPublicApplication(contactPhone));
     }
 }

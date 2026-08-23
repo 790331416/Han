@@ -45,10 +45,10 @@ export function submitPublicVendorApplication(data: PublicVendorApplicationReque
   return post<{ applicationNo?: string } | string>('/auth/vendor/register', data)
 }
 
-export function getPublicVendorApplication(applicationNo: string, contactPhone: string) {
+export function getPublicVendorApplication(contactPhone: string) {
   return get<PublicVendorApplicationStatus>(
     '/auth/vendor/application/status',
-    { applicationNo, contactPhone }
+    { contactPhone }
   )
 }
 

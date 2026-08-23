@@ -69,6 +69,6 @@ public interface OpenVendorService extends IService<OpenVendorPo> {
     /** 内部创建厂商入驻申请，账号创建与验证码校验由 han-auth 负责。 */
     String createPortalApplication(OpenVendorApplicationCreateDTO applicationDTO);
 
-    /** 通过申请编号与联系人手机号查询公开申请状态。 */
-    OpenVendorApplicationStatusVO queryPublicApplication(String applicationNo, String contactPhone);
+    /** 通过联系人手机号查询最近一次公开申请状态。 */
+    OpenVendorApplicationStatusVO queryPublicApplication(String contactPhone);
 }

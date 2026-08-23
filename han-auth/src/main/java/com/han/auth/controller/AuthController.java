@@ -159,14 +159,13 @@ public class AuthController {
         return R.ok(vendorRegistrationService.register(dto));
     }
 
-    /** 厂商公开查询申请状态，申请编号和联系电话必须同时匹配。 */
+    /** 厂商公开查询申请状态；按联系电话返回最近一次公开申请。 */
     @GetMapping("/vendor/application/status")
-    @PermissionExempt("厂商公开状态查询，必须同时匹配申请编号和联系电话")
+    @PermissionExempt("厂商公开状态查询，按联系电话查询最近一次公开申请")
     @RateLimiter(key = "vendorStatus", time = 60, count = 30, limitType = LimitType.IP)
     public R<OpenVendorApplicationStatusVO> vendorStatus(
-            @RequestParam @Size(min = 1, max = 32) @Pattern(regexp = "[A-Za-z0-9-]{1,32}") String applicationNo,
             @RequestParam @Size(min = 6, max = 20) @Pattern(regexp = "[0-9+()\\- ]{6,20}") String contactPhone) {
-        return R.ok(vendorRegistrationService.queryStatus(applicationNo, contactPhone));
+        return R.ok(vendorRegistrationService.queryStatus(contactPhone));
     }
 
     /**

@@ -57,42 +57,29 @@ public class SysMenuServiceImpl implements ISysMenuService {
 
     @Override
     public List<SysMenuPo> selectMenuTreeByUserId(Long userId) {
-        List<SysMenuPo> menus;
-        // 管理员查全部菜单
-        if (userId != null && userId == 1L) {
-            menus = menuMapper.selectList(
-                    new LambdaQueryWrapper<SysMenuPo>()
-                            .in(SysMenuPo::getMenuType, TYPE_DIR, TYPE_MENU)
-                            .eq(SysMenuPo::getStatus, 0)
-                            .orderByAsc(SysMenuPo::getParentId)
-                            .orderByAsc(SysMenuPo::getSort)
-            );
-        } else {
-            // 非管理员：通过 user_role → role_menu 查询
-            List<Long> menuIds = selectMenuIdsByUserId(userId);
-            if (menuIds.isEmpty()) {
-                return List.of();
-            }
-            // 角色只配置了叶子菜单时，补回其目录祖先用于构造树；祖先本身不增加任何叶子权限。
-            List<SysMenuPo> allMenus = menuMapper.selectList(
-                    new LambdaQueryWrapper<SysMenuPo>()
-                            .in(SysMenuPo::getMenuType, TYPE_DIR, TYPE_MENU)
-                            .eq(SysMenuPo::getStatus, 0)
-                            .orderByAsc(SysMenuPo::getParentId)
-                            .orderByAsc(SysMenuPo::getSort)
-            );
-            Set<Long> visibleIds = new java.util.LinkedHashSet<>(menuIds);
-            boolean changed;
-            do {
-                changed = false;
-                for (SysMenuPo menu : allMenus) {
-                    if (visibleIds.contains(menu.getId()) && menu.getParentId() != null && menu.getParentId() != 0L) {
-                        changed |= visibleIds.add(menu.getParentId());
-                    }
-                }
-            } while (changed);
-            menus = allMenus.stream().filter(menu -> visibleIds.contains(menu.getId())).toList();
+        List<Long> menuIds = selectMenuIdsByUserId(userId);
+        if (menuIds.isEmpty()) {
+            return List.of();
         }
+        // 所有账号（含 userId=1）都以角色菜单为准；只补目录祖先，不再绕过角色勾选返回全菜单。
+        List<SysMenuPo> allMenus = menuMapper.selectList(
+                new LambdaQueryWrapper<SysMenuPo>()
+                        .in(SysMenuPo::getMenuType, TYPE_DIR, TYPE_MENU)
+                        .eq(SysMenuPo::getStatus, 0)
+                        .orderByAsc(SysMenuPo::getParentId)
+                        .orderByAsc(SysMenuPo::getSort)
+        );
+        Set<Long> visibleIds = new java.util.LinkedHashSet<>(menuIds);
+        boolean changed;
+        do {
+            changed = false;
+            for (SysMenuPo menu : allMenus) {
+                if (visibleIds.contains(menu.getId()) && menu.getParentId() != null && menu.getParentId() != 0L) {
+                    changed |= visibleIds.add(menu.getParentId());
+                }
+            }
+        } while (changed);
+        List<SysMenuPo> menus = allMenus.stream().filter(menu -> visibleIds.contains(menu.getId())).toList();
         return buildTree(menus);
     }
 
