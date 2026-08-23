@@ -1494,7 +1494,7 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_video_project (
-    project_id BIGINT NOT NULL PRIMARY KEY,
+    project_id BIGSERIAL PRIMARY KEY,
     tenant_id BIGINT DEFAULT 0,
     project_name VARCHAR(200) NOT NULL,
     owner_user_id BIGINT,
@@ -1527,7 +1527,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_project_status ON ai_video_project (proj
 CREATE INDEX IF NOT EXISTS idx_ai_video_project_update_time ON ai_video_project (update_time);
 
 CREATE TABLE IF NOT EXISTS ai_video_source_document (
-    document_id BIGINT NOT NULL PRIMARY KEY,
+    document_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     source_type VARCHAR(20) DEFAULT 'TEXT',
@@ -1553,7 +1553,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_doc_project ON ai_video_source_document 
 CREATE INDEX IF NOT EXISTS idx_ai_video_doc_tenant ON ai_video_source_document (tenant_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_content_version (
-    version_id BIGINT NOT NULL PRIMARY KEY,
+    version_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     document_id BIGINT,
@@ -1582,7 +1582,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_content_task ON ai_video_content_version
 CREATE INDEX IF NOT EXISTS idx_ai_video_content_selected ON ai_video_content_version (selected);
 
 CREATE TABLE IF NOT EXISTS ai_video_character (
-    character_id BIGINT NOT NULL PRIMARY KEY,
+    character_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     character_name VARCHAR(100) NOT NULL,
@@ -1625,7 +1625,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_character_project ON ai_video_character 
 CREATE INDEX IF NOT EXISTS idx_ai_video_character_locked_media ON ai_video_character (locked_media_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_scene (
-    scene_id BIGINT NOT NULL PRIMARY KEY,
+    scene_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     scene_name VARCHAR(200) NOT NULL,
@@ -1657,7 +1657,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_scene_project ON ai_video_scene (project
 CREATE INDEX IF NOT EXISTS idx_ai_video_scene_locked_media ON ai_video_scene (locked_media_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_prop (
-    prop_id BIGINT NOT NULL PRIMARY KEY,
+    prop_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     prop_name VARCHAR(200) NOT NULL,
@@ -1687,7 +1687,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_prop_project ON ai_video_prop (project_i
 CREATE INDEX IF NOT EXISTS idx_ai_video_prop_locked_media ON ai_video_prop (locked_media_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_shot (
-    shot_id BIGINT NOT NULL PRIMARY KEY,
+    shot_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     episode_no INT DEFAULT 1,
@@ -1734,7 +1734,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_shot_scene ON ai_video_shot (scene_id);
 CREATE INDEX IF NOT EXISTS idx_ai_video_shot_status ON ai_video_shot (generation_status);
 
 CREATE TABLE IF NOT EXISTS ai_video_media_asset (
-    media_id BIGINT NOT NULL PRIMARY KEY,
+    media_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     asset_type VARCHAR(32) NOT NULL,
@@ -1767,7 +1767,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_media_file ON ai_video_media_asset (file
 CREATE INDEX IF NOT EXISTS idx_ai_video_media_selected ON ai_video_media_asset (selected);
 
 CREATE TABLE IF NOT EXISTS ai_video_generation_task (
-    task_id BIGINT NOT NULL PRIMARY KEY,
+    task_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT,
     tenant_id BIGINT DEFAULT 0,
     task_type VARCHAR(32) NOT NULL,
@@ -1804,7 +1804,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_task_type ON ai_video_generation_task (t
 CREATE INDEX IF NOT EXISTS idx_ai_video_task_provider ON ai_video_generation_task (provider_task_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_review_record (
-    review_id BIGINT NOT NULL PRIMARY KEY,
+    review_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT NOT NULL,
     tenant_id BIGINT DEFAULT 0,
     target_type VARCHAR(32) NOT NULL,
@@ -1826,7 +1826,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_review_target ON ai_video_review_record 
 CREATE INDEX IF NOT EXISTS idx_ai_video_review_user ON ai_video_review_record (review_user_id);
 
 CREATE TABLE IF NOT EXISTS ai_video_project_setting (
-    setting_id BIGINT NOT NULL PRIMARY KEY,
+    setting_id BIGSERIAL PRIMARY KEY,
     project_id BIGINT,
     tenant_id BIGINT DEFAULT 0,
     text_model_id BIGINT,
