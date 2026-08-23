@@ -221,6 +221,16 @@ def main() -> int:
         for missing_path in sorted(tracked_upgrade_paths - listed_paths):
             violations.append(f"升级演练脚本未覆盖 PostgreSQL upgrade SQL: {script}: {missing_path}")
 
+    # AIVideo full-init 主键防回退：11 张 ai_video_* 表的自增主键必须为 BIGSERIAL（对应 PO 的 IdType.AUTO）。
+    # 防止再次被转写为 BIGINT NOT NULL（无序列）导致种子 NULL 主键或运行时插入失败。
+    full_init_file = SQL / "tiers" / "full" / "full-init.sql"
+    if full_init_file.exists():
+        full_init_text = read_sql(full_init_file)
+        for col in ("project_id", "document_id", "version_id", "character_id", "scene_id",
+                    "prop_id", "shot_id", "media_id", "task_id", "review_id", "setting_id"):
+            if not re.search(rf"^\s+{col}\s+BIGSERIAL\s+PRIMARY\s+KEY", full_init_text, re.M):
+                violations.append(f"full-init.sql 的 ai_video 自增主键必须为 BIGSERIAL（防回退）: {col}")
+
     if violations:
         print("\n".join(violations))
         return 1
