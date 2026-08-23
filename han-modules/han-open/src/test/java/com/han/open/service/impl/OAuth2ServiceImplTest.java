@@ -332,6 +332,25 @@ class OAuth2ServiceImplTest {
                 1L, 55L, "PROD", "edu.teacher.read", "directory.students.read");
     }
 
+    @Test
+    void userInfoRequiresOpenidAndOnlyReturnsProfileFieldsWhenRequested() {
+        IOpenAppService apps = mock(IOpenAppService.class);
+        StringRedisTemplate redis = recordingRedis();
+        OpenAppVO app = app(List.of("openid", "profile", "edu.teacher.read"));
+        when(apps.getAppByAppKey("video-platform")).thenReturn(app);
+        when(apps.validateClient("video-platform", "secret")).thenReturn(true);
+        OAuth2ServiceImpl service = new OAuth2ServiceImpl(apps, redis);
+
+        OAuth2TokenVO noIdentity = service.token(tokenRequest("edu.teacher.read"));
+        assertThatThrownBy(() -> service.getUserInfo(noIdentity.getAccessToken()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("userinfo 需要 openid Scope");
+
+        OAuth2TokenVO identity = service.token(tokenRequest("openid"));
+        assertThat(service.getUserInfo(identity.getAccessToken()).getSub()).isEqualTo("0");
+        assertThat(service.getUserInfo(identity.getAccessToken()).getName()).isNull();
+    }
+
     private static OAuth2TokenDTO tokenRequest(String scope) {
         OAuth2TokenDTO dto = new OAuth2TokenDTO();
         dto.setGrantType("client_credentials");

@@ -453,6 +453,48 @@ class OpenAppAuthorizationServiceImplTest {
                 .hasMessage("应用尚未开通生产环境");
     }
 
+    @Test
+    void submitLifecycleApplyCreatesSandboxReviewAndClaimsDraft() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenAppPo app = ownedApp();
+        app.setLifecycleStatus(0);
+        when(appMapper.selectOne(any())).thenReturn(app);
+        when(appMapper.update(any(), any())).thenReturn(1);
+
+        service.submitAppLifecycleApply(123L);
+
+        ArgumentCaptor<OpenAuthorizationRequestPo> requestCaptor = ArgumentCaptor.forClass(OpenAuthorizationRequestPo.class);
+        verify(authorizationRequestMapper).insert(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getRequestType()).isEqualTo(3);
+        assertThat(requestCaptor.getValue().getEnvironment()).isEqualTo("SANDBOX");
+        assertThat(requestCaptor.getValue().getApplicantId()).isEqualTo(42L);
+    }
+
+    @Test
+    void reviewLifecycleApplyApprovesSandboxAndPersistsReviewer() {
+        SecurityContextHolder.setLoginUser(adminLoginUser());
+        OpenAppPo app = ownedApp();
+        app.setLifecycleStatus(1);
+        when(appMapper.selectOne(any())).thenReturn(app);
+        OpenAuthorizationRequestPo request = new OpenAuthorizationRequestPo();
+        request.setId(88L);
+        request.setTenantId(99L);
+        request.setAppId(123L);
+        request.setRequestType(3);
+        request.setStatus(0);
+        when(authorizationRequestMapper.selectOne(any())).thenReturn(request);
+
+        service.reviewAppLifecycleApply(123L, 1, "通过");
+
+        ArgumentCaptor<OpenAppPo> appCaptor = ArgumentCaptor.forClass(OpenAppPo.class);
+        verify(appMapper).updateById(appCaptor.capture());
+        assertThat(appCaptor.getValue().getLifecycleStatus()).isEqualTo(2);
+        ArgumentCaptor<OpenAuthorizationRequestPo> reviewCaptor = ArgumentCaptor.forClass(OpenAuthorizationRequestPo.class);
+        verify(authorizationRequestMapper).update(reviewCaptor.capture(), any());
+        assertThat(reviewCaptor.getValue().getReviewerId()).isEqualTo(42L);
+        assertThat(reviewCaptor.getValue().getStatus()).isEqualTo(1);
+    }
+
     private static GrantApplyVO grantApplyVO() {
         GrantApplyVO vo = new GrantApplyVO();
         vo.setAppId(123L);

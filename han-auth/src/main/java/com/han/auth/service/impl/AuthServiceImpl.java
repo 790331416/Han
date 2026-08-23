@@ -275,6 +275,7 @@ public class AuthServiceImpl implements IAuthService {
             LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
             String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
             redisTemplate.delete(userKey);
+            redisTemplate.delete(CacheConstants.ONLINE_KEY + token);
             revokeClassroomSession(loginUser.getUserId());
         }
 
@@ -585,6 +586,7 @@ public class AuthServiceImpl implements IAuthService {
             if (XuStrUtil.isNotBlank(oldToken)) {
                 String oldTokenKey = CacheConstants.TOKEN_KEY + oldToken;
                 redisTemplate.delete(oldTokenKey);
+                redisTemplate.delete(CacheConstants.ONLINE_KEY + oldToken);
                 log.info("用户[{}]PC 端被踢出，新设备登录", userId);
             }
         }

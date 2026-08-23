@@ -44,6 +44,12 @@ public interface OpenAppAuthorizationService extends IService<OpenAppResourceGra
      */
     boolean reviewGrantApply(Long requestId, Integer status, String reason);
 
+    /** 厂商提交应用开通申请：草稿申请沙箱、调测中申请生产。 */
+    void submitAppLifecycleApply(Long appId);
+
+    /** 平台审核应用开通申请。 */
+    void reviewAppLifecycleApply(Long appId, Integer status, String reason);
+
     /**
      * 获取应用的授权列表
      * @param appId 应用ID

@@ -21,6 +21,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -34,6 +35,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String PUBLIC_BRAND_PATH = "/system/public/brand";
     private static final String PUBLIC_BRAND_LOGO_PATH = "/system/public/brand/logo";
+    private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
 
     private static final List<String> WHITE_LIST = List.of(
             "/auth/login",
@@ -134,7 +136,10 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     } catch (Exception e) {
                         log.warn("解析用户信息失败", e);
                     }
-                    return chain.filter(exchange.mutate().request(reqBuilder.build()).build());
+                    // 在线仅代表最近五分钟内确有访问，不把长效 H5 Token 当作在线。
+                    return redisTemplate.opsForValue()
+                            .set(CacheConstants.ONLINE_KEY + token, token, ONLINE_WINDOW)
+                            .then(chain.filter(exchange.mutate().request(reqBuilder.build()).build()));
                 })
                 .switchIfEmpty(unauthorized(exchange, "Token 无效或已过期"));
     }

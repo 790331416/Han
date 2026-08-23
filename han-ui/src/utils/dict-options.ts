@@ -20,6 +20,7 @@ interface DictLike {
  * 系统通用启停状态。
  */
 export const SYS_NORMAL_DISABLE_DICT = 'sys_normal_disable'
+export const OPEN_IDENTITY_SCOPE_DICT = 'open_identity_scope'
 
 /**
  * AI 模型与模板相关字典。

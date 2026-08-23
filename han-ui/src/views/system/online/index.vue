@@ -19,7 +19,7 @@
       <template #header>
         <div class="card-header">
           <span>在线用户列表</span>
-          <el-tag type="success" effect="plain">当前在线：{{ onlineList.length }} 人</el-tag>
+          <el-tag type="success" effect="plain">近 5 分钟在线用户：{{ onlineUserCount }} 人；在线会话：{{ onlineList.length }} 个</el-tag>
         </div>
       </template>
 
@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, SwitchButton } from '@element-plus/icons-vue'
 import { listOnlineUser, forceLogout, type OnlineUser } from '@/api/system/online'
@@ -61,6 +61,7 @@ import { useUserStore } from '@/stores/user'
 
 const loading = ref(false)
 const onlineList = ref<OnlineUser[]>([])
+const onlineUserCount = computed(() => new Set(onlineList.value.map(item => String(item.userId))).size)
 const userStore = useUserStore()
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 

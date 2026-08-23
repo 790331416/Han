@@ -41,7 +41,6 @@
           <template #default="{ row }">
             <el-button v-if="canQuery" type="primary" link :icon="View" @click="openDetail(row)">详情</el-button>
             <el-button v-if="canManage && nextStatuses(row).length" type="primary" link @click="openStatus(row)">变更状态</el-button>
-            <el-button v-if="canManage" type="success" link @click="openBind(row)">绑定用户</el-button>
           </template>
         </el-table-column>
         <template #empty>
@@ -136,22 +135,6 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bindVisible" title="绑定厂商用户" width="460px" destroy-on-close>
-      <el-form ref="bindFormRef" :model="bindForm" :rules="bindRules" label-width="90px">
-        <el-form-item label="用户ID" prop="userId"><el-input v-model="bindForm.userId" placeholder="请输入系统用户ID" /></el-form-item>
-        <el-form-item label="厂商角色" prop="role">
-          <el-select v-model="bindForm.role" style="width: 100%">
-            <el-option label="开发者" value="DEVELOPER" />
-            <el-option label="查看者" value="VIEWER" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="bindVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="submitBind">确定</el-button>
-      </template>
-    </el-dialog>
-
     <el-dialog v-model="detailVisible" title="厂商详情" width="800px" destroy-on-close>
       <el-skeleton v-if="detailLoading" :rows="6" animated />
       <template v-else-if="detail">
@@ -193,7 +176,6 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { formatDate } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import {
-  bindOpenVendorUser,
   getOpenVendor,
   listOpenVendorApplications,
   listOpenVendor,
@@ -252,13 +234,6 @@ const statusFormRef = ref<FormInstance>()
 const statusForm = reactive({ vendorId: '', currentStatus: 0, status: 0, reason: '' })
 const statusOptionsForCurrent = computed(() => vendorTransitions[statusForm.currentStatus] || [])
 
-const bindVisible = ref(false)
-const bindFormRef = ref<FormInstance>()
-const bindForm = reactive({ vendorId: '', userId: '', role: 'DEVELOPER' })
-const bindRules: FormRules = {
-  userId: [{ required: true, message: '请输入用户ID', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择厂商角色', trigger: 'change' }]
-}
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -360,22 +335,6 @@ async function submitStatus() {
     statusVisible.value = false
     await getList()
   } catch (error) { notifyError(error, '变更厂商状态失败') } finally { submitLoading.value = false }
-}
-
-function openBind(row: OpenVendor) {
-  Object.assign(bindForm, { vendorId: String(row.id), userId: '', role: 'DEVELOPER' })
-  bindVisible.value = true
-}
-
-async function submitBind() {
-  if (!(await bindFormRef.value?.validate())) return
-  submitLoading.value = true
-  try {
-    await bindOpenVendorUser(bindForm.vendorId, bindForm.userId, bindForm.role)
-    ElMessage.success('用户绑定成功')
-    bindVisible.value = false
-    if (detailVisible.value) await openDetail({ id: bindForm.vendorId, name: '', status: 0 })
-  } catch (error) { notifyError(error, '绑定厂商用户失败') } finally { submitLoading.value = false }
 }
 
 function nextStatuses(row: OpenVendor) { return vendorTransitions[row.status] || [] }

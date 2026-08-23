@@ -91,16 +91,20 @@ export function deleteOpenApp(id: string | number) {
   return post<void>(`/open/app/remove/${id}`)
 }
 
-export function resetAppSecret(appId: string | number) {
-  return post<string>(`/open/app/resetSecret/${appId}`)
-}
-
 export function changeAppStatus(appId: string | number, status: number) {
   return post<void>('/open/app/changeStatus', { appId, base: { status } })
 }
 
 export function changeAppLifecycleStatus(appId: string | number, lifecycleStatus: number) {
   return post<void>('/open/app/changeLifecycleStatus', undefined, { params: { appId, lifecycleStatus } })
+}
+
+export function submitAppLifecycleApply(appId: string | number) {
+  return post<void>(`/open/app/lifecycle/submit/${appId}`)
+}
+
+export function reviewAppLifecycleApply(appId: string | number, status: number, reason?: string) {
+  return post<void>(`/open/app/lifecycle/review/${appId}`, undefined, { params: { status, reason } })
 }
 
 export function listOpenApiResources() {

@@ -10,9 +10,12 @@ import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,5 +73,21 @@ class AuthFilterTest {
                 MockServerHttpRequest.get("/auth/vendor/application/status/extra").build());
         filter.filter(adjacentPath, chain).block();
         assertThat(adjacentPath.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void recordsRecentActivityForAValidatedToken() {
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(chain.filter(any())).thenReturn(Mono.empty());
+        when(valueOperations.get("han:token:active")).thenReturn(Mono.just("{\"userId\":1,\"username\":\"admin\"}"));
+        when(valueOperations.set(eq("han:online:active"), eq("active"), eq(Duration.ofMinutes(5))))
+                .thenReturn(Mono.just(true));
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/system/dashboard/stats").header("Authorization", "Bearer active").build());
+        filter.filter(exchange, chain).block();
+
+        verify(valueOperations).set("han:online:active", "active", Duration.ofMinutes(5));
+        verify(chain).filter(any());
     }
 }

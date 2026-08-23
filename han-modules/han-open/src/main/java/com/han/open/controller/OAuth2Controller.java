@@ -171,7 +171,6 @@ public class OAuth2Controller {
         metadata.put("response_types_supported", new String[]{"code"});
         metadata.put("grant_types_supported", new String[]{"authorization_code", "refresh_token", "client_credentials"});
         metadata.put("subject_types_supported", new String[]{"public"});
-        metadata.put("id_token_signing_alg_values_supported", new String[]{"none"});
         metadata.put("scopes_supported", new String[]{
                 "openid", "profile", "edu.teacher.read", "edu.student.read", "edu.device.read", "edu.contact.read"});
         return R.ok(metadata);

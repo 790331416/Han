@@ -11,6 +11,7 @@ import com.han.open.domain.po.OpenAppPo;
 import com.han.open.domain.query.OpenAppQuery;
 import com.han.open.domain.vo.OpenAppVO;
 import com.han.open.service.IOpenAppService;
+import com.han.open.service.OpenAppAuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -34,12 +35,14 @@ import static org.mockito.Mockito.when;
 class OpenAppControllerBehaviorTest {
 
     private IOpenAppService openAppService;
+    private OpenAppAuthorizationService authorizationService;
     private OpenAppController controller;
 
     @BeforeEach
     void setUp() {
         openAppService = mock(IOpenAppService.class);
-        controller = new OpenAppController(new ObjectMapper(), openAppService);
+        authorizationService = mock(OpenAppAuthorizationService.class);
+        controller = new OpenAppController(new ObjectMapper(), openAppService, authorizationService);
     }
 
     @Test
@@ -175,6 +178,15 @@ class OpenAppControllerBehaviorTest {
         assertThatThrownBy(() -> controller.changeStatus(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("状态参数不合法");
+    }
+
+    @Test
+    void lifecycleEndpointsDelegateToApprovalService() {
+        controller.submitLifecycleApply(100L);
+        controller.reviewLifecycleApply(100L, 1, "通过");
+
+        verify(authorizationService).submitAppLifecycleApply(100L);
+        verify(authorizationService).reviewAppLifecycleApply(100L, 1, "通过");
     }
 
     private static Map<String, Object> mapOf(Object... entries) {

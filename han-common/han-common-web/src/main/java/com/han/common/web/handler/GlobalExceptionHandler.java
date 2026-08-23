@@ -158,6 +158,10 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public R<Void> handleException(Exception e, HttpServletRequest request) {
+        if (isAccessDenied(e)) {
+            log.warn("权限不足: {} - {}", request.getRequestURI(), e.getMessage());
+            return R.fail(Constants.FORBIDDEN, "无此操作权限");
+        }
         if (isIntegrityViolation(e)) {
             log.warn("唯一性冲突: {} - {}", request.getRequestURI(), e.getMessage());
             return R.fail(ConflictException.CODE, "数据已存在或被占用，请修改后重试");
@@ -174,6 +178,17 @@ public class GlobalExceptionHandler {
             if (current.getCause() == current) {
                 break;
             }
+        }
+        return false;
+    }
+
+    private static boolean isAccessDenied(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String name = current.getClass().getName();
+            if (name.endsWith("AccessDeniedException") || name.endsWith("AuthorizationDeniedException")) {
+                return true;
+            }
+            if (current.getCause() == current) break;
         }
         return false;
     }

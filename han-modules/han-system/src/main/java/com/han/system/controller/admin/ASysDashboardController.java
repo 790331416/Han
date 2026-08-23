@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -103,8 +104,20 @@ public class ASysDashboardController {
 
     private int countOnlineUsers() {
         try {
-            Set<String> keys = redisTemplate.keys(CacheConstants.TOKEN_KEY + "*");
-            return keys != null ? keys.size() : 0;
+            Set<String> keys = redisTemplate.keys(CacheConstants.ONLINE_KEY + "*");
+            if (keys == null || keys.isEmpty()) {
+                return 0;
+            }
+            Set<String> userIds = new HashSet<>();
+            for (String key : keys) {
+                String token = redisTemplate.opsForValue().get(key);
+                if (token == null || token.isBlank()) continue;
+                String json = redisTemplate.opsForValue().get(CacheConstants.TOKEN_KEY + token);
+                if (json == null || json.isBlank()) continue;
+                Object userId = com.han.common.core.util.HanJsonUtil.parseMap(json).get("userId");
+                if (userId != null) userIds.add(String.valueOf(userId));
+            }
+            return userIds.size();
         } catch (Exception e) {
             log.warn("Failed to count online users", e);
             return 0;

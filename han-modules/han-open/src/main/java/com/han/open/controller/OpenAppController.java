@@ -12,6 +12,7 @@ import com.han.open.domain.query.OpenAppQuery;
 import com.han.open.domain.vo.OpenAppVO;
 import com.han.open.domain.vo.OpenAppCredentialVO;
 import com.han.open.service.IOpenAppService;
+import com.han.open.service.OpenAppAuthorizationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -37,6 +38,7 @@ public class OpenAppController {
 
     private final ObjectMapper objectMapper;
     private final IOpenAppService openAppService;
+    private final OpenAppAuthorizationService authorizationService;
 
     /**
      * 分页查询应用列表。
@@ -126,6 +128,28 @@ public class OpenAppController {
     public R<Void> changeLifecycleStatus(@RequestParam Long appId,
                                          @RequestParam Integer lifecycleStatus) {
         openAppService.updateLifecycleStatus(appId, lifecycleStatus);
+        return R.ok();
+    }
+
+    /** 厂商提交沙箱或生产开通申请。 */
+    @RepeatSubmit
+    @PostMapping("/lifecycle/submit/{appId}")
+    @PreAuthorize("@ss.hasAuthority('open:app:edit')")
+    @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE)
+    public R<Void> submitLifecycleApply(@PathVariable Long appId) {
+        authorizationService.submitAppLifecycleApply(appId);
+        return R.ok();
+    }
+
+    /** 管理员审核应用开通申请。 */
+    @RepeatSubmit
+    @PostMapping("/lifecycle/review/{appId}")
+    @PreAuthorize("@ss.hasAuthority('open:grant:review')")
+    @OperLog(module = "开放平台应用审核", type = OperLog.OperType.UPDATE)
+    public R<Void> reviewLifecycleApply(@PathVariable Long appId,
+                                        @RequestParam Integer status,
+                                        @RequestParam(required = false) String reason) {
+        authorizationService.reviewAppLifecycleApply(appId, status, reason);
         return R.ok();
     }
 

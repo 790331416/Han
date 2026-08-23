@@ -58,12 +58,18 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
     private static final int REQUEST_PENDING = 0;
     private static final int REQUEST_APPROVED = 1;
     private static final int REQUEST_REJECTED = 2;
+    private static final int REQUEST_SANDBOX_OPEN = 3;
+    private static final int REQUEST_PRODUCTION_OPEN = 4;
     private static final int GRANT_PENDING = 0;
     private static final int GRANT_ACTIVE = 1;
     private static final int GRANT_REJECTED = 2;
     private static final int GRANT_REVOKED = 4;
     private static final int APP_STATUS_ENABLED = 0;
     private static final int LIFECYCLE_SANDBOX = 2;
+    private static final int LIFECYCLE_DRAFT = 0;
+    private static final int LIFECYCLE_PENDING = 1;
+    private static final int LIFECYCLE_TESTING = 3;
+    private static final int LIFECYCLE_PRODUCTION_PENDING = 4;
     private static final int LIFECYCLE_PRODUCTION = 5;
     private static final int LIFECYCLE_SUSPENDED = 6;
     private static final int LIFECYCLE_REVOKED = 7;
@@ -87,6 +93,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         LambdaQueryWrapper<OpenAuthorizationRequestPo> wrapper = new LambdaQueryWrapper<OpenAuthorizationRequestPo>()
                 .eq(OpenAuthorizationRequestPo::getTenantId, tenantId)
                 .eq(OpenAuthorizationRequestPo::getDelFlag, 0)
+                .le(OpenAuthorizationRequestPo::getRequestType, 2)
                 .orderByDesc(OpenAuthorizationRequestPo::getCreateTime);
         applyReadableAppScope(wrapper, OpenAuthorizationRequestPo::getAppId,
                 tenantId, SecurityContextHolder.getUserId());
@@ -257,6 +264,116 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
 
         return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitAppLifecycleApply(Long appId) {
+        Long currentUserId = SecurityContextHolder.getUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("获取当前登录用户信息失败");
+        }
+        Long tenantId = requireTenantId();
+        OpenAppPo app = requireOwnedApp(appId, tenantId, currentUserId);
+        int lifecycle = app.getLifecycleStatus() == null ? LIFECYCLE_DRAFT : app.getLifecycleStatus();
+        int requestType;
+        int pendingLifecycle;
+        String environment;
+        if (lifecycle == LIFECYCLE_DRAFT) {
+            requestType = REQUEST_SANDBOX_OPEN;
+            pendingLifecycle = LIFECYCLE_PENDING;
+            environment = "SANDBOX";
+        } else if (lifecycle == LIFECYCLE_TESTING) {
+            requestType = REQUEST_PRODUCTION_OPEN;
+            pendingLifecycle = LIFECYCLE_PRODUCTION_PENDING;
+            environment = "PROD";
+        } else {
+            throw new BusinessException("当前应用状态不允许提交开通申请");
+        }
+
+        OpenAppPo update = new OpenAppPo();
+        update.setId(appId);
+        update.setLifecycleStatus(pendingLifecycle);
+        update.setUpdateBy(currentUserId);
+        int claimed = appMapper.update(update, new UpdateWrapper<OpenAppPo>()
+                .eq("id", appId)
+                .eq("tenant_id", tenantId)
+                .eq("lifecycle_status", lifecycle));
+        if (claimed != 1) {
+            throw new BusinessException("应用状态已变化，请刷新后重试");
+        }
+
+        OpenAuthorizationRequestPo request = new OpenAuthorizationRequestPo();
+        request.setTenantId(tenantId);
+        request.setAppId(appId);
+        request.setEnvironment(environment);
+        request.setRequestType(requestType);
+        request.setStatus(REQUEST_PENDING);
+        request.setRequestData(environment);
+        request.setApplicantId(currentUserId);
+        request.setCreateBy(currentUserId);
+        authorizationRequestMapper.insert(request);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewAppLifecycleApply(Long appId, Integer status, String reason) {
+        validateReviewStatus(status);
+        Long currentUserId = SecurityContextHolder.getUserId();
+        if (currentUserId == null) {
+            throw new BusinessException("获取当前登录用户信息失败");
+        }
+        Long tenantId = requireTenantId();
+        requireAdministrator();
+        OpenAppPo app = appMapper.selectOne(new LambdaQueryWrapper<OpenAppPo>()
+                .eq(OpenAppPo::getId, appId)
+                .eq(OpenAppPo::getTenantId, tenantId)
+                .eq(OpenAppPo::getDelFlag, 0)
+                .last("LIMIT 1"));
+        if (app == null || app.getVendorId() == null) {
+            throw new BusinessException("应用不存在或无权审核");
+        }
+        int lifecycle = app.getLifecycleStatus() == null ? -1 : app.getLifecycleStatus();
+        int requestType = lifecycle == LIFECYCLE_PENDING ? REQUEST_SANDBOX_OPEN
+                : lifecycle == LIFECYCLE_PRODUCTION_PENDING ? REQUEST_PRODUCTION_OPEN : -1;
+        if (requestType < 0) {
+            throw new BusinessException("当前应用不存在待审核的开通申请");
+        }
+        OpenAuthorizationRequestPo request = authorizationRequestMapper.selectOne(new LambdaQueryWrapper<OpenAuthorizationRequestPo>()
+                .eq(OpenAuthorizationRequestPo::getTenantId, tenantId)
+                .eq(OpenAuthorizationRequestPo::getAppId, appId)
+                .eq(OpenAuthorizationRequestPo::getRequestType, requestType)
+                .eq(OpenAuthorizationRequestPo::getStatus, REQUEST_PENDING)
+                .eq(OpenAuthorizationRequestPo::getDelFlag, 0)
+                .orderByDesc(OpenAuthorizationRequestPo::getCreateTime)
+                .last("LIMIT 1"));
+        if (request == null) {
+            throw new BusinessException("应用开通申请不存在或已审核");
+        }
+        OpenAuthorizationRequestPo review = new OpenAuthorizationRequestPo();
+        review.setStatus(status);
+        review.setReviewReason(reason);
+        review.setReviewerId(currentUserId);
+        review.setReviewTime(LocalDateTime.now());
+        review.setUpdateBy(currentUserId);
+        int claimed = authorizationRequestMapper.update(review, new UpdateWrapper<OpenAuthorizationRequestPo>()
+                .eq("id", request.getId())
+                .eq("tenant_id", tenantId)
+                .eq("status", REQUEST_PENDING));
+        if (claimed != 1) {
+            throw new BusinessException("申请已被其他管理员审核，请刷新后重试");
+        }
+
+        OpenAppPo update = new OpenAppPo();
+        update.setId(appId);
+        update.setLifecycleStatus(status == REQUEST_APPROVED
+                ? requestType == REQUEST_SANDBOX_OPEN ? LIFECYCLE_SANDBOX : LIFECYCLE_PRODUCTION
+                : requestType == REQUEST_SANDBOX_OPEN ? LIFECYCLE_DRAFT : LIFECYCLE_TESTING);
+        if (status == REQUEST_APPROVED && requestType == REQUEST_PRODUCTION_OPEN) {
+            update.setStatus(APP_STATUS_ENABLED);
+        }
+        update.setUpdateBy(currentUserId);
+        appMapper.updateById(update);
     }
 
     @Override

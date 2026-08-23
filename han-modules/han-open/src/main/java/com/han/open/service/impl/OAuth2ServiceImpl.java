@@ -208,11 +208,17 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             redisTemplate.delete(ACCESS_TOKEN_KEY + accessToken);
             throw new BusinessException("AccessToken 无效或已过期");
         }
-        return OAuth2UserInfoVO.builder()
-                .sub(String.valueOf(record.userId()))
-                .name(record.userId() == 0L ? record.clientId() : "user-" + record.userId())
-                .nickname(record.userId() == 0L ? record.clientId() : "用户" + record.userId())
-                .build();
+        Set<String> scopes = scopeSet(record.scope());
+        if (!scopes.contains("openid")) {
+            throw new BusinessException("userinfo 需要 openid Scope");
+        }
+        OAuth2UserInfoVO.OAuth2UserInfoVOBuilder builder = OAuth2UserInfoVO.builder()
+                .sub(String.valueOf(record.userId()));
+        if (scopes.contains("profile")) {
+            builder.name(record.userId() == 0L ? record.clientId() : "user-" + record.userId())
+                    .nickname(record.userId() == 0L ? record.clientId() : "用户" + record.userId());
+        }
+        return builder.build();
     }
 
     @Override

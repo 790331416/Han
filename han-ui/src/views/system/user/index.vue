@@ -1,8 +1,10 @@
 <template>
   <div class="app-container">
+    <el-tabs v-model="activeTab" type="card" class="user-tabs" @tab-change="handleTabChange">
+      <el-tab-pane v-if="canViewSystemUsers" label="系统用户" name="system">
     <el-row :gutter="16">
       <!-- 左侧部门树 -->
-      <el-col :span="4">
+      <el-col v-if="canViewDept" :span="4">
         <el-card shadow="never" class="dept-tree-card">
           <template #header><span class="font-medium text-gray-800">部门</span></template>
           <el-input v-model="deptFilterText" placeholder="搜索部门" clearable class="mb-3" />
@@ -20,7 +22,7 @@
       </el-col>
 
       <!-- 右侧内容 -->
-      <el-col :span="20">
+      <el-col :span="canViewDept ? 20 : 24">
     <!-- 搜索表单 -->
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" ref="queryFormRef" :inline="true">
@@ -55,9 +57,9 @@
         <div class="card-header">
           <span>用户列表</span>
           <div class="table-operations">
-            <el-button type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
-            <el-button type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
-            <el-dropdown trigger="click" class="ml-3">
+            <el-button v-if="canAdd" type="primary" :icon="Plus" @click="handleAdd">新增</el-button>
+            <el-button v-if="canRemove" type="danger" :icon="Delete" :disabled="!selectedIds.length" @click="handleBatchDelete">删除</el-button>
+            <el-dropdown v-if="canImport" trigger="click" class="ml-3">
               <el-button type="primary" plain :icon="Download">导入<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -66,14 +68,14 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-button type="warning" plain :icon="Upload" @click="handleExport">导出</el-button>
+            <el-button v-if="canExport" type="warning" plain :icon="Upload" @click="handleExport">导出</el-button>
           </div>
         </div>
       </template>
 
       <!-- 数据表格 -->
       <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
-        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column v-if="canRemove" type="selection" width="55" align="center" />
         <el-table-column label="用户名" prop="username" min-width="120" show-overflow-tooltip />
         <el-table-column label="昵称" prop="nickname" min-width="120" show-overflow-tooltip />
         <el-table-column label="部门" prop="deptName" min-width="130" show-overflow-tooltip />
@@ -81,11 +83,13 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch
+              v-if="canEdit"
               v-model="row.status"
               :active-value="0"
               :inactive-value="1"
               @change="handleStatusChange(row)"
             />
+            <el-tag v-else size="small" :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '正常' : '停用' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="创建时间" min-width="180">
@@ -93,11 +97,11 @@
             {{ formatDate(row.createTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="180">
+        <el-table-column v-if="canEdit || canResetPwd || canRemove" label="操作" min-width="180">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="primary" link :icon="Key" @click="handleResetPwd(row)">重置</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="canEdit" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="canResetPwd" type="primary" link :icon="Key" @click="handleResetPwd(row)">重置</el-button>
+            <el-button v-if="canRemove" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -118,6 +122,11 @@
 
       </el-col>
     </el-row>
+      </el-tab-pane>
+      <el-tab-pane v-if="canViewClientUsers" label="客户端用户" name="client" lazy>
+        <EducationPersonPage />
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
@@ -174,12 +183,12 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="部门">
+            <el-form-item v-if="canViewDept" label="部门">
               <el-tree-select v-model="form.deptId" :data="deptTreeData" node-key="id" :props="{ label: 'deptName', children: 'children' }" check-strictly filterable placeholder="请选择部门" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="角色">
+            <el-form-item v-if="userStore.hasPermission('system:role:list')" label="角色">
               <el-select v-model="form.roleIds" multiple placeholder="请选择角色" style="width: 100%">
                 <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" :disabled="role.status === 1" />
               </el-select>
@@ -213,10 +222,21 @@ import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
+import EducationPersonPage from '@/views/education/person/index.vue'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.roles.includes('admin'))
+const canViewSystemUsers = computed(() => userStore.hasPermission('system:user:list'))
+const canViewClientUsers = computed(() => userStore.hasPermission('education:person:list'))
+const canViewDept = computed(() => userStore.hasPermission('system:dept:list'))
+const canAdd = computed(() => userStore.hasPermission('system:user:add'))
+const canEdit = computed(() => userStore.hasPermission('system:user:edit'))
+const canRemove = computed(() => userStore.hasPermission('system:user:remove'))
+const canImport = computed(() => userStore.hasPermission('system:user:import'))
+const canExport = computed(() => userStore.hasPermission('system:user:export'))
+const canResetPwd = computed(() => userStore.hasPermission('system:user:resetPwd'))
+const activeTab = ref<'system' | 'client'>('system')
 const canSelectTenant = computed(() => isAdmin.value && appStore.isFeatureEnabled('tenantSelect'))
 const tenantOptions = ref<Tenant[]>([])
 
@@ -241,7 +261,8 @@ const queryParams = reactive<UserQuery & { deptId?: number; tenantId?: string | 
   phone: undefined,
   status: '' as any,
   deptId: undefined,
-  tenantId: undefined
+  tenantId: undefined,
+  accountType: 'SYSTEM'
 })
 
 const form = reactive<UserForm>({
@@ -273,6 +294,7 @@ const dialogTitle = computed(() => form.userId ? '编辑用户' : '新增用户'
 
 // 获取列表
 const getList = async () => {
+  if (!canViewSystemUsers.value || activeTab.value !== 'system') return
   loading.value = true
   try {
     const res = await listUser(queryParams)
@@ -319,6 +341,7 @@ const handleDeptNodeClick = (data: any) => {
 }
 
 async function loadDeptTree() {
+  if (!canViewDept.value) return
   try {
     const res = await getDeptTree()
     deptTreeData.value = (res as any).data || []
@@ -327,11 +350,14 @@ async function loadDeptTree() {
 
 // 加载角色和部门选项
 async function loadOptions() {
-  try {
-    const [roleRes, deptRes] = await Promise.all([listAllRoles(), getDeptTree()])
-    roleOptions.value = (roleRes as any).data || []
-    deptTreeData.value = (deptRes as any).data || []
-  } catch { /* ignore */ }
+  const requests: Promise<unknown>[] = []
+  if (userStore.hasPermission('system:role:list')) {
+    requests.push(listAllRoles().then(res => { roleOptions.value = (res as any).data || [] }))
+  }
+  if (canViewDept.value) {
+    requests.push(getDeptTree().then(res => { deptTreeData.value = (res as any).data || [] }))
+  }
+  await Promise.allSettled(requests)
 }
 
 // 新增
@@ -481,6 +507,7 @@ const handleImport = () => {
 
 onMounted(async () => {
   await appStore.loadRuntimeCapabilities()
+  if (!canViewSystemUsers.value && canViewClientUsers.value) activeTab.value = 'client'
   getList()
   loadDeptTree()
   if (canSelectTenant.value) {
@@ -491,6 +518,10 @@ onMounted(async () => {
     } catch { /* ignore */ }
   }
 })
+
+function handleTabChange(name: string | number) {
+  if (name === 'system') getList()
+}
 </script>
 
 <style lang="scss" scoped>

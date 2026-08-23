@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.domain.R;
 import com.han.common.security.annotation.AdminAuth;
+import com.han.common.security.annotation.PermissionExempt;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.system.builtin.SysBuiltinDictRegistry;
 import com.han.common.mybatis.helper.TenantHelper;
@@ -57,6 +58,7 @@ public class ASysDictController {
      * 查询全部字典类型。
      */
     @GetMapping("/type/all")
+    @PermissionExempt("内置字典和表单下拉选项读取")
     public R<List<SysDictTypePo>> listAllTypes() {
         builtinDictRegistry.ensureBuiltInDictionaries();
         return R.ok(dictTypeMapper.selectList(null));
@@ -124,6 +126,16 @@ public class ASysDictController {
                 .eq(status != null, SysDictDataPo::getStatus, status)
                 .orderByAsc(SysDictDataPo::getDictSort);
         Page<SysDictDataPo> page = dictDataMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        // 历史初始化可能只在平台租户写入内置值；当前租户为空时回退展示，避免字典类型存在而数据项全空。
+        if (page.getRecords().isEmpty() && dictType != null && !dictType.isEmpty()) {
+            page = TenantHelper.ignore(() -> dictDataMapper.selectPage(new Page<>(pageNum, pageSize),
+                    new LambdaQueryWrapper<SysDictDataPo>()
+                            .eq(SysDictDataPo::getTenantId, 0L)
+                            .eq(SysDictDataPo::getDictType, dictType)
+                            .like(dictLabel != null && !dictLabel.isEmpty(), SysDictDataPo::getDictLabel, dictLabel)
+                            .eq(status != null, SysDictDataPo::getStatus, status)
+                            .orderByAsc(SysDictDataPo::getDictSort)));
+        }
         return R.ok(new PageResult<>(page.getRecords(), page.getTotal()));
     }
 
@@ -131,6 +143,7 @@ public class ASysDictController {
      * 按字典类型查询启用中的字典值。
      */
     @GetMapping("/data/type/{dictType}")
+    @PermissionExempt("表单下拉选项读取")
     public R<List<SysDictDataPo>> listDataByType(@PathVariable String dictType) {
         builtinDictRegistry.ensureBuiltInDictionaries();
         LambdaQueryWrapper<SysDictDataPo> query = new LambdaQueryWrapper<SysDictDataPo>()

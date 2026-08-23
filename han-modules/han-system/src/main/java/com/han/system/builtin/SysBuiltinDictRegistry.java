@@ -44,6 +44,10 @@ public class SysBuiltinDictRegistry {
                     item("正常", "0", 1, "primary"),
                     item("停用", "1", 2, "danger")
             )),
+            definition("开放平台身份授权范围", "open_identity_scope", "OpenID Connect 用户身份信息范围", List.of(
+                    item("用户唯一标识（openid）", "openid", 1, "primary"),
+                    item("用户基础资料（profile）", "profile", 2, "success")
+            )),
             definition("AI模型类型", "ai_model_type", "AI模型管理模型类型列表", List.of(
                     item("大语言模型", "LLM", 10, "primary"),
                     item("图片生成模型", "IMAGE", 20, "success"),

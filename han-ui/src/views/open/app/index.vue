@@ -73,9 +73,9 @@
         <el-table-column label="操作" min-width="250">
           <template #default="{ row }">
             <el-button v-if="canEdit" type="primary" link :icon="Edit" :data-testid="`open-app-edit-button-${row.appId}`" @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="canResetSecret" type="warning" link :icon="RefreshRight" :data-testid="`open-app-reset-secret-button-${row.appId}`" @click="handleResetSecret(row)">重置密钥</el-button>
             <el-button v-if="canRemove" type="danger" link :icon="Delete" :data-testid="`open-app-delete-button-${row.appId}`" @click="handleDelete(row)">删除</el-button>
-            <el-button v-if="canEdit && nextLifecycleStatus(row) !== undefined" type="success" link @click="handleLifecycleChange(row)">推进生命周期</el-button>
+            <el-button v-if="canEdit && lifecycleAction(row)" type="success" link @click="handleLifecycleAction(row)">{{ lifecycleAction(row)?.label }}</el-button>
+            <el-button v-if="canLifecycleReview && needsLifecycleReview(row)" type="warning" link @click="openLifecycleReview(row)">审核</el-button>
           </template>
         </el-table-column>
         <template #empty><el-empty :description="canList ? '暂无应用数据' : '无权限查看应用数据'" :image-size="80" /></template>
@@ -112,11 +112,11 @@
         <el-form-item label="回调地址">
           <el-input v-model="redirectUrisStr" type="textarea" placeholder="多个地址用换行分隔" :rows="3" data-testid="open-app-form-redirect-uris" />
         </el-form-item>
-        <el-form-item label="协议范围">
+        <el-form-item label="身份授权范围">
           <el-checkbox-group v-model="selectedProtocolScopes">
-            <el-checkbox label="openid">OpenID</el-checkbox>
-            <el-checkbox label="profile">基础资料</el-checkbox>
+            <el-checkbox v-for="scope in identityScopeOptions" :key="scope.value" :label="scope.value">{{ scope.label }}</el-checkbox>
           </el-checkbox-group>
+          <div class="form-hint">仅用于用户授权后的 userinfo；普通服务调用无需选择。</div>
         </el-form-item>
         <el-form-item label="授权接口">
           <div class="api-resource-list">
@@ -162,61 +162,27 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="credentialDialogVisible"
-      :title="credentialDialogTitle"
-      width="560px"
-      destroy-on-close
-      data-testid="open-app-credential-dialog"
-    >
-      <el-alert
-        title="Client Secret 只显示一次，请立即保存。重置密钥后，旧密钥会立即失效。"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="credential-warning"
-      />
-      <el-form label-width="120px" class="credential-form">
-        <el-form-item label="Client ID">
-          <el-input :model-value="credential.appKey" readonly data-testid="open-app-credential-id">
-            <template #append>
-              <el-button :icon="CopyDocument" @click="copyCredential(credential.appKey, 'Client ID')">复制</el-button>
-            </template>
-          </el-input>
+    <el-dialog v-model="lifecycleReviewVisible" title="审核应用开通申请" width="500px" destroy-on-close>
+      <el-form ref="lifecycleReviewFormRef" :model="lifecycleReviewForm" :rules="lifecycleReviewRules" label-width="90px">
+        <el-form-item label="审核结果" prop="status">
+          <el-radio-group v-model="lifecycleReviewForm.status"><el-radio :value="1">通过</el-radio><el-radio :value="2">驳回</el-radio></el-radio-group>
         </el-form-item>
-        <el-form-item label="Client Secret">
-          <el-input
-            :model-value="credential.appSecret"
-            readonly
-            show-password
-            type="password"
-            autocomplete="off"
-            data-testid="open-app-credential-secret"
-          >
-            <template #append>
-              <el-button :icon="CopyDocument" @click="copyCredential(credential.appSecret, 'Client Secret')">复制</el-button>
-            </template>
-          </el-input>
-        </el-form-item>
+        <el-form-item label="审核说明"><el-input v-model="lifecycleReviewForm.reason" type="textarea" :rows="3" /></el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="credentialDialogVisible = false">关闭</el-button>
-        <el-button type="primary" data-testid="open-app-credential-confirm" @click="confirmCredential">
-          我已记录并复制密钥
-        </el-button>
-      </template>
+      <template #footer><el-button @click="lifecycleReviewVisible = false">取消</el-button><el-button type="primary" :loading="submitLoading" @click="submitLifecycleReview">确定</el-button></template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Search, Refresh, Plus, Edit, Delete, RefreshRight, CopyDocument } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, resetAppSecret, changeAppStatus, changeAppLifecycleStatus, listOpenApiResources, type OpenApp, type OpenAppForm, type OpenApiResource } from '@/api/open/app'
+import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppStatus, changeAppLifecycleStatus, submitAppLifecycleApply, reviewAppLifecycleApply, listOpenApiResources, type OpenApp, type OpenAppForm, type OpenApiResource } from '@/api/open/app'
 import { listOrganizationTree } from '@/api/education'
 import { schoolOptions as flattenSchoolOptions } from '@/utils/education-school-tree'
 import { useUserStore } from '@/stores/user'
+import { loadDictOptions, OPEN_IDENTITY_SCOPE_DICT, type DictOption } from '@/utils/dict-options'
 
 type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
 
@@ -225,7 +191,7 @@ const canList = computed(() => userStore.hasPermission('open:app:list'))
 const canAdd = computed(() => userStore.hasPermission('open:app:add'))
 const canEdit = computed(() => userStore.hasPermission('open:app:edit'))
 const canRemove = computed(() => userStore.hasPermission('open:app:remove'))
-const canResetSecret = computed(() => userStore.hasPermission('open:app:resetSecret'))
+const canLifecycleReview = computed(() => userStore.hasPermission('open:grant:review'))
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -237,20 +203,21 @@ const formRef = ref<FormInstance>()
 
 const queryParams = reactive({ appName: '', appType: '' as string | undefined, status: undefined as number | undefined, lifecycleStatus: undefined as number | undefined, pageNum: 1, pageSize: 10 })
 
-const form = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', redirectUris: [], scopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'], schoolIds: [], contactName: '', accessTokenTtl: 7200, refreshTokenTtl: 604800, status: 0 })
+const form = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', redirectUris: [], scopes: [], grantTypes: ['authorization_code', 'refresh_token'], schoolIds: [], contactName: '', accessTokenTtl: 7200, refreshTokenTtl: 604800, status: 0 })
 const schools = ref<Array<{ label: string; value: string | number }>>([])
-const credentialDialogVisible = ref(false)
-const credentialDialogTitle = ref('应用凭证')
-const credential = reactive({ appKey: '', appSecret: '' })
 const apiResources = ref<OpenApiResource[]>([])
-const selectedProtocolScopes = ref<string[]>(['openid', 'profile'])
+const identityScopeOptions = ref<DictOption[]>([])
+const selectedProtocolScopes = ref<string[]>([])
 const selectedApiResourceIds = ref<Array<string | number>>([])
 const lifecycleOptions = [
   { value: 0, label: '草稿' }, { value: 1, label: '待审核' }, { value: 2, label: '沙箱开通' },
   { value: 3, label: '调测中' }, { value: 4, label: '生产待审' }, { value: 5, label: '生产开通' },
   { value: 6, label: '暂停' }, { value: 7, label: '撤销' }
 ]
-const lifecycleTransitions: Record<number, number[]> = { 0: [1], 1: [2], 2: [3], 3: [4], 4: [5], 5: [6], 6: [2], 7: [] }
+const lifecycleReviewVisible = ref(false)
+const lifecycleReviewFormRef = ref<FormInstance>()
+const lifecycleReviewForm = reactive({ appId: undefined as string | number | undefined, status: 1, reason: '' })
+const lifecycleReviewRules: FormRules = { status: [{ required: true, message: '请选择审核结果', trigger: 'change' }] }
 
 const redirectUrisStr = computed({
   get: () => (form.redirectUris || []).join('\n'),
@@ -283,7 +250,13 @@ const rules: FormRules = {
   appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }]
 }
 
-onMounted(async () => { await loadSchools(); await loadApiResources(); await getList() })
+onMounted(async () => {
+  identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [
+    { label: '用户唯一标识（openid）', value: 'openid' },
+    { label: '用户基础资料（profile）', value: 'profile' }
+  ])
+  await loadSchools(); await loadApiResources(); await getList()
+})
 
 async function loadSchools() {
   try {
@@ -358,15 +331,6 @@ async function handleStatusChange(row: OpenApp, val: boolean) {
   } catch (error) { if (!isCancel(error)) notifyError(error, '变更应用状态失败') }
 }
 
-async function handleResetSecret(row: OpenApp) {
-  try {
-    await ElMessageBox.confirm(`确认重置应用"${row.appName}"的密钥？重置后旧密钥将失效。`, '提示', { type: 'warning' })
-    const res = await resetAppSecret(row.appId)
-    const newSecret = (res as any).data
-    openCredentialDialog(row.appKey || '', newSecret || '', '密钥已重置')
-  } catch (error) { if (!isCancel(error)) notifyError(error, '重置应用密钥失败') }
-}
-
 async function submitForm() {
   if (!formRef.value) return
   await formRef.value.validate()
@@ -380,9 +344,8 @@ async function submitForm() {
       await updateOpenApp(form)
       ElMessage.success('修改成功')
     } else {
-      const response = await addOpenApp(form)
-      const credential = (response as any).data
-      openCredentialDialog(credential?.appKey || '', credential?.appSecret || '', '应用创建成功')
+      await addOpenApp(form)
+      ElMessage.success('应用草稿已创建，请提交沙箱审核')
     }
     dialogVisible.value = false
     getList()
@@ -394,53 +357,50 @@ async function submitForm() {
 }
 
 function resetForm() {
-  form.appId = undefined; form.appName = ''; form.appDesc = ''; form.appType = 'web'; form.redirectUris = []; form.scopes = ['openid', 'profile']; form.grantTypes = ['authorization_code', 'refresh_token']; form.schoolIds = []; form.contactName = ''; form.accessTokenTtl = 7200; form.refreshTokenTtl = 604800; form.status = 0
-  selectedProtocolScopes.value = ['openid', 'profile']
+  form.appId = undefined; form.appName = ''; form.appDesc = ''; form.appType = 'web'; form.redirectUris = []; form.scopes = []; form.grantTypes = ['authorization_code', 'refresh_token']; form.schoolIds = []; form.contactName = ''; form.accessTokenTtl = 7200; form.refreshTokenTtl = 604800; form.status = 0
+  selectedProtocolScopes.value = []
   selectedApiResourceIds.value = []
 }
 
-function openCredentialDialog(appKey: string, appSecret: string, title: string) {
-  credential.appKey = appKey
-  credential.appSecret = appSecret
-  credentialDialogTitle.value = title
-  credentialDialogVisible.value = true
+function lifecycleAction(row: OpenApp) {
+  if (row.lifecycleStatus === 0) return { label: '提交沙箱审核', type: 'apply' as const }
+  if (row.lifecycleStatus === 2) return { label: '进入调测', type: 'testing' as const }
+  if (row.lifecycleStatus === 3) return { label: '提交生产审核', type: 'apply' as const }
+  return null
 }
 
-async function copyCredential(value: string, label: string) {
-  if (!value) return
+function needsLifecycleReview(row: OpenApp) { return row.lifecycleStatus === 1 || row.lifecycleStatus === 4 }
+
+async function handleLifecycleAction(row: OpenApp) {
+  const action = lifecycleAction(row)
+  if (!action) return
   try {
-    await navigator.clipboard.writeText(value)
-  } catch {
-    const textarea = document.createElement('textarea')
-    textarea.value = value
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
-    document.execCommand('copy')
-    textarea.remove()
-  }
-  ElMessage.success(`${label}已复制，可直接粘贴`)
-}
-
-async function confirmCredential() {
-  await copyCredential(credential.appSecret, 'Client Secret')
-  credentialDialogVisible.value = false
-}
-
-function nextLifecycleStatus(row: OpenApp) {
-  return (lifecycleTransitions[row.lifecycleStatus ?? 0] || [])[0]
-}
-
-async function handleLifecycleChange(row: OpenApp) {
-  const next = nextLifecycleStatus(row)
-  if (next === undefined) return
-  try {
-    await ElMessageBox.confirm(`确认将应用推进到“${lifecycleLabel(next)}”？`, '生命周期推进', { type: 'warning' })
-    await changeAppLifecycleStatus(row.appId, next)
-    ElMessage.success('生命周期推进成功')
+    if (action.type === 'apply') {
+      await ElMessageBox.confirm(`确认${action.label}？`, '应用开通申请', { type: 'warning' })
+      await submitAppLifecycleApply(row.appId)
+      ElMessage.success('已提交，等待平台审核')
+    } else {
+      await changeAppLifecycleStatus(row.appId, 3)
+      ElMessage.success('已进入调测')
+    }
     await getList()
-  } catch (error) { if (!isCancel(error)) notifyError(error, '推进应用生命周期失败') }
+  } catch (error) { if (!isCancel(error)) notifyError(error, '提交应用开通申请失败') }
+}
+
+function openLifecycleReview(row: OpenApp) {
+  Object.assign(lifecycleReviewForm, { appId: row.appId, status: 1, reason: '' })
+  lifecycleReviewVisible.value = true
+}
+
+async function submitLifecycleReview() {
+  if (!(await lifecycleReviewFormRef.value?.validate()) || !lifecycleReviewForm.appId) return
+  submitLoading.value = true
+  try {
+    await reviewAppLifecycleApply(lifecycleReviewForm.appId, lifecycleReviewForm.status, lifecycleReviewForm.reason || undefined)
+    lifecycleReviewVisible.value = false
+    ElMessage.success('审核完成')
+    await getList()
+  } catch (error) { notifyError(error, '审核应用开通申请失败') } finally { submitLoading.value = false }
 }
 
 function lifecycleLabel(status?: number) { return lifecycleOptions.find(item => item.value === status)?.label || '未知' }

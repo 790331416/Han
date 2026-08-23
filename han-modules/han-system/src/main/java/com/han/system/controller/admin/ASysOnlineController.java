@@ -31,10 +31,12 @@ public class ASysOnlineController {
             @RequestParam(required = false) String ipAddr) {
         List<Map<String, Object>> list = new ArrayList<>();
         try {
-            Set<String> keys = redisTemplate.keys(CacheConstants.TOKEN_KEY + "*");
+            Set<String> keys = redisTemplate.keys(CacheConstants.ONLINE_KEY + "*");
             if (keys != null) {
                 for (String key : keys) {
-                    String json = redisTemplate.opsForValue().get(key);
+                    String token = redisTemplate.opsForValue().get(key);
+                    if (token == null || token.isBlank()) continue;
+                    String json = redisTemplate.opsForValue().get(CacheConstants.TOKEN_KEY + token);
                     if (json == null) continue;
                     Map<String, Object> user = HanJsonUtil.parseMap(json);
                     String uname = String.valueOf(user.getOrDefault("username", ""));
@@ -44,7 +46,7 @@ public class ASysOnlineController {
                     if (ipAddr != null && !ipAddr.isEmpty() && !ip.contains(ipAddr)) continue;
 
                     Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("tokenId", key.replace(CacheConstants.TOKEN_KEY, ""));
+                    item.put("tokenId", token);
                     item.put("userId", user.get("userId"));
                     item.put("username", uname);
                     item.put("nickname", String.valueOf(user.getOrDefault("nickname", "")));
@@ -69,6 +71,7 @@ public class ASysOnlineController {
         String tokenId = body.get("tokenId");
         if (tokenId != null && !tokenId.isEmpty()) {
             redisTemplate.delete(CacheConstants.TOKEN_KEY + tokenId);
+            redisTemplate.delete(CacheConstants.ONLINE_KEY + tokenId);
         }
         return R.ok();
     }

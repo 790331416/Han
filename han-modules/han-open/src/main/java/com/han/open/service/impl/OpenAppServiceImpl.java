@@ -47,7 +47,7 @@ public class OpenAppServiceImpl implements IOpenAppService {
     private static final String DEFAULT_APP_TYPE = "web";
     private static final List<String> ALLOWED_APP_TYPES = List.of("web", "mobile", "server");
     private static final String DEFAULT_GRANT_TYPES = "authorization_code,refresh_token";
-    private static final String DEFAULT_SCOPES = "openid,profile";
+    private static final String DEFAULT_SCOPES = "";
     private static final String APP_KEY_PREFIX = "app_";
 
     public static final int LIFECYCLE_DRAFT = 0;
@@ -160,8 +160,8 @@ public class OpenAppServiceImpl implements IOpenAppService {
         String appSecret = generateAppSecret();
         po.setAppSecret(PasswordUtil.encode(appSecret));
         openAppMapper.insert(po);
-        return new OpenAppCredentialVO(po.getId(), po.getAppKey(),
-                administrator || legacyCall ? appSecret : null);
+        // app_secret 仅为兼容旧表的内部随机值；新应用统一从分环境凭证入口获取密钥。
+        return new OpenAppCredentialVO(po.getId(), po.getAppKey(), null);
     }
 
     @Override

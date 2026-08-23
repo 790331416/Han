@@ -70,7 +70,7 @@ class OpenAppServiceImplTest {
     }
 
     @Test
-    void administratorKeepsLegacyCredentialCreationUsable() {
+    void administratorCreatesAppWithoutReturningASecondCredential() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(99L).build());
         OpenAppPo app = app(null, null);
         OpenAppDTO dto = dto(app);
@@ -83,7 +83,7 @@ class OpenAppServiceImplTest {
 
         OpenAppCredentialVO result = service.createWithCredentials(dto);
 
-        assertThat(result.appSecret()).isNotBlank();
+        assertThat(result.appSecret()).isNull();
         assertThat(app.getLifecycleStatus()).isEqualTo(OpenAppServiceImpl.LIFECYCLE_PRODUCTION);
     }
 

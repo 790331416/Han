@@ -204,7 +204,10 @@
         <el-form-item label="应用类型" prop="appType"><el-select v-model="appForm.appType" style="width: 100%"><el-option label="Web 应用" value="web" /><el-option label="移动应用" value="mobile" /><el-option label="服务端" value="server" /></el-select></el-form-item>
         <el-form-item label="应用描述"><el-input v-model="appForm.appDesc" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="回调地址"><el-input v-model="redirectUrisText" type="textarea" :rows="2" placeholder="多个地址换行填写" /></el-form-item>
-        <el-form-item label="Scope"><el-input v-model="scopeText" placeholder="多个 Scope 用逗号分隔" /></el-form-item>
+        <el-form-item label="身份授权范围">
+          <el-checkbox-group v-model="identityScopes"><el-checkbox v-for="scope in identityScopeOptions" :key="scope.value" :label="scope.value">{{ scope.label }}</el-checkbox></el-checkbox-group>
+        </el-form-item>
+        <el-form-item label="业务 Scope"><el-input v-model="scopeText" placeholder="仅填写已申请的业务 Scope，多个用逗号分隔" /></el-form-item>
         <el-form-item label="环境策略"><el-select v-model="appForm.environmentPolicy" style="width: 100%"><el-option label="先沙箱" value="SANDBOX_FIRST" /><el-option label="仅生产" value="PROD_ONLY" /><el-option label="全部环境" value="ALL" /></el-select></el-form-item>
         <el-form-item label="联系人"><el-input v-model="appForm.contactName" /></el-form-item>
       </el-form>
@@ -232,16 +235,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Key, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
-import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, type OpenApp, type OpenAppForm } from '@/api/open/app'
+import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, submitAppLifecycleApply, type OpenApp, type OpenAppForm } from '@/api/open/app'
 import { getOpenVendor, type OpenVendor } from '@/api/open/vendor'
 import { listOpenApiResource, getOpenApiResourceDetail, type OpenApiResource, type OpenApiResourceDetail } from '@/api/open/resource'
 import { listAuthorizationRequests, listAppGrants, listAppCredentials, generateAppCredential, rotateAppCredential, type OpenAuthorizationRequest, type OpenAuthorizationRequestQuery, type OpenCredential, type OpenCredentialSecret, type OpenGrant } from '@/api/open/authorization'
 import { addOpenApiTestRun, listOpenApiTestRuns, listMyOpenVendors, submitGrantApply, type GrantApplyForm, type OpenApiTestRun } from '@/api/open/portal'
+import { loadDictOptions, OPEN_IDENTITY_SCOPE_DICT, type DictOption } from '@/utils/dict-options'
 
 type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
 const userStore = useUserStore()
@@ -292,9 +296,11 @@ const canCredentialManage = computed(() => userStore.hasPermission('open:credent
 const applicableResources = computed(() => resources.value.filter(item => item.status === 0 && item.allowApply !== 0 && item.publishStatus !== 3))
 const debugResources = computed(() => resources.value.filter(item => item.status === 0 && item.publishStatus === 2 && item.allowTest === 1))
 
-const appForm = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
+const appForm = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
+const identityScopeOptions = ref<DictOption[]>([])
+const identityScopes = ref<string[]>([])
 const redirectUrisText = computed({ get: () => (appForm.redirectUris || []).join('\n'), set: (value: string) => { appForm.redirectUris = value.split('\n').map(item => item.trim()).filter(Boolean) } })
-const scopeText = computed({ get: () => (appForm.scopes || []).join(','), set: (value: string) => { appForm.scopes = value.split(',').map(item => item.trim()).filter(Boolean) } })
+const scopeText = computed({ get: () => (appForm.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile').join(','), set: (value: string) => { appForm.scopes = [...identityScopes.value, ...value.split(',').map(item => item.trim()).filter(Boolean)] } })
 const appRules: FormRules = { vendorId: [{ required: true, message: '请选择厂商', trigger: 'change' }], appName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }], appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }] }
 const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', dataScope: '', quota: 0, expireDays: 0, applyReason: '' })
 
@@ -491,17 +497,17 @@ function showCredential(response: { data: OpenCredentialSecret }) {
 function clearSecret() { credentialClientId.value = ''; credentialSecret.value = '' }
 
 function openAppCreate() { resetAppForm(); appForm.vendorId = vendors.value[0]?.id; appDialogVisible.value = true }
-async function openAppEdit(row: OpenApp) { resetAppForm(); try { Object.assign(appForm, await getOpenApp(row.appId).then(response => response.data)); appDialogVisible.value = true } catch (error) { notifyError(error, '加载应用详情失败') } }
-function resetAppForm() { Object.assign(appForm, { appId: undefined, appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' }) }
-async function submitApp() { if (!(await appFormRef.value?.validate())) return; appSubmitting.value = true; try { if (appForm.appId) { await updateOpenApp(appForm) } else { const response = await addOpenApp(appForm); if (response.data?.appSecret) showCredential({ data: { id: response.data.appId, appId: response.data.appId, environment: 'SANDBOX', clientId: response.data.appKey, clientSecret: response.data.appSecret, status: 0 } }) } ElMessage.success(appForm.appId ? '应用已更新' : '应用已创建'); appDialogVisible.value = false; await loadApps() } catch (error) { notifyError(error, '保存应用失败') } finally { appSubmitting.value = false } }
+async function openAppEdit(row: OpenApp) { resetAppForm(); try { Object.assign(appForm, await getOpenApp(row.appId).then(response => response.data)); identityScopes.value = (appForm.scopes || []).filter(scope => scope === 'openid' || scope === 'profile'); appDialogVisible.value = true } catch (error) { notifyError(error, '加载应用详情失败') } }
+function resetAppForm() { Object.assign(appForm, { appId: undefined, appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' }); identityScopes.value = [] }
+async function submitApp() { if (!(await appFormRef.value?.validate())) return; appSubmitting.value = true; try { if (appForm.appId) { await updateOpenApp(appForm) } else { await addOpenApp(appForm) } ElMessage.success(appForm.appId ? '应用已更新' : '应用草稿已创建，请提交沙箱审核'); appDialogVisible.value = false; await loadApps() } catch (error) { notifyError(error, '保存应用失败') } finally { appSubmitting.value = false } }
 async function removeApp(row: OpenApp) { try { await ElMessageBox.confirm(`确认删除应用“${row.appName}”？`, '确认删除', { type: 'warning' }); await deleteOpenApp(row.appId); ElMessage.success('应用已删除'); await loadApps() } catch (error) { if (!isCancel(error)) notifyError(error, '删除应用失败') } }
-async function advanceLifecycle(row: OpenApp) { const next = nextLifecycleStatus(row.lifecycleStatus); if (next === undefined) return; try { await ElMessageBox.confirm(`确认${lifecycleActionLabel(row.lifecycleStatus)}“${row.appName}”？`, '确认操作', { type: 'warning' }); await changeAppLifecycleStatus(row.appId, next); ElMessage.success('生命周期操作已提交'); await loadApps() } catch (error) { if (!isCancel(error)) notifyError(error, '生命周期操作失败') } }
+async function advanceLifecycle(row: OpenApp) { const next = nextLifecycleStatus(row.lifecycleStatus); if (next === undefined) return; try { await ElMessageBox.confirm(`确认${lifecycleActionLabel(row.lifecycleStatus)}“${row.appName}”？`, '确认操作', { type: 'warning' }); if (next === 1 || next === 4) await submitAppLifecycleApply(row.appId); else await changeAppLifecycleStatus(row.appId, next); ElMessage.success(next === 1 || next === 4 ? '已提交，等待平台审核' : '已进入调测'); await loadApps() } catch (error) { if (!isCancel(error)) notifyError(error, '生命周期操作失败') } }
 
 function handleTabChange(name: string | number) { if (name === 'apps') loadApps(); if (name === 'resources') loadResources(); if (name === 'grants') { loadApps(); loadResources(); loadGrantRequests() } if (name === 'credentials') loadApps() }
 function vendorName(id?: string | number) { return vendors.value.find(item => String(item.id) === String(id))?.name || '-' }
 function appName(id?: string | number) { return apps.value.find(item => String(item.appId) === String(id))?.appName || id || '-' }
 function nextLifecycleStatus(status?: number) { return ({ 0: 1, 2: 3, 3: 4 } as Record<number, number>)[status ?? -1] }
-function lifecycleActionLabel(status?: number) { return ({ 0: '提交审核', 2: '开始调测', 3: '申请生产' } as Record<number, string>)[status ?? -1] || '' }
+function lifecycleActionLabel(status?: number) { return ({ 0: '提交沙箱审核', 2: '开始调测', 3: '提交生产审核' } as Record<number, string>)[status ?? -1] || '' }
 function lifecycleLabel(status?: number) { return ({ 0: '草稿', 1: '待审核', 2: '沙箱已开通', 3: '调测中', 4: '生产待审', 5: '生产已开通', 6: '已暂停', 7: '已撤销' } as Record<number, string>)[status ?? -1] || '未知' }
 function lifecycleTagType(status?: number): TagType { return status === 5 ? 'success' : status === 6 ? 'warning' : status === 7 ? 'danger' : status === 1 || status === 4 ? 'warning' : 'primary' }
 function vendorStatusLabel(status?: number) { return ({ 0: '待提交', 1: '待验证', 2: '待审核', 3: '补充材料', 4: '审核通过', 5: '审核驳回', 6: '已暂停', 7: '已注销' } as Record<number, string>)[status ?? -1] || '未知' }
@@ -512,7 +518,8 @@ function requestTagType(status?: number): TagType { return status === 1 ? 'succe
 function isCancel(error: unknown) { return error === 'cancel' || (error as { message?: string })?.message === 'cancel' }
 function notifyError(error: unknown, fallback: string) { ElMessage.error(error instanceof Error && error.message !== '请求失败' ? error.message : fallback) }
 
-onMounted(async () => { await loadVendors(); await Promise.all([loadApps(), loadResources()]) })
+watch(identityScopes, scopes => { appForm.scopes = [...new Set([...(appForm.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile'), ...scopes])] })
+onMounted(async () => { identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [{ label: '用户唯一标识（openid）', value: 'openid' }, { label: '用户基础资料（profile）', value: 'profile' }]); await loadVendors(); await Promise.all([loadApps(), loadResources()]) })
 </script>
 
 <style lang="scss" scoped>

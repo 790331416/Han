@@ -1,7 +1,7 @@
 <template>
   <div class="app-container" data-testid="open-authorization-page">
     <el-tabs v-model="activeTab" type="card">
-      <el-tab-pane label="授权申请" name="requests">
+      <el-tab-pane label="接口授权申请" name="requests">
         <el-card shadow="never" class="search-form">
           <el-form :model="requestQuery" :inline="true">
             <el-form-item label="应用">
@@ -45,7 +45,7 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane label="授权台账" name="grants">
+      <el-tab-pane label="接口授权台账" name="grants">
         <el-card shadow="never" class="search-form">
           <el-form :inline="true">
             <el-form-item label="应用">
@@ -70,7 +70,7 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane label="应用凭证" name="credentials">
+      <el-tab-pane label="应用凭证（唯一入口）" name="credentials">
         <el-card shadow="never" class="search-form">
           <el-form :inline="true">
             <el-form-item label="应用">
@@ -85,6 +85,7 @@
           </el-form>
         </el-card>
         <el-card shadow="never">
+          <el-alert title="凭证按沙箱、生产环境分别生成和轮换；应用管理不再提供另一套重置密钥。" type="info" :closable="false" style="margin-bottom: 16px" />
           <el-table v-loading="credentialLoading" :data="credentials" :empty-text="canCredentialQuery ? '暂无应用凭证' : '无权限查看应用凭证'">
             <el-table-column label="Client ID" prop="clientId" min-width="220" show-overflow-tooltip />
             <el-table-column label="应用ID" prop="appId" width="100" />
