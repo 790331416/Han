@@ -26,7 +26,7 @@
         data-testid="vendor-apply-insecure-http-warning"
       />
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px" class="apply-form">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="138px" class="apply-form">
         <section class="form-section">
           <div class="section-heading"><strong>账号信息</strong><span>用于登录厂商门户和查询申请进度</span></div>
           <div class="form-grid">
