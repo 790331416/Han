@@ -28,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -419,6 +420,20 @@ class OpenAppAuthorizationServiceImplTest {
         assertThat(context.appId()).isEqualTo(123L);
         assertThat(context.clientId()).isEqualTo("sandbox-client");
         assertThat(context.environment()).isEqualTo("SANDBOX");
+    }
+
+    @Test
+    void expiredCredentialCannotProduceAClientContext() {
+        OpenAppCredentialPo credential = new OpenAppCredentialPo();
+        credential.setAppId(123L);
+        credential.setClientId("expired-client");
+        credential.setEnvironment("SANDBOX");
+        credential.setStatus(0);
+        credential.setExpireAt(LocalDateTime.now().minusSeconds(1));
+        credential.setClientSecretHash(new BCryptPasswordEncoder().encode("secret"));
+        when(appCredentialMapper.selectOne(any())).thenReturn(credential);
+
+        assertThat(service.validateCredentialContext("expired-client", "secret")).isNull();
     }
 
     @Test

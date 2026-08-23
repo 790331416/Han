@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -213,6 +214,19 @@ class OpenAppAuthorizationEnvironmentTest {
         when(baseMapper.selectOne(any())).thenReturn(null);
         assertThat(service.hasPermission(123L, 456L, "PROD", "edu.teacher.read")).isFalse();
 
+    }
+
+    @Test
+    void expiredGrantCannotAuthorizeAResource() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenAppResourceGrantPo grant = new OpenAppResourceGrantPo();
+        grant.setEnvironment("SANDBOX");
+        grant.setStatus(1);
+        grant.setScopes("edu.teacher.read");
+        grant.setExpiresAt(LocalDateTime.now().minusSeconds(1));
+        when(baseMapper.selectOne(any())).thenReturn(grant);
+
+        assertThat(service.hasPermission(123L, 456L, "SANDBOX", "edu.teacher.read")).isFalse();
     }
 
     @Test
