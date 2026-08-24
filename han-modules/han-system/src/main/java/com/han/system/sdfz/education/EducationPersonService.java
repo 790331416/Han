@@ -160,6 +160,10 @@ public class EducationPersonService {
         userMapper.updateById(user);
     }
 
+    /**
+     * 旧单参数入口兼容：账号只绑定一条身份时行为与原来一致；绑定多条身份时按身份粒度，
+     * 仅凭 userId 无法确定要解绑哪条身份，要求调用方改用 {@link #unbindClientUser(Long, Long)}。
+     */
     @Transactional(rollbackFor = Exception.class)
     public void unbindClientUser(Long userId) {
         requireTenant();
@@ -171,20 +175,50 @@ public class EducationPersonService {
         if (people.isEmpty()) {
             throw new BusinessException("客户端用户未绑定教育人员");
         }
-        SysUserPo user = userMapper.selectById(userId);
-        if (!isClientAccount(user)) {
-            throw new BusinessException("客户端用户不存在或已失效");
+        if (people.size() > 1) {
+            throw new BusinessException("该账号关联多个教育身份，请指定要解绑的人员");
         }
-        for (EduPersonPo person : people) {
-            dataScopeService.requireSchool(person.getSchoolId());
-            requireLocalSource(person.getSourceSystem(), "人员");
-            person.setUserId(null);
-            personMapper.updateById(person);
+        unbindIdentity(userId, people.get(0), true);
+    }
+
+    /**
+     * 按身份粒度解绑：只把当前 {@code edu_person.user_id} 置空，不删人员、不删账号、
+     * 不清其他身份的角色或班级。仅当这是账号的最后一个绑定身份且账号为教育人员入口
+     * 自动创建的客户端账号时才停用账号；独立系统账号解绑最后一个身份不停用。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void unbindClientUser(Long userId, Long personId) {
+        requireTenant();
+        if (userId == null || personId == null) {
+            throw new BusinessException("请选择要解绑的教育人员");
         }
-        user.setStatus(1);
-        user.setPwdResetFlag(1);
-        userMapper.updateById(user);
-        clearAccountRoles(userId);
+        EduPersonPo person = personMapper.selectById(personId);
+        if (person == null) {
+            throw new BusinessException("人员不存在或不在当前数据范围");
+        }
+        if (!Objects.equals(person.getUserId(), userId)) {
+            throw new BusinessException("人员未绑定该登录账号");
+        }
+        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getUserId, userId));
+        unbindIdentity(userId, person, count == null || count <= 1);
+    }
+
+    private void unbindIdentity(Long userId, EduPersonPo person, boolean lastIdentity) {
+        dataScopeService.requireSchool(person.getSchoolId());
+        requireLocalSource(person.getSourceSystem(), "人员");
+        person.setUserId(null);
+        personMapper.updateById(person);
+        if (lastIdentity) {
+            SysUserPo user = userMapper.selectById(userId);
+            if (isClientAccount(user)) {
+                user.setStatus(1);
+                user.setPwdResetFlag(1);
+                userMapper.updateById(user);
+                clearAccountRoles(userId);
+            }
+            // 独立系统账号：解绑最后一个教育身份不停用账号，也不清账号角色。
+        }
     }
 
     EduSchoolPo requireImportSchool(Long schoolId) {
@@ -218,6 +252,7 @@ public class EducationPersonService {
         Long userId = person.getUserId();
         String username = null;
         String initialPassword = null;
+        SysUserPo linkedAccount = null;
         // 新增教育人员默认建号；编辑存量无账号人员时，只有明确勾选后才补建，避免一次资料编辑意外开通登录。
         boolean createLoginAccount = form.loginEnabled() == null ? form.id() == null : form.wantsLogin();
         if (createLoginAccount) {
@@ -226,12 +261,14 @@ public class EducationPersonService {
                 userId = account.userId();
                 username = account.username();
                 initialPassword = account.initialPassword();
+                linkedAccount = account.linkedUser();
             } else {
-                username = refreshAccount(userId, form, phone);
+                username = refreshAccount(userId, form, phone, duty);
             }
         } else if (userId != null) {
             disableAccount(userId);
-            if (STUDENT_TYPE.equals(personType)) {
+            // 学生身份编辑不再无条件清空账号角色：账号还有其他学校管理员身份时保留其角色（任务书 12 节）。
+            if (STUDENT_TYPE.equals(personType) && !accountHasSchoolAdminIdentity(userId)) {
                 clearAccountRoles(userId);
             }
         }
@@ -252,6 +289,11 @@ public class EducationPersonService {
             personMapper.insert(person);
         } else {
             personMapper.updateById(person);
+        }
+        // 新增第二身份（关联已有账号）：只新增绑定，不动账号口令/状态/角色；
+        // 姓名/手机号统一账号级，把账号现有姓名/手机号同步到全部身份，避免出现同一账号身份不同名。
+        if (linkedAccount != null) {
+            accountIdentityService.syncFromAccount(linkedAccount);
         }
 
         if (form.classIds() != null) {
@@ -373,7 +415,17 @@ public class EducationPersonService {
                 .likeRight(SysUserPo::getRemark, "教育人员")
                 .last("LIMIT 1"));
         if (detachedAccount != null) {
-            return reactivateAccount(detachedAccount, form, personType, phone);
+            return reactivateAccount(tenantId, detachedAccount, form, personType, phone);
+        }
+        // 新增第二身份：同租户已有活跃账号（手机号匹配）时只新增 edu_person 绑定，
+        // 不建新 sys_user、不重置密码、不停用/启用、不清账号管理角色。
+        SysUserPo existingAccount = userMapper.selectOne(new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getTenantId, tenantId)
+                .eq(SysUserPo::getPhone, phone)
+                .eq(SysUserPo::getStatus, 0)
+                .last("LIMIT 1"));
+        if (existingAccount != null) {
+            return linkExistingAccount(tenantId, existingAccount, form);
         }
         String username = trimToNull(form.username());
         if (username == null) {
@@ -416,7 +468,8 @@ public class EducationPersonService {
         return new Account(user.getId(), username, generated ? rawPassword : null);
     }
 
-    private Account reactivateAccount(SysUserPo user, EducationForms.Person form, String personType, String phone) {
+    private Account reactivateAccount(Long tenantId, SysUserPo user, EducationForms.Person form, String personType, String phone) {
+        requireNoDuplicateIdentity(tenantId, form.schoolId(), user.getId());
         Set<Long> roleIds = resolveRoles(form.roleIds(), personType);
         String rawPassword = trimToNull(form.password());
         boolean generated = rawPassword == null;
@@ -441,12 +494,36 @@ public class EducationPersonService {
     }
 
     /**
+     * 关联已有账号（新增第二身份）：只新增 {@code edu_person} 绑定，不建新号、不重置密码、
+     * 不停用/启用账号、不清账号管理角色。禁止跨租户，同校同有效身份不得重复。
+     */
+    private Account linkExistingAccount(Long tenantId, SysUserPo user, EducationForms.Person form) {
+        if (!Objects.equals(user.getTenantId(), tenantId)) {
+            throw new BusinessException("不能关联其他租户的账号");
+        }
+        requireNoDuplicateIdentity(tenantId, form.schoolId(), user.getId());
+        return new Account(user.getId(), user.getUsername(), null, user);
+    }
+
+    /** 同一账号在同一学校只能存在一条有效身份（任务书 12 节）。 */
+    private void requireNoDuplicateIdentity(Long tenantId, Long schoolId, Long userId) {
+        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getTenantId, tenantId)
+                .eq(EduPersonPo::getUserId, userId)
+                .eq(EduPersonPo::getSchoolId, schoolId)
+                .eq(EduPersonPo::getStatus, 0));
+        if (count != null && count > 0) {
+            throw new BusinessException("该账号在此学校已有有效身份，不能重复新增");
+        }
+    }
+
+    /**
      * 已有账号只同步显示名、状态和角色，不改口令。
      *
      * <p>只有在调用方明确要改角色时才动 {@code sys_user_role}：空数组按"未提供"处理，
      * 否则前端漏回填一次就会静默清空该账号的全部角色。</p>
      */
-    private String refreshAccount(Long userId, EducationForms.Person form, String phone) {
+    private String refreshAccount(Long userId, EducationForms.Person form, String phone, String duty) {
         SysUserPo user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
@@ -470,9 +547,14 @@ public class EducationPersonService {
         accountIdentityService.syncFromPerson(userId, form.personName(), phone);
 
         String personType = form.personType().trim().toUpperCase(Locale.ROOT);
+        // 账号还关联其他学校的有效管理员身份时，普通教师/学生身份的编辑不得清空其角色（任务书 12 节）。
+        boolean protectAdminRoles = !isSchoolAdmin(personType, duty)
+                && accountHasSchoolAdminIdentity(userId);
         if (STUDENT_TYPE.equals(personType)) {
-            clearAccountRoles(userId);
-        } else if (form.wantsRoleChange()) {
+            if (!protectAdminRoles) {
+                clearAccountRoles(userId);
+            }
+        } else if (form.wantsRoleChange() && !protectAdminRoles) {
             Set<Long> roleIds = resolveRoles(form.effectiveRoleIds(),
                     personType);
             userRoleMapper.delete(new LambdaQueryWrapper<SysUserRolePo>()
@@ -544,6 +626,23 @@ public class EducationPersonService {
             userRoleMapper.delete(new LambdaQueryWrapper<SysUserRolePo>()
                     .eq(SysUserRolePo::getUserId, userId));
         }
+    }
+
+    /** 当前身份是否为校级管理员（身份类型教师 + 校内岗位管理员）。 */
+    private static boolean isSchoolAdmin(String personType, String dutyCode) {
+        return TEACHER_TYPE.equals(personType) && EduDuty.SCHOOL_ADMIN.name().equals(dutyCode);
+    }
+
+    /** 账号是否还关联着其他学校的有效管理员身份（身份类型教师 + 校内岗位管理员，且身份有效）。 */
+    private boolean accountHasSchoolAdminIdentity(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getUserId, userId)
+                .eq(EduPersonPo::getDutyCode, EduDuty.SCHOOL_ADMIN.name())
+                .eq(EduPersonPo::getStatus, 0));
+        return count != null && count > 0;
     }
 
     // ---------------------------------------------------------------- 关系
@@ -694,6 +793,9 @@ public class EducationPersonService {
         return ids == null ? List.of() : ids.stream().filter(Objects::nonNull).distinct().toList();
     }
 
-    private record Account(Long userId, String username, String initialPassword) {
+    private record Account(Long userId, String username, String initialPassword, SysUserPo linkedUser) {
+        Account(Long userId, String username, String initialPassword) {
+            this(userId, username, initialPassword, null);
+        }
     }
 }
