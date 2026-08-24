@@ -149,7 +149,7 @@
           <span class="identity-option">
             <span class="identity-main">{{ item.schoolName }} / {{ item.identityDisplayName }}</span>
             <span class="identity-sub">{{ identityTypeLabel(item.personType) }} · {{ item.dutyName || dutyNameFallback(item.dutyCode) }}</span>
-            <el-tag v-if="!identityManagementAvailable(item)" type="info" size="small">无管理端权限</el-tag>
+            <el-tag v-if="!identityManagementAvailable(item)" type="info" size="small">{{ identityUnavailableReason(item) }}</el-tag>
           </span>
         </el-radio>
       </el-radio-group>
@@ -292,9 +292,13 @@ function handleLoginResponse(loginRes: any, loginData?: any) {
   handleLoginSuccess(loginRes)
 }
 
+// 管理端可用性以后端返回的 managementAvailable 为准，前端不再按 dutyCode 推导。
 function identityManagementAvailable(identity: IdentityVO): boolean {
-  if (typeof identity.managementAvailable === 'boolean') return identity.managementAvailable
-  return String(identity.dutyCode || '').toUpperCase() === 'SCHOOL_ADMIN'
+  return identity.managementAvailable === true
+}
+
+function identityUnavailableReason(identity: IdentityVO): string {
+  return identity.managementUnavailableReason || '无管理端权限'
 }
 
 function identityTypeLabel(personType: string): string {
@@ -328,7 +332,13 @@ const handleIdentityConfirm = async () => {
     userStore.applyIdentity(chosen)
     handleLoginSuccess(res)
   } catch (_error) {
-    // 票据过期 / 选择失败：保留身份弹窗与用户名等输入，错误提示统一由请求层处理。
+    // 票据失效（过期/已使用）或选择失败：关闭身份弹窗并清空一次性票据，
+    // 保留用户名等输入，允许用户重新提交登录，避免卡在死票据弹窗重复点击。
+    identityVisible.value = false
+    pendingIdentityTicket = ''
+    selectedIdentityId.value = undefined
+    identityOptions.value = []
+    // 错误提示统一由请求层处理（后端返回“身份票据已过期或已使用，请重新登录”）。
   } finally {
     identityLoading.value = false
   }

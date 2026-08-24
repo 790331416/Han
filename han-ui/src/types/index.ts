@@ -47,8 +47,9 @@ export interface UserInfo {
  * 学校身份摘要（登录身份选择 / 顶部身份展示 / 身份切换）。
  *
  * 后端 IdentityVO 实际返回：identityId/schoolId/schoolName/personType/dutyCode/
- * dutyName/identityDisplayName/current；managementAvailable 当前不返回，由前端按
- * dutyCode === 'SCHOOL_ADMIN' 推导管理端可用性。
+ * dutyName/identityDisplayName/current，以及后端计算的管理端可用性
+ * managementAvailable / managementUnavailableReason。前端**不再**按 dutyCode
+ * 推导管理端可用性，一律直接使用后端字段。
  */
 export interface IdentityVO {
   identityId: string | number
@@ -59,7 +60,10 @@ export interface IdentityVO {
   dutyName: string
   identityDisplayName: string
   current: boolean
-  managementAvailable?: boolean
+  /** 后端计算的管理端可用性（如 SCHOOL_ADMIN 无管理角色时为 false）。 */
+  managementAvailable: boolean
+  /** 管理端不可用原因（后端返回，如“无管理端角色”）。 */
+  managementUnavailableReason?: string
 }
 
 // 登录请求

@@ -141,7 +141,7 @@
               <span class="identity-main">{{ item.schoolName }} / {{ item.identityDisplayName }}</span>
               <span class="identity-sub">{{ item.dutyName || '—' }}</span>
               <el-tag v-if="item.current" type="primary" size="small" class="identity-tag">当前</el-tag>
-              <el-tag v-if="!userStore.identityManagementAvailable(item)" type="info" size="small" class="identity-tag">无管理端权限</el-tag>
+              <el-tag v-if="!userStore.identityManagementAvailable(item)" type="info" size="small" class="identity-tag">{{ userStore.identityManagementUnavailableReason(item) }}</el-tag>
             </span>
           </el-radio>
         </el-radio-group>

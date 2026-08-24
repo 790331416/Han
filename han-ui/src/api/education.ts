@@ -308,17 +308,23 @@ export interface PersonResult {
   initialPassword?: string
 }
 
-/** 「关联已有账号」模式下供确认的候选账号（服务端脱敏/只读列表）。 */
+/**
+ * 「关联已有账号」模式下供确认的候选账号。
+ *
+ * 由窄接口按手机号精确查询，只返回一条**服务端已脱敏**的信息；
+ * 前端禁止再调用 {@code /system/user/simple-list} 下载全租户账号。
+ */
 export interface LinkableAccount {
   userId: string | number
   nickname?: string
+  /** 服务端已脱敏的手机号，前端直接展示，不再二次脱敏。 */
   phone?: string
   email?: string
 }
 
-/** 当前租户正常状态账号的简单列表，供「关联已有账号」按手机号匹配并脱敏确认。 */
-export function listLinkableAccounts() {
-  return get<LinkableAccount[]>('/system/user/simple-list')
+/** 按手机号精确查询一个可关联的已有账号（服务端脱敏，只返回一条）。 */
+export function getLinkableAccount(phone: string) {
+  return get<LinkableAccount>('/system/education/people/linkable-account', { phone })
 }
 
 export interface PersonMembership {

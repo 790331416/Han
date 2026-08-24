@@ -36,11 +36,14 @@ export const useUserStore = defineStore('user', () => {
   const nickname = computed(() => userInfo.value?.nickname ?? '')
   const avatar = computed(() => userInfo.value?.avatar ?? '')
 
-  /** 管理端可用性：后端当前不返回 managementAvailable，按校内岗位推导。 */
+  /** 管理端可用性：以后端返回的 managementAvailable 为准，不再按 dutyCode 推导。 */
   function identityManagementAvailable(identity?: IdentityVO | null) {
-    if (!identity) return false
-    if (typeof identity.managementAvailable === 'boolean') return identity.managementAvailable
-    return String(identity.dutyCode || '').toUpperCase() === 'SCHOOL_ADMIN'
+    return identity?.managementAvailable === true
+  }
+
+  /** 管理端不可用原因：优先展示后端返回的原因，缺省给通用文案。 */
+  function identityManagementUnavailableReason(identity?: IdentityVO | null) {
+    return identity?.managementUnavailableReason || '无管理端权限'
   }
 
   /** 把一条身份摘要写入当前身份字段（identity 为空则清空）。 */
@@ -179,6 +182,7 @@ export const useUserStore = defineStore('user', () => {
     applyIdentity,
     loadIdentities,
     identityManagementAvailable,
+    identityManagementUnavailableReason,
     applySession,
     clearUserContext,
     login,

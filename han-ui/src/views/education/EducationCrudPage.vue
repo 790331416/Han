@@ -239,14 +239,14 @@
             type="success"
             :closable="false"
             show-icon
-            :title="`将关联已有账号：${maskPhone(linkAccountPreview.phone)}（${linkAccountPreview.nickname || '—'}）`"
+            :title="`将关联已有账号：${linkAccountPreview.phone || '—'}（${linkAccountPreview.nickname || '—'}）`"
           />
           <el-alert
             v-else-if="!linkAccountChecking"
             type="warning"
             :closable="false"
             show-icon
-            title="未找到与该手机号匹配的已有账号，保存时将按手机号创建新账号"
+            title="未找到与该手机号匹配的已有账号，请确认手机号或改用“创建新账号”"
           />
         </div>
       </el-form>
@@ -280,9 +280,9 @@ import {
   addEducation,
   addPerson,
   downloadPersonImportTemplate,
+  getLinkableAccount,
   importPeople,
   listEducation,
-  listLinkableAccounts,
   listPersonAssignments,
   listPersonMemberships,
   listPersonRoles,
@@ -350,11 +350,12 @@ const ASSET_STATUS_FALLBACKS = [
   { label: '报废', value: 'SCRAPPED' }
 ]
 
-// 人员登录账号模式：创建新账号 / 关联已有账号 / 暂不启用登录。
-// 后端按手机号自动区分「关联已有账号」与「新建账号」，前端只负责表达意图并脱敏确认。
+// 人员登录账号模式：创建新账号 / 关联已有账号 / 保持既有账号 / 暂不启用登录。
+// accountMode 是后端一等字段，前端明确提交，不再本地删除；LINK 提交 linkUserId。
 const ACCOUNT_MODE_OPTIONS = [
   { label: '创建新账号', value: 'CREATE' },
   { label: '关联已有账号', value: 'LINK' },
+  { label: '保持既有账号', value: 'KEEP' },
   { label: '暂不启用登录', value: 'DISABLED' }
 ]
 
@@ -395,7 +396,7 @@ const configs: Record<EducationEntity, EntityConfig> = {
       { key: 'classIds', label: '任教班级', selector: 'teachingClass', multiple: true, hint: '教师可勾选年级或班级；勾选年级会自动关联其下全部班级。学生只能选择一个班级' },
       { key: 'subjectIds', label: '任教科目', selector: 'subject', multiple: true, visibleWhen: (form) => form.personType !== 'STUDENT' },
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
-      { key: 'accountMode', label: '登录账号', type: 'select', clearable: false, initial: 'CREATE', hint: '创建新账号 / 关联已有账号 / 暂不启用登录；关联已有账号按手机号匹配并脱敏确认' },
+      { key: 'accountMode', label: '登录账号', type: 'select', clearable: false, initial: 'CREATE', hint: '创建新账号 / 关联已有账号 / 保持既有账号 / 暂不启用登录；关联已有账号按手机号精确查询并脱敏确认' },
       { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => form.accountMode === 'CREATE', hint: '留空则由系统生成并要求首次登录修改' },
       { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && form.accountMode === 'CREATE', hint: '开启后才可选择管理端角色；不会改变校端职务' },
       { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess && form.accountMode === 'CREATE' },
@@ -438,9 +439,17 @@ const schoolOptions = ref<Array<{ label: string; value: any }>>([])
 const organizations = ref<EducationOrganizationNode[]>([])
 const query = reactive<EducationQuery>({ keyword: '', status: '', personType: '', pageNum: 1, pageSize: 20 })
 
-// 「关联已有账号」模式的候选账号脱敏确认（按手机号匹配）。
+// 「关联已有账号」模式的候选账号脱敏确认（按手机号精确查询，服务端已脱敏）。
 const linkAccountPreview = ref<LinkableAccount | null>(null)
 const linkAccountChecking = ref(false)
+let linkAccountQueryTimer: ReturnType<typeof setTimeout> | null = null
+let linkAccountQuerySeq = 0
+
+// KEEP（保持既有账号）仅在编辑已有账号时出现：新增人员没有可保持的账号。
+const accountModeOptions = computed(() => {
+  if (!form.userId) return ACCOUNT_MODE_OPTIONS.filter((item) => item.value !== 'KEEP')
+  return ACCOUNT_MODE_OPTIONS
+})
 
 const visibleFields = computed(() => config.value.fields.filter((field) => !field.visibleWhen || field.visibleWhen(form)))
 const deviceSceneTree = computed(() => {
@@ -462,6 +471,7 @@ function fieldLabel(field: Field) {
     : field.label
 }
 function fieldOptions(field: Field) {
+  if (field.key === 'accountMode') return accountModeOptions.value
   const values = options[field.key] || []
   if (field.key !== 'applicationTypes') return values
   const selected = Array.isArray(form.applicationTypes) ? form.applicationTypes.map(String) : []
@@ -488,11 +498,6 @@ function classRoleLabel(value: unknown) { return ({ MAIN: '主讲班级', ATTEND
 function roomTypeLabel(value: unknown) { return ({ LIVE: '直播教室', ATTEND: '听讲教室', CLASSROOM: '普通教室' } as Record<string, string>)[String(value || '')] || String(value || '—') }
 function dutyLabel(value: unknown) {
   return findDictLabel(options.dutyCode || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '普通教师')
-}
-function maskPhone(value: unknown) {
-  const phone = String(value || '')
-  if (phone.length < 7) return phone
-  return `${phone.slice(0, 3)}****${phone.slice(-4)}`
 }
 function dictLabel(key: string, value: unknown) {
   return findDictLabel(options[key] || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '—')
@@ -537,24 +542,36 @@ watch(() => form.personType, (personType, previous) => {
   }
 })
 
-// 「关联已有账号」模式：按手机号匹配候选账号并脱敏展示供确认。
-watch([() => form.accountMode, () => form.phone], async ([mode, phone]) => {
+// 「关联已有账号」模式：按手机号精确查询服务端脱敏的候选账号。
+// 手机号输入防抖后才调用窄接口，避免逐键请求；不用再下载全租户账号列表。
+watch([() => form.accountMode, () => form.phone], ([mode, phone]) => {
+  if (linkAccountQueryTimer) {
+    clearTimeout(linkAccountQueryTimer)
+    linkAccountQueryTimer = null
+  }
   if (props.entity !== 'people' || mode !== 'LINK' || !phone) {
+    linkAccountQuerySeq += 1
     linkAccountPreview.value = null
     linkAccountChecking.value = false
     return
   }
   linkAccountChecking.value = true
+  linkAccountQueryTimer = setTimeout(() => queryLinkableAccount(String(phone)), 400)
+})
+
+async function queryLinkableAccount(phone: string) {
+  const seq = ++linkAccountQuerySeq
   try {
-    const response = await listLinkableAccounts()
-    const list = response.data || []
-    linkAccountPreview.value = list.find((item) => String(item.phone || '').trim() === String(phone).trim()) || null
+    const response = await getLinkableAccount(phone)
+    if (seq !== linkAccountQuerySeq) return
+    linkAccountPreview.value = response.data || null
   } catch {
+    if (seq !== linkAccountQuerySeq) return
     linkAccountPreview.value = null
   } finally {
-    linkAccountChecking.value = false
+    if (seq === linkAccountQuerySeq) linkAccountChecking.value = false
   }
-})
+}
 
 async function getList() {
   loading.value = true
@@ -614,7 +631,7 @@ async function handleEdit(row: EducationRecord) {
   if (props.entity === 'devices') {
     form.applicationTypes = String(row.applicationTypes || '').split(',').filter(Boolean)
   }
-  form.accountMode = row.userId ? 'CREATE' : 'DISABLED'
+  form.accountMode = row.userId ? 'KEEP' : 'DISABLED'
   // 引入岗位维度之前建的人员 duty_code 是空的，服务端按普通教师解释，表单要显示成同一个值。
   if (props.entity === 'people' && form.personType === 'TEACHER' && !form.dutyCode) form.dutyCode = 'TEACHER'
   await loadFormOptions()
@@ -753,22 +770,40 @@ async function submitForm() {
 async function submitPerson() {
   const payload: EducationRecord = { ...form }
   const isStudent = payload.personType === 'STUDENT'
-  const accountMode = payload.accountMode === 'LINK' ? 'LINK' : payload.accountMode === 'DISABLED' ? 'DISABLED' : 'CREATE'
-  // accountMode 是前端意图字段，不进入后端 Person 表单。
-  delete payload.accountMode
+  const managementAccess = !isStudent && !!payload.managementAccess
+  // accountMode 是后端一等字段：新建/编辑都必须明确提交，前端不再本地删除。
+  const accountMode = payload.accountMode === 'KEEP' ? 'KEEP'
+    : payload.accountMode === 'LINK' ? 'LINK'
+    : payload.accountMode === 'DISABLED' ? 'DISABLED'
+    : 'CREATE'
+  payload.accountMode = accountMode
 
-  // 登录账号开关：CREATE / LINK 都视为启用登录，DISABLED 明确关停。
-  payload.loginEnabled = accountMode !== 'DISABLED'
+  // 关联已有账号：提交服务端精确脱敏查询返回的 linkUserId。
+  if (accountMode === 'LINK') {
+    if (!linkAccountPreview.value?.userId) {
+      ElMessage.warning('未找到与该手机号匹配的已有账号，请确认手机号或改用“创建新账号”')
+      return
+    }
+    payload.linkUserId = linkAccountPreview.value.userId
+  }
 
   if (isStudent) {
     delete payload.dutyCode
     delete payload.roleIds
     if (payload.id && payload.userId) payload.clearRoles = true
-  } else if (accountMode !== 'CREATE') {
-    // 关联已有账号：不建新号、不动账号角色；暂不启用登录：只停用账号。两者都不触碰角色。
+  } else if (accountMode === 'KEEP' || accountMode === 'LINK') {
+    // 保持既有账号 / 关联已有账号：不建新号、不动口令与角色。
     delete payload.roleIds
     delete payload.clearRoles
-  } else if (!payload.managementAccess) {
+    delete payload.password
+    delete payload.username
+  } else if (accountMode === 'DISABLED') {
+    // 暂不启用登录：不建号，也不提交口令与角色。
+    delete payload.username
+    delete payload.password
+    delete payload.roleIds
+    delete payload.clearRoles
+  } else if (!managementAccess) {
     if (payload.id && payload.userId) {
       await ElMessageBox.confirm('关闭管理端权限后将清除该人员的管理端角色，确认继续吗？', '确认变更', { type: 'warning' })
       payload.clearRoles = true
@@ -781,15 +816,15 @@ async function submitPerson() {
     delete payload.clearRoles
   }
 
-  if (!payload.loginEnabled) {
+  // 管理端权限开关是纯前端字段，不进后端。
+  delete payload.managementAccess
+
+  // 非 CREATE 模式（KEEP/LINK/DISABLED）不提交登录名与口令；CREATE 留空口令表示由系统生成。
+  if (accountMode !== 'CREATE') {
     delete payload.username
     delete payload.password
-  } else if (accountMode === 'LINK') {
-    // 关联已有账号：口令由既有账号保持，表单不提交口令与登录名。
+  } else if (!payload.password) {
     delete payload.password
-    delete payload.username
-  } else if (!isStudent && payload.managementAccess) {
-    if (!payload.password) delete payload.password
   }
 
   const response = form.id ? await updatePerson(payload) : await addPerson(payload)
@@ -803,7 +838,7 @@ async function submitPerson() {
   } else {
     ElMessage.success(form.id ? '修改成功' : '新增成功')
   }
-  if (!payload.id && payload.managementAccess && result?.userId) {
+  if (!payload.id && managementAccess && result?.userId) {
     try {
       await ElMessageBox.confirm('管理端角色已分配，请继续设置该人员可管理的教育局或学校。', '设置数据范围', {
         type: 'info', confirmButtonText: '立即设置', cancelButtonText: '稍后设置'
