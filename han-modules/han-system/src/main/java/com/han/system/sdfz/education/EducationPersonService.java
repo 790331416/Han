@@ -1,6 +1,8 @@
 package com.han.system.sdfz.education;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
@@ -30,6 +32,7 @@ import com.han.system.sdfz.education.mapper.EduPersonSubjectMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,6 +85,15 @@ public class EducationPersonService {
     private final SysDictDataMapper dictDataMapper;
     private final EducationDataScopeService dataScopeService;
     private final EducationAccountIdentityService accountIdentityService;
+
+    /**
+     * han-auth 会话撤销客户端（@HttpExchange 声明式 Bean）。
+     *
+     * <p>用字段注入而非构造注入：保留 12 参构造器，兼容存量单测的显式构造。
+     * 会话撤销是尽力而为的副作用，调用方为空时静默跳过。</p>
+     */
+    @Autowired
+    private AuthServiceClient authServiceClient;
 
     public PageResult<EduPersonPo> list(Long schoolId, String personType, String keyword,
                                         Integer status, int pageNum, int pageSize) {
@@ -138,20 +150,57 @@ public class EducationPersonService {
                 .stream().map(SysUserRolePo::getRoleId).toList();
     }
 
+    /**
+     * 重置已绑定账号的登录密码。
+     *
+     * <p>任务书 24：去掉「仅限教育入口建号」的限制，独立系统账号只要满足
+     * 「人员存在 + user_id 已绑定 + 操作人有权限（控制器校验）+ 目标账号属当前租户
+     * + 非超管 + 数据范围（{@link #requirePerson}）」，同样允许重置。</p>
+     */
+    /**
+     * 关联账号精确匹配：按当前租户 + 精确手机号查询，最多返回一条脱敏信息。
+     *
+     * <p>只脱敏返回，不暴露完整邮箱/手机号；不允许遍历全租户账号。保存时由
+     * {@link #requireLinkableAccount} 重新按 {@code linkUserId} 复核。</p>
+     */
+    public EducationForms.LinkableAccount linkableAccount(String phone) {
+        Long tenantId = requireTenant();
+        String value = trimToNull(phone);
+        if (value == null || !PHONE_PATTERN.matcher(value).matches()) {
+            throw new BusinessException("手机号格式不正确");
+        }
+        SysUserPo user = userMapper.selectOne(new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getTenantId, tenantId)
+                .eq(SysUserPo::getPhone, value)
+                .eq(SysUserPo::getStatus, 0)
+                .last("LIMIT 1"));
+        if (user == null) {
+            return null;
+        }
+        return new EducationForms.LinkableAccount(user.getId(), user.getNickname(),
+                maskPhone(user.getPhone()), maskEmail(user.getEmail()));
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void resetAccountPassword(Long personId, String password) {
-        requireTenant();
+        Long tenantId = requireTenant();
         EduPersonPo person = requirePerson(personId);
         requireLocalSource(person.getSourceSystem(), "人员");
         if (person.getUserId() == null) {
             throw new BusinessException("人员未绑定登录账号，请先重新绑定并设置密码");
         }
         SysUserPo user = userMapper.selectById(person.getUserId());
-        if (!isClientAccount(user)) {
-            throw new BusinessException("人员关联的客户端账号不存在");
+        if (user == null) {
+            throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
+        }
+        if (Objects.equals(user.getId(), 1L)) {
+            throw new BusinessException("不允许重置超级管理员密码");
+        }
+        if (!Objects.equals(user.getTenantId(), tenantId)) {
+            throw new BusinessException("目标账号不属于当前租户");
         }
         if (Objects.equals(user.getStatus(), 1)) {
-            throw new BusinessException("人员关联账号已停用，请先重新绑定并设置密码");
+            throw new BusinessException("目标账号已停用，请先启用账号");
         }
         PasswordUtil.validate(password);
         user.setPassword(PasswordUtil.encrypt(password));
@@ -207,18 +256,32 @@ public class EducationPersonService {
     private void unbindIdentity(Long userId, EduPersonPo person, boolean lastIdentity) {
         dataScopeService.requireSchool(person.getSchoolId());
         requireLocalSource(person.getSourceSystem(), "人员");
-        person.setUserId(null);
+        unbindIdentityState(userId, person, lastIdentity);
         personMapper.updateById(person);
+    }
+
+    /**
+     * 解绑当前身份的内部动作：置空 {@code edu_person.user_id} 并撤销该身份会话，
+     * 仅当这是账号最后一个绑定身份且账号为教育入口自动建号时才停用账号、清角色。
+     * 独立系统账号解绑最后一个身份不停用。不负责落库，由调用方统一 {@code updateById}。
+     */
+    private void unbindIdentityState(Long userId, EduPersonPo person, boolean lastIdentity) {
+        person.setUserId(null);
+        revokeIdentitySession(userId, person.getId());
         if (lastIdentity) {
             SysUserPo user = userMapper.selectById(userId);
             if (isClientAccount(user)) {
-                user.setStatus(1);
-                user.setPwdResetFlag(1);
-                userMapper.updateById(user);
+                disableAccount(userId);
                 clearAccountRoles(userId);
             }
             // 独立系统账号：解绑最后一个教育身份不停用账号，也不清账号角色。
         }
+    }
+
+    private boolean isLastIdentity(Long userId) {
+        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getUserId, userId));
+        return count == null || count <= 1;
     }
 
     EduSchoolPo requireImportSchool(Long schoolId) {
@@ -236,40 +299,93 @@ public class EducationPersonService {
         if (STUDENT_TYPE.equals(personType) && form.roleIds() != null && !form.roleIds().isEmpty()) {
             throw new BusinessException("学生账号不能分配管理端角色");
         }
-        EduPersonPo person = form.id() == null ? new EduPersonPo() : requirePerson(form.id());
-        if (form.id() != null) {
+        boolean editing = form.id() != null;
+        EduPersonPo person = editing ? requirePerson(form.id()) : new EduPersonPo();
+        if (editing) {
             requireLocalSource(person.getSourceSystem(), "人员");
         }
-        String personNo = form.id() == null
-                ? EducationCodeGenerator.unique("PERSON", form.personName(), candidate -> personMapper.selectCount(
+        String personNo = editing
+                ? person.getPersonNo()
+                : EducationCodeGenerator.unique("PERSON", form.personName(), candidate -> personMapper.selectCount(
                         new LambdaQueryWrapper<EduPersonPo>()
                                 .eq(EduPersonPo::getSchoolId, form.schoolId())
-                                .eq(EduPersonPo::getPersonNo, candidate)) > 0)
-                : person.getPersonNo();
+                                .eq(EduPersonPo::getPersonNo, candidate)) > 0);
         requirePersonNoAvailable(form.schoolId(), personNo, form.id());
         String phone = requiredPhone(form.phone());
 
-        Long userId = person.getUserId();
+        Long oldUserId = person.getUserId();
+        String oldDuty = person.getDutyCode();
+        Long oldSchoolId = person.getSchoolId();
+        Integer oldLeaveFlag = person.getLeaveFlag();
+        Integer oldStatus = person.getStatus();
+
+        EducationForms.AccountMode mode = parseAccountMode(form.accountMode());
+
+        Long userId = oldUserId;
         String username = null;
         String initialPassword = null;
         SysUserPo linkedAccount = null;
-        // 新增教育人员默认建号；编辑存量无账号人员时，只有明确勾选后才补建，避免一次资料编辑意外开通登录。
-        boolean createLoginAccount = form.loginEnabled() == null ? form.id() == null : form.wantsLogin();
-        if (createLoginAccount) {
-            if (userId == null) {
-                Account account = createAccount(tenantId, form, personType, phone);
-                userId = account.userId();
-                username = account.username();
-                initialPassword = account.initialPassword();
-                linkedAccount = account.linkedUser();
-            } else {
-                username = refreshAccount(userId, form, phone, duty);
+        boolean rolesCleared = false;
+
+        if (mode != null) {
+            switch (mode) {
+                case KEEP -> {
+                    // 编辑已绑定人员默认保留绑定：只同步账号显示资料，不动口令/状态/角色。
+                    if (userId != null) {
+                        username = keepAccount(userId, form, phone);
+                    }
+                }
+                case CREATE -> {
+                    // 建新号：手机号/用户名已存在则冲突，绝不静默改成关联已有账号。
+                    if (userId != null) {
+                        throw new BusinessException("人员已绑定登录账号，不能新建账号");
+                    }
+                    Account account = createNewAccount(tenantId, form, personType, phone);
+                    userId = account.userId();
+                    username = account.username();
+                    initialPassword = account.initialPassword();
+                }
+                case LINK -> {
+                    if (form.linkUserId() == null) {
+                        throw new BusinessException("关联已有账号必须传 linkUserId");
+                    }
+                    SysUserPo target = requireLinkableAccount(tenantId, form.linkUserId(), phone);
+                    if (userId != null && !Objects.equals(userId, target.getId())) {
+                        // 切绑到新账号：撤销旧身份会话，随后绑定新账号。
+                        revokeIdentitySession(userId, person.getId());
+                    }
+                    requireNoDuplicateIdentity(tenantId, form.schoolId(), target.getId());
+                    linkedAccount = target;
+                    userId = target.getId();
+                    username = target.getUsername();
+                }
+                case DISABLED -> {
+                    // 新增不建号；编辑已绑定按当前身份解绑。
+                    if (userId != null) {
+                        unbindIdentityState(userId, person, isLastIdentity(userId));
+                        userId = null;
+                    }
+                }
             }
-        } else if (userId != null) {
-            disableAccount(userId);
-            // 学生身份编辑不再无条件清空账号角色：账号还有其他学校管理员身份时保留其角色（任务书 12 节）。
-            if (STUDENT_TYPE.equals(personType) && !accountHasSchoolAdminIdentity(userId)) {
-                clearAccountRoles(userId);
+        } else {
+            // 旧语义：loginEnabled 为空按「新增默认建号、编辑保留绑定」兜底。
+            boolean createLoginAccount = form.loginEnabled() == null ? !editing : form.wantsLogin();
+            if (createLoginAccount) {
+                if (userId == null) {
+                    Account account = createAccount(tenantId, form, personType, phone);
+                    userId = account.userId();
+                    username = account.username();
+                    initialPassword = account.initialPassword();
+                    linkedAccount = account.linkedUser();
+                } else {
+                    AccountRefresh refreshed = refreshAccount(userId, form, phone, duty, form.id());
+                    username = refreshed.username();
+                    rolesCleared = refreshed.rolesCleared();
+                }
+            } else if (userId != null) {
+                // 关闭登录：只解绑当前身份，不停整个账号（任务书 17 节）。
+                unbindIdentityState(userId, person, isLastIdentity(userId));
+                userId = null;
             }
         }
 
@@ -283,13 +399,19 @@ public class EducationPersonService {
         person.setStatus(normalStatus(form.status()));
         person.setRemark(trimToNull(form.remark()));
         applyLeaveState(person, form.leaveFlag());
-        if (form.id() == null) {
+
+        if (editing) {
+            personMapper.updateById(person);
+        } else {
             person.setTenantId(tenantId);
             person.setSourceSystem(LOCAL_SOURCE);
             personMapper.insert(person);
-        } else {
-            personMapper.updateById(person);
         }
+
+        // 身份级变更立即撤销旧会话：停用/离校/岗位降级/学校变更/管理角色清空（任务书 13-15）。
+        revokeOnIdentityEdit(oldUserId, userId, form.id(), oldDuty, duty, oldSchoolId, form.schoolId(),
+                oldLeaveFlag, person.getLeaveFlag(), oldStatus, person.getStatus(), rolesCleared);
+
         // 新增第二身份（关联已有账号）：只新增绑定，不动账号口令/状态/角色；
         // 姓名/手机号统一账号级，把账号现有姓名/手机号同步到全部身份，避免出现同一账号身份不同名。
         if (linkedAccount != null) {
@@ -317,12 +439,18 @@ public class EducationPersonService {
             dataScopeService.requireSchool(person.getSchoolId());
             requireLocalSource(person.getSourceSystem(), "人员");
 
+            Long userId = person.getUserId();
+            // 任务书 18：删除先按剩余有效绑定决定是否停用账号，不直接停共享账号；
+            // 当前人员即将删除，不再算有效绑定。
+            if (userId != null && !hasOtherValidIdentity(userId, id)) {
+                disableAccount(userId);
+            }
+            revokeIdentitySession(userId, id);
+
             personClassMapper.delete(new LambdaQueryWrapper<EduPersonClassPo>()
                     .eq(EduPersonClassPo::getPersonId, id));
             personSubjectMapper.delete(new LambdaQueryWrapper<EduPersonSubjectPo>()
                     .eq(EduPersonSubjectPo::getPersonId, id));
-            disableAccount(person.getUserId());
-
             removed += personMapper.deleteById(id);
         }
         return removed;
@@ -427,6 +555,14 @@ public class EducationPersonService {
         if (existingAccount != null) {
             return linkExistingAccount(tenantId, existingAccount, form);
         }
+        return createNewAccount(tenantId, form, personType, phone);
+    }
+
+    /**
+     * 严格建新号（{@code CREATE} 模式）：手机号/用户名已存在即冲突，
+     * 不静默改成关联已有账号；支持初始密码与管理端角色。
+     */
+    private Account createNewAccount(Long tenantId, EducationForms.Person form, String personType, String phone) {
         String username = trimToNull(form.username());
         if (username == null) {
             username = "u_" + phone;
@@ -522,8 +658,12 @@ public class EducationPersonService {
      *
      * <p>只有在调用方明确要改角色时才动 {@code sys_user_role}：空数组按"未提供"处理，
      * 否则前端漏回填一次就会静默清空该账号的全部角色。</p>
+     *
+     * <p>任务书 17：人员停用只使当前身份失效，由调用方在保存后统一撤销身份会话，
+     * 这里不再把人员状态同步到账号状态。</p>
      */
-    private String refreshAccount(Long userId, EducationForms.Person form, String phone, String duty) {
+    private AccountRefresh refreshAccount(Long userId, EducationForms.Person form, String phone, String duty,
+                                          Long excludePersonId) {
         SysUserPo user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
@@ -534,25 +674,18 @@ public class EducationPersonService {
             throw new ConflictException("手机号“" + phone + "”已被其他账号使用");
         }
         user.setPhone(phone);
-        // 人员状态到账号状态**只同步停用这一个方向**：人员被停用，账号必须跟着停，
-        // 不允许出现「人员已停用但账号还能登录」的中间态。
-        //
-        // 反向不能同步。账号是在「账号与权限」里被显式停用的（安全原因、离职流程、
-        // 管理员手工处置），一次无关的人员资料编辑——改个电话、打个离校标记——
-        // 不能把它悄悄放开。恢复登录能力必须走账号那条有审批的路径。
-        if (normalStatus(form.status()) == 1) {
-            user.setStatus(1);
-        }
         userMapper.updateById(user);
         accountIdentityService.syncFromPerson(userId, form.personName(), phone);
 
         String personType = form.personType().trim().toUpperCase(Locale.ROOT);
         // 账号还关联其他学校的有效管理员身份时，普通教师/学生身份的编辑不得清空其角色（任务书 12 节）。
         boolean protectAdminRoles = !isSchoolAdmin(personType, duty)
-                && accountHasSchoolAdminIdentity(userId);
+                && accountHasSchoolAdminIdentity(userId, excludePersonId);
+        boolean rolesCleared = false;
         if (STUDENT_TYPE.equals(personType)) {
             if (!protectAdminRoles) {
                 clearAccountRoles(userId);
+                rolesCleared = true;
             }
         } else if (form.wantsRoleChange() && !protectAdminRoles) {
             Set<Long> roleIds = resolveRoles(form.effectiveRoleIds(),
@@ -562,8 +695,47 @@ public class EducationPersonService {
             for (Long roleId : roleIds) {
                 userRoleMapper.insert(new SysUserRolePo(userId, roleId));
             }
+            rolesCleared = true;
         }
+        return new AccountRefresh(user.getUsername(), rolesCleared);
+    }
+
+    /** {@code KEEP} 模式：保留绑定，只同步账号显示资料，不改口令/状态/角色。 */
+    private String keepAccount(Long userId, EducationForms.Person form, String phone) {
+        SysUserPo user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
+        }
+        user.setNickname(truncate(form.personName().trim(), NICKNAME_MAX_LENGTH));
+        if (!Objects.equals(phone, user.getPhone())
+                && userMapper.checkPhoneUnique(phone, requireTenant(), userId) > 0) {
+            throw new ConflictException("手机号“" + phone + "”已被其他账号使用");
+        }
+        user.setPhone(phone);
+        userMapper.updateById(user);
+        accountIdentityService.syncFromPerson(userId, form.personName(), phone);
         return user.getUsername();
+    }
+
+    /** {@code LINK} 模式的保存期复核：目标账号存在、属当前租户、正常且手机号一致。 */
+    private SysUserPo requireLinkableAccount(Long tenantId, Long linkUserId, String phone) {
+        if (linkUserId == null) {
+            throw new BusinessException("关联已有账号必须传 linkUserId");
+        }
+        SysUserPo user = userMapper.selectById(linkUserId);
+        if (user == null) {
+            throw new BusinessException("要关联的账号不存在");
+        }
+        if (!Objects.equals(user.getTenantId(), tenantId)) {
+            throw new BusinessException("不能关联其他租户的账号");
+        }
+        if (!Objects.equals(user.getStatus(), 0)) {
+            throw new BusinessException("要关联的账号已停用或不可用");
+        }
+        if (!Objects.equals(user.getPhone(), phone)) {
+            throw new BusinessException("要关联的账号手机号与人员手机号不一致");
+        }
+        return user;
     }
 
     private void disableAccount(Long userId) {
@@ -582,6 +754,8 @@ public class EducationPersonService {
         }
         user.setStatus(1);
         userMapper.updateById(user);
+        // 账号级停用撤销该账号全部会话与课堂凭证。
+        revokeAccountSession(userId);
     }
 
     private static boolean isClientAccount(SysUserPo user) {
@@ -633,16 +807,122 @@ public class EducationPersonService {
         return TEACHER_TYPE.equals(personType) && EduDuty.SCHOOL_ADMIN.name().equals(dutyCode);
     }
 
-    /** 账号是否还关联着其他学校的有效管理员身份（身份类型教师 + 校内岗位管理员，且身份有效）。 */
-    private boolean accountHasSchoolAdminIdentity(Long userId) {
+    /**
+     * 账号是否还关联着其他学校的有效管理员身份（身份类型教师 + 校内岗位管理员，且身份有效、未离校）。
+     *
+     * <p>排除正在修改的人员 ID，只把<b>其他</b>有效 SCHOOL_ADMIN 身份算作保护条件；
+     * 删除标志由 {@code @TableLogic} 自动过滤，无需重复拼装。</p>
+     */
+    private boolean accountHasSchoolAdminIdentity(Long userId, Long excludePersonId) {
         if (userId == null) {
             return false;
         }
         Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
                 .eq(EduPersonPo::getUserId, userId)
                 .eq(EduPersonPo::getDutyCode, EduDuty.SCHOOL_ADMIN.name())
-                .eq(EduPersonPo::getStatus, 0));
+                .eq(EduPersonPo::getStatus, 0)
+                .eq(EduPersonPo::getLeaveFlag, 0)
+                .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId));
         return count != null && count > 0;
+    }
+
+    /** 账号是否还有除 {@code excludePersonId} 外的其他有效绑定身份。 */
+    private boolean hasOtherValidIdentity(Long userId, Long excludePersonId) {
+        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getUserId, userId)
+                .eq(EduPersonPo::getStatus, 0)
+                .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId));
+        return count != null && count > 0;
+    }
+
+    // ---------------------------------------------------------------- 会话撤销
+
+    /** 按身份粒度撤销会话与课堂 token，尽力而为，失败不阻断数据变更。 */
+    private void revokeIdentitySession(Long userId, Long identityId) {
+        if (userId == null || identityId == null || authServiceClient == null) {
+            return;
+        }
+        try {
+            SessionRevokeRequest request = new SessionRevokeRequest();
+            request.setUserId(userId);
+            request.setIdentityId(identityId);
+            authServiceClient.revokeSession(request);
+        } catch (RuntimeException ignored) {
+            // 会话撤销是副作用：han-auth 短暂不可用不应让人员资料写入回滚。
+        }
+    }
+
+    /** 账号级撤销全部会话与课堂凭证，尽力而为，失败不阻断数据变更。 */
+    private void revokeAccountSession(Long userId) {
+        if (userId == null || authServiceClient == null) {
+            return;
+        }
+        try {
+            SessionRevokeRequest request = new SessionRevokeRequest();
+            request.setUserId(userId);
+            authServiceClient.revokeSession(request);
+        } catch (RuntimeException ignored) {
+            // 同上。
+        }
+    }
+
+    /**
+     * 编辑后按身份级变更撤销旧会话：停用、离校、岗位 SCHOOL_ADMIN 降级、学校变更、管理角色清空。
+     * 解绑/切绑已由 {@link #unbindIdentityState} 或 LINK 分支负责，这里只处理身份仍绑在同一账号的变更。
+     */
+    private void revokeOnIdentityEdit(Long oldUserId, Long newUserId, Long identityId,
+                                      String oldDuty, String newDuty, Long oldSchoolId, Long newSchoolId,
+                                      Integer oldLeaveFlag, Integer newLeaveFlag, Integer oldStatus, Integer newStatus,
+                                      boolean rolesCleared) {
+        if (identityId == null || oldUserId == null || !Objects.equals(oldUserId, newUserId)) {
+            return;
+        }
+        boolean invalidated =
+                (statusOf(oldStatus) == 0 && statusOf(newStatus) == 1)
+                || (flagOf(oldLeaveFlag) == 0 && flagOf(newLeaveFlag) == 1)
+                || (EduDuty.SCHOOL_ADMIN.name().equals(oldDuty) && !EduDuty.SCHOOL_ADMIN.name().equals(newDuty))
+                || (oldSchoolId != null && !Objects.equals(oldSchoolId, newSchoolId))
+                || rolesCleared;
+        if (invalidated) {
+            revokeIdentitySession(oldUserId, identityId);
+        }
+    }
+
+    private static int statusOf(Integer status) {
+        return status == null ? 0 : status;
+    }
+
+    private static int flagOf(Integer flag) {
+        return flag == null ? 0 : flag;
+    }
+
+    private static String maskPhone(String phone) {
+        if (phone == null || phone.length() < 7) {
+            return phone == null ? null : "***";
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+    }
+
+    private static String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        int at = email.indexOf('@');
+        if (at <= 0) {
+            return "***";
+        }
+        return email.substring(0, 1) + "***" + email.substring(at);
+    }
+
+    private static EducationForms.AccountMode parseAccountMode(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return EducationForms.AccountMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("账号绑定模式取值不合法: " + value);
+        }
     }
 
     // ---------------------------------------------------------------- 关系
@@ -797,5 +1077,8 @@ public class EducationPersonService {
         Account(Long userId, String username, String initialPassword) {
             this(userId, username, initialPassword, null);
         }
+    }
+
+    private record AccountRefresh(String username, boolean rolesCleared) {
     }
 }

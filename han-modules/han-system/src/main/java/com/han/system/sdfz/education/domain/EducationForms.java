@@ -40,9 +40,23 @@ public final class EducationForms {
     }
 
     /**
+     * 账号绑定模式（任务书 16-20 的后端契约）。
+     *
+     * <p>{@code KEEP}：编辑已绑定人员默认保留绑定，只同步账号显示资料；
+     * {@code CREATE}：建新号，手机号/用户名已存在则冲突，绝不静默改成关联；
+     * {@code LINK}：关联已有账号，必须传 {@code linkUserId}，不建号、不重置密码、不改状态、不清角色；
+     * {@code DISABLED}：新增不建号，编辑已绑定按当前身份解绑。</p>
+     */
+    public enum AccountMode {
+        KEEP, CREATE, LINK, DISABLED
+    }
+
+    /**
      * 人员统一入口。
      *
      * <p>不接受调用方指定 Han 用户 ID：启用登录时由服务端建号并回填，未启用登录时保持为空。</p>
+     *
+     * <p>{@code accountMode} 为空时沿用 {@code loginEnabled} 的旧语义，保证存量调用方不感知变化。</p>
      */
     public record Person(
             Long id,
@@ -67,7 +81,24 @@ public final class EducationForms {
             Boolean clearRoles,
             List<Long> classIds,
             @Size(max = 32) String membershipRole,
-            List<Long> subjectIds) {
+            List<Long> subjectIds,
+            /** 账号绑定模式（KEEP/CREATE/LINK/DISABLED）；为空时按 {@code loginEnabled} 旧语义。 */
+            @Size(max = 16) String accountMode,
+            /** {@code accountMode=LINK} 时必填，目标登录账号 ID。 */
+            Long linkUserId) {
+
+        /**
+         * 兼容旧调用方的 18 参构造：不传 {@code accountMode}/{@code linkUserId}，
+         * 由服务端按 {@code loginEnabled} 的旧语义兜底。
+         */
+        public Person(Long id, Long schoolId, String personNo, String personName, String personType,
+                      String dutyCode, String phone, Integer status, String remark, Integer leaveFlag,
+                      Boolean loginEnabled, String username, String password, List<Long> roleIds,
+                      Boolean clearRoles, List<Long> classIds, String membershipRole, List<Long> subjectIds) {
+            this(id, schoolId, personNo, personName, personType, dutyCode, phone, status, remark, leaveFlag,
+                    loginEnabled, username, password, roleIds, clearRoles, classIds, membershipRole, subjectIds,
+                    null, null);
+        }
 
         public boolean wantsLogin() {
             return Boolean.TRUE.equals(loginEnabled);
@@ -86,6 +117,15 @@ public final class EducationForms {
         public List<Long> effectiveRoleIds() {
             return Boolean.TRUE.equals(clearRoles) ? List.of() : (roleIds == null ? List.of() : roleIds);
         }
+    }
+
+    /**
+     * 关联账号精确匹配的脱敏结果。
+     *
+     * <p>只返回一条，手机号与邮箱都脱敏，不允许遍历全租户账号；保存时服务端会按
+     * {@code linkUserId} 重新校验租户、状态与手机号一致性。</p>
+     */
+    public record LinkableAccount(Long userId, String nickname, String phone, String email) {
     }
 
     /**

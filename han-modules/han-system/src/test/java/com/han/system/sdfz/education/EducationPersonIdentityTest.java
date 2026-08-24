@@ -1,6 +1,9 @@
 package com.han.system.sdfz.education;
 
+import com.han.api.system.AuthServiceClient;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.ConflictException;
+import com.han.common.core.util.PasswordUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysUserPo;
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -70,6 +74,8 @@ class EducationPersonIdentityTest {
     private EducationDataScopeService dataScopeService;
     @Mock
     private EducationAccountIdentityService accountIdentityService;
+    @Mock
+    private AuthServiceClient authServiceClient;
 
     private EducationPersonService service;
 
@@ -80,6 +86,7 @@ class EducationPersonIdentityTest {
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
                 dataScopeService, accountIdentityService);
+        ReflectionTestUtils.setField(service, "authServiceClient", authServiceClient);
     }
 
     @AfterEach
@@ -228,6 +235,172 @@ class EducationPersonIdentityTest {
     }
 
     // ---------------------------------------------------------------- 工具
+
+    /** CREATE 模式：手机号已存在则冲突，不得静默改成关联已有账号。 */
+    @Test
+    void createModeConflictsWhenPhoneAlreadyUsedInsteadOfLinking() {
+        stubSchool(SCHOOL_A);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(userMapper.checkUsernameUnique("u_13900000001", 1L, null)).thenReturn(0);
+        when(userMapper.checkPhoneUnique("13900000001", 1L, null)).thenReturn(1);
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_A, "T110", "张三", "TEACHER",
+                null, "13900000001", 0, null, null, true, null, null, null, null, null, null, null,
+                "CREATE", null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("手机号");
+        verify(personMapper, never()).insert(any(EduPersonPo.class));
+    }
+
+    /** LINK 模式：必须传 linkUserId，缺了直接报错，不自动建号。 */
+    @Test
+    void linkModeRequiresLinkUserId() {
+        stubSchool(SCHOOL_A);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_A, "T111", "张三", "TEACHER",
+                null, "13900000001", 0, null, null, true, null, null, null, null, null, null, null,
+                "LINK", null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("必须传 linkUserId");
+        verify(personMapper, never()).insert(any(EduPersonPo.class));
+    }
+
+    /** LINK 模式：只新增绑定，不建新号、不重置密码、不改状态、不清角色。 */
+    @Test
+    void linkModeBindsExistingAccountWithoutResetting() {
+        stubSchool(SCHOOL_A);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        SysUserPo target = new SysUserPo();
+        target.setId(9120L);
+        target.setTenantId(1L);
+        target.setUsername("u_13900000020");
+        target.setNickname("张三");
+        target.setPhone("13900000020");
+        target.setStatus(0);
+        when(userMapper.selectById(9120L)).thenReturn(target);
+        doAnswer(invocation -> {
+            ((EduPersonPo) invocation.getArgument(0)).setId(5120L);
+            return 1;
+        }).when(personMapper).insert(any(EduPersonPo.class));
+
+        EducationForms.Person form = new EducationForms.Person(null, SCHOOL_A, "T112", "张三", "TEACHER",
+                null, "13900000020", 0, null, null, true, null, null, null, null, null, null, null,
+                "LINK", 9120L);
+
+        EducationForms.PersonResult result = service.save(form);
+
+        assertThat(result.userId()).isEqualTo(9120L);
+        assertThat(result.username()).isEqualTo("u_13900000020");
+        assertThat(target.getPassword()).as("不得重置原账号密码").isNull();
+        verify(userMapper, never()).insert(any(SysUserPo.class));
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+        verify(accountIdentityService).syncFromAccount(target);
+    }
+
+    /** DISABLED 模式：编辑已绑定人员按当前身份解绑，独立系统账号不停用。 */
+    @Test
+    void disabledModeUnbindsBoundIdentity() {
+        EduPersonPo person = person(5121L, "TEACHER", SCHOOL_A);
+        person.setUserId(9121L);
+        person.setPersonNo("T113");
+        when(personMapper.selectById(5121L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        SysUserPo systemAccount = new SysUserPo();
+        systemAccount.setId(9121L);
+        systemAccount.setUsername("admin");
+        systemAccount.setStatus(0);
+        systemAccount.setRemark("系统账号");
+        when(userMapper.selectById(9121L)).thenReturn(systemAccount);
+        stubSchool(SCHOOL_A);
+
+        EducationForms.Person form = new EducationForms.Person(5121L, SCHOOL_A, "T113", "张三", "TEACHER",
+                null, "13900000001", 0, null, null, true, null, null, null, null, null, null, null,
+                "DISABLED", null);
+
+        service.save(form);
+
+        assertThat(person.getUserId()).isNull();
+        assertThat(systemAccount.getStatus()).as("独立系统账号解绑不得停用").isZero();
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+    }
+
+    /** 任务书 24：已绑定独立系统账号同样可以重置密码，不再要求是教育入口建号。 */
+    @Test
+    void systemAccountPasswordCanBeReset() {
+        EduPersonPo person = person(5122L, "TEACHER", SCHOOL_A);
+        person.setUserId(9122L);
+        when(personMapper.selectById(5122L)).thenReturn(person);
+        SysUserPo systemAccount = new SysUserPo();
+        systemAccount.setId(9122L);
+        systemAccount.setTenantId(1L);
+        systemAccount.setUsername("admin");
+        systemAccount.setStatus(0);
+        systemAccount.setRemark("系统账号");
+        when(userMapper.selectById(9122L)).thenReturn(systemAccount);
+
+        service.resetAccountPassword(5122L, "Teacher@2026");
+
+        assertThat(PasswordUtil.matches("Teacher@2026", systemAccount.getPassword())).isTrue();
+        verify(userMapper).updateById(systemAccount);
+    }
+
+    /** 排除当前正在修改的人员：本人是唯一管理员时降级为普通教师也应清空其管理角色。 */
+    @Test
+    void demotingLastSchoolAdminClearsRolesBecauseSelfIsExcluded() {
+        EduPersonPo person = person(5123L, "TEACHER", SCHOOL_A);
+        person.setUserId(9123L);
+        person.setDutyCode("SCHOOL_ADMIN");
+        person.setPersonNo("T114");
+        when(personMapper.selectById(5123L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        SysUserPo user = new SysUserPo();
+        user.setId(9123L);
+        user.setUsername("t.admin");
+        user.setPhone("13900000023");
+        user.setStatus(0);
+        when(userMapper.selectById(9123L)).thenReturn(user);
+        stubSchool(SCHOOL_A);
+
+        EducationForms.Person form = new EducationForms.Person(5123L, SCHOOL_A, "T114", "张三", "TEACHER",
+                "TEACHER", "13900000023", 0, null, null, true, null, null, null, true, null, null, null);
+
+        service.save(form);
+
+        verify(userRoleMapper).delete(any());
+    }
+
+    /** 关联账号精确匹配：只返回一条脱敏信息，不暴露完整邮箱/手机号。 */
+    @Test
+    void linkableAccountReturnsSingleMaskedMatch() {
+        SysUserPo user = new SysUserPo();
+        user.setId(9130L);
+        user.setNickname("张三");
+        user.setPhone("13900000030");
+        user.setEmail("zhangsan@example.com");
+        when(userMapper.selectOne(any())).thenReturn(user);
+
+        EducationForms.LinkableAccount result = service.linkableAccount("13900000030");
+
+        assertThat(result).isNotNull();
+        assertThat(result.userId()).isEqualTo(9130L);
+        assertThat(result.phone()).isEqualTo("139****0030");
+        assertThat(result.email()).isEqualTo("z***@example.com");
+        assertThat(result.phone()).doesNotContain("13900000030");
+    }
+
+    /** 关联账号精确匹配：手机号非法直接报错，不允许模糊遍历。 */
+    @Test
+    void linkableAccountRejectsInvalidPhone() {
+        assertThatThrownBy(() -> service.linkableAccount("123"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("手机号格式不正确");
+        verify(userMapper, never()).selectOne(any());
+    }
 
     private void stubSchool(Long schoolId) {
         EduSchoolPo school = new EduSchoolPo();

@@ -280,6 +280,16 @@ public class EducationMasterDataController {
         return R.ok(personService.listRoleIds(personId));
     }
 
+    /**
+     * 关联账号精确匹配（任务书 21-23）：按当前租户 + 精确手机号查询，只返回一条脱敏信息，
+     * 不允许遍历全租户账号；保存时服务端会按 {@code linkUserId} 重新复核。
+     */
+    @GetMapping("/people/linkable-account")
+    @PreAuthorize("@ss.hasAnyAuthority('education:person:add','education:person:edit')")
+    public R<EducationForms.LinkableAccount> linkableAccount(@RequestParam String phone) {
+        return R.ok(personService.linkableAccount(phone));
+    }
+
     @RepeatSubmit
     @PostMapping("/people/subjects")
     @PreAuthorize("@ss.hasAuthority('education:person:edit')")
