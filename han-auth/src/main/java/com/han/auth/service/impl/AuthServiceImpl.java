@@ -1,11 +1,14 @@
 package com.han.auth.service.impl;
 
 import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.LoginLogDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.api.tenant.TenantServiceClient;
 import com.han.api.tenant.domain.TenantVO;
 import com.han.auth.config.SecurityProperties;
+import com.han.auth.domain.IdentitySelectDTO;
+import com.han.auth.domain.IdentityVO;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
@@ -35,8 +38,10 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 认证服务实现
@@ -67,6 +72,15 @@ public class AuthServiceImpl implements IAuthService {
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(10);
     private static final String LOGIN_FAIL_KEY = CacheConstants.CACHE_PREFIX + "login_fail:";
+
+    /** 登录时多学校身份选择的一次性票据（Redis 5 分钟，GETDEL 一次性消费）。 */
+    private static final String IDENTITY_TICKET_KEY = CacheConstants.CACHE_PREFIX + "identity_ticket:";
+    private static final Duration IDENTITY_TICKET_TTL = Duration.ofMinutes(5);
+
+    /** 校内岗位编码到中文名映射；未命中返回空串。 */
+    private static final Map<String, String> DUTY_NAME_MAP = Map.of(
+            "SCHOOL_ADMIN", "管理员",
+            "TEACHER", "普通教师");
 
     @Override
     public LoginVO login(LoginDTO dto) {
@@ -140,7 +154,7 @@ public class AuthServiceImpl implements IAuthService {
 
         clearLoginFail(dto.getUsername(), user.getTenantId());
 
-        return issueLoginForUser(user, dto.getClientType(), forceChangePwd);
+        return issueLoginWithIdentity(user, dto.getClientType(), forceChangePwd);
     }
 
     /**
@@ -149,6 +163,57 @@ public class AuthServiceImpl implements IAuthService {
      */
     @Override
     public LoginVO issueLoginForUser(UserVO user, ClientType clientType, boolean forceChangePassword) {
+        validateLoginAccount(user);
+        requireManagementRole(user, clientType);
+        validateTenantAvailable(user);
+        Set<String> permissions = loadPermissions(user.getUserId());
+        Set<Long> dataScopeDeptIds = loadDataScopeDeptIds(user.getUserId());
+        LoginUser loginUser = buildLoginUser(user, clientType, permissions, dataScopeDeptIds);
+        return issueTokens(user, clientType, forceChangePassword, loginUser);
+    }
+
+    /**
+     * 密码验证通过后的登录身份识别入口。
+     *
+     * <ul>
+     *   <li>0 个有效身份：走原 {@link #issueLoginForUser} 流程，不设置身份字段；</li>
+     *   <li>1 个有效身份：自动绑定该身份并签发 Token；</li>
+     *   <li>≥2 个有效身份：不签发正式 Token，返回 requireIdentity + 一次性身份票据 + 身份列表。</li>
+     * </ul>
+     */
+    private LoginVO issueLoginWithIdentity(UserVO user, ClientType clientType, boolean forceChangePassword) {
+        List<ClassroomIdentityVO> identities = loadClassroomIdentities(user.getUserId());
+        if (identities.isEmpty()) {
+            return issueLoginForUser(user, clientType, forceChangePassword);
+        }
+        if (identities.size() == 1) {
+            return issueLoginForIdentity(user, clientType, forceChangePassword, identities.get(0));
+        }
+        String ticket = generateToken();
+        storeIdentityTicket(ticket, user.getUserId(), user.getTenantId(), clientType);
+        return LoginVO.builder()
+                .requireIdentity(true)
+                .identityTicket(ticket)
+                .identities(identities.stream().map(item -> toIdentityVO(item, false)).toList())
+                .build();
+    }
+
+    /**
+     * 按指定学校身份签发登录态。与 {@link #issueLoginForUser} 的区别：
+     * 不复用「管理端角色」门禁（能否使用管理端由身份 dutyCode 决定），并写入身份字段。
+     */
+    private LoginVO issueLoginForIdentity(UserVO user, ClientType clientType, boolean forceChangePassword,
+                                          ClassroomIdentityVO identity) {
+        validateLoginAccount(user);
+        validateTenantAvailable(user);
+        Set<String> permissions = loadPermissions(user.getUserId());
+        Set<Long> dataScopeDeptIds = loadDataScopeDeptIds(user.getUserId());
+        LoginUser loginUser = buildIdentityLoginUser(user, clientType, permissions, dataScopeDeptIds, identity);
+        return issueTokens(user, clientType, forceChangePassword, loginUser);
+    }
+
+    /** 账号状态公共校验（密码登录与身份选择/切换复用）。 */
+    private void validateLoginAccount(UserVO user) {
         if (user == null || user.getUserId() == null) {
             throw new BusinessException("用户不存在");
         }
@@ -156,8 +221,10 @@ public class AuthServiceImpl implements IAuthService {
             recordLoginFail(user.getUsername(), user.getTenantId(), "账号已停用");
             throw new BusinessException("账号已停用，请联系管理员");
         }
-        requireManagementRole(user, clientType);
+    }
 
+    /** 非默认租户时校验租户有效性，失败降级为跳过（与旧登录行为一致）。 */
+    private void validateTenantAvailable(UserVO user) {
         if (user.getTenantId() != null && user.getTenantId() != 1L) {
             try {
                 R<Boolean> validResult = tenantServiceClient.checkTenantValid(user.getTenantId());
@@ -171,14 +238,21 @@ public class AuthServiceImpl implements IAuthService {
                 log.warn("校验租户有效性失败，跳过校验: tenantId={}", user.getTenantId(), e);
             }
         }
+    }
 
-        R<Set<String>> permsResult = systemServiceClient.getPermissionsByUserId(user.getUserId());
-        Set<String> permissions = permsResult.getData();
-        R<Set<Long>> dataScopeDeptIdsResult = systemServiceClient.getDataScopeDeptIds(user.getUserId());
-        Set<Long> dataScopeDeptIds = dataScopeDeptIdsResult != null ? dataScopeDeptIdsResult.getData() : null;
+    private Set<String> loadPermissions(Long userId) {
+        R<Set<String>> permsResult = systemServiceClient.getPermissionsByUserId(userId);
+        return permsResult != null ? permsResult.getData() : null;
+    }
 
-        LoginUser loginUser = buildLoginUser(user, clientType, permissions, dataScopeDeptIds);
+    private Set<Long> loadDataScopeDeptIds(Long userId) {
+        R<Set<Long>> dataScopeDeptIdsResult = systemServiceClient.getDataScopeDeptIds(userId);
+        return dataScopeDeptIdsResult != null ? dataScopeDeptIdsResult.getData() : null;
+    }
 
+    /** 生成 Token 并写入 Redis（互踢、在线标记、登录日志由本方法统一完成）。 */
+    private LoginVO issueTokens(UserVO user, ClientType clientType, boolean forceChangePassword,
+                                LoginUser loginUser) {
         String accessToken = generateToken();
         String refreshToken = generateToken();
 
@@ -237,6 +311,12 @@ public class AuthServiceImpl implements IAuthService {
         }
 
         LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
+
+        // 身份隔离账号：刷新时校验当前身份仍有效，失效则要求重新登录。
+        if (loginUser != null && loginUser.isIdentityScoped() && loginUser.getIdentityId() != null
+                && findValidIdentity(loginUser.getUserId(), loginUser.getIdentityId()) == null) {
+            throw new UnauthorizedException("当前身份已失效，请重新登录");
+        }
 
         String newAccessToken = generateToken();
         String newRefreshToken = generateToken();
@@ -398,6 +478,195 @@ public class AuthServiceImpl implements IAuthService {
                 targetUser.getUsername(), targetUser.getNickname(), targetUser.getAvatar(), targetUser.getPhone());
     }
 
+    @Override
+    public LoginVO selectIdentity(IdentitySelectDTO dto) {
+        if (dto == null || XuStrUtil.isBlank(dto.getIdentityTicket())) {
+            throw new BusinessException("身份票据不能为空");
+        }
+        if (dto.getIdentityId() == null) {
+            throw new BusinessException("身份ID不能为空");
+        }
+        IdentityTicket ticket = consumeIdentityTicket(dto.getIdentityTicket());
+        if (ticket == null) {
+            throw new BusinessException("身份票据已过期或已使用，请重新登录");
+        }
+        ClassroomIdentityVO identity = findValidIdentity(ticket.userId(), dto.getIdentityId());
+        if (identity == null) {
+            throw new BusinessException("所选身份无效或不属于当前账号");
+        }
+        UserVO user = requireActiveUser(ticket.userId());
+        ClientType clientType = ClientType.fromCode(ticket.clientType());
+        return issueLoginForIdentity(user, clientType, false, identity);
+    }
+
+    @Override
+    public List<IdentityVO> getMyIdentities() {
+        LoginUser current = requireLoginUser();
+        Long currentIdentityId = current.getIdentityId();
+        return loadClassroomIdentities(current.getUserId()).stream()
+                .map(item -> toIdentityVO(item, currentIdentityId != null && item.getIdentityId() != null
+                        && currentIdentityId.equals(parseLongOrNull(item.getIdentityId()))))
+                .toList();
+    }
+
+    @Override
+    public LoginVO switchIdentity(Long identityId, String authorization) {
+        if (identityId == null) {
+            throw new BusinessException("身份ID不能为空");
+        }
+        LoginUser current = requireLoginUser();
+        ClassroomIdentityVO identity = findValidIdentity(current.getUserId(), identityId);
+        if (identity == null) {
+            throw new BusinessException("所选身份无效或不属于当前账号");
+        }
+        UserVO user = requireActiveUser(current.getUserId());
+        ClientType clientType = current.getClientType() != null ? current.getClientType() : ClientType.PC;
+
+        // 先作废旧登录态。logout 会删除同 userId+clientType 的 login_user 索引键，
+        // 因此必须在新 userKey 写入前执行，否则会误删刚换发的新索引。
+        // 课堂 Active Key 目前按 userId 粒度撤销（revokeClassroomSession），
+        // 按 identityId 区分的课堂凭证撤销属后续批次。
+        logout(authorization);
+
+        Set<String> permissions = loadPermissions(user.getUserId());
+        Set<Long> dataScopeDeptIds = loadDataScopeDeptIds(user.getUserId());
+        LoginUser loginUser = buildIdentityLoginUser(user, clientType, permissions, dataScopeDeptIds, identity);
+
+        String accessToken = generateToken();
+        String refreshToken = generateToken();
+        Duration tokenExpire = getTokenExpire(clientType);
+        Duration refreshExpire = getRefreshExpire(clientType);
+        loginUser.setExpireTime(System.currentTimeMillis() + tokenExpire.toMillis());
+
+        handleMultiLogin(user.getUserId(), clientType);
+
+        redisTemplate.opsForValue().set(CacheConstants.TOKEN_KEY + accessToken, XuJsonUtil.toJsonString(loginUser), tokenExpire);
+        redisTemplate.opsForValue().set(CacheConstants.REFRESH_TOKEN_KEY + refreshToken, accessToken, refreshExpire);
+        redisTemplate.opsForValue().set(CacheConstants.LOGIN_USER_KEY + user.getUserId() + ":" + clientType.getCode(),
+                accessToken, tokenExpire);
+        markOnline(accessToken);
+
+        recordLoginSuccess(user.getUserId(), user.getUsername(), clientType);
+
+        return buildLoginVO(accessToken, refreshToken, tokenExpire, false, user.getUserId(),
+                user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
+    }
+
+    /** 读取当前账号有效身份列表；系统服务不可用时按「无身份账号」降级处理。 */
+    private List<ClassroomIdentityVO> loadClassroomIdentities(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        try {
+            R<List<ClassroomIdentityVO>> result = systemServiceClient.listClassroomIdentities(userId);
+            if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
+                return List.of();
+            }
+            return result.getData();
+        } catch (Exception e) {
+            log.warn("查询学校身份列表失败，按无身份账号处理: userId={}", userId, e);
+            return List.of();
+        }
+    }
+
+    /** 身份必须属于当前账号且仍有效。 */
+    private ClassroomIdentityVO findValidIdentity(Long userId, Long identityId) {
+        if (userId == null || identityId == null) {
+            return null;
+        }
+        return loadClassroomIdentities(userId).stream()
+                .filter(item -> item.getIdentityId() != null
+                        && identityId.equals(parseLongOrNull(item.getIdentityId())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private UserVO requireActiveUser(Long userId) {
+        R<UserVO> userResult = systemServiceClient.getUserById(userId);
+        if (userResult == null || userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
+            throw new BusinessException("用户不存在");
+        }
+        UserVO user = userResult.getData();
+        if (user.getStatus() == null || user.getStatus() != 0) {
+            throw new BusinessException("账号已停用，请联系管理员");
+        }
+        return user;
+    }
+
+    private void storeIdentityTicket(String ticket, Long userId, Long tenantId, ClientType clientType) {
+        IdentityTicket payload = new IdentityTicket(userId, tenantId,
+                clientType != null ? clientType.getCode() : ClientType.PC.getCode());
+        redisTemplate.opsForValue().set(IDENTITY_TICKET_KEY + ticket,
+                XuJsonUtil.toJsonString(payload), IDENTITY_TICKET_TTL);
+    }
+
+    /** GETDEL 原子读取并删除，保证票据一次性；不存在或解析失败返回 null。 */
+    private IdentityTicket consumeIdentityTicket(String ticket) {
+        String json = redisTemplate.opsForValue().getAndDelete(IDENTITY_TICKET_KEY + ticket);
+        if (XuStrUtil.isBlank(json)) {
+            return null;
+        }
+        try {
+            return XuJsonUtil.parseObject(json, IdentityTicket.class);
+        } catch (RuntimeException e) {
+            log.warn("解析身份票据失败: ticket={}", ticket, e);
+            return null;
+        }
+    }
+
+    private IdentityVO toIdentityVO(ClassroomIdentityVO identity, boolean current) {
+        return IdentityVO.builder()
+                .identityId(parseLongOrNull(identity.getIdentityId()))
+                .schoolId(parseLongOrNull(identity.getSchoolId()))
+                .schoolName(identity.getSchoolName())
+                .personType(identity.getPersonType())
+                .dutyCode(identity.getDutyCode())
+                .dutyName(dutyNameOf(identity.getDutyCode()))
+                .identityDisplayName(identity.getUserName())
+                .current(current)
+                .build();
+    }
+
+    /** 登录时下发的一次性身份选择票据。 */
+    private record IdentityTicket(Long userId, Long tenantId, String clientType) {
+    }
+
+    private Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean isSchoolAdmin(String dutyCode) {
+        return dutyCode != null && "SCHOOL_ADMIN".equalsIgnoreCase(dutyCode.trim());
+    }
+
+    private String dutyNameOf(String dutyCode) {
+        if (dutyCode == null || dutyCode.isBlank()) {
+            return "";
+        }
+        return DUTY_NAME_MAP.getOrDefault(dutyCode.trim().toUpperCase(Locale.ROOT), "");
+    }
+
+    /** 过滤掉 teacher/student 相关角色 key，仅保留管理端角色。 */
+    private Set<String> filterManagementRoleKeys(Set<String> roleKeys) {
+        if (roleKeys == null || roleKeys.isEmpty()) {
+            return Set.of();
+        }
+        return roleKeys.stream()
+                .filter(key -> key != null && !key.isBlank())
+                .filter(key -> {
+                    String lower = key.toLowerCase(Locale.ROOT);
+                    return !lower.contains("teacher") && !lower.contains("student");
+                })
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
     private LoginUser requireLoginUser() {
         LoginUser current = SecurityContextHolder.getLoginUser();
         if (current == null || current.getUserId() == null || XuStrUtil.isBlank(current.getUsername())) {
@@ -528,6 +797,45 @@ public class AuthServiceImpl implements IAuthService {
                 .roleKeys(user.getRoleKeys())
                 .permissions(permissions)
                 .deptIds(dataScopeDeptIds)
+                .build();
+    }
+
+    /**
+     * 身份化 LoginUser：写入身份字段，并按身份岗位收敛管理端角色与权限。
+     *
+     * <p>dutyCode=SCHOOL_ADMIN 时保留账号「非 teacher/student」管理角色的 key 与权限并集；
+     * 其余（TEACHER/STUDENT/未知）置空 roleKeys/permissions，管理端不可用。
+     * 不引入身份角色表；identityDisplayName 始终写姓名。
+     */
+    private LoginUser buildIdentityLoginUser(UserVO user, ClientType clientType, Set<String> permissions,
+                                             Set<Long> dataScopeDeptIds, ClassroomIdentityVO identity) {
+        boolean schoolAdmin = isSchoolAdmin(identity.getDutyCode());
+        Set<String> roleKeys = schoolAdmin ? filterManagementRoleKeys(user.getRoleKeys()) : Set.of();
+        Set<String> effectivePermissions = schoolAdmin && permissions != null ? permissions : Set.of();
+        return LoginUser.builder()
+                .userId(user.getUserId())
+                .tenantId(user.getTenantId())
+                .deptId(user.getDeptId())
+                .username(user.getUsername())
+                .nickname(user.getNickname())
+                .avatar(user.getAvatar())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .clientType(clientType)
+                .loginIp(getClientIp())
+                .loginTime(System.currentTimeMillis())
+                .roleIds(user.getRoleIds())
+                .roleKeys(roleKeys)
+                .permissions(effectivePermissions)
+                .deptIds(dataScopeDeptIds)
+                .identityScoped(true)
+                .identityId(parseLongOrNull(identity.getIdentityId()))
+                .schoolId(parseLongOrNull(identity.getSchoolId()))
+                .schoolName(identity.getSchoolName())
+                .personType(identity.getPersonType())
+                .dutyCode(identity.getDutyCode())
+                .dutyName(dutyNameOf(identity.getDutyCode()))
+                .identityDisplayName(identity.getUserName())
                 .build();
     }
 

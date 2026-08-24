@@ -76,6 +76,30 @@ public class LoginUser implements Serializable {
     /** 数据权限部门ID列表 */
     private Set<Long> deptIds;
 
+    /** 是否已绑定学校身份（true 表示本登录态按学校身份隔离；旧无身份账号反序列化时为 false） */
+    private boolean identityScoped;
+
+    /** 当前学校身份主键（edu_person.id） */
+    private Long identityId;
+
+    /** 当前学校ID */
+    private Long schoolId;
+
+    /** 当前学校名称 */
+    private String schoolName;
+
+    /** 教育人员类型 TEACHER / STUDENT */
+    private String personType;
+
+    /** 校内岗位编码 TEACHER / SCHOOL_ADMIN */
+    private String dutyCode;
+
+    /** 岗位中文名 */
+    private String dutyName;
+
+    /** 身份展示名（姓名） */
+    private String identityDisplayName;
+
     /**
      * 是否为超级管理员
      */

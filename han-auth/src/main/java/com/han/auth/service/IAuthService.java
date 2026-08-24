@@ -1,6 +1,8 @@
 package com.han.auth.service;
 
 import com.han.api.system.domain.UserVO;
+import com.han.auth.domain.IdentitySelectDTO;
+import com.han.auth.domain.IdentityVO;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
@@ -37,4 +39,19 @@ public interface IAuthService {
     List<TenantSimpleVo> getMyTenants();
 
     LoginVO switchTenant(Long tenantId, String authorization);
+
+    /**
+     * 登录返回 requireIdentity 后，凭一次性身份票据选择学校身份并签发正式 Token。
+     */
+    LoginVO selectIdentity(IdentitySelectDTO dto);
+
+    /**
+     * 返回当前账号仍有效的学校身份列表，并用 {@code current} 标记当前身份。
+     */
+    List<IdentityVO> getMyIdentities();
+
+    /**
+     * 切换到当前账号的另一个有效学校身份：作废旧 Token 与旧身份课堂凭证后换发新 Token。
+     */
+    LoginVO switchIdentity(Long identityId, String authorization);
 }

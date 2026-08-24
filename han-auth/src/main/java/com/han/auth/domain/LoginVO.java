@@ -2,6 +2,8 @@ package com.han.auth.domain;
 
 import lombok.Builder;
 
+import java.util.List;
+
 /**
  * 登录响应VO
  */
@@ -12,6 +14,9 @@ public record LoginVO(
         long expiresIn,
         boolean forceChangePassword,
         boolean requireTotp,
+        boolean requireIdentity,
+        String identityTicket,
+        List<IdentityVO> identities,
         UserInfoVO userInfo
 ) {
     /**

@@ -3,6 +3,9 @@ package com.han.auth.controller;
 import cn.hutool.captcha.CaptchaUtil;
 import cn.hutool.captcha.LineCaptcha;
 import com.han.auth.config.SecurityProperties;
+import com.han.auth.domain.IdentitySelectDTO;
+import com.han.auth.domain.IdentitySwitchDTO;
+import com.han.auth.domain.IdentityVO;
 import com.han.auth.domain.LoginDTO;
 import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
@@ -205,5 +208,33 @@ public class AuthController {
     public R<LoginVO> switchTenant(@RequestParam Long tenantId,
                                    @RequestHeader(value = "Authorization", required = false) String authorization) {
         return R.ok(authService.switchTenant(tenantId, authorization));
+    }
+
+    /**
+     * 多学校身份选择：登录返回 requireIdentity 后，凭一次性票据选择身份换取正式 Token。
+     */
+    @PostMapping("/identity/select")
+    @PermissionExempt("登录中间态接口，凭一次性身份票据完成身份选择，票据在业务内一次性消费")
+    public R<LoginVO> selectIdentity(@RequestBody @Valid IdentitySelectDTO dto) {
+        return R.ok(authService.selectIdentity(dto));
+    }
+
+    /**
+     * 当前账号仍有效的学校身份列表（含 current 标记当前身份）。
+     */
+    @GetMapping("/identities")
+    @PermissionExempt("个人登录态接口，由网关 Token 校验和当前登录用户上下文控制")
+    public R<List<IdentityVO>> identities() {
+        return R.ok(authService.getMyIdentities());
+    }
+
+    /**
+     * 切换学校身份：作废旧 Token 与旧身份课堂凭证后换发新 Token。
+     */
+    @PostMapping("/identity/switch")
+    @PermissionExempt("个人登录态接口，由网关 Token 校验并在业务内校验身份归属与有效性")
+    public R<LoginVO> switchIdentity(@RequestBody @Valid IdentitySwitchDTO dto,
+                                     @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return R.ok(authService.switchIdentity(dto.getIdentityId(), authorization));
     }
 }
