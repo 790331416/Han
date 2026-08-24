@@ -41,6 +41,35 @@ class LegacyClassroomIdentityServiceTest {
         assertThat(service.resolve(100L, "21").getIdentityId()).isEqualTo("21");
     }
 
+    @Test
+    void resolveByExternalMatchesStableExternalIdentityIdOnly() {
+        LegacyCompatProperties properties = new LegacyCompatProperties();
+        EduPersonPo digitalCampus = person(11L, "TEACHER", 0, 0);
+        digitalCampus.setSourceSystem("DIGITAL_CAMPUS");
+        digitalCampus.setExternalIdentityId("ext-identity-1");
+        EduPersonPo localWithoutExternal = person(12L, "TEACHER", 0, 0);
+        EduPersonPo otherExternal = person(13L, "TEACHER", 0, 0);
+        otherExternal.setSourceSystem("DIGITAL_CAMPUS");
+        otherExternal.setExternalIdentityId("ext-identity-2");
+        when(directoryService.personsByUserId(100L))
+                .thenReturn(List.of(digitalCampus, localWithoutExternal, otherExternal));
+        when(directoryService.schoolById(7L)).thenReturn(school());
+        when(directoryService.externalUserId(digitalCampus)).thenReturn("100");
+        when(directoryService.externalUserId(otherExternal)).thenReturn("100");
+
+        LegacyClassroomIdentityService service = new LegacyClassroomIdentityService(properties, directoryService);
+
+        ClassroomIdentityVO resolved = service.resolveByExternal(100L, "ext-identity-1");
+
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getIdentityId()).isEqualTo("11");
+        assertThat(resolved.getExternalIdentityId()).isEqualTo("ext-identity-1");
+        assertThat(service.resolveByExternal(100L, "ext-identity-2").getIdentityId()).isEqualTo("13");
+        // 非数字校园来源 / 未知外部身份 ID 不参与匹配。
+        assertThat(service.resolveByExternal(100L, "unknown")).isNull();
+        assertThat(service.resolveByExternal(100L, null)).isNull();
+    }
+
     private static EduPersonPo person(Long id, String type, Integer status, Integer leaveFlag) {
         EduPersonPo person = new EduPersonPo();
         person.setId(id);

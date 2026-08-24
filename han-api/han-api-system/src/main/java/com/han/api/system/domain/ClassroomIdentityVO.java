@@ -29,6 +29,14 @@ public class ClassroomIdentityVO implements Serializable {
     /** 身份主键，取 edu_person.id。 */
     private String identityId;
 
+    /**
+     * 数字校园外部身份标识（{@code edu_person.external_identity_id}）。
+     *
+     * <p>仅数字校园来源（{@code source_system=DIGITAL_CAMPUS}）人员非空，
+     * 供 han-auth 用稳定外部身份 ID 精确解析本地 {@link #identityId}，不再按「学校名 + 姓名」匹配。
+     */
+    private String externalIdentityId;
+
     private String userName;
 
     /** 教育人员类型，如 TEACHER / STUDENT。 */

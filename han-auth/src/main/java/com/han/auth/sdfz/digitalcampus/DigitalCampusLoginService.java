@@ -13,9 +13,6 @@ import com.han.common.core.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Objects;
-
 /**
  * 数字校园 Token 换取 Han 登录态的编排服务。
  */
@@ -41,11 +38,10 @@ public class DigitalCampusLoginService {
     public DigitalCampusLoginVO login(String token, String identityId) {
         SynchronizedIdentity synchronizedIdentity = synchronize(token, identityId);
         DigitalCampusProfile.Identity identity = synchronizedIdentity.identity();
-        // 数字校园已选身份按该身份签发：把外部 identityId 映射为本地 edu_person 身份，
+        // 数字校园已选身份按该身份签发：外部 identityId 已通过精确接口映射为本地 edu_person.id，
         // 统一走身份感知出口，LoginUser.identityId 与本地身份一致，多身份不再二次选择。
-        Long localIdentityId = resolveLocalIdentityId(synchronizedIdentity.user().getUserId(), identity);
         LoginVO login = authService.issueLoginForIdentity(synchronizedIdentity.user(), ClientType.PC, false,
-                localIdentityId);
+                synchronizedIdentity.localIdentityId());
         return new DigitalCampusLoginVO(login, new DigitalCampusLoginVO.ExternalIdentity(
                 identity.userId(), identity.identityId(), identity.userName(), identity.identityName(),
                 identity.roleType(), identity.schoolId(), identity.schoolName(), identity.branchId(),
@@ -53,35 +49,25 @@ public class DigitalCampusLoginService {
     }
 
     /**
-     * 把数字校园选中的外部身份映射为本地教育身份主键（edu_person.id）。
+     * 用数字校园稳定外部身份 ID 精确解析本地教育身份（edu_person.id 与本地 schoolId）。
      *
-     * <p>同步以 {@code external_identity_id} 幂等写入 edu_person，但 ClassroomIdentityVO 不暴露
-     * 该字段，因此这里以「学校名 + 姓名」定位刚同步出的本地身份；同一账号在同一学校只有一条
-     * 有效身份（任务书 12 节），学校名命中唯一时直接采用，多命中时再按姓名收窄。
+     * <p>同步以 {@code external_identity_id} 幂等写入 edu_person，因此这里直接按该稳定标识
+     * 调用 han-system 的精确查询接口定位本地身份，不再依赖「学校名 + 姓名」这类易受
+     * 同名学校 / 学校改名影响的匹配。
      */
-    private Long resolveLocalIdentityId(Long userId, DigitalCampusProfile.Identity identity) {
-        R<List<ClassroomIdentityVO>> result = systemServiceClient.listClassroomIdentities(userId);
-        if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
+    private ClassroomIdentityVO resolveLocalIdentity(Long userId, DigitalCampusProfile.Identity identity) {
+        R<ClassroomIdentityVO> result = systemServiceClient.getClassroomIdentityByExternal(
+                userId, identity.identityId());
+        if (result == null || result.getCode() != Constants.SUCCESS) {
             throw new BusinessException("身份服务暂时不可用，请稍后重试");
         }
-        List<ClassroomIdentityVO> identities = result.getData().stream()
-                .filter(Objects::nonNull)
-                .toList();
-        List<ClassroomIdentityVO> schoolMatch = identities.stream()
-                .filter(item -> Objects.equals(normalize(item.getSchoolName()), normalize(identity.schoolName())))
-                .toList();
-        List<ClassroomIdentityVO> candidates = schoolMatch.size() == 1
-                ? schoolMatch
-                : schoolMatch.stream()
-                        .filter(item -> Objects.equals(normalize(item.getUserName()), normalize(identity.userName())))
-                        .toList();
-        if (candidates.size() != 1) {
+        if (result.getData() == null) {
             throw new BusinessException("数字校园身份与本地教育身份不匹配，请联系管理员");
         }
-        return parseLongOrThrow(candidates.get(0).getIdentityId());
+        return result.getData();
     }
 
-    private Long parseLongOrThrow(String value) {
+    private Long parseIdentityId(String value) {
         if (value == null || value.isBlank()) {
             throw new BusinessException("数字校园身份与本地教育身份不匹配，请联系管理员");
         }
@@ -90,10 +76,6 @@ public class DigitalCampusLoginService {
         } catch (NumberFormatException e) {
             throw new BusinessException("数字校园身份与本地教育身份不匹配，请联系管理员");
         }
-    }
-
-    private String normalize(String value) {
-        return value == null ? "" : value.trim();
     }
 
     public SynchronizedIdentity synchronize(String token, String identityId) {
@@ -110,7 +92,10 @@ public class DigitalCampusLoginService {
                     ? message : "数字校园用户映射失败");
         }
 
-        return new SynchronizedIdentity(syncResult.getData(), identity);
+        UserVO user = syncResult.getData();
+        ClassroomIdentityVO localIdentity = resolveLocalIdentity(user.getUserId(), identity);
+        return new SynchronizedIdentity(user, identity,
+                parseIdentityId(localIdentity.getIdentityId()), localIdentity.getSchoolId());
     }
 
     private DigitalCampusUserSyncDTO toSyncDto(DigitalCampusProfile profile,
@@ -165,6 +150,14 @@ public class DigitalCampusLoginService {
                 .build();
     }
 
-    public record SynchronizedIdentity(UserVO user, DigitalCampusProfile.Identity identity) {
+    /**
+     * 数字校园同步后的聚合结果：Han 用户、外部身份，以及按外部身份 ID 精确解析出的
+     * 本地教育身份（{@code edu_person.id}）与本地学校 ID。
+     */
+    public record SynchronizedIdentity(
+            UserVO user,
+            DigitalCampusProfile.Identity identity,
+            Long localIdentityId,
+            String localSchoolId) {
     }
 }

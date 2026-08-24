@@ -60,6 +60,36 @@ public class LegacyClassroomIdentityService {
     }
 
     /**
+     * 数字校园按稳定外部身份 ID 精确解析本地教育身份。
+     *
+     * <p>查询语义等价于 {@code edu_person.user_id = userId AND source_system = DIGITAL_CAMPUS
+     * AND external_identity_id = externalIdentityId AND 人员有效 AND 学校有效}，返回的
+     * {@code identityId} 是本地 {@code edu_person.id}。与「学校名 + 姓名」不同，该解析不受
+     * 同名学校、学校改名影响，外部身份 ID 就是同步写入 edu_person 的幂等键。
+     */
+    public ClassroomIdentityVO resolveByExternal(Long userId, String externalIdentityId) {
+        if (userId == null || externalIdentityId == null || externalIdentityId.isBlank()) {
+            return null;
+        }
+        String target = externalIdentityId.trim();
+        for (EduPersonPo person : directoryService.personsByUserId(userId)) {
+            if (!"DIGITAL_CAMPUS".equals(person.getSourceSystem())
+                    || !target.equals(person.getExternalIdentityId())) {
+                continue;
+            }
+            if (!isPersonActive(person)) {
+                continue;
+            }
+            EduSchoolPo school = directoryService.schoolById(person.getSchoolId());
+            if (!isSchoolActive(person, school)) {
+                continue;
+            }
+            return toIdentity(person, school);
+        }
+        return null;
+    }
+
+    /**
      * 指定身份必须属于当前账号、启用且在当前策略允许范围内。
      *
      * <p>未指定身份时：多身份账号报业务错误、拒绝默认取第一条；单身份账号保持自动选择兼容。
@@ -113,6 +143,7 @@ public class LegacyClassroomIdentityService {
         return ClassroomIdentityVO.builder()
                 .userId(directoryService.externalUserId(person))
                 .identityId(String.valueOf(person.getId()))
+                .externalIdentityId(person.getExternalIdentityId())
                 .userName(person.getPersonName())
                 .personType(person.getPersonType())
                 .dutyCode(person.getDutyCode())

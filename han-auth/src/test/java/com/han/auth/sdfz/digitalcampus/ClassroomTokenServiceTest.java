@@ -23,7 +23,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -55,7 +56,7 @@ class ClassroomTokenServiceTest {
         user.setStatus(0);
         DigitalCampusProfile.Identity identity = identity();
         when(loginService.synchronize("external-token", "identity-1"))
-                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity));
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity, 900L, "77"));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");
@@ -64,14 +65,71 @@ class ClassroomTokenServiceTest {
                 result.accessToken(), SECRET, Instant.now().getEpochSecond());
         assertThat(verified.claims())
                 .containsEntry("userId", "external-user-1")
-                .containsEntry("identityId", "identity-1")
+                .containsEntry("identityId", "900")
+                .containsEntry("schoolId", "77")
+                .containsEntry("externalUserId", "external-user-1")
+                .containsEntry("externalIdentityId", "identity-1")
                 .containsEntry("hanUserId", "100");
         @SuppressWarnings("unchecked")
         List<String> roles = (List<String>) verified.claims().get("roles");
         assertThat(roles).containsExactlyInAnyOrder("2", "9", "teacher");
-        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
-        verify(valueOperations).set(key.capture(), eq("external-user-1"), eq(Duration.ofSeconds(900)));
-        assertThat(key.getValue()).isEqualTo(ClassroomTokenCodec.SESSION_KEY_PREFIX + verified.tokenId());
+        ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> values = ArgumentCaptor.forClass(String.class);
+        verify(valueOperations, atLeastOnce()).set(keys.capture(), values.capture(), any(Duration.class));
+        int sessionIdx = keys.getAllValues().indexOf(ClassroomTokenCodec.SESSION_KEY_PREFIX + verified.tokenId());
+        assertThat(sessionIdx).as("Session Key 必须写入").isGreaterThanOrEqualTo(0);
+        // Session Key 的 value 写 Han userId，不混用外部/内部 ID。
+        assertThat(values.getAllValues().get(sessionIdx)).isEqualTo("100");
+    }
+
+    @Test
+    void digitalCampusClaimsContainLocalAndExternalIdentityIds() {
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        when(loginService.synchronize("external-token", "identity-1"))
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity(), 900L, "77"));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");
+
+        var claims = ClassroomTokenCodec.verify(result.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).claims();
+        assertThat(claims)
+                .containsEntry("hanUserId", "100")
+                .containsEntry("identityId", "900")
+                .containsEntry("externalUserId", "external-user-1")
+                .containsEntry("externalIdentityId", "identity-1")
+                .containsEntry("schoolId", "77");
+    }
+
+    @Test
+    void digitalCampusClassroomKeyUsesHanUserAndLocalPersonId() {
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        when(loginService.synchronize("external-token", "identity-1"))
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity(), 900L, "77"));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");
+
+        ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> values = ArgumentCaptor.forClass(String.class);
+        verify(valueOperations, atLeastOnce()).set(keys.capture(), values.capture(), any(Duration.class));
+        List<String> keyList = keys.getAllValues();
+        List<String> valueList = values.getAllValues();
+
+        String identityKey = ClassroomTokenCodec.activeIdentityKey("100", "900");
+        assertThat(keyList)
+                .as("数字校园课堂凭证的身份级 Active Key 使用 active:{hanUserId}:{localIdentityId}")
+                .contains(identityKey);
+        assertThat(valueList.get(keyList.indexOf(identityKey)))
+                .as("身份级 Active Key 的值就是该身份的凭证原文")
+                .isEqualTo(result.accessToken());
+        assertThat(keyList)
+                .as("账号级 Active Key 保留作旧版兼容索引")
+                .contains(ClassroomTokenCodec.activeKey("100"));
     }
 
     @Test
@@ -80,7 +138,7 @@ class ClassroomTokenServiceTest {
         user.setUserId(100L);
         user.setStatus(0);
         when(loginService.synchronize("external-token", "identity-1"))
-                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity()));
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity(), 900L, "77"));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         ClassroomTokenVO result = service(true).exchange("external-token", "identity-1");

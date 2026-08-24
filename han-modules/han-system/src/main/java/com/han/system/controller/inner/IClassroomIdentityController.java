@@ -33,4 +33,16 @@ public class IClassroomIdentityController {
     public R<List<ClassroomIdentityVO>> identities(@RequestParam("userId") Long userId) {
         return R.ok(identityService.list(userId));
     }
+
+    /**
+     * 数字校园按稳定外部身份 ID 精确解析本地教育身份，供 han-auth 签发数字校园登录态使用。
+     *
+     * <p>查询条件等价于 {@code edu_person.user_id = userId AND source_system = DIGITAL_CAMPUS
+     * AND external_identity_id = externalIdentityId AND 人员有效 AND 学校有效}。
+     */
+    @GetMapping("/identity/by-external")
+    public R<ClassroomIdentityVO> identityByExternal(@RequestParam("userId") Long userId,
+                                                     @RequestParam("externalIdentityId") String externalIdentityId) {
+        return R.ok(identityService.resolveByExternal(userId, externalIdentityId));
+    }
 }

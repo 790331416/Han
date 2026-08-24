@@ -21,6 +21,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,7 +44,7 @@ class DigitalCampusLoginServiceTest {
     }
 
     @Test
-    void validatesExternalTokenSyncsIdentityAndIssuesHanLogin() {
+    void digitalCampusUsesExternalIdentityIdToResolveLocalPerson() {
         DigitalCampusProfile profile = profile(identity("identity-1"));
         UserVO user = new UserVO();
         user.setUserId(100L);
@@ -51,15 +53,14 @@ class DigitalCampusLoginServiceTest {
         LoginVO login = LoginVO.builder().accessToken("han-token").expiresIn(1800).build();
         when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
         when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
-        when(systemServiceClient.listClassroomIdentities(100L)).thenReturn(R.ok(List.of(
+        when(systemServiceClient.getClassroomIdentityByExternal(100L, "identity-1")).thenReturn(R.ok(
                 ClassroomIdentityVO.builder()
                         .identityId("900")
+                        .externalIdentityId("identity-1")
                         .schoolId("77")
                         .schoolName("测试学校")
                         .personType("TEACHER")
-                        .dutyCode("TEACHER")
-                        .userName("测试教师")
-                        .build())));
+                        .build()));
         when(authService.issueLoginForIdentity(user, ClientType.PC, false, 900L)).thenReturn(login);
 
         DigitalCampusLoginVO result = service.login("external-token", "identity-1");
@@ -76,7 +77,9 @@ class DigitalCampusLoginServiceTest {
         assertThat(dto.getExternalUserId()).isEqualTo("external-user-1");
         assertThat(dto.getClasses()).extracting(DigitalCampusUserSyncDTO.ClassMembership::getBranchId)
                 .containsExactly("class-1");
-        // 数字校园已选身份按该身份签发：本地身份主键被解析出来并传入身份感知出口。
+        // 本地身份按稳定外部身份 ID 精确解析，不再走「学校名 + 姓名」列表匹配。
+        verify(systemServiceClient).getClassroomIdentityByExternal(100L, "identity-1");
+        verify(systemServiceClient, never()).listClassroomIdentities(anyLong());
         verify(authService).issueLoginForIdentity(user, ClientType.PC, false, 900L);
     }
 
@@ -91,8 +94,8 @@ class DigitalCampusLoginServiceTest {
     }
 
     @Test
-    void resolvesSelectedIdentityAmongMultipleLocalIdentities() {
-        // 账号本地已有多条教育身份，数字校园选中其中一所学校：必须按选中身份签发，不得二次选择。
+    void duplicateSchoolNamesDoNotAffectIdentityMapping() {
+        // 两个学校同名，但外部身份 ID 不同：精确接口按 identity-2 定位到本地身份 902，不受同名干扰。
         DigitalCampusProfile profile = profile(identity("identity-2"));
         UserVO user = new UserVO();
         user.setUserId(100L);
@@ -101,15 +104,65 @@ class DigitalCampusLoginServiceTest {
         LoginVO login = LoginVO.builder().accessToken("han-token").expiresIn(1800).build();
         when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
         when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
-        when(systemServiceClient.listClassroomIdentities(100L)).thenReturn(R.ok(List.of(
-                ClassroomIdentityVO.builder().identityId("901").schoolName("第一小学").userName("测试教师").build(),
-                ClassroomIdentityVO.builder().identityId("902").schoolName("测试学校").userName("测试教师").build())));
+        when(systemServiceClient.getClassroomIdentityByExternal(100L, "identity-2")).thenReturn(R.ok(
+                ClassroomIdentityVO.builder()
+                        .identityId("902")
+                        .externalIdentityId("identity-2")
+                        .schoolId("78")
+                        .schoolName("测试学校")
+                        .personType("TEACHER")
+                        .build()));
         when(authService.issueLoginForIdentity(user, ClientType.PC, false, 902L)).thenReturn(login);
 
         DigitalCampusLoginVO result = service.login("external-token", "identity-2");
 
         assertThat(result.login()).isEqualTo(login);
+        verify(systemServiceClient).getClassroomIdentityByExternal(100L, "identity-2");
         verify(authService).issueLoginForIdentity(user, ClientType.PC, false, 902L);
+    }
+
+    @Test
+    void renamedSchoolStillResolvesSameIdentity() {
+        // 学校改名不影响外部身份 ID 到本地身份的映射：同一 externalIdentityId 依旧解析到 900。
+        DigitalCampusProfile profile = profile(identity("identity-1"));
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        user.setUsername("dc_user");
+        LoginVO login = LoginVO.builder().accessToken("han-token").expiresIn(1800).build();
+        when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
+        when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
+        when(systemServiceClient.getClassroomIdentityByExternal(100L, "identity-1")).thenReturn(R.ok(
+                ClassroomIdentityVO.builder()
+                        .identityId("900")
+                        .externalIdentityId("identity-1")
+                        .schoolId("77")
+                        .schoolName("改名后的学校")
+                        .personType("TEACHER")
+                        .build()));
+        when(authService.issueLoginForIdentity(user, ClientType.PC, false, 900L)).thenReturn(login);
+
+        DigitalCampusLoginVO result = service.login("external-token", "identity-1");
+
+        assertThat(result.login()).isEqualTo(login);
+        verify(systemServiceClient).getClassroomIdentityByExternal(100L, "identity-1");
+        verify(authService).issueLoginForIdentity(user, ClientType.PC, false, 900L);
+    }
+
+    @Test
+    void unknownExternalIdentityIsRejected() {
+        DigitalCampusProfile profile = profile(identity("identity-1"));
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        user.setUsername("dc_user");
+        when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
+        when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
+        when(systemServiceClient.getClassroomIdentityByExternal(100L, "identity-1")).thenReturn(R.ok(null));
+
+        assertThatThrownBy(() -> service.login("external-token", "identity-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("数字校园身份与本地教育身份不匹配，请联系管理员");
     }
 
     @Test

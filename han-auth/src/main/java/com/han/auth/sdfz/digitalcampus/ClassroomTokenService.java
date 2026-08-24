@@ -129,7 +129,7 @@ public class ClassroomTokenService {
         claims.put("tenantId", loginUser.getTenantId());
         claims.put("personType", identity.getPersonType() == null ? "" : identity.getPersonType());
         claims.put("classIds", identity.getClassIds() == null ? List.of() : identity.getClassIds());
-        return sign(claims, userId);
+        return sign(claims, loginUser.getUserId(), parseIdentityId(identity.getIdentityId()));
     }
 
     /** 未显式选择身份时，多身份账号必须报业务错误，不允许默认取第一条。 */
@@ -170,10 +170,12 @@ public class ClassroomTokenService {
         }
 
         DigitalCampusProfile.Identity identity = synchronizedIdentity.identity();
-        return sign(claims(hanUser, identity), identity.userId());
+        Map<String, Object> claims = claims(hanUser, identity,
+                synchronizedIdentity.localIdentityId(), synchronizedIdentity.localSchoolId());
+        return sign(claims, hanUser.getUserId(), synchronizedIdentity.localIdentityId());
     }
 
-    private ClassroomTokenVO sign(Map<String, Object> claims, String sessionUserId) {
+    private ClassroomTokenVO sign(Map<String, Object> claims, Long hanUserId, Long localIdentityId) {
         long issuedAt = Instant.now().getEpochSecond();
         String tokenId = UUID.randomUUID().toString().replace("-", "");
         String token;
@@ -182,39 +184,59 @@ public class ClassroomTokenService {
         } catch (IllegalArgumentException e) {
             throw new BusinessException("Classroom token configuration is invalid");
         }
+        // Session Key 的 value 写 Han userId，不混用外部/内部 ID。
         redisTemplate.opsForValue().set(
                 ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId,
-                String.valueOf(sessionUserId),
+                String.valueOf(hanUserId),
                 Duration.ofSeconds(ttlSeconds));
-        // 身份级 Active Key：同一账号的多个学校身份各持一张正式凭证，换发复用（幂等）
-        // 与撤销都按「身份」粒度判定，与 han-system 的 LegacyTokenIssuer 同一键规则，
-        // 避免身份 A 的凭证被复用到身份 B、claims 里的 identityId 与实际身份错位。
-        String identityId = claims.get("identityId") instanceof String text && !text.isBlank() ? text : null;
-        if (identityId != null) {
+        // 身份级 Active Key：active:{hanUserId}:{localIdentityId}。同一账号的多个学校身份
+        // 各持一张正式凭证，换发复用（幂等）与撤销都按「身份」粒度判定，与 han-system 的
+        // LegacyTokenIssuer 同一键规则，避免身份 A 的凭证被复用到身份 B、claims 里的
+        // identityId 与实际身份错位。
+        if (localIdentityId != null) {
             redisTemplate.opsForValue().set(
-                    ClassroomTokenCodec.activeIdentityKey(String.valueOf(sessionUserId), identityId),
+                    ClassroomTokenCodec.activeIdentityKey(
+                            String.valueOf(hanUserId), String.valueOf(localIdentityId)),
                     token,
                     Duration.ofSeconds(ttlSeconds));
         }
         // 账号级 Active Key 仅作旧版兼容索引：登出撤销链（AuthServiceImpl）按 hanUserId 粒度读它
         // 定位当前凭证；不写这里登出/切换身份后撤销不到课堂凭证。隔离依据是上面的身份级 Key。
-        String hanUserId = claims.get("hanUserId") instanceof String text && !text.isBlank() ? text : null;
-        if (hanUserId != null) {
-            redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(hanUserId), token,
-                    Duration.ofSeconds(ttlSeconds));
-        }
+        redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(String.valueOf(hanUserId)), token,
+                Duration.ofSeconds(ttlSeconds));
         return new ClassroomTokenVO(token, ttlSeconds);
     }
 
-    private Map<String, Object> claims(UserVO hanUser, DigitalCampusProfile.Identity identity) {
+    private Map<String, Object> claims(UserVO hanUser, DigitalCampusProfile.Identity identity,
+                                       Long localIdentityId, String localSchoolId) {
         Set<String> roles = new LinkedHashSet<>();
         addRole(roles, identity.roleType());
         identity.duties().forEach(item -> addRole(roles, item.roleType()));
         identity.classes().forEach(item -> addRole(roles, item.classRoleId()));
 
-        return ClassroomClaims.build(
+        Map<String, Object> claims = new LinkedHashMap<>(ClassroomClaims.build(
                 identity.userId(), identity.userName(), identity.roleType(), roles,
-                identity.identityId(), identity.schoolId(), String.valueOf(hanUser.getUserId()));
+                text(localIdentityId), localSchoolId, String.valueOf(hanUser.getUserId())));
+        // 统一数字校园课堂凭证 ID 域：hanUserId 是 Han sys_user.id，identityId 是本地 edu_person.id，
+        // 外部标识单独用 externalUserId / externalIdentityId 承载，不再复用同一组 claim 造成歧义。
+        claims.put("externalUserId", identity.userId());
+        claims.put("externalIdentityId", identity.identityId());
+        return claims;
+    }
+
+    private static String text(Long value) {
+        return value != null ? String.valueOf(value) : "";
+    }
+
+    private static Long parseIdentityId(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private String inferIdentityId(String token) {

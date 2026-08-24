@@ -195,6 +195,11 @@ public interface SystemServiceClient {
     @GetExchange("/external/classroom/identities")
     R<List<ClassroomIdentityVO>> listClassroomIdentities(@RequestParam("userId") Long userId);
 
+    /** 数字校园按稳定外部身份 ID 精确解析本地教育身份，返回 null 表示无匹配或身份不可用。 */
+    @GetExchange("/external/classroom/identity/by-external")
+    R<ClassroomIdentityVO> getClassroomIdentityByExternal(@RequestParam("userId") Long userId,
+                                                         @RequestParam("externalIdentityId") String externalIdentityId);
+
     /** 已授权开放应用读取教师或学生目录，tenantId 与 schoolIds 必须由应用授权上下文恢复。 */
     @GetExchange("/external/directory/people")
     R<PageResult<EducationPersonDirectoryVO>> listOpenDirectoryPeople(
