@@ -59,6 +59,7 @@ public class VendorDetailVO {
     public static class VendorUserVO {
         private Long userId;
         private String userName;
+        private String phone;
         private String role;
         private Integer status;
     }

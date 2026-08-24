@@ -8,11 +8,11 @@ export interface PublicVendorApplicationForm {
   password: string
   phone: string
   email?: string
-  name: string
-  qualificationNo: string
+  name?: string
+  qualificationNo?: string
   industry?: string
-  contactName: string
-  contactPhone: string
+  contactName?: string
+  contactPhone?: string
   contactEmail?: string
   website?: string
   applyReason?: string

@@ -58,6 +58,28 @@ class VendorRegistrationServiceTest {
     }
 
     @Test
+    void acceptsRegistrationWithoutEnterpriseDetails() {
+        when(systemServiceClient.createOpenVendorAccount(any())).thenReturn(R.ok(42L));
+        when(openServiceClient.createPortalApplication(any())).thenReturn(R.ok("application-1"));
+        VendorPublicRegisterDTO dto = request();
+        dto.setName(null);
+        dto.setQualificationNo(null);
+        dto.setContactName(null);
+        dto.setContactPhone(null);
+        dto.setNickname(null);
+        dto.setEncryptedPassword(HanSecureUtil.rsaEncrypt("Strong@123", securityProperties.getPublicKey()));
+
+        assertThat(service.register(dto)).isEqualTo("application-1");
+
+        var application = org.mockito.ArgumentCaptor.forClass(OpenVendorApplicationCreateDTO.class);
+        verify(openServiceClient).createPortalApplication(application.capture());
+        assertThat(application.getValue().getName()).isEqualTo("个人开发者-vendor_user");
+        assertThat(application.getValue().getQualificationNo()).isNull();
+        assertThat(application.getValue().getContactName()).isEqualTo("vendor_user");
+        assertThat(application.getValue().getContactPhone()).isEqualTo("13900000000");
+    }
+
+    @Test
     void rejectsPlaintextRegistrationPassword() {
         VendorPublicRegisterDTO dto = request();
         dto.setEncryptedPassword("Strong@123");

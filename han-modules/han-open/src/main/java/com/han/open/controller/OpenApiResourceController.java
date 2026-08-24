@@ -108,15 +108,11 @@ public class OpenApiResourceController {
         if (resource == null || resource.getId() == null || resource.getStatus() == null) {
             throw new BusinessException("接口状态参数不能为空");
         }
-        OpenApiResourcePo update = new OpenApiResourcePo();
-        update.setId(resource.getId());
-        update.setStatus(resource.getStatus());
-        if (resource.getStatus() == 1) {
-            update.setPublishStatus(3);
+        if (resource.getStatus() != 0 && resource.getStatus() != 1) {
+            throw new BusinessException("接口状态仅支持上线或下线");
         }
-        if (resourceMapper.updateById(update) > 0) {
-            pathMappingService.refreshCache();
-        }
+        resourceService.setOnlineStatus(resource.getId(), resource.getStatus() == 0);
+        pathMappingService.refreshCache();
         return R.ok();
     }
 
@@ -129,13 +125,8 @@ public class OpenApiResourceController {
     @RepeatSubmit
     @OperLog(module = "开放接口目录", type = OperLog.OperType.UPDATE)
     public R<Void> offline(@PathVariable Long id) {
-        OpenApiResourcePo update = new OpenApiResourcePo();
-        update.setId(id);
-        update.setStatus(1);
-        update.setPublishStatus(3);
-        if (resourceMapper.updateById(update) > 0) {
-            pathMappingService.refreshCache();
-        }
+        resourceService.setOnlineStatus(id, false);
+        pathMappingService.refreshCache();
         return R.ok();
     }
 

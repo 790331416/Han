@@ -31,17 +31,12 @@
             <el-tag size="small" :type="publishStatusTag(row.publishStatus)">{{ publishStatusLabel(row.publishStatus) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="启用状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-switch v-if="canEdit" :model-value="row.status === 0" @change="(value: any) => changeStatus(row, !!value)" />
-            <el-tag v-else size="small" :type="row.status === 0 ? 'success' : 'info'">{{ row.status === 0 ? '启用' : '停用' }}</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="openDetail(row)">详情</el-button>
             <el-button v-if="canEdit" type="primary" link @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="canEdit && row.status === 0" type="warning" link @click="offline(row)">下线</el-button>
+            <el-button v-if="canEdit && canOnline(row)" type="success" link @click="changeOnlineStatus(row, true)">上线</el-button>
+            <el-button v-if="canEdit && isOnline(row)" type="warning" link @click="changeOnlineStatus(row, false)">下线</el-button>
             <el-button v-if="canRemove" type="danger" link :icon="Delete" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -85,13 +80,21 @@
           <el-descriptions-item label="方法"><el-tag size="small">{{ selectedDetail.httpMethod }}</el-tag></el-descriptions-item>
           <el-descriptions-item label="路径" :span="2"><code>{{ selectedDetail.path }}</code></el-descriptions-item>
           <el-descriptions-item label="Scope">{{ selectedDetail.scopeCode }}</el-descriptions-item>
-          <el-descriptions-item label="启用状态"><el-tag size="small" :type="selectedDetail.status === 0 ? 'success' : 'info'">{{ selectedDetail.status === 0 ? '启用' : '停用' }}</el-tag></el-descriptions-item>
           <el-descriptions-item label="发布状态"><el-tag size="small" :type="publishStatusTag(selectedDetail.publishStatus)">{{ publishStatusLabel(selectedDetail.publishStatus) }}</el-tag></el-descriptions-item>
           <el-descriptions-item label="在线调测" :span="3">
             <el-button disabled title="需要应用授权后由 T07 在线调测模块实现">在线调测（需应用授权）</el-button>
             <span class="muted-text">暂未开放真实请求调测。</span>
           </el-descriptions-item>
         </el-descriptions>
+        <div class="section-header"><span>请求参数</span></div>
+        <el-table :data="resourceParameters(selectedDetail)" border size="small" empty-text="当前版本未定义请求参数">
+          <el-table-column label="参数" prop="name" min-width="140" />
+          <el-table-column label="位置" prop="in" width="90" />
+          <el-table-column label="类型" prop="type" width="100" />
+          <el-table-column label="必填" width="80"><template #default="{ row }"><el-tag size="small" :type="row.required ? 'danger' : 'info'">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column>
+          <el-table-column label="说明" prop="description" min-width="240" show-overflow-tooltip />
+          <el-table-column label="示例" prop="example" min-width="160" show-overflow-tooltip />
+        </el-table>
 
         <div class="section-header">
           <span>版本管理</span>
@@ -161,7 +164,6 @@ import {
   deprecateOpenApiResourceVersion,
   getOpenApiResourceDetail,
   listOpenApiResource,
-  offlineOpenApiResource,
   publishOpenApiResourceVersion,
   removeOpenApiResource,
   updateOpenApiResource,
@@ -175,6 +177,7 @@ const VERSION_DRAFT = 0
 const VERSION_PUBLISHED = 1
 type JsonField = 'openapiSchema' | 'requestExample' | 'responseExamples' | 'errorExamples'
 type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
+type ApiParameter = { name: string; in: string; type: string; required: boolean; description: string; example: string }
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -245,16 +248,15 @@ async function submitResource() {
   } finally { saving.value = false }
 }
 
-async function changeStatus(row: OpenApiResource, enabled: boolean) {
-  await changeOpenApiResourceStatus(row.id!, enabled ? 0 : 1)
-  row.status = enabled ? 0 : 1
-  ElMessage.success(enabled ? '已启用' : '已停用')
-  if (!enabled) await loadList()
-}
+function isOnline(row: OpenApiResource) { return row.status === 0 && row.publishStatus === 2 }
+function canOnline(row: OpenApiResource) { return row.publishStatus === 3 || (row.publishStatus === 2 && row.status === 1) }
 
-async function offline(row: OpenApiResource) {
-  await ElMessageBox.confirm(`确认下线接口“${row.resourceName}”？下线后将保留版本历史。`, '提示', { type: 'warning' })
-  await offlineOpenApiResource(row.id!); ElMessage.success('已下线'); await loadList()
+async function changeOnlineStatus(row: OpenApiResource, online: boolean) {
+  const action = online ? '上线' : '下线'
+  await ElMessageBox.confirm(`确认${action}接口“${row.resourceName}”？`, '提示', { type: 'warning' })
+  await changeOpenApiResourceStatus(row.id!, online ? 0 : 1)
+  ElMessage.success(`已${action}`)
+  await loadList()
 }
 
 async function remove(row: OpenApiResource) {
@@ -288,6 +290,22 @@ function openVersionEditor(version: OpenApiResourceVersion, readOnly: boolean) {
 }
 
 function jsonText(value?: Record<string, unknown>) { return value ? JSON.stringify(value, null, 2) : '' }
+
+function resourceParameters(resource: OpenApiResourceDetail): ApiParameter[] {
+  const schema = resource.currentVersion?.openapiSchema as Record<string, unknown> | undefined
+  const paths = schema?.paths as Record<string, Record<string, Record<string, unknown>>> | undefined
+  const operation = paths?.[resource.path]?.[resource.httpMethod.toLowerCase()]
+  const parameters = Array.isArray(operation?.parameters) ? operation.parameters as Array<Record<string, unknown>> : []
+  return parameters.map(parameter => {
+    const parameterSchema = parameter.schema as Record<string, unknown> | undefined
+    const example = parameter.example ?? parameterSchema?.example ?? parameterSchema?.default
+    return {
+      name: String(parameter.name || ''), in: String(parameter.in || 'query'), type: String(parameterSchema?.type || 'string'),
+      required: Boolean(parameter.required), description: String(parameter.description || ''),
+      example: example === undefined || example === null ? '' : String(example)
+    }
+  }).filter(parameter => parameter.name)
+}
 
 function formatJson(field: JsonField) {
   const value = versionForm[field].trim()

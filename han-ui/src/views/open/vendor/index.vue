@@ -17,6 +17,8 @@
       </el-form>
     </el-card>
 
+    <el-tabs v-model="activeVendorTab">
+      <el-tab-pane label="厂商管理" name="vendor">
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
@@ -58,7 +60,9 @@
         @current-change="getList"
       />
     </el-card>
+      </el-tab-pane>
 
+      <el-tab-pane label="入驻申请" name="application">
     <el-card shadow="never" class="application-card">
       <template #header>
         <div class="card-header">
@@ -66,7 +70,7 @@
           <el-form :model="applicationQuery" :inline="true" class="inline-filter">
             <el-form-item label="状态">
               <el-select v-model="applicationQuery.status" clearable placeholder="全部" style="width: 130px">
-                <el-option label="待提交" :value="0" /><el-option label="待审核" :value="1" /><el-option label="审核通过" :value="2" /><el-option label="审核驳回" :value="3" />
+                <el-option label="待审核" :value="1" /><el-option label="审核通过" :value="2" /><el-option label="审核驳回" :value="3" />
               </el-select>
             </el-form-item>
             <el-button type="primary" :icon="Search" @click="handleApplicationQuery">查询</el-button>
@@ -75,9 +79,8 @@
       </template>
       <el-table v-loading="applicationLoading" :data="applications" :empty-text="canList ? '暂无入驻申请' : '无权限查看入驻申请'">
         <el-table-column label="申请编号" prop="applicationNo" min-width="180" show-overflow-tooltip />
-        <el-table-column label="申请ID" prop="applicationId" width="100" />
-        <el-table-column label="厂商ID" prop="vendorId" width="100" />
-        <el-table-column label="申请人ID" prop="applicantUserId" width="100" />
+        <el-table-column label="厂商名称" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ row.vendorName || '-' }}</template></el-table-column>
+        <el-table-column label="申请人名称" min-width="140" show-overflow-tooltip><template #default="{ row }">{{ row.applicantName || '-' }}</template></el-table-column>
         <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="applicationStatusTagType(row.status)">{{ applicationStatusLabel(row.status) }}</el-tag></template></el-table-column>
         <el-table-column label="申请说明" prop="reason" min-width="220" show-overflow-tooltip />
         <el-table-column label="申请时间" min-width="170"><template #default="{ row }">{{ formatDate(row.createTime) }}</template></el-table-column>
@@ -86,6 +89,8 @@
       </el-table>
       <el-pagination v-model:current-page="applicationQuery.pageNum" v-model:page-size="applicationQuery.pageSize" :page-sizes="[10, 20, 50]" :total="applicationTotal" layout="total, sizes, prev, pager, next, jumper" class="pagination" @size-change="loadApplications" @current-change="loadApplications" />
     </el-card>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="applicationVisible" title="新增厂商入驻申请" width="620px" destroy-on-close>
       <el-form ref="applicationFormRef" :model="applicationForm" :rules="applicationRules" label-width="130px">
@@ -151,14 +156,12 @@
         </el-descriptions>
         <h4>关联用户</h4>
         <el-table :data="detail.users || []" size="small" :empty-text="'暂无关联用户'">
-          <el-table-column label="用户ID" prop="userId" />
-          <el-table-column label="用户名" min-width="150"><template #default="{ row }">{{ row.userName || row.username || '-' }}</template></el-table-column>
-          <el-table-column label="角色" prop="role" />
+          <el-table-column label="用户名" min-width="150"><template #default="{ row }">{{ row.userName || row.username || row.phone || '-' }}</template></el-table-column>
+          <el-table-column label="角色"><template #default="{ row }">{{ vendorRoleLabel(row.role) }}</template></el-table-column>
           <el-table-column label="状态"><template #default="{ row }">{{ row.status === 0 ? '正常' : '停用' }}</template></el-table-column>
         </el-table>
         <h4>关联应用</h4>
         <el-table :data="detail.apps || []" size="small" :empty-text="'暂无关联应用'">
-          <el-table-column label="应用ID" prop="appId" />
           <el-table-column label="应用名称" prop="appName" min-width="160" />
           <el-table-column label="应用类型" prop="appType" />
           <el-table-column label="生命周期"><template #default="{ row }">{{ lifecycleLabel(row.lifecycleStatus) }}</template></el-table-column>
@@ -175,6 +178,7 @@ import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { formatDate } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
+import { findDictLabel, loadDictOptions, OPEN_VENDOR_ROLE_DICT, type DictOption } from '@/utils/dict-options'
 import {
   getOpenVendor,
   listOpenVendorApplications,
@@ -207,12 +211,13 @@ const applications = ref<OpenVendorApplication[]>([])
 const applicationTotal = ref(0)
 const applicationQuery = reactive<OpenVendorApplicationQuery>({ pageNum: 1, pageSize: 10, status: undefined })
 
+const vendorStatusLabels: Record<number, string> = { 0: '待提交', 1: '待验证', 2: '待审核', 3: '补充材料', 4: '审核通过', 5: '审核驳回', 6: '暂停', 7: '注销' }
 const statusOptions = [
-  { value: 0, label: '待提交' }, { value: 1, label: '待验证' }, { value: 2, label: '待审核' },
-  { value: 3, label: '补充材料' }, { value: 4, label: '审核通过' }, { value: 5, label: '审核驳回' },
+  { value: 2, label: '待审核' }, { value: 4, label: '审核通过' }, { value: 5, label: '审核驳回' },
   { value: 6, label: '暂停' }, { value: 7, label: '注销' }
 ]
-const vendorTransitions: Record<number, number[]> = { 0: [1], 1: [2], 2: [3, 4, 5], 3: [2, 5], 4: [6, 7], 5: [2], 6: [4, 7], 7: [] }
+const vendorTransitions: Record<number, number[]> = { 2: [4, 5], 4: [6, 7], 6: [4, 7], 7: [] }
+const activeVendorTab = ref('vendor')
 
 const applicationVisible = ref(false)
 const applicationFormRef = ref<FormInstance>()
@@ -238,8 +243,17 @@ const statusOptionsForCurrent = computed(() => vendorTransitions[statusForm.curr
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<OpenVendor>()
+const vendorRoleOptions = ref<DictOption[]>([
+  { label: '厂商所有者', value: 'OWNER' },
+  { label: '厂商开发者', value: 'DEVELOPER' },
+  { label: '厂商查看者', value: 'VIEWER' }
+])
 
-onMounted(async () => { await getList(); await loadApplications() })
+onMounted(async () => {
+  vendorRoleOptions.value = await loadDictOptions(OPEN_VENDOR_ROLE_DICT, vendorRoleOptions.value)
+  await getList()
+  await loadApplications()
+})
 
 async function getList() {
   if (!canList.value) return
@@ -338,7 +352,7 @@ async function submitStatus() {
 }
 
 function nextStatuses(row: OpenVendor) { return vendorTransitions[row.status] || [] }
-function statusLabel(status?: number) { return statusOptions.find(item => item.value === status)?.label || '未知' }
+function statusLabel(status?: number) { return vendorStatusLabels[status ?? -1] || '未知' }
 function statusTagType(status?: number): TagType {
   if (status === 4) return 'success'
   if (status === 5 || status === 7) return 'danger'
@@ -349,6 +363,7 @@ function statusTagType(status?: number): TagType {
 function lifecycleLabel(status?: number) {
   return ['草稿', '待审核', '沙箱开通', '调测中', '生产待审', '生产开通', '暂停', '撤销'][status ?? -1] || '未知'
 }
+function vendorRoleLabel(role?: string) { return findDictLabel(vendorRoleOptions.value, role, '-') }
 function applicationStatusLabel(status?: number) { return ({ 0: '待提交', 1: '待审核', 2: '审核通过', 3: '审核驳回' } as Record<number, string>)[status ?? -1] || '未知' }
 function applicationStatusTagType(status?: number): TagType { return status === 2 ? 'success' : status === 3 ? 'danger' : status === 1 ? 'warning' : 'info' }
 function notifyError(error: unknown, fallback: string) {

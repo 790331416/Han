@@ -62,10 +62,6 @@ export function changeOpenApiResourceStatus(id: string | number, status: number)
   return post<void>('/open/api-resource/changeStatus', { id, status })
 }
 
-export function offlineOpenApiResource(id: string | number) {
-  return post<void>(`/open/api-resource/offline/${id}`)
-}
-
 export function createOpenApiResourceDraftVersion(resourceId: string | number, data: OpenApiResourceVersion) {
   return post<OpenApiResourceVersion>(`/open/api-resource/${resourceId}/versions`, data)
 }

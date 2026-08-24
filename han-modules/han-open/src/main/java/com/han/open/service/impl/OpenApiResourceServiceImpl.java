@@ -38,6 +38,10 @@ public class OpenApiResourceServiceImpl extends ServiceImpl<OpenApiResourceMappe
     private static final int VERSION_DRAFT = 0;
     private static final int VERSION_PUBLISHED = 1;
     private static final int VERSION_DEPRECATED = 2;
+    private static final int RESOURCE_ENABLED = 0;
+    private static final int RESOURCE_DISABLED = 1;
+    private static final int RESOURCE_PUBLISHED = 2;
+    private static final int RESOURCE_OFFLINE = 3;
 
     private final OpenApiResourceVersionMapper versionMapper;
     private final ObjectMapper objectMapper;
@@ -92,6 +96,25 @@ public class OpenApiResourceServiceImpl extends ServiceImpl<OpenApiResourceMappe
             return false;
         } catch (JsonProcessingException | IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void setOnlineStatus(Long resourceId, boolean online) {
+        OpenApiResourcePo resource = requireResource(resourceId);
+        if (online && versionMapper.selectCount(new LambdaQueryWrapper<OpenApiResourceVersionPo>()
+                .eq(OpenApiResourceVersionPo::getResourceId, resource.getId())
+                .eq(OpenApiResourceVersionPo::getStatus, VERSION_PUBLISHED)
+                .eq(OpenApiResourceVersionPo::getDelFlag, 0)) == 0) {
+            throw new BusinessException("请先发布接口版本再上线");
+        }
+        OpenApiResourcePo update = new OpenApiResourcePo();
+        update.setId(resourceId);
+        update.setStatus(online ? RESOURCE_ENABLED : RESOURCE_DISABLED);
+        update.setPublishStatus(online ? RESOURCE_PUBLISHED : RESOURCE_OFFLINE);
+        if (getBaseMapper().updateById(update) != 1) {
+            throw new BusinessException("接口上下线状态更新失败");
         }
     }
 
@@ -190,7 +213,8 @@ public class OpenApiResourceServiceImpl extends ServiceImpl<OpenApiResourceMappe
 
         OpenApiResourcePo resourceUpdate = new OpenApiResourcePo();
         resourceUpdate.setId(resource.getId());
-        resourceUpdate.setPublishStatus(VERSION_PUBLISHED + 1);
+        resourceUpdate.setStatus(RESOURCE_ENABLED);
+        resourceUpdate.setPublishStatus(RESOURCE_PUBLISHED);
         if (getBaseMapper().updateById(resourceUpdate) != 1) {
             throw new BusinessException("资源发布状态更新失败");
         }
@@ -218,6 +242,18 @@ public class OpenApiResourceServiceImpl extends ServiceImpl<OpenApiResourceMappe
         }
         target.setStatus(VERSION_DEPRECATED);
         target.setDeprecatedAt(deprecatedAt);
+        if (versionMapper.selectCount(new LambdaQueryWrapper<OpenApiResourceVersionPo>()
+                .eq(OpenApiResourceVersionPo::getResourceId, target.getResourceId())
+                .eq(OpenApiResourceVersionPo::getStatus, VERSION_PUBLISHED)
+                .eq(OpenApiResourceVersionPo::getDelFlag, 0)) == 0) {
+            OpenApiResourcePo resourceUpdate = new OpenApiResourcePo();
+            resourceUpdate.setId(target.getResourceId());
+            resourceUpdate.setStatus(RESOURCE_DISABLED);
+            resourceUpdate.setPublishStatus(RESOURCE_OFFLINE);
+            if (getBaseMapper().updateById(resourceUpdate) != 1) {
+                throw new BusinessException("接口下线状态更新失败");
+            }
+        }
         return convertToVersionVO(target);
     }
 

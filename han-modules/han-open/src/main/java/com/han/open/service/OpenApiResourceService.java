@@ -25,6 +25,11 @@ public interface OpenApiResourceService extends IService<OpenApiResourcePo> {
     boolean validateOpenApiSchema(String openapiJson);
 
     /**
+     * 统一控制资源上线/下线；上线必须已有已发布版本。
+     */
+    void setOnlineStatus(Long resourceId, boolean online);
+
+    /**
      * 新增资源草稿版本。
      */
     OpenApiResourceVersionVO createDraftVersion(Long resourceId, OpenApiResourceVersionVO version);

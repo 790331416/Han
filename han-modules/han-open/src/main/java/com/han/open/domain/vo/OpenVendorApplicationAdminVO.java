@@ -14,6 +14,8 @@ public class OpenVendorApplicationAdminVO {
     private Long applicationId;
     private Long vendorId;
     private Long applicantUserId;
+    private String vendorName;
+    private String applicantName;
     private String applicationNo;
     private Integer status;
     private String applyData;

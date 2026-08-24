@@ -12,22 +12,18 @@ import lombok.ToString;
 @Data
 public class VendorPublicRegisterDTO {
 
-    @NotBlank(message = "厂商名称不能为空")
     @Size(max = 100, message = "厂商名称长度不能超过100个字符")
     private String name;
 
-    @NotBlank(message = "统一社会信用代码不能为空")
-    @Size(min = 15, max = 18, message = "统一社会信用代码长度应为15-18个字符")
-    @Pattern(regexp = "[0-9A-Za-z]{15,18}", message = "统一社会信用代码格式不正确")
+    @Size(max = 18, message = "统一社会信用代码长度不能超过18个字符")
+    @Pattern(regexp = "[0-9A-Za-z]{0,18}", message = "统一社会信用代码格式不正确")
     private String qualificationNo;
 
-    @NotBlank(message = "联系人姓名不能为空")
     @Size(max = 50, message = "联系人姓名长度不能超过50个字符")
     private String contactName;
 
-    @NotBlank(message = "联系电话不能为空")
     @Size(max = 20, message = "联系电话长度不能超过20个字符")
-    @Pattern(regexp = "[0-9+()\\- ]{6,20}", message = "联系电话格式不正确")
+    @Pattern(regexp = "[0-9+()\\- ]{0,20}", message = "联系电话格式不正确")
     private String contactPhone;
 
     /** 门户账号手机号；可与企业联系人电话不同。 */

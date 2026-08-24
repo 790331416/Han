@@ -127,7 +127,12 @@ public class OpenAppController {
     @OperLog(module = "开放平台应用", type = OperLog.OperType.UPDATE)
     public R<Void> changeLifecycleStatus(@RequestParam Long appId,
                                          @RequestParam Integer lifecycleStatus) {
-        openAppService.updateLifecycleStatus(appId, lifecycleStatus);
+        // 兼容旧客户端：待审核必须走申请流程，不能只写应用状态而漏掉审核记录。
+        if (Integer.valueOf(1).equals(lifecycleStatus) || Integer.valueOf(4).equals(lifecycleStatus)) {
+            authorizationService.submitAppLifecycleApply(appId);
+        } else {
+            openAppService.updateLifecycleStatus(appId, lifecycleStatus);
+        }
         return R.ok();
     }
 

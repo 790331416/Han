@@ -3,6 +3,7 @@ package com.han.open.service.impl;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
+import com.han.api.open.domain.OpenVendorApplicationCreateDTO;
 import com.han.open.domain.po.OpenVendorApplicationPo;
 import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.po.OpenVendorUserPo;
@@ -80,6 +81,28 @@ class OpenVendorServiceImplTest {
         assertThat(application.getVendorId()).isEqualTo(100L);
         assertThat(application.getApplicantUserId()).isEqualTo(42L);
         assertThat(application.getCreateBy()).isEqualTo(42L);
+    }
+
+    @Test
+    void createPortalApplicationAllowsMissingEnterpriseDetails() {
+        when(baseMapper.selectCount(any())).thenReturn(0L);
+        doAnswer(invocation -> {
+            OpenVendorPo vendor = invocation.getArgument(0);
+            vendor.setId(100L);
+            return 1;
+        }).when(baseMapper).insert(any(OpenVendorPo.class));
+        when(vendorUserMapper.insert(any(OpenVendorUserPo.class))).thenReturn(1);
+        OpenVendorApplicationCreateDTO dto = new OpenVendorApplicationCreateDTO();
+        dto.setAccountUserId(42L);
+        dto.setName("个人开发者-vendor_user");
+
+        assertThat(service.createPortalApplication(dto)).isNotBlank();
+
+        ArgumentCaptor<OpenVendorPo> vendorCaptor = ArgumentCaptor.forClass(OpenVendorPo.class);
+        verify(baseMapper).insert(vendorCaptor.capture());
+        assertThat(vendorCaptor.getValue().getQualificationNo()).isNull();
+        assertThat(vendorCaptor.getValue().getContactName()).isNull();
+        assertThat(vendorCaptor.getValue().getContactPhone()).isNull();
     }
 
     @Test

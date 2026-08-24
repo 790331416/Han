@@ -17,6 +17,31 @@
     />
 
     <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
+      <el-tab-pane label="接入向导" name="guide">
+        <el-card shadow="never" class="guide-card">
+          <template #header><div class="card-header"><span>厂商接入向导</span><el-button :icon="Refresh" @click="refreshGuide">刷新状态</el-button></div></template>
+          <el-empty v-if="!guideApp" description="请先创建应用，再继续接口接入" :image-size="80">
+            <el-button v-if="canAppAdd" type="primary" @click="goToTab('apps')">创建应用</el-button>
+          </el-empty>
+          <template v-else>
+            <el-steps :active="guideActiveStep" finish-status="success" align-center>
+              <el-step title="创建应用" :description="guideApp.appName" />
+              <el-step title="选择接口与学校" :description="guideScopeText" />
+              <el-step title="开通环境" :description="lifecycleLabel(guideApp.lifecycleStatus)" />
+              <el-step title="确认接口授权" :description="`${appGrants.length} 条有效授权`" />
+              <el-step title="生成凭证并调测" :description="credentials.length ? '凭证已就绪' : '等待生成凭证'" />
+            </el-steps>
+            <div class="guide-actions">
+              <el-button @click="goToTab('apps')">查看应用</el-button>
+              <el-button @click="goToTab('grants')">查看授权</el-button>
+              <el-button @click="goToTab('credentials')">查看凭证</el-button>
+              <el-button type="primary" @click="goToTab('debug')">在线调测</el-button>
+            </div>
+            <el-alert :title="guideHint" :type="guideActiveStep === 5 ? 'success' : 'warning'" :closable="false" show-icon />
+          </template>
+        </el-card>
+      </el-tab-pane>
+
       <el-tab-pane label="我的厂商" name="vendors">
         <el-card shadow="never">
           <template #header><div class="card-header"><span>关联厂商</span><el-button :icon="Refresh" @click="loadVendors">刷新</el-button></div></template>
@@ -85,7 +110,7 @@
               <el-form-item label="应用" required><el-select v-model="grantForm.appId" clearable placeholder="选择应用" style="width: 100%"><el-option v-for="app in apps" :key="app.appId" :label="app.appName" :value="app.appId" /></el-select></el-form-item>
               <el-form-item label="环境" required><el-radio-group v-model="grantForm.environment"><el-radio value="SANDBOX">沙箱</el-radio><el-radio value="PROD">生产</el-radio></el-radio-group></el-form-item>
               <el-form-item label="接口" required class="full-row"><el-select v-model="grantForm.resourceIds" multiple filterable clearable placeholder="选择一个或多个接口" style="width: 100%"><el-option v-for="resource in applicableResources" :key="resource.id" :label="`${resource.resourceName}（${resource.httpMethod} ${resource.path}）`" :value="resource.id ?? ''" /></el-select></el-form-item>
-              <el-form-item label="Scope"><el-input v-model="grantForm.scopes" placeholder="多个 Scope 用逗号分隔；为空时使用接口默认 Scope" /></el-form-item>
+               <el-form-item label="Scope"><el-text type="info">由所选接口自动生成，无需重复填写。</el-text></el-form-item>
               <el-form-item label="调用配额"><el-input-number v-model="grantForm.quota" :min="0" :step="100" style="width: 100%" /></el-form-item>
               <el-form-item label="有效期（天）"><el-input-number v-model="grantForm.expireDays" :min="0" style="width: 100%" /><span class="form-tip">0 表示永久</span></el-form-item>
               <el-form-item label="数据范围" class="full-row"><el-input v-model="grantForm.dataScope" type="textarea" :rows="2" placeholder="按接口约定填写 JSON 数据范围，可留空" /></el-form-item>
@@ -129,8 +154,8 @@
           </el-table>
         </el-card>
       </el-tab-pane>
-    </el-tabs>
 
+      <el-tab-pane label="在线调测" name="debug">
     <el-card shadow="never" class="debug-card">
       <template #header>
         <div class="card-header"><span>在线调测</span><el-tag type="warning">仅调用已发布目录</el-tag></div>
@@ -150,14 +175,24 @@
             </el-select>
           </el-form-item>
           <el-form-item label="环境" required>
-            <el-radio-group v-model="debugEnvironment" @change="loadDebugHistory">
+            <el-radio-group v-model="debugEnvironment" @change="handleDebugEnvironmentChange">
               <el-radio value="SANDBOX">沙箱</el-radio><el-radio value="PROD">生产</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="接口" required class="full-row">
-            <el-select v-model="debugResourceId" clearable filterable placeholder="选择已发布且允许调测的接口" style="width: 100%" @change="loadDebugResource">
+            <el-select v-model="debugResourceId" clearable filterable placeholder="选择已授权且允许调测的接口" style="width: 100%" @change="loadDebugResource">
               <el-option v-for="resource in debugResources" :key="resource.id" :label="`${resource.resourceName}（${resource.httpMethod} ${resource.path}）`" :value="resource.id ?? ''" />
             </el-select>
+          </el-form-item>
+          <el-form-item v-if="debugParameters.length" label="接口参数" class="full-row">
+            <el-table :data="debugParameters" size="small" border class="debug-parameter-table">
+              <el-table-column label="参数" prop="name" min-width="120" />
+              <el-table-column label="位置" prop="in" width="82" />
+              <el-table-column label="类型" prop="type" width="90" />
+              <el-table-column label="必填" width="72"><template #default="{ row }"><el-tag size="small" :type="row.required ? 'danger' : 'info'">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column>
+              <el-table-column label="说明" prop="description" min-width="180" />
+              <el-table-column label="调测值" min-width="200"><template #default="{ row }"><el-input v-model="debugParameterValues[row.name]" :placeholder="row.example || '请输入'" clearable @change="syncDebugRequestFromParameters" /></template></el-table-column>
+            </el-table>
           </el-form-item>
           <el-form-item label="Client ID" required><el-input v-model="debugClientId" autocomplete="off" /></el-form-item>
           <el-form-item label="Client Secret" required><el-input v-model="debugClientSecret" type="password" show-password autocomplete="new-password" /></el-form-item>
@@ -196,6 +231,8 @@
         </el-table>
       </el-card>
     </el-card>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="appDialogVisible" :title="appForm.appId ? '编辑应用' : '创建应用'" width="620px" destroy-on-close>
       <el-form ref="appFormRef" :model="appForm" :rules="appRules" label-width="110px">
@@ -207,7 +244,17 @@
         <el-form-item label="身份授权范围">
           <el-checkbox-group v-model="identityScopes"><el-checkbox v-for="scope in identityScopeOptions" :key="scope.value" :label="scope.value">{{ scope.label }}</el-checkbox></el-checkbox-group>
         </el-form-item>
-        <el-form-item label="业务 Scope"><el-input v-model="scopeText" placeholder="仅填写已申请的业务 Scope，多个用逗号分隔" /></el-form-item>
+        <el-form-item label="申请接口">
+          <el-select v-model="selectedAppResourceIds" multiple filterable clearable placeholder="选择需要接入的已发布接口" style="width: 100%">
+            <el-option v-for="resource in applicableResources" :key="resource.id" :label="`${resource.resourceName}（${resource.httpMethod} ${resource.path}）`" :value="resource.id ?? ''" />
+          </el-select>
+          <div class="form-hint">接口会自动换算为 Scope，无需重复填写。</div>
+        </el-form-item>
+        <el-form-item v-if="needsSchoolScope" label="授权学校" prop="schoolIds">
+          <el-select v-model="appForm.schoolIds" multiple filterable clearable placeholder="选择可读取目录的学校" style="width: 100%">
+            <el-option v-for="school in schools" :key="school.value" :label="school.label" :value="school.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="环境策略"><el-select v-model="appForm.environmentPolicy" style="width: 100%"><el-option label="先沙箱" value="SANDBOX_FIRST" /><el-option label="仅生产" value="PROD_ONLY" /><el-option label="全部环境" value="ALL" /></el-select></el-form-item>
         <el-form-item label="联系人"><el-input v-model="appForm.contactName" /></el-form-item>
       </el-form>
@@ -222,6 +269,15 @@
         <el-descriptions-item label="路径">{{ resourceDetail.path }}</el-descriptions-item>
         <el-descriptions-item label="说明" :span="2">{{ resourceDetail.description || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <el-divider content-position="left">请求参数</el-divider>
+      <el-table v-if="resourceDetail" :data="resourceParameters(resourceDetail)" size="small" empty-text="当前版本未定义请求参数">
+        <el-table-column label="参数" prop="name" min-width="130" />
+        <el-table-column label="位置" prop="in" width="90" />
+        <el-table-column label="类型" prop="type" width="100" />
+        <el-table-column label="必填" width="80"><template #default="{ row }"><el-tag size="small" :type="row.required ? 'danger' : 'info'">{{ row.required ? '是' : '否' }}</el-tag></template></el-table-column>
+        <el-table-column label="说明" prop="description" min-width="220" show-overflow-tooltip />
+        <el-table-column label="示例" prop="example" min-width="150" show-overflow-tooltip />
+      </el-table>
       <el-divider content-position="left">版本</el-divider>
       <el-table v-if="resourceDetail" :data="resourceDetail.versions || []" size="small" empty-text="暂无版本"><el-table-column label="版本" prop="version" /><el-table-column label="状态" prop="status" /><el-table-column label="发布时间" prop="publishedAt" /></el-table>
     </el-dialog>
@@ -241,20 +297,24 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, submitAppLifecycleApply, type OpenApp, type OpenAppForm } from '@/api/open/app'
+import { listOrganizationTree } from '@/api/education'
 import { getOpenVendor, type OpenVendor } from '@/api/open/vendor'
 import { listOpenApiResource, getOpenApiResourceDetail, type OpenApiResource, type OpenApiResourceDetail } from '@/api/open/resource'
 import { listAuthorizationRequests, listAppGrants, listAppCredentials, generateAppCredential, rotateAppCredential, type OpenAuthorizationRequest, type OpenAuthorizationRequestQuery, type OpenCredential, type OpenCredentialSecret, type OpenGrant } from '@/api/open/authorization'
 import { addOpenApiTestRun, listOpenApiTestRuns, listMyOpenVendors, submitGrantApply, type GrantApplyForm, type OpenApiTestRun } from '@/api/open/portal'
 import { loadDictOptions, OPEN_IDENTITY_SCOPE_DICT, type DictOption } from '@/utils/dict-options'
+import { schoolOptions as flattenSchoolOptions } from '@/utils/education-school-tree'
 
 type TagType = 'success' | 'primary' | 'warning' | 'info' | 'danger'
+type ApiParameter = { name: string; in: string; type: string; required: boolean; description: string; example: string }
 const userStore = useUserStore()
-const activeTab = ref('vendors')
+const activeTab = ref('guide')
 const vendorLoading = ref(false)
 const vendors = ref<OpenVendor[]>([])
 const vendorDetail = ref<OpenVendor | null>(null)
 const appLoading = ref(false)
 const apps = ref<OpenApp[]>([])
+const schools = ref<Array<{ label: string; value: string | number }>>([])
 const resourceLoading = ref(false)
 const resources = ref<OpenApiResource[]>([])
 const resourceDetail = ref<OpenApiResourceDetail | null>(null)
@@ -275,11 +335,15 @@ const credentialSecret = ref('')
 const appDialogVisible = ref(false)
 const appSubmitting = ref(false)
 const appFormRef = ref<FormInstance>()
+const selectedAppResourceIds = ref<Array<string | number>>([])
 const debugAppId = ref<string | number>()
 const debugResourceId = ref<string | number>()
 const debugEnvironment = ref<'SANDBOX' | 'PROD'>('SANDBOX')
 const debugClientId = ref('')
 const debugClientSecret = ref('')
+const debugGrants = ref<OpenGrant[]>([])
+const debugCredentials = ref<OpenCredential[]>([])
+const debugParameterValues = reactive<Record<string, string>>({})
 const debugRequestJson = ref('{}')
 const debugExpectedResponse = ref('')
 const debugResourceDetail = ref<OpenApiResourceDetail | null>(null)
@@ -293,14 +357,41 @@ const canAppEdit = computed(() => userStore.hasPermission('open:app:edit'))
 const canAppRemove = computed(() => userStore.hasPermission('open:app:remove'))
 const canGrantApply = computed(() => userStore.hasPermission('open:grant:apply'))
 const canCredentialManage = computed(() => userStore.hasPermission('open:credential:manage'))
-const applicableResources = computed(() => resources.value.filter(item => item.status === 0 && item.allowApply !== 0 && item.publishStatus !== 3))
-const debugResources = computed(() => resources.value.filter(item => item.status === 0 && item.publishStatus === 2 && item.allowTest === 1))
+const applicableResources = computed(() => resources.value.filter(item => item.status === 0 && item.allowApply === 1 && item.publishStatus === 2))
+const selectedApp = computed(() => apps.value.find(item => String(item.appId) === String(debugAppId.value)))
+const debugResources = computed(() => {
+  const scopes = new Set(selectedApp.value?.scopes || [])
+  const grantedIds = new Set(debugGrants.value.filter(item => item.environment === debugEnvironment.value && item.status === 1).map(item => String(item.resourceId)))
+  return resources.value.filter(item => item.status === 0 && item.publishStatus === 2 && item.allowTest === 1
+    && scopes.has(item.scopeCode) && grantedIds.has(String(item.id)))
+})
+const needsSchoolScope = computed(() => (appForm.scopes || []).some(scope => ['edu.teacher.read', 'edu.student.read', 'edu.device.read'].includes(scope)))
+const guideApp = computed(() => apps.value[0])
+const guideScopeText = computed(() => {
+  const count = (guideApp.value?.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile').length
+  return count ? `已选择 ${count} 个接口` : '等待选择接口'
+})
+const guideActiveStep = computed(() => {
+  if (!vendors.value.length) return 0
+  if (!guideApp.value) return 1
+  if (!(guideApp.value.scopes || []).some(scope => scope !== 'openid' && scope !== 'profile')) return 2
+  if (!appGrants.value.length) return 3
+  if (!credentials.value.length) return 4
+  return 5
+})
+const guideHint = computed(() => {
+  if (!guideApp.value) return '请先创建应用并选择接入接口。'
+  if (guideActiveStep.value === 2) return '请为应用选择至少一个已发布接口和对应学校范围。'
+  if (guideActiveStep.value === 3) return '提交应用开通审核后，系统会同步生成所选接口的授权台账。'
+  if (guideActiveStep.value === 4) return '授权已生效，请生成当前环境凭证后进行在线调测。'
+  return '应用、接口授权和凭证均已就绪，可以开始在线调测。'
+})
+const debugParameters = computed(() => debugResourceDetail.value ? resourceParameters(debugResourceDetail.value) : [])
 
-const appForm = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
+const appForm = reactive<OpenAppForm>({ appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], schoolIds: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
 const identityScopeOptions = ref<DictOption[]>([])
 const identityScopes = ref<string[]>([])
 const redirectUrisText = computed({ get: () => (appForm.redirectUris || []).join('\n'), set: (value: string) => { appForm.redirectUris = value.split('\n').map(item => item.trim()).filter(Boolean) } })
-const scopeText = computed({ get: () => (appForm.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile').join(','), set: (value: string) => { appForm.scopes = [...identityScopes.value, ...value.split(',').map(item => item.trim()).filter(Boolean)] } })
 const appRules: FormRules = { vendorId: [{ required: true, message: '请选择厂商', trigger: 'change' }], appName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }], appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }] }
 const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', dataScope: '', quota: 0, expireDays: 0, applyReason: '' })
 
@@ -309,13 +400,38 @@ async function loadVendors() {
   try { vendors.value = (await listMyOpenVendors()).data || []; if (!vendorDetail.value && vendors.value[0]) await openVendorDetail(vendors.value[0]) } catch (error) { vendors.value = []; notifyError(error, '加载厂商失败') } finally { vendorLoading.value = false }
 }
 
+async function loadSchools() {
+  try {
+    const response = await listOrganizationTree(0)
+    schools.value = flattenSchoolOptions(response.data || []).map(item => ({ label: `${item.schoolName}（${item.schoolCode}）`, value: item.id }))
+  } catch (error) {
+    schools.value = []
+    notifyError(error, '加载学校范围失败')
+  }
+}
+
 async function openVendorDetail(vendor: OpenVendor) {
   try { vendorDetail.value = (await getOpenVendor(vendor.id)).data } catch (error) { notifyError(error, '加载厂商详情失败') }
 }
 
 async function loadApps() {
   appLoading.value = true
-  try { const data = (await listOpenApp({ pageNum: 1, pageSize: 100 })).data; apps.value = (data as typeof data & { records?: OpenApp[] })?.records || data?.rows || [] } catch (error) { apps.value = []; notifyError(error, '加载应用失败') } finally { appLoading.value = false }
+  try {
+    const data = (await listOpenApp({ pageNum: 1, pageSize: 100 })).data
+    apps.value = (data as typeof data & { records?: OpenApp[] })?.records || data?.rows || []
+    const firstAppId = apps.value[0]?.appId
+    if (firstAppId) {
+      grantAppId.value ||= firstAppId
+      credentialAppId.value ||= firstAppId
+      debugAppId.value ||= firstAppId
+    }
+  } catch (error) {
+    apps.value = []
+    notifyError(error, '加载应用失败')
+  } finally {
+    appLoading.value = false
+  }
+  await Promise.all([loadAppGrants(), loadCredentials(), loadDebugContext()])
 }
 
 async function loadResources() {
@@ -329,7 +445,41 @@ async function openResourceDetail(resource: OpenApiResource) {
 }
 
 async function handleDebugAppChange() {
-  await loadDebugHistory()
+  debugResourceId.value = undefined
+  debugResourceDetail.value = null
+  debugResponse.value = null
+  await Promise.all([loadDebugContext(), loadDebugHistory()])
+}
+
+async function handleDebugEnvironmentChange() {
+  debugResourceId.value = undefined
+  debugResourceDetail.value = null
+  debugResponse.value = null
+  await Promise.all([loadDebugContext(), loadDebugHistory()])
+}
+
+async function loadDebugContext() {
+  if (!debugAppId.value) {
+    debugGrants.value = []
+    debugCredentials.value = []
+    debugClientId.value = ''
+    return
+  }
+  try {
+    const [grantResponse, credentialResponse] = await Promise.all([
+      listAppGrants(debugAppId.value),
+      listAppCredentials(debugAppId.value)
+    ])
+    debugGrants.value = grantResponse.data || []
+    debugCredentials.value = (credentialResponse.data || []).filter(item => item.environment === debugEnvironment.value && item.status === 0)
+    if (!debugCredentials.value.some(item => item.clientId === debugClientId.value)) {
+      debugClientId.value = debugCredentials.value[0]?.clientId || ''
+    }
+  } catch (error) {
+    debugGrants.value = []
+    debugCredentials.value = []
+    notifyError(error, '加载调测授权信息失败')
+  }
 }
 
 async function loadDebugResource() {
@@ -340,6 +490,7 @@ async function loadDebugResource() {
     debugResourceDetail.value = (await getOpenApiResourceDetail(debugResourceId.value)).data
     fillRequestExample()
     fillResponseExample()
+    initializeDebugParameters()
   } catch (error) {
     notifyError(error, '加载调测接口详情失败')
   }
@@ -364,6 +515,39 @@ function fillResponseExample() {
 function toJsonText(value: unknown) {
   if (typeof value === 'string') return value
   try { return JSON.stringify(value ?? {}, null, 2) || '{}' } catch { return '{}' }
+}
+
+function resourceParameters(resource: OpenApiResourceDetail): ApiParameter[] {
+  const schema = resource.currentVersion?.openapiSchema as Record<string, unknown> | undefined
+  const paths = schema?.paths as Record<string, Record<string, Record<string, unknown>>> | undefined
+  const operation = paths?.[resource.path]?.[resource.httpMethod.toLowerCase()]
+  const parameters = Array.isArray(operation?.parameters) ? operation.parameters as Array<Record<string, unknown>> : []
+  return parameters.map(parameter => {
+    const parameterSchema = parameter.schema as Record<string, unknown> | undefined
+    const example = parameter.example ?? parameterSchema?.example ?? parameterSchema?.default
+    return {
+      name: String(parameter.name || ''),
+      in: String(parameter.in || 'query'),
+      type: String(parameterSchema?.type || 'string'),
+      required: Boolean(parameter.required),
+      description: String(parameter.description || ''),
+      example: example === undefined || example === null ? '' : String(example)
+    }
+  }).filter(parameter => parameter.name)
+}
+
+function initializeDebugParameters() {
+  Object.keys(debugParameterValues).forEach(key => delete debugParameterValues[key])
+  debugParameters.value.forEach(parameter => { debugParameterValues[parameter.name] = parameter.example })
+  syncDebugRequestFromParameters()
+}
+
+function syncDebugRequestFromParameters() {
+  const values = Object.fromEntries(debugParameters.value
+    .filter(parameter => parameter.in === 'query' || parameter.in === 'path')
+    .map(parameter => [parameter.name, debugParameterValues[parameter.name]?.trim() || ''])
+    .filter(([, value]) => Boolean(value)))
+  if (Object.keys(values).length) debugRequestJson.value = toJsonText(values)
 }
 
 function parseDebugRequest() {
@@ -392,23 +576,24 @@ function buildDebugTarget(resource: OpenApiResource, requestBody: Record<string,
 
 async function runOnlineDebug() {
   const resource = debugResourceDetail.value
-  if (!debugAppId.value || !resource || String(resource.id) !== String(debugResourceId.value)
-    || resource.status !== 0 || resource.publishStatus !== 2 || resource.allowTest !== 1) {
-    ElMessage.warning('请选择应用和已发布调测接口'); return
+  if (!debugAppId.value || !resource || !debugResources.value.some(item => String(item.id) === String(resource.id))) {
+    ElMessage.warning('请选择当前应用在该环境已授权的调测接口'); return
   }
-  if (!debugClientId.value.trim() || !debugClientSecret.value) { ElMessage.warning('请输入 Client ID 和 Client Secret'); return }
+  if (!debugCredentials.value.some(item => item.clientId === debugClientId.value.trim())) {
+    ElMessage.warning('请选择当前应用、当前环境的有效 Client ID'); return
+  }
+  if (!debugClientSecret.value) { ElMessage.warning('请输入 Client Secret'); return }
   let clientSecret = debugClientSecret.value
   let accessToken = ''
   let apiStartedAt: number | null = null
   let apiAttempted = false
-  let auditSubmitted = false
+  let auditAttempted = false
   debugRunning.value = true
   try {
     const tokenBody = new URLSearchParams({ grant_type: 'client_credentials', client_id: debugClientId.value.trim(), client_secret: clientSecret, scope: resource.scopeCode })
     const tokenResponse = await fetch('/open/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: tokenBody })
     tokenBody.delete('client_secret')
     clientSecret = ''
-    debugClientSecret.value = ''
     const tokenPayload = await tokenResponse.json().catch(() => ({})) as { access_token?: string; msg?: string }
     if (!tokenResponse.ok || !tokenPayload.access_token) throw new Error(tokenPayload.msg || '客户端凭证校验失败')
     accessToken = tokenPayload.access_token
@@ -428,13 +613,14 @@ async function runOnlineDebug() {
     const durationMs = Math.max(0, Math.round(performance.now() - startedAt))
     const responseSize = new Blob([responseText]).size
     debugResponse.value = { ok: response.ok, statusCode: response.status, durationMs, responseSize, body: formatResponse(responseText) }
+    auditAttempted = true
     await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: response.status, durationMs, responseSize, traceId: response.headers.get('X-Trace-Id') || undefined })
-    auditSubmitted = true
     await loadDebugHistory()
   } catch (error) {
     const message = error instanceof Error ? error.message : '在线调测失败'
-    if (apiAttempted && !auditSubmitted && apiStartedAt !== null) {
+    if (apiAttempted && !auditAttempted && apiStartedAt !== null) {
       try {
+        auditAttempted = true
         await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: 0, durationMs: Math.max(0, Math.round(performance.now() - apiStartedAt)), responseSize: 0 })
       } catch {
         // 审计失败不覆盖原始调测错误；页面仍明确显示本次请求未取得 HTTP 响应。
@@ -445,7 +631,6 @@ async function runOnlineDebug() {
   } finally {
     clientSecret = ''
     accessToken = ''
-    debugClientSecret.value = ''
     debugRunning.value = false
   }
 }
@@ -497,13 +682,56 @@ function showCredential(response: { data: OpenCredentialSecret }) {
 function clearSecret() { credentialClientId.value = ''; credentialSecret.value = '' }
 
 function openAppCreate() { resetAppForm(); appForm.vendorId = vendors.value[0]?.id; appDialogVisible.value = true }
-async function openAppEdit(row: OpenApp) { resetAppForm(); try { Object.assign(appForm, await getOpenApp(row.appId).then(response => response.data)); identityScopes.value = (appForm.scopes || []).filter(scope => scope === 'openid' || scope === 'profile'); appDialogVisible.value = true } catch (error) { notifyError(error, '加载应用详情失败') } }
-function resetAppForm() { Object.assign(appForm, { appId: undefined, appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' }); identityScopes.value = [] }
-async function submitApp() { if (!(await appFormRef.value?.validate())) return; appSubmitting.value = true; try { if (appForm.appId) { await updateOpenApp(appForm) } else { await addOpenApp(appForm) } ElMessage.success(appForm.appId ? '应用已更新' : '应用草稿已创建，请提交沙箱审核'); appDialogVisible.value = false; await loadApps() } catch (error) { notifyError(error, '保存应用失败') } finally { appSubmitting.value = false } }
+async function openAppEdit(row: OpenApp) {
+  resetAppForm()
+  try {
+    Object.assign(appForm, await getOpenApp(row.appId).then(response => response.data))
+    identityScopes.value = (appForm.scopes || []).filter(scope => scope === 'openid' || scope === 'profile')
+    selectedAppResourceIds.value = applicableResources.value
+      .filter(resource => (appForm.scopes || []).includes(resource.scopeCode))
+      .map(resource => resource.id || '')
+    appDialogVisible.value = true
+  } catch (error) {
+    notifyError(error, '加载应用详情失败')
+  }
+}
+function resetAppForm() {
+  Object.assign(appForm, { appId: undefined, appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], schoolIds: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
+  identityScopes.value = []
+  selectedAppResourceIds.value = []
+}
+async function submitApp() {
+  if (!(await appFormRef.value?.validate())) return
+  if (needsSchoolScope.value && !(appForm.schoolIds || []).length) {
+    ElMessage.warning('选择目录接口时必须选择授权学校')
+    return
+  }
+  appSubmitting.value = true
+  try {
+    if (appForm.appId) await updateOpenApp(appForm)
+    else await addOpenApp(appForm)
+    ElMessage.success(appForm.appId ? '应用已更新' : '应用草稿已创建，请提交沙箱审核')
+    appDialogVisible.value = false
+    await loadApps()
+  } catch (error) {
+    notifyError(error, '保存应用失败')
+  } finally {
+    appSubmitting.value = false
+  }
+}
 async function removeApp(row: OpenApp) { try { await ElMessageBox.confirm(`确认删除应用“${row.appName}”？`, '确认删除', { type: 'warning' }); await deleteOpenApp(row.appId); ElMessage.success('应用已删除'); await loadApps() } catch (error) { if (!isCancel(error)) notifyError(error, '删除应用失败') } }
 async function advanceLifecycle(row: OpenApp) { const next = nextLifecycleStatus(row.lifecycleStatus); if (next === undefined) return; try { await ElMessageBox.confirm(`确认${lifecycleActionLabel(row.lifecycleStatus)}“${row.appName}”？`, '确认操作', { type: 'warning' }); if (next === 1 || next === 4) await submitAppLifecycleApply(row.appId); else await changeAppLifecycleStatus(row.appId, next); ElMessage.success(next === 1 || next === 4 ? '已提交，等待平台审核' : '已进入调测'); await loadApps() } catch (error) { if (!isCancel(error)) notifyError(error, '生命周期操作失败') } }
 
-function handleTabChange(name: string | number) { if (name === 'apps') loadApps(); if (name === 'resources') loadResources(); if (name === 'grants') { loadApps(); loadResources(); loadGrantRequests() } if (name === 'credentials') loadApps() }
+function goToTab(name: string) { activeTab.value = name; handleTabChange(name) }
+async function refreshGuide() { await Promise.all([loadVendors(), loadApps(), loadResources(), loadGrantRequests()]) }
+function handleTabChange(name: string | number) {
+  if (name === 'apps') loadApps()
+  if (name === 'resources') loadResources()
+  if (name === 'grants') { loadApps(); loadResources(); loadGrantRequests() }
+  if (name === 'credentials') loadApps()
+  if (name === 'debug') { loadApps(); loadResources(); loadDebugHistory() }
+  if (name === 'guide') refreshGuide()
+}
 function vendorName(id?: string | number) { return vendors.value.find(item => String(item.id) === String(id))?.name || '-' }
 function appName(id?: string | number) { return apps.value.find(item => String(item.appId) === String(id))?.appName || id || '-' }
 function nextLifecycleStatus(status?: number) { return ({ 0: 1, 2: 3, 3: 4 } as Record<number, number>)[status ?? -1] }
@@ -518,8 +746,18 @@ function requestTagType(status?: number): TagType { return status === 1 ? 'succe
 function isCancel(error: unknown) { return error === 'cancel' || (error as { message?: string })?.message === 'cancel' }
 function notifyError(error: unknown, fallback: string) { ElMessage.error(error instanceof Error && error.message !== '请求失败' ? error.message : fallback) }
 
-watch(identityScopes, scopes => { appForm.scopes = [...new Set([...(appForm.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile'), ...scopes])] })
-onMounted(async () => { identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [{ label: '用户唯一标识（openid）', value: 'openid' }, { label: '用户基础资料（profile）', value: 'profile' }]); await loadVendors(); await Promise.all([loadApps(), loadResources()]) })
+watch([identityScopes, selectedAppResourceIds, resources], () => {
+  const resourceScopes = resources.value
+    .filter(resource => selectedAppResourceIds.value.some(id => String(id) === String(resource.id)))
+    .map(resource => resource.scopeCode)
+  appForm.scopes = [...new Set([...identityScopes.value, ...resourceScopes])]
+}, { deep: true })
+onMounted(async () => {
+  identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [{ label: '用户唯一标识（openid）', value: 'openid' }, { label: '用户基础资料（profile）', value: 'profile' }])
+  await Promise.all([loadVendors(), loadSchools(), loadResources()])
+  await loadApps()
+  await loadGrantRequests()
+})
 </script>
 
 <style lang="scss" scoped>
@@ -530,8 +768,12 @@ onMounted(async () => { identityScopeOptions.value = await loadDictOptions(OPEN_
 .portal-header p { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; }
 .portal-notice { margin-bottom: 16px; }
 .detail-card, .table-card, .form-card, .debug-card { margin-top: 16px; }
+.guide-card :deep(.el-steps) { margin: 12px 0 28px; }
+.guide-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-bottom: 20px; }
+.form-hint { width: 100%; margin-top: 6px; color: var(--el-text-color-secondary); font-size: 12px; }
 .debug-notice { margin-bottom: 16px; }
 .debug-form { margin-top: 16px; }
+.debug-parameter-table { width: 100%; }
 .debug-editor-wrap { width: 100%; }
 .debug-editor-wrap .el-button { padding-left: 0; }
 .debug-result-card, .debug-history-card { margin-top: 16px; }

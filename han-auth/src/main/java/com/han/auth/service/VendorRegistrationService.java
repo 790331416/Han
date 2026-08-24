@@ -38,19 +38,28 @@ public class VendorRegistrationService {
             throw new BusinessException("厂商注册信息不能为空");
         }
         validateCaptcha(dto);
-        String name = required(dto.getName(), "厂商名称不能为空");
-        String qualificationNo = required(dto.getQualificationNo(), "统一社会信用代码不能为空");
-        String contactName = required(dto.getContactName(), "联系人姓名不能为空");
-        String contactPhone = required(dto.getContactPhone(), "联系电话不能为空");
         String accountPhone = required(dto.getPhone(), "账号手机号不能为空");
         String username = required(dto.getUsername(), "登录用户名不能为空");
+        String nickname = trimToNull(dto.getNickname());
+        String name = trimToNull(dto.getName());
+        if (name == null) {
+            name = "个人开发者-" + username;
+        }
+        String qualificationNo = trimToNull(dto.getQualificationNo());
+        String contactName = trimToNull(dto.getContactName());
+        if (contactName == null) {
+            contactName = nickname == null ? username : nickname;
+        }
+        String contactPhone = trimToNull(dto.getContactPhone());
+        if (contactPhone == null) {
+            contactPhone = accountPhone;
+        }
         String password = resolveRegistrationPassword(dto);
 
         OpenVendorAccountCreateDTO account = new OpenVendorAccountCreateDTO();
         account.setTenantId(PLATFORM_TENANT_ID);
         account.setUsername(username);
-        account.setNickname(StringUtils.hasText(dto.getNickname())
-                ? dto.getNickname().trim() : contactName);
+        account.setNickname(nickname == null ? contactName : nickname);
         account.setPassword(password);
         account.setPhone(accountPhone);
         account.setEmail(dto.getEmail());
@@ -203,5 +212,9 @@ public class VendorRegistrationService {
             throw new BusinessException(message);
         }
         return value.trim();
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

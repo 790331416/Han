@@ -495,6 +495,33 @@ class OpenAppAuthorizationServiceImplTest {
         assertThat(reviewCaptor.getValue().getStatus()).isEqualTo(1);
     }
 
+    @Test
+    void reviewLifecycleApplyActivatesSelectedResourcesForApprovedEnvironment() {
+        SecurityContextHolder.setLoginUser(adminLoginUser());
+        OpenAppPo app = ownedApp();
+        app.setLifecycleStatus(1);
+        app.setScopes("openid,edu.teacher.read");
+        when(appMapper.selectOne(any())).thenReturn(app);
+        OpenAuthorizationRequestPo request = new OpenAuthorizationRequestPo();
+        request.setId(88L);
+        request.setTenantId(99L);
+        request.setAppId(123L);
+        request.setRequestType(3);
+        request.setStatus(0);
+        request.setEnvironment("SANDBOX");
+        when(authorizationRequestMapper.selectOne(any())).thenReturn(request);
+        when(resourceMapper.selectList(any())).thenReturn(List.of(publishedResource()));
+        when(baseMapper.selectOne(any())).thenReturn(null);
+
+        service.reviewAppLifecycleApply(123L, 1, "通过");
+
+        ArgumentCaptor<OpenAppResourceGrantPo> grantCaptor = ArgumentCaptor.forClass(OpenAppResourceGrantPo.class);
+        verify(baseMapper).insert(grantCaptor.capture());
+        assertThat(grantCaptor.getValue().getEnvironment()).isEqualTo("SANDBOX");
+        assertThat(grantCaptor.getValue().getScopes()).isEqualTo("edu.teacher.read");
+        assertThat(grantCaptor.getValue().getStatus()).isEqualTo(1);
+    }
+
     private static GrantApplyVO grantApplyVO() {
         GrantApplyVO vo = new GrantApplyVO();
         vo.setAppId(123L);

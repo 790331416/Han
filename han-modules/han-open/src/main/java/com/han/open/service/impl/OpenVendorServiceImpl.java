@@ -10,6 +10,7 @@ import com.han.common.core.exception.BusinessException;
 import com.han.api.open.domain.OpenVendorApplicationCreateDTO;
 import com.han.api.open.domain.OpenVendorApplicationStatusVO;
 import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.UserVO;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
@@ -34,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -102,7 +104,39 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
                 new Page<>(safePageNum, safePageSize), wrapper);
         List<OpenVendorApplicationAdminVO> rows = page.getRecords().stream()
                 .map(OpenVendorConverter::toApplicationAdminVO).toList();
+        enrichApplicationNames(rows, tenantId);
         return PageResult.of(rows, page.getTotal(), safePageNum, safePageSize);
+    }
+
+    private void enrichApplicationNames(List<OpenVendorApplicationAdminVO> applications, Long tenantId) {
+        Set<Long> vendorIds = applications.stream().map(OpenVendorApplicationAdminVO::getVendorId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        List<OpenVendorPo> vendors = vendorIds.isEmpty() ? List.of() : baseMapper.selectList(new LambdaQueryWrapper<OpenVendorPo>()
+                .in(OpenVendorPo::getId, vendorIds)
+                .eq(OpenVendorPo::getTenantId, tenantId)
+                .eq(OpenVendorPo::getDelFlag, 0));
+        Map<Long, String> vendorNames = (vendors == null ? List.<OpenVendorPo>of() : vendors).stream()
+                .collect(Collectors.toMap(OpenVendorPo::getId, OpenVendorPo::getName, (left, right) -> left));
+        for (OpenVendorApplicationAdminVO application : applications) {
+            application.setVendorName(vendorNames.get(application.getVendorId()));
+            application.setApplicantName(resolveUserDisplayName(application.getApplicantUserId()));
+        }
+    }
+
+    private String resolveUserDisplayName(Long userId) {
+        if (systemServiceClient == null || userId == null) {
+            return null;
+        }
+        try {
+            R<UserVO> response = systemServiceClient.getUserById(userId);
+            UserVO user = response != null && response.getCode() == Constants.SUCCESS ? response.getData() : null;
+            if (user == null) {
+                return null;
+            }
+            return userDisplayName(user);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     @Override
@@ -172,14 +206,14 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
             throw new BusinessException("厂商账号信息不能为空");
         }
         String name = requiredText(applicationDTO.getName(), "厂商名称不能为空");
-        String qualificationNo = requiredText(applicationDTO.getQualificationNo(), "统一社会信用代码不能为空");
-        String contactName = requiredText(applicationDTO.getContactName(), "联系人姓名不能为空");
-        String contactPhone = requiredText(applicationDTO.getContactPhone(), "联系电话不能为空");
+        String qualificationNo = trimToNull(applicationDTO.getQualificationNo());
+        String contactName = trimToNull(applicationDTO.getContactName());
+        String contactPhone = trimToNull(applicationDTO.getContactPhone());
         boolean duplicateName = TenantHelper.ignore(() -> baseMapper.selectCount(new LambdaQueryWrapper<OpenVendorPo>()
                 .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
                 .eq(OpenVendorPo::getName, name)
                 .eq(OpenVendorPo::getDelFlag, 0))) > 0;
-        boolean duplicateQualification = TenantHelper.ignore(() -> baseMapper.selectCount(new LambdaQueryWrapper<OpenVendorPo>()
+        boolean duplicateQualification = qualificationNo != null && TenantHelper.ignore(() -> baseMapper.selectCount(new LambdaQueryWrapper<OpenVendorPo>()
                 .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
                 .eq(OpenVendorPo::getQualificationNo, qualificationNo)
                 .eq(OpenVendorPo::getDelFlag, 0))) > 0;
@@ -233,13 +267,17 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
     /** 只有同账号、同 OWNER 绑定、同公开申请才允许在响应丢失后复用申请号。 */
     private String findIdempotentPortalApplication(OpenVendorApplicationCreateDTO dto,
                                                    String name, String qualificationNo) {
-        List<OpenVendorPo> candidates = TenantHelper.ignore(() -> baseMapper.selectList(
-                new LambdaQueryWrapper<OpenVendorPo>()
-                        .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
-                        .and(wrapper -> wrapper.eq(OpenVendorPo::getName, name)
-                                .or().eq(OpenVendorPo::getQualificationNo, qualificationNo))
-                        .eq(OpenVendorPo::getDelFlag, 0)
-                        .last("LIMIT 5")));
+        LambdaQueryWrapper<OpenVendorPo> wrapper = new LambdaQueryWrapper<OpenVendorPo>()
+                .eq(OpenVendorPo::getTenantId, PLATFORM_TENANT_ID)
+                .eq(OpenVendorPo::getDelFlag, 0)
+                .and(condition -> {
+                    condition.eq(OpenVendorPo::getName, name);
+                    if (qualificationNo != null) {
+                        condition.or().eq(OpenVendorPo::getQualificationNo, qualificationNo);
+                    }
+                })
+                .last("LIMIT 5");
+        List<OpenVendorPo> candidates = TenantHelper.ignore(() -> baseMapper.selectList(wrapper));
         if (candidates == null) {
             return null;
         }
@@ -320,6 +358,10 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
         return value.trim();
     }
 
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean reviewApplication(Long applicationId, Integer status, String reason) {
@@ -383,6 +425,7 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
                 .eq(OpenVendorUserPo::getStatus, 0));
         List<VendorDetailVO.VendorUserVO> users = userPos.stream()
                 .map(OpenVendorConverter::toUserVO).collect(Collectors.toList());
+        enrichUserProfiles(users);
 
         // 查询关联应用
         List<OpenAppPo> appPos = appMapper.selectList(new LambdaQueryWrapper<OpenAppPo>()
@@ -392,6 +435,38 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
         List<VendorDetailVO.VendorAppVO> apps = appPos.stream()
                 .map(OpenVendorConverter::toAppVO).collect(Collectors.toList());
         return OpenVendorConverter.toDetailVO(vendor, users, apps);
+    }
+
+    /** 关联表仅保存用户 ID；用户资料查询失败时仍返回厂商详情。 */
+    private void enrichUserProfiles(List<VendorDetailVO.VendorUserVO> users) {
+        if (systemServiceClient == null) {
+            return;
+        }
+        for (VendorDetailVO.VendorUserVO user : users) {
+            if (user.getUserId() == null) {
+                continue;
+            }
+            try {
+                R<UserVO> response = systemServiceClient.getUserById(user.getUserId());
+                UserVO profile = response != null && response.getCode() == Constants.SUCCESS ? response.getData() : null;
+                if (profile != null) {
+                    user.setUserName(userDisplayName(profile));
+                    user.setPhone(profile.getPhone());
+                }
+            } catch (RuntimeException ignored) {
+                // 用户资料属于详情增强信息，不能因此阻断厂商详情。
+            }
+        }
+    }
+
+    private String userDisplayName(UserVO user) {
+        if (StringUtils.hasText(user.getNickname())) {
+            return user.getNickname();
+        }
+        if (StringUtils.hasText(user.getUsername())) {
+            return user.getUsername();
+        }
+        return user.getPhone();
     }
 
     @Override
@@ -519,7 +594,7 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
             return false;
         }
         return switch (current) {
-            case STATUS_PENDING -> target == 3 || target == STATUS_APPROVED || target == STATUS_REJECTED;
+            case STATUS_PENDING -> target == STATUS_APPROVED || target == STATUS_REJECTED;
             case STATUS_APPROVED -> target == STATUS_SUSPENDED || target == STATUS_REVOKED;
             case STATUS_SUSPENDED -> target == STATUS_APPROVED || target == STATUS_REVOKED;
             default -> false;

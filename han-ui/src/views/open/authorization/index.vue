@@ -183,13 +183,18 @@ const secretVisible = ref(false)
 const secretTitle = ref('应用凭证')
 const secretCredential = reactive<Partial<OpenCredentialSecret>>({})
 
-onMounted(async () => { await loadApps(); await loadRequests(); await loadCredentials() })
+onMounted(async () => { await loadApps(); await Promise.all([loadRequests(), loadGrants(), loadCredentials()]) })
 
 async function loadApps() {
   try {
     const response = await listOpenApp({ pageNum: 1, pageSize: 200 })
     const data = (response as any).data
     apps.value = data?.rows || data?.records || []
+    const firstAppId = apps.value[0]?.appId
+    if (firstAppId) {
+      selectedGrantAppId.value ||= firstAppId
+      credentialAppId.value ||= firstAppId
+    }
   } catch (error) { apps.value = []; notifyError(error, '加载应用列表失败') }
 }
 

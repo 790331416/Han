@@ -10,7 +10,7 @@
       </div>
 
       <el-alert
-        title="请使用真实的联系人和企业信息；账号密码仅用于本次注册请求，不会保存到浏览器。"
+        title="账号信息用于登录和查询申请进度；企业资料均为选填。账号密码仅用于本次注册请求，不会保存到浏览器。"
         type="info"
         :closable="false"
         show-icon
@@ -53,13 +53,10 @@
         </section>
 
         <section class="form-section">
-          <div class="section-heading"><strong>企业资料</strong><span>带 <em>*</em> 的项目为必填</span></div>
+          <div class="section-heading"><strong>企业资料</strong><span>均为选填，可在审核时补充</span></div>
           <div class="form-grid">
             <el-form-item label="厂商名称" prop="name">
               <el-input v-model="form.name" data-testid="vendor-apply-name" placeholder="请输入企业/机构名称" />
-            </el-form-item>
-            <el-form-item label="统一社会信用代码" prop="qualificationNo">
-              <el-input v-model="form.qualificationNo" data-testid="vendor-apply-qualification" placeholder="请输入统一社会信用代码" />
             </el-form-item>
             <el-form-item label="企业联系人" prop="contactName">
               <el-input v-model="form.contactName" data-testid="vendor-apply-contact-name" placeholder="请输入企业联系人" />
@@ -156,10 +153,9 @@ const rules: FormRules = {
   phone: [{ required: true, message: '请输入联系电话', trigger: 'blur' }],
   email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
   code: [{ validator: (_rule, value, callback) => captchaEnabled.value && !value ? callback(new Error('请输入验证码')) : callback(), trigger: 'blur' }],
-  name: [{ required: true, message: '请输入厂商名称', trigger: 'blur' }],
-  qualificationNo: [{ required: true, message: '请输入统一社会信用代码', trigger: 'blur' }],
-  contactName: [{ required: true, message: '请输入企业联系人', trigger: 'blur' }],
-  contactPhone: [{ required: true, message: '请输入联系人电话', trigger: 'blur' }]
+  name: [],
+  contactName: [],
+  contactPhone: []
 }
 
 async function loadCaptcha() {
@@ -247,14 +243,14 @@ async function submitApplication() {
       nickname: form.nickname,
       phone: form.phone,
       email: form.email,
-      name: form.name,
-      qualificationNo: form.qualificationNo,
-      industry: form.industry,
-      contactName: form.contactName,
-      contactPhone: form.contactPhone,
-      contactEmail: form.contactEmail,
-      website: form.website,
-      applyReason: form.applyReason,
+      name: form.name || undefined,
+      qualificationNo: undefined,
+      industry: form.industry || undefined,
+      contactName: form.contactName || undefined,
+      contactPhone: form.contactPhone || undefined,
+      contactEmail: form.contactEmail || undefined,
+      website: form.website || undefined,
+      applyReason: form.applyReason || undefined,
       encryptedPassword,
       plainPassword: webCryptoAvailable ? undefined : form.password,
       captchaCode: form.code || undefined,
@@ -264,7 +260,7 @@ async function submitApplication() {
     const data = response.data
     const applicationNo = typeof data === 'string' ? data : data?.applicationNo
     if (!applicationNo) throw new Error('申请已提交，但未返回申请编号')
-    statusQuery.contactPhone = form.contactPhone
+    statusQuery.contactPhone = form.contactPhone || form.phone
     statusResult.value = undefined
     ElMessage.success('申请已提交，可凭联系人电话查询审核进度')
   } catch (error) {
@@ -272,7 +268,6 @@ async function submitApplication() {
     if (captchaEnabled.value) await loadCaptcha()
   } finally {
     submitting.value = false
-    form.password = ''
     if (payload) {
       payload.encryptedPassword = undefined
       payload.plainPassword = undefined

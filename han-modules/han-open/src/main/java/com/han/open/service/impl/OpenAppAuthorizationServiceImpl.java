@@ -348,7 +348,10 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
                 .orderByDesc(OpenAuthorizationRequestPo::getCreateTime)
                 .last("LIMIT 1"));
         if (request == null) {
-            throw new BusinessException("应用开通申请不存在或已审核");
+            request = restoreLifecycleApply(app, tenantId, currentUserId, requestType);
+            if (authorizationRequestMapper.insert(request) != 1) {
+                throw new BusinessException("历史开通申请补齐失败");
+            }
         }
         OpenAuthorizationRequestPo review = new OpenAuthorizationRequestPo();
         review.setStatus(status);
@@ -374,6 +377,70 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
         update.setUpdateBy(currentUserId);
         appMapper.updateById(update);
+        if (status == REQUEST_APPROVED) {
+            activateLifecycleResources(app, request.getEnvironment(), currentUserId, reason);
+        }
+    }
+
+    /**
+     * 旧生命周期接口曾只更新应用状态，未创建审核记录；审核时补齐并保留修复痕迹。
+     */
+    private OpenAuthorizationRequestPo restoreLifecycleApply(OpenAppPo app, Long tenantId,
+                                                               Long currentUserId, int requestType) {
+        String environment = requestType == REQUEST_SANDBOX_OPEN ? "SANDBOX" : "PROD";
+        Long applicantId = app.getCreateBy() == null ? currentUserId : app.getCreateBy();
+        OpenAuthorizationRequestPo request = new OpenAuthorizationRequestPo();
+        request.setTenantId(tenantId);
+        request.setAppId(app.getId());
+        request.setEnvironment(environment);
+        request.setRequestType(requestType);
+        request.setStatus(REQUEST_PENDING);
+        request.setRequestData(environment);
+        request.setReason("补齐历史开通申请记录");
+        request.setApplicantId(applicantId);
+        request.setCreateBy(applicantId);
+        return request;
+    }
+
+    /**
+     * 应用开通审核已包含其创建时选定的接口范围；审核通过后同步落为该环境的有效授权。
+     * 后续新增接口仍走独立授权申请，已撤销或已驳回的授权不会被这里重新激活。
+     */
+    private void activateLifecycleResources(OpenAppPo app, String environment, Long reviewerId, String reviewReason) {
+        if (app.getId() == null || app.getTenantId() == null || !StringUtils.hasText(app.getScopes())) {
+            return;
+        }
+        Set<String> appScopes = java.util.Arrays.stream(app.getScopes().split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+        if (appScopes.isEmpty()) {
+            return;
+        }
+        for (OpenApiResourcePo resource : resourceMapper.selectList(new LambdaQueryWrapper<OpenApiResourcePo>()
+                .eq(OpenApiResourcePo::getStatus, 0)
+                .eq(OpenApiResourcePo::getPublishStatus, 2)
+                .eq(OpenApiResourcePo::getAllowApply, 1))) {
+            if (!StringUtils.hasText(resource.getScopeCode()) || !appScopes.contains(resource.getScopeCode().trim())
+                    || findGrant(app.getTenantId(), app.getId(), resource.getId(), environment) != null) {
+                continue;
+            }
+            OpenAppResourceGrantPo grant = new OpenAppResourceGrantPo();
+            grant.setTenantId(app.getTenantId());
+            grant.setAppId(app.getId());
+            grant.setResourceId(resource.getId());
+            grant.setEnvironment(environment);
+            grant.setScopes(resource.getScopeCode().trim());
+            grant.setQuota(0L);
+            grant.setStatus(GRANT_ACTIVE);
+            grant.setApplyReason("随应用开通审核自动授权");
+            grant.setReviewReason(reviewReason);
+            grant.setReviewerId(reviewerId);
+            grant.setReviewTime(LocalDateTime.now());
+            grant.setCreateBy(reviewerId);
+            grant.setUpdateBy(reviewerId);
+            baseMapper.insert(grant);
+        }
     }
 
     @Override

@@ -5,6 +5,7 @@ export interface OpenVendorUser {
   userId: string | number
   userName?: string
   username?: string
+  phone?: string
   role?: string
   status?: number
 }
@@ -43,6 +44,8 @@ export interface OpenVendorApplication {
   applicationId: string | number
   vendorId: string | number
   applicantUserId?: string | number
+  vendorName?: string
+  applicantName?: string
   applicationNo?: string
   status: number
   applyData?: string

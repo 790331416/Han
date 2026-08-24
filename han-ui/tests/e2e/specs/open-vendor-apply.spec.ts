@@ -76,10 +76,6 @@ async function fillRequired(page: Page, includeCaptcha = true) {
   await page.getByRole('textbox', { name: '昵称' }).fill('E2E Vendor')
   await page.getByRole('textbox', { name: '登录密码' }).fill(['Vendor', 'Only', '2026', '!'].join(''))
   await page.getByRole('textbox', { name: '联系电话' }).first().fill('13800000001')
-  await page.getByRole('textbox', { name: '厂商名称' }).fill('E2E Vendor Company')
-  await page.getByRole('textbox', { name: '统一社会信用代码' }).fill('E2E-USCC-001')
-  await page.getByRole('textbox', { name: '企业联系人' }).fill('E2E Contact')
-  await page.getByRole('textbox', { name: '联系人电话' }).first().fill('13800000002')
   if (includeCaptcha) await page.getByRole('textbox', { name: '验证码' }).fill('ABCD')
 }
 
@@ -142,14 +138,19 @@ test.describe('厂商入驻公开入口', () => {
     await page.goto('/open/vendor-apply')
     await fillRequired(page)
 
+    await expect(page.getByTestId('vendor-apply-qualification')).toHaveCount(0)
     await expect(page.getByTestId('vendor-apply-insecure-http-warning')).toBeVisible()
     await page.getByTestId('vendor-apply-submit').click()
     await expect(page.locator('.el-message--success')).toContainText('可凭联系人电话查询审核进度')
     expect(typeof registerBody?.plainPassword).toBe('string')
     expect(registerBody?.encryptedPassword).toBeUndefined()
+    expect(registerBody?.qualificationNo).toBeUndefined()
+    expect(registerBody?.name).toBeUndefined()
+    expect(registerBody?.contactName).toBeUndefined()
+    expect(registerBody?.contactPhone).toBeUndefined()
   })
 
-  test('成功提交后只按手机号查询进度并清空密码', async ({ page }) => {
+  test('成功提交后只按手机号查询进度并保留密码便于重试', async ({ page }) => {
     let registerBody: Record<string, unknown> | undefined
     let statusRequestUrl = ''
     const pageErrors: string[] = []
@@ -164,17 +165,33 @@ test.describe('厂商入驻公开入口', () => {
 
     await page.getByTestId('vendor-apply-submit').click()
     await expect(page.locator('.el-message--success')).toContainText('可凭联系人电话查询审核进度')
-    await expect(page.getByRole('textbox', { name: '登录密码' })).toHaveValue('')
+    await expect(page.getByRole('textbox', { name: '登录密码' })).toHaveValue('VendorOnly2026!')
     expect(typeof registerBody?.encryptedPassword).toBe('string')
     expect(registerBody?.password).toBeUndefined()
     expect(registerBody?.captchaCode).toBe('ABCD')
     expect(registerBody?.captchaUuid).toBe('e2e-captcha')
 
-    await page.getByRole('textbox', { name: '联系人电话' }).last().fill('13800000002')
+    await page.getByRole('textbox', { name: '联系人电话' }).last().fill('13800000001')
     await page.getByRole('button', { name: '查询' }).click()
     await expect(page.getByText('待审核')).toBeVisible()
-    expect(statusRequestUrl).toContain('contactPhone=13800000002')
+    expect(statusRequestUrl).toContain('contactPhone=13800000001')
     expect(statusRequestUrl).not.toContain('applicationNo=')
     expect(pageErrors).toEqual([])
+  })
+
+  test('验证码错误后保留密码便于重新输入验证码', async ({ page }) => {
+    await mockAuthAndPublicApi(page)
+    await page.route('**/auth/vendor/register', (route) => route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: responseBody(null, 400, '验证码错误')
+    }))
+    await page.goto('/open/vendor-apply')
+    await fillRequired(page)
+
+    await page.getByTestId('vendor-apply-submit').click()
+
+    await expect(page.locator('.el-message--error').last()).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '登录密码' })).toHaveValue('VendorOnly2026!')
   })
 })
