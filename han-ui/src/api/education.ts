@@ -308,6 +308,19 @@ export interface PersonResult {
   initialPassword?: string
 }
 
+/** 「关联已有账号」模式下供确认的候选账号（服务端脱敏/只读列表）。 */
+export interface LinkableAccount {
+  userId: string | number
+  nickname?: string
+  phone?: string
+  email?: string
+}
+
+/** 当前租户正常状态账号的简单列表，供「关联已有账号」按手机号匹配并脱敏确认。 */
+export function listLinkableAccounts() {
+  return get<LinkableAccount[]>('/system/user/simple-list')
+}
+
 export interface PersonMembership {
   id: string | number
   personId: string | number

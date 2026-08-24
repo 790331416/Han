@@ -33,6 +33,33 @@ export interface UserInfo {
   email: string
   roles: string[]
   permissions: string[]
+  /** 当前学校身份（后端 userinfo 暂未返回，字段预留，实际以 /auth/identities 为准）。 */
+  identityId?: string | number
+  schoolId?: string | number
+  schoolName?: string
+  personType?: string
+  dutyCode?: string
+  dutyName?: string
+  identityDisplayName?: string
+}
+
+/**
+ * 学校身份摘要（登录身份选择 / 顶部身份展示 / 身份切换）。
+ *
+ * 后端 IdentityVO 实际返回：identityId/schoolId/schoolName/personType/dutyCode/
+ * dutyName/identityDisplayName/current；managementAvailable 当前不返回，由前端按
+ * dutyCode === 'SCHOOL_ADMIN' 推导管理端可用性。
+ */
+export interface IdentityVO {
+  identityId: string | number
+  schoolId: string | number
+  schoolName: string
+  personType: string
+  dutyCode: string
+  dutyName: string
+  identityDisplayName: string
+  current: boolean
+  managementAvailable?: boolean
 }
 
 // 登录请求
@@ -51,6 +78,10 @@ export interface LoginVO {
   expiresIn: number
   forceChangePassword: boolean
   requireTotp: boolean
+  /** 多学校身份：为 true 时未签发正式 Token，需凭 identityTicket 选择身份。 */
+  requireIdentity?: boolean
+  identityTicket?: string
+  identities?: IdentityVO[]
   userInfo: {
     userId: string | number
     username: string

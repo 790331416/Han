@@ -55,6 +55,23 @@
         <el-icon><ArrowDown /></el-icon>
       </div>
 
+      <div
+        v-if="userStore.identityDisplayName"
+        class="identity-switcher"
+        :class="{ clickable: hasMultipleIdentities }"
+        data-testid="identity-switcher"
+        @click="hasMultipleIdentities && openIdentityDialog()"
+      >
+        <el-icon><School /></el-icon>
+        <span class="identity-text">
+          <span class="identity-school">{{ userStore.schoolName }}</span>
+          <span class="identity-sep">/</span>
+          <span class="identity-person">{{ userStore.identityDisplayName }}</span>
+          <span v-if="userStore.dutyName" class="identity-duty">{{ userStore.dutyName }}</span>
+        </span>
+        <el-icon v-if="hasMultipleIdentities"><ArrowDown /></el-icon>
+      </div>
+
       <el-dropdown trigger="click">
         <div class="avatar-wrapper" data-testid="navbar-user-menu">
           <el-avatar :size="32" :src="userStore.avatar || defaultAvatar" />
@@ -109,6 +126,39 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="identityDialogVisible" title="切换学校身份" width="460px" destroy-on-close>
+      <div v-loading="identityLoading">
+        <el-radio-group v-model="selectedIdentityId" class="identity-radio-group">
+          <el-radio
+            v-for="item in userStore.identityList"
+            :key="item.identityId"
+            :value="item.identityId"
+            :disabled="!userStore.identityManagementAvailable(item)"
+            class="identity-radio-item"
+          >
+            <span class="identity-option">
+              <span class="identity-main">{{ item.schoolName }} / {{ item.identityDisplayName }}</span>
+              <span class="identity-sub">{{ item.dutyName || '—' }}</span>
+              <el-tag v-if="item.current" type="primary" size="small" class="identity-tag">当前</el-tag>
+              <el-tag v-if="!userStore.identityManagementAvailable(item)" type="info" size="small" class="identity-tag">无管理端权限</el-tag>
+            </span>
+          </el-radio>
+        </el-radio-group>
+        <el-empty v-if="!identityLoading && userStore.identityList.length === 0" description="暂无可切换的学校身份" />
+      </div>
+      <template #footer>
+        <el-button @click="identityDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="identitySwitching"
+          :disabled="!selectedIdentityId"
+          @click="handleSwitchIdentity"
+        >
+          确认切换
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -124,6 +174,7 @@ import {
   HomeFilled,
   Moon,
   OfficeBuilding,
+  School,
   Setting,
   Sunny,
   SwitchButton,
@@ -131,7 +182,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useDark, useFullscreen, useToggle } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { getMyTenants, switchTenant, type TenantSimple } from '@/api/auth'
+import { getMyTenants, switchTenant, switchIdentity, type TenantSimple } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import NotifyBell from './NotifyBell.vue'
@@ -236,6 +287,70 @@ const handleLogout = async () => {
   await userStore.logout()
   router.push('/login')
 }
+
+// ==================== 学校身份切换 ====================
+const hasMultipleIdentities = computed(() => userStore.identityList.length > 1)
+const identityDialogVisible = ref(false)
+const identityLoading = ref(false)
+const identitySwitching = ref(false)
+const selectedIdentityId = ref<string | number>()
+
+const openIdentityDialog = async () => {
+  identityDialogVisible.value = true
+  identityLoading.value = true
+  selectedIdentityId.value = undefined
+
+  try {
+    // 打开时刷新一次身份列表，current 标记与有效性以服务端为准。
+    const list = await userStore.loadIdentities()
+    const current = list.find((item) => item.current)
+    if (current) {
+      selectedIdentityId.value = current.identityId
+    }
+  } catch {
+    // 身份列表不可用时保留原列表，错误提示统一由请求层处理。
+  } finally {
+    identityLoading.value = false
+  }
+}
+
+const handleSwitchIdentity = async () => {
+  if (!selectedIdentityId.value) return
+
+  const current = userStore.identityList.find((item) => item.current)
+  if (current && String(current.identityId) === String(selectedIdentityId.value)) {
+    identityDialogVisible.value = false
+    return
+  }
+
+  identitySwitching.value = true
+  try {
+    const res = await switchIdentity(selectedIdentityId.value)
+    const data = (res as any).data
+
+    if (data?.accessToken) {
+      const chosen = userStore.identityList.find((item) => String(item.identityId) === String(selectedIdentityId.value))
+      /**
+       * 身份切换会签发全新登录会话，且作废旧身份课堂凭证。
+       * 复用租户切换的收口方式：applySession 全量清理会话 + location.reload()
+       * 清空路由 / 页签 / KeepAlive，避免旧身份的菜单与数据残留。
+       */
+      userStore.applySession(
+        data.accessToken,
+        data.refreshToken,
+        data.userInfo?.userId ?? null
+      )
+      userStore.applyIdentity(chosen)
+      identityDialogVisible.value = false
+      ElMessage.success('身份切换成功，正在刷新...')
+      setTimeout(() => window.location.reload(), 500)
+    }
+  } catch {
+    // 错误提示统一由请求层处理。
+  } finally {
+    identitySwitching.value = false
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -325,6 +440,95 @@ html.dark .navbar {
   }
 }
 
+.identity-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: default;
+  color: #374151;
+  font-size: 13px;
+  border: 1px solid #e5e7eb;
+
+  &.clickable {
+    cursor: pointer;
+
+    &:hover {
+      background: #eff6ff;
+      border-color: #2563eb;
+      color: #2563eb;
+    }
+  }
+
+  .identity-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .identity-school {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .identity-sep {
+    color: #9ca3af;
+  }
+
+  .identity-person {
+    font-weight: 500;
+  }
+
+  .identity-duty {
+    padding: 0 6px;
+    font-size: 11px;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-radius: 4px;
+  }
+}
+
+.identity-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.identity-radio-item {
+  height: auto;
+  padding: 8px 0;
+  white-space: normal;
+}
+
+.identity-option {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.identity-main {
+  font-weight: 500;
+}
+
+.identity-sub {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.identity-tag {
+  margin-left: 2px;
+}
+
 .tenant-radio-group {
   display: flex;
   flex-direction: column;
@@ -398,6 +602,22 @@ html.dark {
       background: #172554;
       border-color: #3b82f6;
       color: #3b82f6;
+    }
+  }
+
+  .identity-switcher {
+    color: #e5e7eb;
+    border-color: #374151;
+
+    &.clickable:hover {
+      background: #172554;
+      border-color: #3b82f6;
+      color: #3b82f6;
+    }
+
+    .identity-duty {
+      color: #d1d5db;
+      background: #1f2937;
     }
   }
 

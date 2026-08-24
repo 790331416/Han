@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { getToken, setToken, removeToken, setRefreshToken, removeRefreshToken } from '@/utils/auth'
-import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'
-import type { LoginDTO, UserInfo } from '@/types'
+import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi, getMyIdentities as getMyIdentitiesApi } from '@/api/auth'
+import type { LoginDTO, UserInfo, IdentityVO } from '@/types'
 
 /**
  * 用户会话 Store。
@@ -20,11 +20,49 @@ export const useUserStore = defineStore('user', () => {
   const roles = ref<string[]>([])
   const permissions = ref<string[]>([])
 
+  // 当前学校身份（一账号多学校身份，按身份隔离展示与切换）。
+  const identityId = ref<string | number | null>(null)
+  const schoolId = ref<string | number | null>(null)
+  const schoolName = ref('')
+  const personType = ref('')
+  const dutyCode = ref('')
+  const dutyName = ref('')
+  const identityDisplayName = ref('')
+  const identityList = ref<IdentityVO[]>([])
+
   const isLogin = computed(() => !!token.value)
   const userId = computed(() => userInfo.value?.userId ?? null)
   const username = computed(() => userInfo.value?.username ?? '')
   const nickname = computed(() => userInfo.value?.nickname ?? '')
   const avatar = computed(() => userInfo.value?.avatar ?? '')
+
+  /** 管理端可用性：后端当前不返回 managementAvailable，按校内岗位推导。 */
+  function identityManagementAvailable(identity?: IdentityVO | null) {
+    if (!identity) return false
+    if (typeof identity.managementAvailable === 'boolean') return identity.managementAvailable
+    return String(identity.dutyCode || '').toUpperCase() === 'SCHOOL_ADMIN'
+  }
+
+  /** 把一条身份摘要写入当前身份字段（identity 为空则清空）。 */
+  function applyIdentity(identity?: IdentityVO | null) {
+    identityId.value = identity?.identityId ?? null
+    schoolId.value = identity?.schoolId ?? null
+    schoolName.value = identity?.schoolName ?? ''
+    personType.value = identity?.personType ?? ''
+    dutyCode.value = identity?.dutyCode ?? ''
+    dutyName.value = identity?.dutyName ?? ''
+    identityDisplayName.value = identity?.identityDisplayName ?? ''
+  }
+
+  /** 拉取当前账号有效身份列表，并把 current 身份写回 Store。 */
+  async function loadIdentities() {
+    const res = await getMyIdentitiesApi()
+    const list = res.data || []
+    identityList.value = list
+    const current = list.find((item) => item.current) ?? (list.length === 1 ? list[0] : null)
+    applyIdentity(current)
+    return list
+  }
 
   /**
    * 统一写入访问令牌、刷新令牌和调试身份锚点。
@@ -36,6 +74,9 @@ export const useUserStore = defineStore('user', () => {
     tenantName.value = ''
     roles.value = []
     permissions.value = []
+    // 身份字段随会话一并失效，避免新会话误用上一个账号/身份。
+    identityList.value = []
+    applyIdentity(null)
     token.value = accessToken
     _userId.value = runtimeUserId ?? null
     setToken(accessToken)
@@ -55,18 +96,24 @@ export const useUserStore = defineStore('user', () => {
     tenantName.value = ''
     roles.value = []
     permissions.value = []
+    identityList.value = []
+    applyIdentity(null)
     removeToken()
     removeRefreshToken()
   }
 
   async function login(loginForm: LoginDTO) {
     const res = await loginApi(loginForm)
-    applySession(res.data.accessToken, res.data.refreshToken, res.data.userInfo?.userId ?? null)
+    // 多学校身份待选择时后端不签发正式 Token，不能在 Store 里写入空令牌。
+    if (!res.data?.requireIdentity) {
+      applySession(res.data.accessToken, res.data.refreshToken, res.data.userInfo?.userId ?? null)
+    }
     return res
   }
 
   /**
    * 刷新用户资料时同步更新 `_userId`，避免调试身份锚点长期保留旧值。
+   * 当前身份不在 userinfo 内，额外拉取 /auth/identities（失败不阻断登录）。
    */
   async function getInfo() {
     const res = await getUserInfoApi()
@@ -76,6 +123,11 @@ export const useUserStore = defineStore('user', () => {
     tenantName.value = (res.data as UserInfo & { tenantName?: string }).tenantName || ''
     roles.value = res.data.roles || []
     permissions.value = res.data.permissions || []
+    try {
+      await loadIdentities()
+    } catch (_error) {
+      // 身份接口不可用时保留空身份，不影响菜单与权限加载。
+    }
     return res.data
   }
 
@@ -111,11 +163,22 @@ export const useUserStore = defineStore('user', () => {
     tenantName,
     roles,
     permissions,
+    identityId,
+    schoolId,
+    schoolName,
+    personType,
+    dutyCode,
+    dutyName,
+    identityDisplayName,
+    identityList,
     isLogin,
     userId,
     username,
     nickname,
     avatar,
+    applyIdentity,
+    loadIdentities,
+    identityManagementAvailable,
     applySession,
     clearUserContext,
     login,

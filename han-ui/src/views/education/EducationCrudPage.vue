@@ -185,7 +185,7 @@
             <el-select
               v-else-if="field.type === 'select'"
               v-model="form[field.key]"
-              clearable
+              :clearable="field.clearable !== false"
               filterable
               :disabled="field.key === 'deviceType' && Array.isArray(form.applicationTypes) && form.applicationTypes.length > 0"
               style="width: 100%"
@@ -229,6 +229,26 @@
             />
           </el-form-item>
         </template>
+        <div
+          v-if="entity === 'people' && form.accountMode === 'LINK'"
+          v-loading="linkAccountChecking"
+          class="account-link-preview"
+        >
+          <el-alert
+            v-if="linkAccountPreview"
+            type="success"
+            :closable="false"
+            show-icon
+            :title="`将关联已有账号：${maskPhone(linkAccountPreview.phone)}（${linkAccountPreview.nickname || '—'}）`"
+          />
+          <el-alert
+            v-else-if="!linkAccountChecking"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="未找到与该手机号匹配的已有账号，保存时将按手机号创建新账号"
+          />
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -262,6 +282,7 @@ import {
   downloadPersonImportTemplate,
   importPeople,
   listEducation,
+  listLinkableAccounts,
   listPersonAssignments,
   listPersonMemberships,
   listPersonRoles,
@@ -273,6 +294,7 @@ import {
   type EducationQuery,
   type EducationOrganizationNode,
   type EducationRecord,
+  type LinkableAccount,
   type PersonImportResult,
   listOrganizationTree
 } from '@/api/education'
@@ -297,6 +319,7 @@ interface Field {
   source?: OptionSource
   selector?: Selector
   multiple?: boolean
+  clearable?: boolean
   hint?: string
   initial?: unknown
   visibleWhen?: (form: EducationRecord) => boolean
@@ -325,6 +348,14 @@ const ASSET_STATUS_FALLBACKS = [
   { label: '在用', value: 'IN_USE' },
   { label: '闲置', value: 'IDLE' },
   { label: '报废', value: 'SCRAPPED' }
+]
+
+// 人员登录账号模式：创建新账号 / 关联已有账号 / 暂不启用登录。
+// 后端按手机号自动区分「关联已有账号」与「新建账号」，前端只负责表达意图并脱敏确认。
+const ACCOUNT_MODE_OPTIONS = [
+  { label: '创建新账号', value: 'CREATE' },
+  { label: '关联已有账号', value: 'LINK' },
+  { label: '暂不启用登录', value: 'DISABLED' }
 ]
 
 const props = defineProps<{ entity: EducationEntity }>()
@@ -364,10 +395,10 @@ const configs: Record<EducationEntity, EntityConfig> = {
       { key: 'classIds', label: '任教班级', selector: 'teachingClass', multiple: true, hint: '教师可勾选年级或班级；勾选年级会自动关联其下全部班级。学生只能选择一个班级' },
       { key: 'subjectIds', label: '任教科目', selector: 'subject', multiple: true, visibleWhen: (form) => form.personType !== 'STUDENT' },
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
-      { key: 'loginEnabled', label: '启用校端登录', type: 'switch', initial: true, hint: '启用后可使用手机号和密码登录校端' },
-      { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => !!form.loginEnabled, hint: '留空则由系统生成并要求首次登录修改' },
-      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER', hint: '开启后才可选择管理端角色；不会改变校端职务' },
-      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess },
+      { key: 'accountMode', label: '登录账号', type: 'select', clearable: false, initial: 'CREATE', hint: '创建新账号 / 关联已有账号 / 暂不启用登录；关联已有账号按手机号匹配并脱敏确认' },
+      { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => form.accountMode === 'CREATE', hint: '留空则由系统生成并要求首次登录修改' },
+      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && form.accountMode === 'CREATE', hint: '开启后才可选择管理端角色；不会改变校端职务' },
+      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess && form.accountMode === 'CREATE' },
       { key: 'status', label: '状态', required: true, type: 'status' },
       { key: 'remark', label: '备注', type: 'textarea' }
     ]
@@ -406,6 +437,10 @@ const options = reactive<Record<string, Array<{ label: string; value: any }>>>({
 const schoolOptions = ref<Array<{ label: string; value: any }>>([])
 const organizations = ref<EducationOrganizationNode[]>([])
 const query = reactive<EducationQuery>({ keyword: '', status: '', personType: '', pageNum: 1, pageSize: 20 })
+
+// 「关联已有账号」模式的候选账号脱敏确认（按手机号匹配）。
+const linkAccountPreview = ref<LinkableAccount | null>(null)
+const linkAccountChecking = ref(false)
 
 const visibleFields = computed(() => config.value.fields.filter((field) => !field.visibleWhen || field.visibleWhen(form)))
 const deviceSceneTree = computed(() => {
@@ -454,6 +489,11 @@ function roomTypeLabel(value: unknown) { return ({ LIVE: '直播教室', ATTEND:
 function dutyLabel(value: unknown) {
   return findDictLabel(options.dutyCode || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '普通教师')
 }
+function maskPhone(value: unknown) {
+  const phone = String(value || '')
+  if (phone.length < 7) return phone
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`
+}
 function dictLabel(key: string, value: unknown) {
   return findDictLabel(options[key] || [], typeof value === 'string' || typeof value === 'number' ? value : undefined, '—')
 }
@@ -494,6 +534,25 @@ watch(() => form.personType, (personType, previous) => {
     form.roleIds = []
   } else if (!form.dutyCode) {
     form.dutyCode = 'TEACHER'
+  }
+})
+
+// 「关联已有账号」模式：按手机号匹配候选账号并脱敏展示供确认。
+watch([() => form.accountMode, () => form.phone], async ([mode, phone]) => {
+  if (props.entity !== 'people' || mode !== 'LINK' || !phone) {
+    linkAccountPreview.value = null
+    linkAccountChecking.value = false
+    return
+  }
+  linkAccountChecking.value = true
+  try {
+    const response = await listLinkableAccounts()
+    const list = response.data || []
+    linkAccountPreview.value = list.find((item) => String(item.phone || '').trim() === String(phone).trim()) || null
+  } catch {
+    linkAccountPreview.value = null
+  } finally {
+    linkAccountChecking.value = false
   }
 })
 
@@ -555,7 +614,7 @@ async function handleEdit(row: EducationRecord) {
   if (props.entity === 'devices') {
     form.applicationTypes = String(row.applicationTypes || '').split(',').filter(Boolean)
   }
-  form.loginEnabled = !!row.userId
+  form.accountMode = row.userId ? 'CREATE' : 'DISABLED'
   // 引入岗位维度之前建的人员 duty_code 是空的，服务端按普通教师解释，表单要显示成同一个值。
   if (props.entity === 'people' && form.personType === 'TEACHER' && !form.dutyCode) form.dutyCode = 'TEACHER'
   await loadFormOptions()
@@ -577,16 +636,20 @@ async function handleEdit(row: EducationRecord) {
 
 async function handleRebindAccount(row: EducationRecord) {
   await handleEdit(row)
-  form.loginEnabled = true
+  form.accountMode = 'CREATE'
   form.password = ''
   dialogTitle.value = '重新绑定并设置密码'
 }
 
 async function handleResetPassword(row: EducationRecord) {
-  const result = await ElMessageBox.prompt(`请输入“${row.personName}”的新密码`, '重置人员登录密码', {
-    inputPattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]).{8,32}$/,
-    inputErrorMessage: '密码须为8-32位且包含大小写字母、数字和特殊字符'
-  }) as unknown as { value: string }
+  const result = await ElMessageBox.prompt(
+    `请输入“${row.personName}”的新密码\n\n注意：该账号可能关联多个学校身份，重置后会影响该账号在全部学校的登录身份。`,
+    '重置人员登录密码',
+    {
+      inputPattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]).{8,32}$/,
+      inputErrorMessage: '密码须为8-32位且包含大小写字母、数字和特殊字符'
+    }
+  ) as unknown as { value: string }
   await resetPersonPassword(row.id!, result.value)
   ElMessage.success('重置成功')
 }
@@ -616,6 +679,7 @@ async function loadFormOptions() {
       { label: '教师', value: 'TEACHER' },
       { label: '学生', value: 'STUDENT' }
     ]
+    options.accountMode = ACCOUNT_MODE_OPTIONS
     if (!options.dutyCode?.length) options.dutyCode = DUTY_FALLBACKS
   }
 }
@@ -626,6 +690,7 @@ async function loadEntityOptions() {
       { label: '教师', value: 'TEACHER' },
       { label: '学生', value: 'STUDENT' }
     ]
+    options.accountMode = ACCOUNT_MODE_OPTIONS
     await loadOptions('schoolDuties')
     if (!options.dutyCode?.length) options.dutyCode = DUTY_FALLBACKS
     return
@@ -688,10 +753,21 @@ async function submitForm() {
 async function submitPerson() {
   const payload: EducationRecord = { ...form }
   const isStudent = payload.personType === 'STUDENT'
+  const accountMode = payload.accountMode === 'LINK' ? 'LINK' : payload.accountMode === 'DISABLED' ? 'DISABLED' : 'CREATE'
+  // accountMode 是前端意图字段，不进入后端 Person 表单。
+  delete payload.accountMode
+
+  // 登录账号开关：CREATE / LINK 都视为启用登录，DISABLED 明确关停。
+  payload.loginEnabled = accountMode !== 'DISABLED'
+
   if (isStudent) {
     delete payload.dutyCode
     delete payload.roleIds
     if (payload.id && payload.userId) payload.clearRoles = true
+  } else if (accountMode !== 'CREATE') {
+    // 关联已有账号：不建新号、不动账号角色；暂不启用登录：只停用账号。两者都不触碰角色。
+    delete payload.roleIds
+    delete payload.clearRoles
   } else if (!payload.managementAccess) {
     if (payload.id && payload.userId) {
       await ElMessageBox.confirm('关闭管理端权限后将清除该人员的管理端角色，确认继续吗？', '确认变更', { type: 'warning' })
@@ -704,12 +780,18 @@ async function submitPerson() {
   } else {
     delete payload.clearRoles
   }
+
   if (!payload.loginEnabled) {
     delete payload.username
     delete payload.password
+  } else if (accountMode === 'LINK') {
+    // 关联已有账号：口令由既有账号保持，表单不提交口令与登录名。
+    delete payload.password
+    delete payload.username
   } else if (!isStudent && payload.managementAccess) {
     if (!payload.password) delete payload.password
   }
+
   const response = form.id ? await updatePerson(payload) : await addPerson(payload)
   const result = response.data
   if (result?.initialPassword) {
@@ -785,4 +867,5 @@ function handleImport() {
 .pagination { margin-top: 16px; justify-content: flex-end; }
 .field-label { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 .field-help { color: var(--el-text-color-secondary); cursor: help; vertical-align: middle; }
+.account-link-preview { margin: -6px 0 16px 140px; min-height: 24px; }
 </style>

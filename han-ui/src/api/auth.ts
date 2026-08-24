@@ -1,5 +1,5 @@
 import { post, get } from '@/utils/request'
-import type { LoginDTO, LoginVO, UserInfo, RouteMenu } from '@/types'
+import type { LoginDTO, LoginVO, UserInfo, RouteMenu, IdentityVO } from '@/types'
 
 // 登录
 export function login(data: LoginDTO) {
@@ -70,6 +70,23 @@ export function getMyTenants() {
 // 切换租户
 export function switchTenant(tenantId: string | number) {
   return post<LoginVO>(`/auth/switchTenant?tenantId=${tenantId}`)
+}
+
+// ==================== 学校身份选择 / 切换 ====================
+
+// 登录返回 requireIdentity 后，凭一次性票据选择身份换取正式 Token
+export function selectIdentity(data: { identityTicket: string; identityId: string | number }) {
+  return post<LoginVO>('/auth/identity/select', data)
+}
+
+// 当前账号仍有效的学校身份列表（含 current 标记当前身份）
+export function getMyIdentities() {
+  return get<IdentityVO[]>('/auth/identities')
+}
+
+// 切换学校身份：作废旧 Token 与旧身份课堂凭证后换发新 Token
+export function switchIdentity(identityId: string | number) {
+  return post<LoginVO>('/auth/identity/switch', { identityId })
 }
 
 // ==================== 社交登录（GitHub / 微信扫码） ====================

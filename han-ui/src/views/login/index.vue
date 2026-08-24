@@ -127,6 +127,47 @@
         <el-button type="primary" :loading="loading" @click="handleTotpVerify">验证</el-button>
       </template>
     </el-dialog>
+
+    <!-- 多学校身份选择弹窗 -->
+    <el-dialog
+      v-model="identityVisible"
+      title="选择学校身份"
+      width="460px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      destroy-on-close
+    >
+      <p class="identity-hint">该账号在多个学校存在身份，请选择本次登录使用的学校身份。</p>
+      <el-radio-group v-model="selectedIdentityId" class="identity-radio-group">
+        <el-radio
+          v-for="item in identityOptions"
+          :key="item.identityId"
+          :value="item.identityId"
+          :disabled="!identityManagementAvailable(item)"
+          class="identity-radio-item"
+        >
+          <span class="identity-option">
+            <span class="identity-main">{{ item.schoolName }} / {{ item.identityDisplayName }}</span>
+            <span class="identity-sub">{{ identityTypeLabel(item.personType) }} · {{ item.dutyName || dutyNameFallback(item.dutyCode) }}</span>
+            <el-tag v-if="!identityManagementAvailable(item)" type="info" size="small">无管理端权限</el-tag>
+          </span>
+        </el-radio>
+      </el-radio-group>
+      <el-empty
+        v-if="identityOptions.length === 0"
+        description="暂无可选择的学校身份"
+        :image-size="80"
+      />
+      <template #footer>
+        <el-button @click="identityVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="identityLoading"
+          :disabled="!selectedIdentityId"
+          @click="handleIdentityConfirm"
+        >确认登录</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -138,10 +179,11 @@ import { User, Lock, Key, OfficeBuilding } from '@element-plus/icons-vue'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { useBrandStore } from '@/stores/brand'
-import { getCaptcha, getPublicKey, getSocialProviders, getSocialAuthorizeUrl, type TenantSimple } from '@/api/auth'
+import { getCaptcha, getPublicKey, getSocialProviders, getSocialAuthorizeUrl, selectIdentity, type TenantSimple } from '@/api/auth'
 import { rsaEncrypt } from '@/utils/crypto'
 import { get } from '@/utils/request'
 import type { FormInstance, FormRules } from 'element-plus'
+import type { IdentityVO } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -165,6 +207,13 @@ const rsaPublicKey = ref('')
 const totpVisible = ref(false)
 const totpCode = ref('')
 let pendingLoginData: any = null
+
+// 多学校身份选择
+const identityVisible = ref(false)
+const identityLoading = ref(false)
+const identityOptions = ref<IdentityVO[]>([])
+const selectedIdentityId = ref<string | number>()
+let pendingIdentityTicket = ''
 
 const loginForm = reactive({
   tenantId: undefined as string | number | undefined,
@@ -219,18 +268,69 @@ const handleLogin = async () => {
       loginData.password = await rsaEncrypt(loginForm.password, rsaPublicKey.value)
     }
     const loginRes = await userStore.login(loginData)
-    if (loginRes.data.requireTotp) {
-      // 需要 2FA 验证，弹出 TOTP 输入框
-      pendingLoginData = { ...loginData }
-      totpCode.value = ''
-      totpVisible.value = true
-      return
-    }
-    handleLoginSuccess(loginRes)
+    handleLoginResponse(loginRes, loginData)
   } catch (e: any) {
     getCaptchaImg()
   } finally {
     loading.value = false
+  }
+}
+
+// 统一处理登录返回：2FA 验证 → 多学校身份选择 → 直接登录。
+function handleLoginResponse(loginRes: any, loginData?: any) {
+  if (loginRes.data.requireTotp) {
+    // 需要 2FA 验证，弹出 TOTP 输入框
+    pendingLoginData = { ...loginData }
+    totpCode.value = ''
+    totpVisible.value = true
+    return
+  }
+  if (loginRes.data.requireIdentity) {
+    openIdentityDialog(loginRes.data)
+    return
+  }
+  handleLoginSuccess(loginRes)
+}
+
+function identityManagementAvailable(identity: IdentityVO): boolean {
+  if (typeof identity.managementAvailable === 'boolean') return identity.managementAvailable
+  return String(identity.dutyCode || '').toUpperCase() === 'SCHOOL_ADMIN'
+}
+
+function identityTypeLabel(personType: string): string {
+  return ({ TEACHER: '教师', STUDENT: '学生' } as Record<string, string>)[String(personType || '').toUpperCase()] || String(personType || '—')
+}
+
+function dutyNameFallback(dutyCode: string): string {
+  return ({ SCHOOL_ADMIN: '管理员', TEACHER: '普通教师' } as Record<string, string>)[String(dutyCode || '').toUpperCase()] || '—'
+}
+
+function openIdentityDialog(data: any) {
+  pendingIdentityTicket = data.identityTicket || ''
+  identityOptions.value = (data.identities || []) as IdentityVO[]
+  // 默认选中首个管理端可用身份，减少一次选择操作。
+  const firstAvailable = identityOptions.value.find((item) => identityManagementAvailable(item))
+  selectedIdentityId.value = firstAvailable?.identityId
+  identityVisible.value = true
+}
+
+const handleIdentityConfirm = async () => {
+  if (!selectedIdentityId.value) {
+    ElMessage.warning('请选择学校身份')
+    return
+  }
+  identityLoading.value = true
+  try {
+    const res = await selectIdentity({ identityTicket: pendingIdentityTicket, identityId: selectedIdentityId.value })
+    identityVisible.value = false
+    const chosen = identityOptions.value.find((item) => String(item.identityId) === String(selectedIdentityId.value))
+    userStore.applySession(res.data.accessToken, res.data.refreshToken, res.data.userInfo?.userId ?? null)
+    userStore.applyIdentity(chosen)
+    handleLoginSuccess(res)
+  } catch (_error) {
+    // 票据过期 / 选择失败：保留身份弹窗与用户名等输入，错误提示统一由请求层处理。
+  } finally {
+    identityLoading.value = false
   }
 }
 
@@ -284,7 +384,7 @@ const handleTotpVerify = async () => {
     const loginData = { ...pendingLoginData, totpCode: totpCode.value }
     const loginRes = await userStore.login(loginData)
     totpVisible.value = false
-    handleLoginSuccess(loginRes)
+    handleLoginResponse(loginRes)
   } catch (e: any) {
     // 验证失败，保持弹窗打开
   } finally {
@@ -474,6 +574,43 @@ onMounted(async () => {
     letter-spacing: 8px;
     font-weight: 600;
   }
+}
+
+.identity-hint {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.identity-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.identity-radio-item {
+  height: auto;
+  padding: 8px 0;
+  white-space: normal;
+}
+
+.identity-option {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  line-height: 1.4;
+}
+
+.identity-main {
+  font-weight: 500;
+  color: #111827;
+}
+
+.identity-sub {
+  font-size: 12px;
+  color: #9ca3af;
 }
 
 .social-login {

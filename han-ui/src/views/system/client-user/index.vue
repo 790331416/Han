@@ -59,7 +59,11 @@ function handleQuery() { queryParams.pageNum = 1; getList() }
 function resetQuery() { queryParams.username = undefined; queryParams.phone = undefined; queryParams.status = undefined; handleQuery() }
 
 async function handleUnbind(row: User) {
-  await ElMessageBox.confirm(`确认解除“${row.username}”与教育人员的绑定吗？账号将停用，人员信息不会删除。`, '确认解绑', { type: 'warning' })
+  await ElMessageBox.confirm(
+    `确认解除“${row.username}”与教育人员的绑定吗？\n\n解除后仅解除该账号的教育身份绑定，人员信息不会删除；若该账号关联多个学校身份，需在人员管理中按学校身份逐条解绑。`,
+    '确认解绑',
+    { type: 'warning' }
+  )
   await unbindClientUser(row.userId)
   ElMessage.success('已解绑')
   await getList()
