@@ -192,7 +192,7 @@ public class SocialLoginService {
             throw new BusinessException(XuStrUtil.isNotBlank(bindResult.getMsg()) ? bindResult.getMsg() : "绑定失败");
         }
         log.info("用户[{}]绑定社交账号后登录: provider={}", username, ticket.provider());
-        return authService.issueLoginForUser(user, ClientType.PC, false);
+        return authService.issueLoginIdentityAware(user, ClientType.PC, false);
     }
 
     /**
@@ -213,7 +213,7 @@ public class SocialLoginService {
         if (userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
             throw new BusinessException("绑定的用户不存在，请联系管理员");
         }
-        return authService.issueLoginForUser(userResult.getData(), ClientType.PC, false);
+        return authService.issueLoginIdentityAware(userResult.getData(), ClientType.PC, false);
     }
 
     // ==================== 内部实现 ====================
@@ -256,7 +256,7 @@ public class SocialLoginService {
         if (userResult.getCode() != Constants.SUCCESS || userResult.getData() == null) {
             throw new BusinessException("绑定的用户不存在，请联系管理员");
         }
-        return authService.issueLoginForUser(userResult.getData(), ClientType.PC, false);
+        return authService.issueLoginIdentityAware(userResult.getData(), ClientType.PC, false);
     }
 
     private String createTicket(SocialUser socialUser, List<SocialTicket.Binding> bindings) {

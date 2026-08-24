@@ -2,6 +2,7 @@ package com.han.auth.service.impl;
 
 import com.han.api.system.SystemServiceClient;
 import com.han.api.system.domain.ClassroomIdentityVO;
+import com.han.api.system.domain.RoleVO;
 import com.han.api.system.domain.UserVO;
 import com.han.api.tenant.TenantServiceClient;
 import com.han.auth.config.SecurityProperties;
@@ -14,6 +15,7 @@ import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.core.exception.UnauthorizedException;
 import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
@@ -104,7 +106,8 @@ class AuthServiceIdentityTest {
         when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
         when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
 
-        LoginVO result = authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC));
+        // 普通教师身份在 H5 课堂仍可用；PC 管理端则会被门禁拦截（见下方用例）。
+        LoginVO result = authService.login(loginDto("admin", RAW_PASSWORD, ClientType.H5));
 
         assertThat(result.accessToken()).isNotBlank();
         LoginUser stored = capturedTokenUser();
@@ -119,6 +122,7 @@ class AuthServiceIdentityTest {
         // 非管理员身份：管理端角色与权限置空
         assertThat(stored.getRoleKeys()).isEmpty();
         assertThat(stored.getPermissions()).isEmpty();
+        assertThat(stored.getRoleIds()).isEmpty();
     }
 
     @Test
@@ -159,7 +163,8 @@ class AuthServiceIdentityTest {
         String ticketJson = XuJsonUtil.toJsonString(Map.of(
                 "userId", 9L,
                 "tenantId", 1L,
-                "clientType", "pc"));
+                "clientType", "h5",
+                "forceChangePassword", false));
         when(valueOperations.getAndDelete(ticketKey)).thenReturn(ticketJson, (String) null);
 
         UserVO user = user(9L, 1L);
@@ -198,7 +203,8 @@ class AuthServiceIdentityTest {
         UserVO user = user(9L, 1L);
         when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
                 identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三"),
-                identity("101", "201", "实验小学", "TEACHER", "SCHOOL_ADMIN", "李四"))));
+                identityWithManagement("101", "201", "实验小学", "TEACHER", "SCHOOL_ADMIN", "李四",
+                        true, ""))));
         when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
         when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of("system:user:list")));
         when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
@@ -228,6 +234,189 @@ class AuthServiceIdentityTest {
         // SCHOOL_ADMIN 身份保留管理端角色与权限
         assertThat(stored.getRoleKeys()).containsExactly("common");
         assertThat(stored.getPermissions()).containsExactly("system:user:list");
+    }
+
+    @Test
+    void loginBlocksWhenIdentityServiceThrowsException() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenThrow(new RuntimeException("down"));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("身份服务暂时不可用，请稍后重试");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void loginBlocksWhenIdentityServiceReturnsFailure() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.fail("身份查询失败"));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("身份服务暂时不可用，请稍后重试");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void educationAccountWithoutValidIdentityIsBlocked() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        user.setRoleKeys(Set.of("teacher"));
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of()));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.H5)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前账号没有有效教育身份，请联系管理员");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void pcLoginForPlainTeacherIsRejected() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        user.setRoleKeys(Set.of("teacher"));
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三"))));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("该身份没有管理端权限");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void pcLoginForSchoolAdminWithoutManagementRoleIsRejectedWithReason() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identityWithManagement("100", "200", "示范小学", "TEACHER", "SCHOOL_ADMIN", "张三",
+                        false, "账号未配置管理端角色"))));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("账号未配置管理端角色");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void pcLoginForSchoolAdminWithManagementRoleSucceeds() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identityWithManagement("100", "200", "示范小学", "TEACHER", "SCHOOL_ADMIN", "张三",
+                        true, ""))));
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of("system:user:list")));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.getRolesByUserId(9L)).thenReturn(R.ok(List.of(role(500L, "common"))));
+        when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
+
+        LoginVO result = authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC));
+
+        assertThat(result.accessToken()).isNotBlank();
+        LoginUser stored = capturedTokenUser();
+        assertThat(stored.isIdentityScoped()).isTrue();
+        assertThat(stored.getIdentityId()).isEqualTo(100L);
+        assertThat(stored.getDutyCode()).isEqualTo("SCHOOL_ADMIN");
+        assertThat(stored.getRoleIds()).containsExactly(500L);
+        assertThat(stored.getRoleKeys()).containsExactly("common");
+        assertThat(stored.getPermissions()).containsExactly("system:user:list");
+    }
+
+    @Test
+    void identityTicketRejectsTenantMismatch() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        String ticket = "ticket-tenant";
+        String ticketKey = CacheConstants.CACHE_PREFIX + "identity_ticket:" + ticket;
+        String ticketJson = XuJsonUtil.toJsonString(Map.of(
+                "userId", 9L,
+                "tenantId", 99L,
+                "clientType", "pc",
+                "forceChangePassword", false));
+        when(valueOperations.getAndDelete(ticketKey)).thenReturn(ticketJson);
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+
+        IdentitySelectDTO dto = new IdentitySelectDTO();
+        dto.setIdentityTicket(ticket);
+        dto.setIdentityId(100L);
+
+        assertThatThrownBy(() -> authService.selectIdentity(dto))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("身份票据与当前账号租户不一致");
+    }
+
+    @Test
+    void identityTicketRestoresForceChangePassword() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        String ticket = "ticket-pwd";
+        String ticketKey = CacheConstants.CACHE_PREFIX + "identity_ticket:" + ticket;
+        String ticketJson = XuJsonUtil.toJsonString(Map.of(
+                "userId", 9L,
+                "tenantId", 1L,
+                "clientType", "h5",
+                "forceChangePassword", true));
+        when(valueOperations.getAndDelete(ticketKey)).thenReturn(ticketJson);
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三"))));
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
+
+        IdentitySelectDTO dto = new IdentitySelectDTO();
+        dto.setIdentityTicket(ticket);
+        dto.setIdentityId(100L);
+
+        LoginVO result = authService.selectIdentity(dto);
+
+        assertThat(result.accessToken()).isNotBlank();
+        assertThat(result.forceChangePassword()).isTrue();
+    }
+
+    @Test
+    void switchTenantRechecksTargetIdentityInsteadOfRestoringAccountPermissions() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder()
+                .userId(9L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.PC)
+                .build());
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null);
+        when(systemServiceClient.getUserTenants("admin")).thenReturn(R.ok(List.of(
+                Map.of("tenantId", 2L, "status", 0)
+        )));
+        when(tenantServiceClient.checkTenantValid(2L)).thenReturn(R.ok(true));
+        UserVO target = user(12L, 2L);
+        when(systemServiceClient.getUserByUsername("admin", 2L)).thenReturn(R.ok(target));
+        when(systemServiceClient.listClassroomIdentities(12L)).thenReturn(R.ok(List.of(
+                identity("200", "300", "实验中学", "TEACHER", "TEACHER", "王五"),
+                identity("201", "301", "第二中学", "TEACHER", "TEACHER", "赵六"))));
+
+        LoginVO result = authService.switchTenant(2L, "Bearer old-token");
+
+        assertThat(result.requireIdentity()).isTrue();
+        assertThat(result.identityTicket()).isNotBlank();
+        assertThat(result.accessToken()).isNull();
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
     }
 
     /** 捕获写入 Redis 的 accessToken 对应 LoginUser（TOKEN_KEY 前缀唯一命中）。 */
@@ -267,5 +456,29 @@ class AuthServiceIdentityTest {
                 .dutyCode(dutyCode)
                 .userName(userName)
                 .build();
+    }
+
+    private ClassroomIdentityVO identityWithManagement(String identityId, String schoolId, String schoolName,
+                                                       String personType, String dutyCode, String userName,
+                                                       boolean managementAvailable,
+                                                       String managementUnavailableReason) {
+        return ClassroomIdentityVO.builder()
+                .identityId(identityId)
+                .schoolId(schoolId)
+                .schoolName(schoolName)
+                .personType(personType)
+                .dutyCode(dutyCode)
+                .userName(userName)
+                .managementAvailable(managementAvailable)
+                .managementUnavailableReason(managementUnavailableReason)
+                .build();
+    }
+
+    private RoleVO role(Long roleId, String roleKey) {
+        RoleVO role = new RoleVO();
+        role.setRoleId(roleId);
+        role.setRoleKey(roleKey);
+        role.setStatus(0);
+        return role;
     }
 }

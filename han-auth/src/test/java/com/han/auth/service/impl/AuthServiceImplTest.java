@@ -95,6 +95,7 @@ class AuthServiceImplTest {
         when(systemServiceClient.getUserTenants("admin")).thenReturn(R.ok(List.of(
                 Map.of("tenantId", 2L, "status", 0)
         )));
+        when(systemServiceClient.listClassroomIdentities(2L)).thenReturn(R.ok(List.of()));
         when(tenantServiceClient.checkTenantValid(2L)).thenReturn(R.ok(true));
         when(systemServiceClient.getUserByUsername("admin", 2L)).thenReturn(R.ok(user(2L, 2L)));
         when(systemServiceClient.getPermissionsByUserId(2L)).thenReturn(R.ok(Set.of("system:user:list")));
@@ -122,6 +123,7 @@ class AuthServiceImplTest {
         when(systemServiceClient.getUserTenants("admin")).thenReturn(R.ok(List.of(
                 Map.of("tenantId", 1L, "status", 0)
         )));
+        when(systemServiceClient.listClassroomIdentities(1L)).thenReturn(R.ok(List.of()));
         when(systemServiceClient.getUserByUsername("admin", 1L)).thenReturn(R.ok(user(1L, 1L)));
         when(systemServiceClient.getPermissionsByUserId(1L)).thenReturn(R.ok(Set.of("system:user:list")));
         when(systemServiceClient.getDataScopeDeptIds(1L)).thenReturn(R.ok(Set.of(10L)));

@@ -40,4 +40,14 @@ public class IdentityVO {
 
     /** 是否为当前生效身份 */
     private boolean current;
+
+    /**
+     * PC 管理端是否可用：人员与学校有效、personType=TEACHER、dutyCode=SCHOOL_ADMIN
+     * 且账号关联了非 teacher/student 管理角色。数据来自 {@code ClassroomIdentityVO}，
+     * 缺失或不可判定时保守为 false。
+     */
+    private boolean managementAvailable;
+
+    /** {@code managementAvailable=false} 时的原因文案；可用时为空串。 */
+    private String managementUnavailableReason;
 }

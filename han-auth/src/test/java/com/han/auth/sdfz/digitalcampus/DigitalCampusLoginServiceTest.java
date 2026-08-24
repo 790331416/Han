@@ -1,6 +1,7 @@
 package com.han.auth.sdfz.digitalcampus;
 
 import com.han.api.system.SystemServiceClient;
+import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.api.system.domain.UserVO;
 import com.han.auth.domain.LoginVO;
@@ -50,7 +51,16 @@ class DigitalCampusLoginServiceTest {
         LoginVO login = LoginVO.builder().accessToken("han-token").expiresIn(1800).build();
         when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
         when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
-        when(authService.issueLoginForUser(user, ClientType.PC, false)).thenReturn(login);
+        when(systemServiceClient.listClassroomIdentities(100L)).thenReturn(R.ok(List.of(
+                ClassroomIdentityVO.builder()
+                        .identityId("900")
+                        .schoolId("77")
+                        .schoolName("测试学校")
+                        .personType("TEACHER")
+                        .dutyCode("TEACHER")
+                        .userName("测试教师")
+                        .build())));
+        when(authService.issueLoginForIdentity(user, ClientType.PC, false, 900L)).thenReturn(login);
 
         DigitalCampusLoginVO result = service.login("external-token", "identity-1");
 
@@ -66,7 +76,8 @@ class DigitalCampusLoginServiceTest {
         assertThat(dto.getExternalUserId()).isEqualTo("external-user-1");
         assertThat(dto.getClasses()).extracting(DigitalCampusUserSyncDTO.ClassMembership::getBranchId)
                 .containsExactly("class-1");
-        verify(authService).issueLoginForUser(user, ClientType.PC, false);
+        // 数字校园已选身份按该身份签发：本地身份主键被解析出来并传入身份感知出口。
+        verify(authService).issueLoginForIdentity(user, ClientType.PC, false, 900L);
     }
 
     @Test
@@ -77,6 +88,28 @@ class DigitalCampusLoginServiceTest {
         assertThatThrownBy(() -> service.login("external-token", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("请选择数字校园登录身份");
+    }
+
+    @Test
+    void resolvesSelectedIdentityAmongMultipleLocalIdentities() {
+        // 账号本地已有多条教育身份，数字校园选中其中一所学校：必须按选中身份签发，不得二次选择。
+        DigitalCampusProfile profile = profile(identity("identity-2"));
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        user.setUsername("dc_user");
+        LoginVO login = LoginVO.builder().accessToken("han-token").expiresIn(1800).build();
+        when(digitalCampusClient.fetchCurrentUser("external-token")).thenReturn(profile);
+        when(systemServiceClient.syncDigitalCampusUser(any())).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(100L)).thenReturn(R.ok(List.of(
+                ClassroomIdentityVO.builder().identityId("901").schoolName("第一小学").userName("测试教师").build(),
+                ClassroomIdentityVO.builder().identityId("902").schoolName("测试学校").userName("测试教师").build())));
+        when(authService.issueLoginForIdentity(user, ClientType.PC, false, 902L)).thenReturn(login);
+
+        DigitalCampusLoginVO result = service.login("external-token", "identity-2");
+
+        assertThat(result.login()).isEqualTo(login);
+        verify(authService).issueLoginForIdentity(user, ClientType.PC, false, 902L);
     }
 
     @Test
