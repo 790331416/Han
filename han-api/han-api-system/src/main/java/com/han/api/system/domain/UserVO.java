@@ -68,6 +68,12 @@ public class UserVO implements Serializable {
     /** 是否启用 2FA（0=未启用 1=已启用） */
     private Integer totpEnabled;
 
+    /** 是否教育账号（sys_user.remark 以「教育人员」开头） */
+    private boolean educationAccount;
+
+    /** 是否已绑定教育人员（edu_person 存在 user_id = userId 的未删除记录，含停用/离校） */
+    private boolean educationBound;
+
     /** 角色ID列表 */
     private Set<Long> roleIds;
 

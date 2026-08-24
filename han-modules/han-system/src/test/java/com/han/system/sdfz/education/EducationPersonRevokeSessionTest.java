@@ -2,6 +2,7 @@ package com.han.system.sdfz.education;
 
 import com.han.api.system.AuthServiceClient;
 import com.han.api.system.domain.SessionRevokeRequest;
+import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysUserPo;
@@ -25,11 +26,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -47,6 +48,7 @@ import static org.mockito.Mockito.when;
 class EducationPersonRevokeSessionTest {
 
     private static final Long SCHOOL_A = 11L;
+    private static final Long SCHOOL_B = 12L;
 
     @Mock
     private EduPersonMapper personMapper;
@@ -83,8 +85,7 @@ class EducationPersonRevokeSessionTest {
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                dataScopeService, accountIdentityService);
-        ReflectionTestUtils.setField(service, "authServiceClient", authServiceClient);
+                dataScopeService, accountIdentityService, authServiceClient);
     }
 
     @AfterEach
@@ -97,8 +98,12 @@ class EducationPersonRevokeSessionTest {
     void unbindingOneIdentityRevokesOnlyThatIdentitySession() {
         EduPersonPo first = person(5101L, "TEACHER", SCHOOL_A);
         first.setUserId(9101L);
+        EduPersonPo second = person(5102L, "TEACHER", SCHOOL_B);
+        second.setUserId(9101L);
+        second.setStatus(0);
         when(personMapper.selectById(5101L)).thenReturn(first);
-        when(personMapper.selectCount(any())).thenReturn(2L);
+        when(personMapper.selectList(any())).thenReturn(List.of(second));
+        stubSchool(SCHOOL_B);
 
         service.unbindClientUser(9101L, 5101L);
 
@@ -115,7 +120,7 @@ class EducationPersonRevokeSessionTest {
         EduPersonPo person = person(5108L, "TEACHER", SCHOOL_A);
         person.setUserId(9108L);
         when(personMapper.selectById(5108L)).thenReturn(person);
-        when(personMapper.selectCount(any())).thenReturn(1L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo clientAccount = new SysUserPo();
         clientAccount.setId(9108L);
         clientAccount.setUsername("u_13900000008");
@@ -142,6 +147,7 @@ class EducationPersonRevokeSessionTest {
         person.setPersonNo("T103");
         when(personMapper.selectById(5103L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = new SysUserPo();
         user.setId(9102L);
         user.setUsername("t.wang");
@@ -171,6 +177,7 @@ class EducationPersonRevokeSessionTest {
         person.setPersonNo("T104");
         when(personMapper.selectById(5104L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = new SysUserPo();
         user.setId(9104L);
         user.setUsername("t.li");
@@ -198,6 +205,7 @@ class EducationPersonRevokeSessionTest {
         person.setPersonNo("T105");
         when(personMapper.selectById(5105L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = new SysUserPo();
         user.setId(9105L);
         user.setUsername("t.admin");
@@ -224,6 +232,7 @@ class EducationPersonRevokeSessionTest {
         person.setPersonNo("T106");
         when(personMapper.selectById(5106L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = new SysUserPo();
         user.setId(9106L);
         user.setUsername("t.role");
@@ -246,8 +255,12 @@ class EducationPersonRevokeSessionTest {
     void deletingOneOfSeveralIdentitiesRevokesIdentityOnly() {
         EduPersonPo person = person(5107L, "TEACHER", SCHOOL_A);
         person.setUserId(9107L);
+        EduPersonPo other = person(5109L, "TEACHER", SCHOOL_B);
+        other.setUserId(9107L);
+        other.setStatus(0);
         when(personMapper.selectById(5107L)).thenReturn(person);
-        when(personMapper.selectCount(any())).thenReturn(1L);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        stubSchool(SCHOOL_B);
 
         service.deletePeople(List.of(5107L));
 
@@ -255,6 +268,80 @@ class EducationPersonRevokeSessionTest {
         assertThat(request.getUserId()).isEqualTo(9107L);
         assertThat(request.getIdentityId()).isEqualTo(5107L);
         verify(userMapper, never()).updateById(any(SysUserPo.class));
+    }
+
+    // ---------------------------------------------------------------- 撤销失败回滚
+
+    /** 解绑最后身份时会话撤销失败：抛出业务异常，人员解绑不落库。 */
+    @Test
+    void unbindRollsBackWhenAuthSessionRevokeFails() {
+        EduPersonPo person = person(5121L, "TEACHER", SCHOOL_A);
+        person.setUserId(9121L);
+        when(personMapper.selectById(5121L)).thenReturn(person);
+        when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
+                .thenThrow(new RuntimeException("auth down"));
+
+        assertThatThrownBy(() -> service.unbindClientUser(9121L, 5121L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("会话撤销失败");
+        verify(personMapper, never()).updateById(any(EduPersonPo.class));
+    }
+
+    /** 人员停用身份会话撤销失败：抛出业务异常，身份变更随事务回滚。 */
+    @Test
+    void personDisableFailsWhenAuthServiceUnavailable() {
+        EduPersonPo person = person(5122L, "TEACHER", SCHOOL_A);
+        person.setUserId(9122L);
+        person.setStatus(0);
+        person.setPersonNo("T122");
+        when(personMapper.selectById(5122L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo user = new SysUserPo();
+        user.setId(9122L);
+        user.setUsername("t.wang");
+        user.setPhone("13900000022");
+        user.setStatus(0);
+        when(userMapper.selectById(9122L)).thenReturn(user);
+        stubSchool(SCHOOL_A);
+        when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
+                .thenThrow(new RuntimeException("auth down"));
+
+        EducationForms.Person form = new EducationForms.Person(5122L, SCHOOL_A, "T122", "王老师", "TEACHER",
+                null, "13900000022", 1, null, null, true, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("会话撤销失败");
+    }
+
+    /** 岗位降级时身份会话撤销失败：抛出业务异常，降级随事务回滚。 */
+    @Test
+    void roleDowngradeFailsWhenSessionCannotBeRevoked() {
+        EduPersonPo person = person(5123L, "TEACHER", SCHOOL_A);
+        person.setUserId(9123L);
+        person.setStatus(0);
+        person.setDutyCode("SCHOOL_ADMIN");
+        person.setPersonNo("T123");
+        when(personMapper.selectById(5123L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo user = new SysUserPo();
+        user.setId(9123L);
+        user.setUsername("t.admin");
+        user.setPhone("13900000023");
+        user.setStatus(0);
+        when(userMapper.selectById(9123L)).thenReturn(user);
+        stubSchool(SCHOOL_A);
+        when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
+                .thenThrow(new RuntimeException("auth down"));
+
+        EducationForms.Person form = new EducationForms.Person(5123L, SCHOOL_A, "T123", "赵老师", "TEACHER",
+                "TEACHER", "13900000023", 0, null, null, true, null, null, null, true, null, null, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("会话撤销失败");
     }
 
     // ---------------------------------------------------------------- 工具
@@ -265,11 +352,17 @@ class EducationPersonRevokeSessionTest {
         return captor.getValue();
     }
 
-    private void stubSchool() {
+    private void stubSchool(Long schoolId) {
         EduSchoolPo school = new EduSchoolPo();
-        school.setId(SCHOOL_A);
+        school.setId(schoolId);
+        school.setTenantId(1L);
+        school.setStatus(0);
         school.setSourceSystem("HAN");
-        when(schoolMapper.selectById(SCHOOL_A)).thenReturn(school);
+        when(schoolMapper.selectById(schoolId)).thenReturn(school);
+    }
+
+    private void stubSchool() {
+        stubSchool(SCHOOL_A);
     }
 
     private static EduPersonPo person(Long id, String personType, Long schoolId) {

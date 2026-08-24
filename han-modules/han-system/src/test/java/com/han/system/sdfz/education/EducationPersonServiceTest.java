@@ -1,5 +1,6 @@
 package com.han.system.sdfz.education;
 
+import com.han.api.system.AuthServiceClient;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.exception.ForbiddenException;
@@ -73,6 +74,8 @@ class EducationPersonServiceTest {
     private EducationDataScopeService dataScopeService;
     @Mock
     private EducationAccountIdentityService accountIdentityService;
+    @Mock
+    private AuthServiceClient authServiceClient;
 
     private EducationPersonService service;
 
@@ -82,7 +85,7 @@ class EducationPersonServiceTest {
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                dataScopeService, accountIdentityService);
+                dataScopeService, accountIdentityService, authServiceClient);
     }
 
     @AfterEach
@@ -375,6 +378,7 @@ class EducationPersonServiceTest {
         SysUserPo user = new SysUserPo();
         user.setId(9007L);
         user.setStatus(0);
+        user.setRemark("教育人员统一入口建号");
         when(userMapper.selectById(9007L)).thenReturn(user);
         when(personMapper.deleteById(5007L)).thenReturn(1);
 

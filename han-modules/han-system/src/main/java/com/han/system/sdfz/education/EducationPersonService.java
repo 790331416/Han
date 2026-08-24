@@ -32,7 +32,7 @@ import com.han.system.sdfz.education.mapper.EduPersonSubjectMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +59,7 @@ import static com.han.system.sdfz.education.EducationSupport.trimToNull;
  * 任一步失败整笔回滚，不产生"只有账号"或"只有人员"的半成品。</p>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EducationPersonService {
 
@@ -87,13 +88,12 @@ public class EducationPersonService {
     private final EducationAccountIdentityService accountIdentityService;
 
     /**
-     * han-auth 会话撤销客户端（@HttpExchange 声明式 Bean）。
+     * han-auth 会话撤销客户端（构造器注入）。
      *
-     * <p>用字段注入而非构造注入：保留 12 参构造器，兼容存量单测的显式构造。
-     * 会话撤销是尽力而为的副作用，调用方为空时静默跳过。</p>
+     * <p>撤销失败必须阻断身份变更：任一会话撤销异常都会抛出业务异常，依赖外层事务
+     * 回滚已写入的人员/账号变更，不允许出现「身份已变更但 token 未撤销」的半成品。</p>
      */
-    @Autowired
-    private AuthServiceClient authServiceClient;
+    private final AuthServiceClient authServiceClient;
 
     public PageResult<EduPersonPo> list(Long schoolId, String personType, String keyword,
                                         Integer status, int pageNum, int pageSize) {
@@ -227,12 +227,12 @@ public class EducationPersonService {
         if (people.size() > 1) {
             throw new BusinessException("该账号关联多个教育身份，请指定要解绑的人员");
         }
-        unbindIdentity(userId, people.get(0), true);
+        unbindIdentity(userId, people.get(0));
     }
 
     /**
      * 按身份粒度解绑：只把当前 {@code edu_person.user_id} 置空，不删人员、不删账号、
-     * 不清其他身份的角色或班级。仅当这是账号的最后一个绑定身份且账号为教育人员入口
+     * 不清其他身份的角色或班级。仅当这是账号的最后一个有效绑定身份且账号为教育人员入口
      * 自动创建的客户端账号时才停用账号；独立系统账号解绑最后一个身份不停用。
      */
     @Transactional(rollbackFor = Exception.class)
@@ -248,40 +248,25 @@ public class EducationPersonService {
         if (!Objects.equals(person.getUserId(), userId)) {
             throw new BusinessException("人员未绑定该登录账号");
         }
-        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
-                .eq(EduPersonPo::getUserId, userId));
-        unbindIdentity(userId, person, count == null || count <= 1);
+        unbindIdentity(userId, person);
     }
 
-    private void unbindIdentity(Long userId, EduPersonPo person, boolean lastIdentity) {
+    private void unbindIdentity(Long userId, EduPersonPo person) {
         dataScopeService.requireSchool(person.getSchoolId());
         requireLocalSource(person.getSourceSystem(), "人员");
-        unbindIdentityState(userId, person, lastIdentity);
+        unbindIdentityState(userId, person);
         personMapper.updateById(person);
     }
 
     /**
      * 解绑当前身份的内部动作：置空 {@code edu_person.user_id} 并撤销该身份会话，
-     * 仅当这是账号最后一个绑定身份且账号为教育入口自动建号时才停用账号、清角色。
+     * 随后统一走「最后有效教育身份」判断决定是否停用账号、清角色。
      * 独立系统账号解绑最后一个身份不停用。不负责落库，由调用方统一 {@code updateById}。
      */
-    private void unbindIdentityState(Long userId, EduPersonPo person, boolean lastIdentity) {
+    private void unbindIdentityState(Long userId, EduPersonPo person) {
         person.setUserId(null);
         revokeIdentitySession(userId, person.getId());
-        if (lastIdentity) {
-            SysUserPo user = userMapper.selectById(userId);
-            if (isClientAccount(user)) {
-                disableAccount(userId);
-                clearAccountRoles(userId);
-            }
-            // 独立系统账号：解绑最后一个教育身份不停用账号，也不清账号角色。
-        }
-    }
-
-    private boolean isLastIdentity(Long userId) {
-        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
-                .eq(EduPersonPo::getUserId, userId));
-        return count == null || count <= 1;
+        disableAccountIfLastEducationAccount(userId, person.getId());
     }
 
     EduSchoolPo requireImportSchool(Long schoolId) {
@@ -351,8 +336,11 @@ public class EducationPersonService {
                     }
                     SysUserPo target = requireLinkableAccount(tenantId, form.linkUserId(), phone);
                     if (userId != null && !Objects.equals(userId, target.getId())) {
-                        // 切绑到新账号：撤销旧身份会话，随后绑定新账号。
+                        // 切绑到新账号：先撤销旧账号的该身份会话；若旧账号因此不再有其他
+                        // 有效教育身份且是教育入口账号，则停旧账号、清旧角色并撤其全部会话；
+                        // 独立系统账号不停用。随后绑定新账号，不改新账号口令/状态/角色。
                         revokeIdentitySession(userId, person.getId());
+                        disableAccountIfLastEducationAccount(userId, person.getId());
                     }
                     requireNoDuplicateIdentity(tenantId, form.schoolId(), target.getId());
                     linkedAccount = target;
@@ -362,7 +350,7 @@ public class EducationPersonService {
                 case DISABLED -> {
                     // 新增不建号；编辑已绑定按当前身份解绑。
                     if (userId != null) {
-                        unbindIdentityState(userId, person, isLastIdentity(userId));
+                        unbindIdentityState(userId, person);
                         userId = null;
                     }
                 }
@@ -384,7 +372,7 @@ public class EducationPersonService {
                 }
             } else if (userId != null) {
                 // 关闭登录：只解绑当前身份，不停整个账号（任务书 17 节）。
-                unbindIdentityState(userId, person, isLastIdentity(userId));
+                unbindIdentityState(userId, person);
                 userId = null;
             }
         }
@@ -440,12 +428,10 @@ public class EducationPersonService {
             requireLocalSource(person.getSourceSystem(), "人员");
 
             Long userId = person.getUserId();
-            // 任务书 18：删除先按剩余有效绑定决定是否停用账号，不直接停共享账号；
-            // 当前人员即将删除，不再算有效绑定。
-            if (userId != null && !hasOtherValidIdentity(userId, id)) {
-                disableAccount(userId);
-            }
+            // 任务书 18：先撤销被删除身份会话，再按剩余有效绑定决定是否停用账号；
+            // 撤销失败抛出业务异常，依赖事务回滚本次删除。
             revokeIdentitySession(userId, id);
+            disableAccountIfLastEducationAccount(userId, id);
 
             personClassMapper.delete(new LambdaQueryWrapper<EduPersonClassPo>()
                     .eq(EduPersonClassPo::getPersonId, id));
@@ -738,11 +724,28 @@ public class EducationPersonService {
         return user;
     }
 
-    private void disableAccount(Long userId) {
+    /**
+     * 删除/解绑/LINK 切绑等场景的统一账号处置：仅当该账号不再有其他有效教育身份、
+     * 且账号本身是教育人员入口自动创建的客户端账号时，才停用账号、清角色并撤账号级会话。
+     *
+     * <p>独立系统账号即使失去最后一个教育身份也不停用、不清角色，只撤被删除/解绑身份的会话。</p>
+     */
+    private void disableAccountIfLastEducationAccount(Long userId, Long excludePersonId) {
         if (userId == null) {
             return;
         }
+        if (hasOtherValidIdentity(userId, excludePersonId)) {
+            return;
+        }
         SysUserPo user = userMapper.selectById(userId);
+        if (!isClientAccount(user)) {
+            return;
+        }
+        disableAccount(user);
+        clearAccountRoles(userId);
+    }
+
+    private void disableAccount(SysUserPo user) {
         if (user == null) {
             return;
         }
@@ -755,7 +758,7 @@ public class EducationPersonService {
         user.setStatus(1);
         userMapper.updateById(user);
         // 账号级停用撤销该账号全部会话与课堂凭证。
-        revokeAccountSession(userId);
+        revokeAccountSession(user.getId());
     }
 
     private static boolean isClientAccount(SysUserPo user) {
@@ -814,32 +817,56 @@ public class EducationPersonService {
      * 删除标志由 {@code @TableLogic} 自动过滤，无需重复拼装。</p>
      */
     private boolean accountHasSchoolAdminIdentity(Long userId, Long excludePersonId) {
-        if (userId == null) {
-            return false;
-        }
-        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
-                .eq(EduPersonPo::getUserId, userId)
-                .eq(EduPersonPo::getDutyCode, EduDuty.SCHOOL_ADMIN.name())
-                .eq(EduPersonPo::getStatus, 0)
-                .eq(EduPersonPo::getLeaveFlag, 0)
-                .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId));
-        return count != null && count > 0;
+        return validIdentitiesOf(userId, excludePersonId).stream()
+                .anyMatch(person -> EduDuty.SCHOOL_ADMIN.name().equals(person.getDutyCode()));
     }
 
     /** 账号是否还有除 {@code excludePersonId} 外的其他有效绑定身份。 */
     private boolean hasOtherValidIdentity(Long userId, Long excludePersonId) {
-        Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
-                .eq(EduPersonPo::getUserId, userId)
-                .eq(EduPersonPo::getStatus, 0)
-                .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId));
-        return count != null && count > 0;
+        return !validIdentitiesOf(userId, excludePersonId).isEmpty();
+    }
+
+    /**
+     * 统一的「有效教育身份」判断：{@code person.status=0}、未离校（{@code leave_flag IS NULL OR 0}）、
+     * 未删除（{@code @TableLogic} 过滤）、学校存在且 status 正常且未删除、人员租户与学校租户一致。
+     *
+     * <p>{@code leave_flag=null} 按在校处理。解绑/删除最后身份判断、账号管理身份保护等
+     * 全部复用这一处，避免多套口径分叉。</p>
+     */
+    private boolean isValidIdentity(EduPersonPo person) {
+        if (person == null || person.getUserId() == null) {
+            return false;
+        }
+        if (!Objects.equals(person.getStatus(), 0)) {
+            return false;
+        }
+        Integer leave = person.getLeaveFlag();
+        if (leave != null && leave != 0) {
+            return false;
+        }
+        EduSchoolPo school = schoolMapper.selectById(person.getSchoolId());
+        if (school == null || !Objects.equals(school.getStatus(), 0)) {
+            return false;
+        }
+        return Objects.equals(person.getTenantId(), school.getTenantId());
+    }
+
+    /** 查询某账号除 {@code excludePersonId} 外的全部有效教育身份。 */
+    private List<EduPersonPo> validIdentitiesOf(Long userId, Long excludePersonId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return personMapper.selectList(new LambdaQueryWrapper<EduPersonPo>()
+                        .eq(EduPersonPo::getUserId, userId)
+                        .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId))
+                .stream().filter(this::isValidIdentity).toList();
     }
 
     // ---------------------------------------------------------------- 会话撤销
 
-    /** 按身份粒度撤销会话与课堂 token，尽力而为，失败不阻断数据变更。 */
+    /** 按身份粒度撤销会话与课堂 token；撤销失败抛出业务异常，由外层事务回滚身份变更。 */
     private void revokeIdentitySession(Long userId, Long identityId) {
-        if (userId == null || identityId == null || authServiceClient == null) {
+        if (userId == null || identityId == null) {
             return;
         }
         try {
@@ -847,22 +874,24 @@ public class EducationPersonService {
             request.setUserId(userId);
             request.setIdentityId(identityId);
             authServiceClient.revokeSession(request);
-        } catch (RuntimeException ignored) {
-            // 会话撤销是副作用：han-auth 短暂不可用不应让人员资料写入回滚。
+        } catch (RuntimeException e) {
+            log.error("撤销教育身份会话失败: userId={}, identityId={}", userId, identityId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
         }
     }
 
-    /** 账号级撤销全部会话与课堂凭证，尽力而为，失败不阻断数据变更。 */
+    /** 账号级撤销全部会话与课堂凭证；撤销失败抛出业务异常，由外层事务回滚账号变更。 */
     private void revokeAccountSession(Long userId) {
-        if (userId == null || authServiceClient == null) {
+        if (userId == null) {
             return;
         }
         try {
             SessionRevokeRequest request = new SessionRevokeRequest();
             request.setUserId(userId);
             authServiceClient.revokeSession(request);
-        } catch (RuntimeException ignored) {
-            // 同上。
+        } catch (RuntimeException e) {
+            log.error("撤销账号会话失败: userId={}", userId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
         }
     }
 

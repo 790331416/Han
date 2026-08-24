@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
+import com.han.api.system.AuthServiceClient;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.mybatis.handler.HanMetaObjectHandler;
 import com.han.common.security.context.SecurityContextAdapter;
@@ -32,6 +33,7 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mockito.Mockito;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -365,10 +367,16 @@ class EducationPersonTransactionIT {
                                                       SysUserRoleMapper userRoleMapper,
                                                       SysRoleMapper roleMapper,
                                                       SysDictDataMapper dictDataMapper,
-                                                      EducationDataScopeService dataScopeService) {
+                                                      EducationDataScopeService dataScopeService,
+                                                      AuthServiceClient authServiceClient) {
         return new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                dataScopeService, new EducationAccountIdentityService(personMapper));
+                dataScopeService, new EducationAccountIdentityService(personMapper), authServiceClient);
+        }
+
+        @Bean
+        AuthServiceClient authServiceClient() {
+        return Mockito.mock(AuthServiceClient.class);
         }
     }
 }

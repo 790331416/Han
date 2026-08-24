@@ -1,6 +1,7 @@
 package com.han.system.sdfz.education;
 
 import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
@@ -27,7 +28,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,8 +88,7 @@ class EducationPersonIdentityTest {
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                dataScopeService, accountIdentityService);
-        ReflectionTestUtils.setField(service, "authServiceClient", authServiceClient);
+                dataScopeService, accountIdentityService, authServiceClient);
     }
 
     @AfterEach
@@ -101,8 +103,10 @@ class EducationPersonIdentityTest {
         first.setUserId(9101L);
         EduPersonPo second = person(5102L, "TEACHER", SCHOOL_B);
         second.setUserId(9101L);
+        second.setStatus(0);
         when(personMapper.selectById(5101L)).thenReturn(first);
-        when(personMapper.selectCount(any())).thenReturn(2L);
+        when(personMapper.selectList(any())).thenReturn(List.of(second));
+        stubSchool(SCHOOL_B);
 
         service.unbindClientUser(9101L, 5101L);
 
@@ -120,7 +124,7 @@ class EducationPersonIdentityTest {
         EduPersonPo person = person(5106L, "TEACHER", SCHOOL_A);
         person.setUserId(9106L);
         when(personMapper.selectById(5106L)).thenReturn(person);
-        when(personMapper.selectCount(any())).thenReturn(1L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo systemAccount = new SysUserPo();
         systemAccount.setId(9106L);
         systemAccount.setUsername("admin");
@@ -203,8 +207,13 @@ class EducationPersonIdentityTest {
         EduPersonPo student = person(5103L, "STUDENT", SCHOOL_A);
         student.setUserId(9102L);
         student.setPersonNo("S001");
+        EduPersonPo admin = person(5190L, "TEACHER", SCHOOL_B);
+        admin.setUserId(9102L);
+        admin.setDutyCode("SCHOOL_ADMIN");
+        admin.setStatus(0);
         when(personMapper.selectById(5103L)).thenReturn(student);
-        when(personMapper.selectCount(any())).thenReturn(0L, 1L);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of(admin));
         SysUserPo user = new SysUserPo();
         user.setId(9102L);
         user.setUsername("s.wang");
@@ -212,6 +221,7 @@ class EducationPersonIdentityTest {
         user.setStatus(0);
         when(userMapper.selectById(9102L)).thenReturn(user);
         stubSchool(SCHOOL_A);
+        stubSchool(SCHOOL_B);
 
         EducationForms.Person form = new EducationForms.Person(5103L, SCHOOL_A, "S001", "王同学", "STUDENT",
                 null, "13900000003", 0, null, null, true, null, null, null, null, null, null, null);
@@ -310,6 +320,7 @@ class EducationPersonIdentityTest {
         person.setPersonNo("T113");
         when(personMapper.selectById(5121L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo systemAccount = new SysUserPo();
         systemAccount.setId(9121L);
         systemAccount.setUsername("admin");
@@ -358,6 +369,7 @@ class EducationPersonIdentityTest {
         person.setPersonNo("T114");
         when(personMapper.selectById(5123L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = new SysUserPo();
         user.setId(9123L);
         user.setUsername("t.admin");
@@ -402,11 +414,273 @@ class EducationPersonIdentityTest {
         verify(userMapper, never()).selectOne(any());
     }
 
+    // ------------------------------------------------------------ 删除最后身份 / 账号处置
+
+    /** 删除独立系统账号的最后一个教育身份：不停用账号、不清角色，只撤被删除身份会话。 */
+    @Test
+    void deletingLastIdentityOfSystemAccountKeepsAccountEnabled() {
+        EduPersonPo person = boundPerson(5151L, SCHOOL_A, 9151L);
+        when(personMapper.selectById(5151L)).thenReturn(person);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo systemAccount = account(9151L, "系统账号");
+        when(userMapper.selectById(9151L)).thenReturn(systemAccount);
+
+        service.deletePeople(List.of(5151L));
+
+        assertThat(systemAccount.getStatus()).as("独立系统账号删除最后身份不得停用").isZero();
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+        verify(userRoleMapper, never()).delete(any());
+        SessionRevokeRequest request = captureSingleRevoke();
+        assertThat(request.getUserId()).isEqualTo(9151L);
+        assertThat(request.getIdentityId()).isEqualTo(5151L);
+    }
+
+    /** 删除教育入口账号的最后一个身份：停用账号、清角色、身份级 + 账号级两次撤销。 */
+    @Test
+    void deletingLastIdentityOfEducationAccountDisablesAccount() {
+        EduPersonPo person = boundPerson(5152L, SCHOOL_A, 9152L);
+        when(personMapper.selectById(5152L)).thenReturn(person);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo clientAccount = account(9152L, "教育人员统一入口建号");
+        when(userMapper.selectById(9152L)).thenReturn(clientAccount);
+
+        service.deletePeople(List.of(5152L));
+
+        assertThat(clientAccount.getStatus()).isEqualTo(1);
+        verify(userMapper).updateById(clientAccount);
+        verify(userRoleMapper).delete(any());
+        List<SessionRevokeRequest> revokes = captureAllRevokes();
+        assertThat(revokes).anyMatch(r -> r.getUserId().equals(9152L) && r.getIdentityId().equals(5152L));
+        assertThat(revokes).anyMatch(r -> r.getUserId().equals(9152L) && r.getIdentityId() == null);
+    }
+
+    /** 删除共享账号的其中一个身份：其他有效身份仍在，账号不停用。 */
+    @Test
+    void deletingOneIdentityKeepsSharedAccountEnabled() {
+        EduPersonPo person = boundPerson(5153L, SCHOOL_A, 9153L);
+        when(personMapper.selectById(5153L)).thenReturn(person);
+        EduPersonPo other = validOther(5154L, 9153L, SCHOOL_B);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        stubSchool(SCHOOL_B);
+
+        service.deletePeople(List.of(5153L));
+
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+        verify(userRoleMapper, never()).delete(any());
+        SessionRevokeRequest request = captureSingleRevoke();
+        assertThat(request.getIdentityId()).isEqualTo(5153L);
+    }
+
+    /** 离校标记为空按在校处理：另一身份 leave_flag=null 仍算有效，账号不停用。 */
+    @Test
+    void nullLeaveFlagCountsAsActive() {
+        EduPersonPo person = boundPerson(5155L, SCHOOL_A, 9155L);
+        when(personMapper.selectById(5155L)).thenReturn(person);
+        EduPersonPo other = validOther(5156L, 9155L, SCHOOL_B);
+        other.setLeaveFlag(null);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        stubSchool(SCHOOL_B);
+
+        service.deletePeople(List.of(5155L));
+
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+        verify(userRoleMapper, never()).delete(any());
+    }
+
+    /** 已离校身份不算有效：删除最后一个在校身份时，离校身份挡不住账号停用。 */
+    @Test
+    void leftIdentityDoesNotPreventLastAccountDisable() {
+        EduPersonPo person = boundPerson(5157L, SCHOOL_A, 9157L);
+        when(personMapper.selectById(5157L)).thenReturn(person);
+        EduPersonPo left = validOther(5158L, 9157L, SCHOOL_B);
+        left.setLeaveFlag(1);
+        when(personMapper.selectList(any())).thenReturn(List.of(left));
+        SysUserPo clientAccount = account(9157L, "教育人员统一入口建号");
+        when(userMapper.selectById(9157L)).thenReturn(clientAccount);
+
+        service.deletePeople(List.of(5157L));
+
+        assertThat(clientAccount.getStatus()).isEqualTo(1);
+        verify(userRoleMapper).delete(any());
+    }
+
+    /** 停用学校下的身份不算有效：删除最后一个有效身份时账号停用。 */
+    @Test
+    void disabledSchoolIdentityDoesNotCountAsValid() {
+        EduPersonPo person = boundPerson(5159L, SCHOOL_A, 9159L);
+        when(personMapper.selectById(5159L)).thenReturn(person);
+        EduPersonPo other = validOther(5160L, 9159L, SCHOOL_B);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        EduSchoolPo disabled = school(SCHOOL_B, 1, 1L);
+        when(schoolMapper.selectById(SCHOOL_B)).thenReturn(disabled);
+        SysUserPo clientAccount = account(9159L, "教育人员统一入口建号");
+        when(userMapper.selectById(9159L)).thenReturn(clientAccount);
+
+        service.deletePeople(List.of(5159L));
+
+        assertThat(clientAccount.getStatus()).isEqualTo(1);
+        verify(userRoleMapper).delete(any());
+    }
+
+    /** 学校租户与人员租户不一致的身份不算有效：删除最后一个有效身份时账号停用。 */
+    @Test
+    void tenantMismatchedSchoolIdentityDoesNotCountAsValid() {
+        EduPersonPo person = boundPerson(5161L, SCHOOL_A, 9161L);
+        when(personMapper.selectById(5161L)).thenReturn(person);
+        EduPersonPo other = validOther(5162L, 9161L, SCHOOL_B);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        when(schoolMapper.selectById(SCHOOL_B)).thenReturn(school(SCHOOL_B, 0, 999L));
+        SysUserPo clientAccount = account(9161L, "教育人员统一入口建号");
+        when(userMapper.selectById(9161L)).thenReturn(clientAccount);
+
+        service.deletePeople(List.of(5161L));
+
+        assertThat(clientAccount.getStatus()).isEqualTo(1);
+        verify(userRoleMapper).delete(any());
+    }
+
+    // ------------------------------------------------------------ LINK 切绑旧账号
+
+    /** LINK 切绑：旧教育入口账号失去最后身份 → 停旧账号、清旧角色、撤旧账号全部会话。 */
+    @Test
+    void linkingToNewAccountDisablesOldEducationAccountWhenLastIdentity() {
+        EduPersonPo person = boundPerson(5171L, SCHOOL_A, 9171L);
+        person.setPersonNo("T171");
+        when(personMapper.selectById(5171L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        stubSchool(SCHOOL_A);
+        SysUserPo oldAccount = account(9171L, "教育人员统一入口建号");
+        when(userMapper.selectById(9171L)).thenReturn(oldAccount);
+        SysUserPo newAccount = new SysUserPo();
+        newAccount.setId(9172L);
+        newAccount.setTenantId(1L);
+        newAccount.setUsername("t.new");
+        newAccount.setPhone("13900000071");
+        newAccount.setStatus(0);
+        when(userMapper.selectById(9172L)).thenReturn(newAccount);
+
+        service.save(linkForm(5171L, 9172L, "13900000071"));
+
+        assertThat(oldAccount.getStatus()).isEqualTo(1);
+        assertThat(newAccount.getStatus()).as("不得改动新账号状态").isZero();
+        assertThat(newAccount.getPassword()).as("不得改动新账号口令").isNull();
+        verify(userMapper).updateById(oldAccount);
+        verify(userRoleMapper).delete(any());
+        List<SessionRevokeRequest> revokes = captureAllRevokes();
+        assertThat(revokes).anyMatch(r -> r.getUserId().equals(9171L) && r.getIdentityId().equals(5171L));
+        assertThat(revokes).anyMatch(r -> r.getUserId().equals(9171L) && r.getIdentityId() == null);
+    }
+
+    /** LINK 切绑：旧账号是独立系统账号 → 不停旧账号、不清旧角色，只撤旧身份会话。 */
+    @Test
+    void linkingToNewAccountKeepsOldSystemAccountEnabled() {
+        EduPersonPo person = boundPerson(5173L, SCHOOL_A, 9173L);
+        person.setPersonNo("T173");
+        when(personMapper.selectById(5173L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        stubSchool(SCHOOL_A);
+        SysUserPo oldAccount = account(9173L, "系统账号");
+        when(userMapper.selectById(9173L)).thenReturn(oldAccount);
+        SysUserPo newAccount = new SysUserPo();
+        newAccount.setId(9174L);
+        newAccount.setTenantId(1L);
+        newAccount.setUsername("t.new");
+        newAccount.setPhone("13900000073");
+        newAccount.setStatus(0);
+        when(userMapper.selectById(9174L)).thenReturn(newAccount);
+
+        service.save(linkForm(5173L, 9174L, "13900000073"));
+
+        assertThat(oldAccount.getStatus()).isZero();
+        verify(userMapper, never()).updateById(oldAccount);
+        verify(userRoleMapper, never()).delete(any());
+        SessionRevokeRequest request = captureSingleRevoke();
+        assertThat(request.getUserId()).isEqualTo(9173L);
+        assertThat(request.getIdentityId()).isEqualTo(5173L);
+    }
+
+    /** LINK 切绑：旧账号还有其他有效身份 → 不停旧账号，只撤旧身份会话。 */
+    @Test
+    void linkingToNewAccountKeepsOldAccountWhenOtherIdentityExists() {
+        EduPersonPo person = boundPerson(5175L, SCHOOL_A, 9175L);
+        person.setPersonNo("T175");
+        when(personMapper.selectById(5175L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        EduPersonPo other = validOther(5176L, 9175L, SCHOOL_B);
+        when(personMapper.selectList(any())).thenReturn(List.of(other));
+        stubSchool(SCHOOL_A);
+        stubSchool(SCHOOL_B);
+        SysUserPo newAccount = new SysUserPo();
+        newAccount.setId(9177L);
+        newAccount.setTenantId(1L);
+        newAccount.setUsername("t.new");
+        newAccount.setPhone("13900000075");
+        newAccount.setStatus(0);
+        when(userMapper.selectById(9177L)).thenReturn(newAccount);
+
+        service.save(linkForm(5175L, 9177L, "13900000075"));
+
+        verify(userMapper, never()).updateById(any(SysUserPo.class));
+        verify(userRoleMapper, never()).delete(any());
+        SessionRevokeRequest request = captureSingleRevoke();
+        assertThat(request.getUserId()).isEqualTo(9175L);
+        assertThat(request.getIdentityId()).isEqualTo(5175L);
+    }
+
+    // ---------------------------------------------------------------- 工具
+
+    private static EducationForms.Person linkForm(Long personId, Long linkUserId, String phone) {
+        return new EducationForms.Person(personId, SCHOOL_A, null, "张三", "TEACHER",
+                null, phone, 0, null, null, null, null, null, null, null, null, null, null,
+                "LINK", linkUserId);
+    }
+
+    private EduPersonPo boundPerson(Long id, Long schoolId, Long userId) {
+        EduPersonPo value = person(id, "TEACHER", schoolId);
+        value.setUserId(userId);
+        value.setStatus(0);
+        value.setLeaveFlag(0);
+        return value;
+    }
+
+    private EduPersonPo validOther(Long id, Long userId, Long schoolId) {
+        return boundPerson(id, schoolId, userId);
+    }
+
+    private static SysUserPo account(Long id, String remark) {
+        SysUserPo value = new SysUserPo();
+        value.setId(id);
+        value.setUsername("u_" + id);
+        value.setStatus(0);
+        value.setRemark(remark);
+        return value;
+    }
+
+    private SessionRevokeRequest captureSingleRevoke() {
+        ArgumentCaptor<SessionRevokeRequest> captor = ArgumentCaptor.forClass(SessionRevokeRequest.class);
+        verify(authServiceClient).revokeSession(captor.capture());
+        return captor.getValue();
+    }
+
+    private List<SessionRevokeRequest> captureAllRevokes() {
+        ArgumentCaptor<SessionRevokeRequest> captor = ArgumentCaptor.forClass(SessionRevokeRequest.class);
+        verify(authServiceClient, times(2)).revokeSession(captor.capture());
+        return captor.getAllValues();
+    }
+
+    private EduSchoolPo school(Long schoolId, Integer status, Long tenantId) {
+        EduSchoolPo value = new EduSchoolPo();
+        value.setId(schoolId);
+        value.setTenantId(tenantId);
+        value.setStatus(status);
+        value.setSourceSystem("HAN");
+        return value;
+    }
+
     private void stubSchool(Long schoolId) {
-        EduSchoolPo school = new EduSchoolPo();
-        school.setId(schoolId);
-        school.setSourceSystem("HAN");
-        when(schoolMapper.selectById(schoolId)).thenReturn(school);
+        when(schoolMapper.selectById(schoolId)).thenReturn(school(schoolId, 0, 1L));
     }
 
     private static EduPersonPo person(Long id, String personType, Long schoolId) {

@@ -18,6 +18,8 @@ import com.han.system.mapper.SysDeptMapper;
 import com.han.system.mapper.SysRoleDeptMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
+import com.han.system.sdfz.education.domain.EduPersonPo;
+import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.service.ISysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,6 +51,7 @@ public class ISysUserController {
     private final SysDeptMapper deptMapper;
     private final SysUserConverter sysUserConverter;
     private final SysUserApiConverter sysUserApiConverter;
+    private final EduPersonMapper eduPersonMapper;
 
     @GetMapping("/user/{userId}")
     public R<UserVO> getUserById(@PathVariable("userId") Long userId) {
@@ -289,6 +292,8 @@ public class ISysUserController {
 
     private UserVO toApiUserVO(SysUserPo po) {
         UserVO vo = sysUserApiConverter.toApiUserVO(po);
+        vo.setEducationAccount(isEducationAccount(po));
+        vo.setEducationBound(isEducationBound(po.getId()));
         if (po.isAdmin()) {
             vo.setPermissions(Set.of("*:*:*"));
             vo.setRoleKeys(Set.of("admin"));
@@ -301,5 +306,23 @@ public class ISysUserController {
         Set<String> roleKeys = sysUserService.selectRoleKeysByUserId(po.getId());
         vo.setRoleKeys(roleKeys != null ? roleKeys : Set.of());
         return vo;
+    }
+
+    /** 教育入口统一建号的账号，remark 以「教育人员」开头标记。 */
+    private boolean isEducationAccount(SysUserPo po) {
+        String remark = po.getRemark();
+        return remark != null && remark.startsWith("教育人员");
+    }
+
+    /** edu_person 存在该 userId 的未删除记录（含停用/离校）即视为已绑定教育人员。 */
+    private boolean isEducationBound(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        Long bound = TenantHelper.ignore(() -> eduPersonMapper.selectCount(
+                new LambdaQueryWrapper<EduPersonPo>()
+                        .eq(EduPersonPo::getUserId, userId)
+                        .eq(EduPersonPo::getDelFlag, 0)));
+        return bound != null && bound > 0;
     }
 }
