@@ -49,4 +49,23 @@ public interface CacheConstants {
 
     /** 社交登录绑定/选租户临时凭证（一次性） */
     String SOCIAL_TICKET_KEY = CACHE_PREFIX + "social_ticket:";
+
+    /**
+     * 会话索引：账号下全部 accessToken（Redis Set）。
+     * <p>登录/刷新时加入，登出/身份撤销/账号撤销时移除；撤销全部会话不再只依赖
+     * {@code login_user:{userId}:{clientType}} 读最后一枚 token。
+     */
+    String SESSION_USER_KEY = CACHE_PREFIX + "auth:sessions:user:";
+
+    /**
+     * 会话索引：账号 + 身份下全部 accessToken（Redis Set）。
+     * <p>仅 identityScoped 登录态加入，身份粒度撤销时据此删除该身份全部客户端会话。
+     */
+    String SESSION_IDENTITY_KEY = CACHE_PREFIX + "auth:sessions:identity:";
+
+    /**
+     * 身份索引：账号下全部 identityId（Redis Set）。
+     * <p>账号粒度撤销时据此逐个删除身份会话 Set 并撤销身份课堂凭证。
+     */
+    String IDENTITIES_USER_KEY = CACHE_PREFIX + "auth:identities:user:";
 }

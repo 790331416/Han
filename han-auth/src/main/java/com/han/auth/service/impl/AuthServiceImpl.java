@@ -70,6 +70,9 @@ public class AuthServiceImpl implements IAuthService {
     private static final Duration WECHAT_REFRESH_EXPIRE = Duration.ofDays(90);
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
 
+    /** 会话索引 Set 的过期时间：覆盖 access token 最大有效期（微信 30 天），留一天余量。 */
+    private static final Duration SESSION_INDEX_TTL = Duration.ofDays(31);
+
     private static final int PASSWORD_EXPIRE_DAYS = 90;
 
     private static final int MAX_LOGIN_ATTEMPTS = 5;
@@ -195,7 +198,7 @@ public class AuthServiceImpl implements IAuthService {
         validateLoginAccount(user);
         List<ClassroomIdentityVO> identities = loadClassroomIdentities(user.getUserId());
         if (identities.isEmpty()) {
-            if (isEducationBoundAccount(user)) {
+            if (user.isEducationAccount() || user.isEducationBound()) {
                 throw new BusinessException(NO_VALID_IDENTITY);
             }
             return issueLoginForUser(user, clientType, forceChangePassword);
@@ -318,11 +321,71 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(refreshKey, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, accessToken, tokenExpire);
         markOnline(accessToken);
+        addToSessionIndex(user.getUserId(), loginUser, accessToken);
 
         recordLoginSuccess(user.getUserId(), user.getUsername(), clientType);
 
         return buildLoginVO(accessToken, refreshToken, tokenExpire, forceChangePassword, user.getUserId(),
                 user.getUsername(), user.getNickname(), user.getAvatar(), user.getPhone());
+    }
+
+    /** 会话索引：user 会话 Set 键。 */
+    private String userSessionsKey(Long userId) {
+        return CacheConstants.SESSION_USER_KEY + userId;
+    }
+
+    /** 会话索引：identity 会话 Set 键。 */
+    private String identitySessionsKey(Long userId, Long identityId) {
+        return CacheConstants.SESSION_IDENTITY_KEY + userId + ":" + identityId;
+    }
+
+    /** 身份索引：账号下全部 identityId 的 Set 键。 */
+    private String userIdentitiesKey(Long userId) {
+        return CacheConstants.IDENTITIES_USER_KEY + userId;
+    }
+
+    /** 将新签发的 accessToken 写入 user 会话 Set，identityScoped 时同时写入 identity Set 与 user identities Set。 */
+    private void addToSessionIndex(Long userId, LoginUser loginUser, String accessToken) {
+        if (userId == null || loginUser == null) {
+            return;
+        }
+        String userSessions = userSessionsKey(userId);
+        redisTemplate.opsForSet().add(userSessions, accessToken);
+        redisTemplate.expire(userSessions, SESSION_INDEX_TTL);
+        if (loginUser.isIdentityScoped() && loginUser.getIdentityId() != null) {
+            String identitySessions = identitySessionsKey(userId, loginUser.getIdentityId());
+            redisTemplate.opsForSet().add(identitySessions, accessToken);
+            redisTemplate.expire(identitySessions, SESSION_INDEX_TTL);
+
+            String identities = userIdentitiesKey(userId);
+            redisTemplate.opsForSet().add(identities, String.valueOf(loginUser.getIdentityId()));
+            redisTemplate.expire(identities, SESSION_INDEX_TTL);
+        }
+    }
+
+    /** 从 user 会话 Set 移除 accessToken，identityScoped 时同时从 identity Set 移除。 */
+    private void removeFromSessionIndex(Long userId, LoginUser loginUser, String accessToken) {
+        if (userId == null || loginUser == null) {
+            return;
+        }
+        redisTemplate.opsForSet().remove(userSessionsKey(userId), accessToken);
+        if (loginUser.isIdentityScoped() && loginUser.getIdentityId() != null) {
+            redisTemplate.opsForSet().remove(identitySessionsKey(userId, loginUser.getIdentityId()), accessToken);
+        }
+    }
+
+    /** 读取 Set 成员，空集合按空集处理（Redis 返回 null 或不存在）。 */
+    private Set<String> sessionMembers(String key) {
+        Set<String> members = redisTemplate.opsForSet().members(key);
+        return members != null ? members : Set.of();
+    }
+
+    /** Refresh 失败时作废旧登录态：删旧 access/refresh token、在线标记，并从会话索引移除旧 token。 */
+    private void deleteOldRefreshSession(LoginUser oldLoginUser, String oldAccessToken, String refreshKey) {
+        redisTemplate.delete(CacheConstants.TOKEN_KEY + oldAccessToken);
+        redisTemplate.delete(refreshKey);
+        redisTemplate.delete(CacheConstants.ONLINE_KEY + oldAccessToken);
+        removeFromSessionIndex(oldLoginUser.getUserId(), oldLoginUser, oldAccessToken);
     }
 
     /** 管理端 PC 登录必须有管理端角色；校端登录走独立兼容凭证，不复用此门禁。 */
@@ -361,15 +424,6 @@ public class AuthServiceImpl implements IAuthService {
         String reason = XuStrUtil.isNotBlank(identity.getManagementUnavailableReason())
                 ? identity.getManagementUnavailableReason() : NO_MANAGEMENT_PERMISSION;
         throw new BusinessException(reason);
-    }
-
-    /** 教育入口账号（挂有 teacher/student 角色）在身份查询为空时视为「有身份但已失效」。 */
-    private boolean isEducationBoundAccount(UserVO user) {
-        if (user == null) {
-            return false;
-        }
-        Set<String> roleKeys = user.getRoleKeys();
-        return roleKeys != null && roleKeys.stream().anyMatch(AuthServiceImpl::isTeacherOrStudentKey);
     }
 
     /** roleKey 命中 teacher/student 即视为非管理端角色，与 han-system 管理角色 SQL 同口径。 */
@@ -451,11 +505,17 @@ public class AuthServiceImpl implements IAuthService {
         if (oldLoginUser.isIdentityScoped()) {
             ClassroomIdentityVO identity = findValidIdentity(user.getUserId(), oldLoginUser.getIdentityId());
             if (identity == null) {
-                // 身份失效：删旧 access/refresh token 后 401，禁止继续持有旧权限。
-                redisTemplate.delete(oldTokenKey);
-                redisTemplate.delete(refreshKey);
-                redisTemplate.delete(CacheConstants.ONLINE_KEY + oldAccessToken);
+                // 身份失效：删旧 access/refresh token 并从会话索引移除后 401，禁止继续持有旧权限。
+                deleteOldRefreshSession(oldLoginUser, oldAccessToken, refreshKey);
                 throw new UnauthorizedException("当前身份已失效，请重新登录");
+            }
+            // Refresh 再执行 PC 管理门禁：PC 身份已无管理能力时拒绝续期，要求重登；
+            // H5/App 教师不受 PC 门禁影响。
+            try {
+                requireIdentityManagementAvailable(user, clientType, identity);
+            } catch (BusinessException e) {
+                deleteOldRefreshSession(oldLoginUser, oldAccessToken, refreshKey);
+                throw new UnauthorizedException("当前身份已无管理端权限，请重新登录");
             }
             Set<String> permissions = loadPermissions(user.getUserId());
             Set<Long> dataScopeDeptIds = loadDataScopeDeptIds(user.getUserId());
@@ -477,6 +537,7 @@ public class AuthServiceImpl implements IAuthService {
 
         redisTemplate.delete(oldTokenKey);
         redisTemplate.delete(refreshKey);
+        removeFromSessionIndex(oldLoginUser.getUserId(), oldLoginUser, oldAccessToken);
 
         String newTokenKey = CacheConstants.TOKEN_KEY + newAccessToken;
         String newRefreshKey = CacheConstants.REFRESH_TOKEN_KEY + newRefreshToken;
@@ -486,6 +547,7 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(newRefreshKey, newAccessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, newAccessToken, tokenExpire);
         markOnline(newAccessToken);
+        addToSessionIndex(loginUser.getUserId(), loginUser, newAccessToken);
 
         return buildLoginVO(newAccessToken, newRefreshToken, tokenExpire, false, loginUser.getUserId(),
                 loginUser.getUsername(), loginUser.getNickname(), loginUser.getAvatar(), loginUser.getPhone());
@@ -506,10 +568,25 @@ public class AuthServiceImpl implements IAuthService {
 
         if (XuStrUtil.isNotBlank(userJson)) {
             LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
-            String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
-            redisTemplate.delete(userKey);
-            redisTemplate.delete(CacheConstants.ONLINE_KEY + token);
-            revokeClassroomSession(loginUser.getUserId());
+            if (loginUser != null && loginUser.getUserId() != null && loginUser.getClientType() != null) {
+                redisTemplate.delete(CacheConstants.ONLINE_KEY + token);
+                // 从 user 会话 Set 移除当前 token；identityScoped 时同时从 identity Set 移除。
+                removeFromSessionIndex(loginUser.getUserId(), loginUser, token);
+
+                // login_user 仅当其值等于当前 accessToken 时才删除，避免误删同设备新会话索引。
+                String userKey = CacheConstants.LOGIN_USER_KEY + loginUser.getUserId() + ":" + loginUser.getClientType().getCode();
+                String deviceToken = redisTemplate.opsForValue().get(userKey);
+                if (token.equals(deviceToken)) {
+                    redisTemplate.delete(userKey);
+                }
+
+                if (loginUser.isIdentityScoped() && loginUser.getIdentityId() != null) {
+                    // 身份会话只撤当前身份课堂凭证，不误撤其他身份。
+                    revokeIdentityClassroomSession(loginUser.getUserId(), loginUser.getIdentityId());
+                } else {
+                    revokeClassroomSession(loginUser.getUserId());
+                }
+            }
         }
 
         redisTemplate.delete(tokenKey);
@@ -579,38 +656,56 @@ public class AuthServiceImpl implements IAuthService {
     /**
      * 会话撤销：{@code identityId} 为空撤销该账号全部会话与课堂凭证，指定时只撤该身份。
      *
-     * <p>删除 {@code login_user:{userId}:{clientType}} 指向的 access token 与对应 token key；
-     * 身份粒度撤销时只删除目标身份会话，并作废该身份课堂凭证。
+     * <p>撤销全部会话以 {@code auth:sessions:user:{userId}} 为唯一依据，不再只遍历
+     * {@code login_user:{userId}:{clientType}} 读最后一枚 token；身份粒度撤销以
+     * {@code auth:sessions:identity:{userId}:{identityId}} 为依据，并作废该身份课堂凭证。
      */
     @Override
     public void revokeSession(Long userId, Long identityId) {
         if (userId == null) {
             throw new BusinessException("用户ID不能为空");
         }
-        for (ClientType clientType : ClientType.values()) {
-            String userKey = CacheConstants.LOGIN_USER_KEY + userId + ":" + clientType.getCode();
-            String accessToken = redisTemplate.opsForValue().get(userKey);
-            if (XuStrUtil.isBlank(accessToken)) {
-                continue;
-            }
-            if (identityId != null) {
-                String userJson = redisTemplate.opsForValue().get(CacheConstants.TOKEN_KEY + accessToken);
-                if (XuStrUtil.isNotBlank(userJson)) {
-                    LoginUser loginUser = XuJsonUtil.parseObject(userJson, LoginUser.class);
-                    if (loginUser == null || !identityId.equals(loginUser.getIdentityId())) {
-                        continue;
-                    }
-                }
-            }
-            redisTemplate.delete(userKey);
+        if (identityId != null) {
+            revokeIdentitySessions(userId, identityId);
+        } else {
+            revokeAccountSessions(userId);
+        }
+    }
+
+    /** 身份级撤销：删该身份全部客户端会话 + 身份课堂 Active/Session Key + 身份索引。 */
+    private void revokeIdentitySessions(Long userId, Long identityId) {
+        String identitySessions = identitySessionsKey(userId, identityId);
+        for (String accessToken : sessionMembers(identitySessions)) {
+            redisTemplate.delete(CacheConstants.TOKEN_KEY + accessToken);
+            redisTemplate.delete(CacheConstants.ONLINE_KEY + accessToken);
+            redisTemplate.opsForSet().remove(userSessionsKey(userId), accessToken);
+        }
+        redisTemplate.delete(identitySessions);
+        revokeIdentityClassroomSession(userId, identityId);
+        redisTemplate.opsForSet().remove(userIdentitiesKey(userId), String.valueOf(identityId));
+    }
+
+    /** 账号级撤销：删全部客户端会话 + 各身份课堂凭证 + 账号级课堂兼容凭证 + 全部会话/身份索引。 */
+    private void revokeAccountSessions(Long userId) {
+        String userSessions = userSessionsKey(userId);
+        for (String accessToken : sessionMembers(userSessions)) {
             redisTemplate.delete(CacheConstants.TOKEN_KEY + accessToken);
             redisTemplate.delete(CacheConstants.ONLINE_KEY + accessToken);
         }
-        if (identityId != null) {
-            revokeIdentityClassroomSession(userId, identityId);
-        } else {
-            revokeClassroomSession(userId);
+        for (ClientType clientType : ClientType.values()) {
+            redisTemplate.delete(CacheConstants.LOGIN_USER_KEY + userId + ":" + clientType.getCode());
         }
+        String identities = userIdentitiesKey(userId);
+        for (String identityId : sessionMembers(identities)) {
+            Long parsedIdentityId = parseLongOrNull(identityId);
+            if (parsedIdentityId != null) {
+                redisTemplate.delete(identitySessionsKey(userId, parsedIdentityId));
+                revokeIdentityClassroomSession(userId, parsedIdentityId);
+            }
+        }
+        revokeClassroomSession(userId);
+        redisTemplate.delete(userSessions);
+        redisTemplate.delete(identities);
     }
 
     @Override

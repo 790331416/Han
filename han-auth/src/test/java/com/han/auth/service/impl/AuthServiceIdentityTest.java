@@ -21,8 +21,10 @@ import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -54,6 +56,8 @@ class AuthServiceIdentityTest {
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+    @SuppressWarnings("unchecked")
+    private final SetOperations<String, String> setOperations = mock(SetOperations.class);
     private final SystemServiceClient systemServiceClient = mock(SystemServiceClient.class);
     private final TenantServiceClient tenantServiceClient = mock(TenantServiceClient.class);
     private final CaptchaSettingService captchaSettingService = mock(CaptchaSettingService.class);
@@ -67,6 +71,11 @@ class AuthServiceIdentityTest {
     );
 
     private static final String RAW_PASSWORD = "Passw0rd!";
+
+    @BeforeEach
+    void setUp() {
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+    }
 
     @AfterEach
     void tearDown() {
@@ -269,7 +278,7 @@ class AuthServiceIdentityTest {
         when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         UserVO user = user(9L, 1L);
-        user.setRoleKeys(Set.of("teacher"));
+        user.setEducationAccount(true);
         when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
         when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of()));
 
@@ -277,6 +286,44 @@ class AuthServiceIdentityTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("当前账号没有有效教育身份，请联系管理员");
         verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void educationSchoolAdminWithCommonRoleAndNoValidIdentityIsBlocked() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        user.setRoleKeys(Set.of("common"));
+        user.setEducationAccount(true);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of()));
+
+        assertThatThrownBy(() -> authService.login(loginDto("admin", RAW_PASSWORD, ClientType.H5)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前账号没有有效教育身份，请联系管理员");
+        verify(valueOperations, never()).set(startsWith(CacheConstants.TOKEN_KEY), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void systemAccountWithoutEducationBindingKeepsOriginalLogin() {
+        when(captchaSettingService.isCaptchaEnabled()).thenReturn(false);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        UserVO user = user(9L, 1L);
+        user.setEducationAccount(false);
+        user.setEducationBound(false);
+        when(systemServiceClient.getUserByUsername("admin")).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of()));
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of("system:user:list")));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
+
+        LoginVO result = authService.login(loginDto("admin", RAW_PASSWORD, ClientType.PC));
+
+        assertThat(result.accessToken()).isNotBlank();
+        assertThat(result.requireIdentity()).isFalse();
+        LoginUser stored = capturedTokenUser();
+        assertThat(stored.isIdentityScoped()).isFalse();
+        assertThat(stored.getIdentityId()).isNull();
     }
 
     @Test

@@ -17,7 +17,9 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -43,6 +45,8 @@ class AuthServiceImplTest {
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+    @SuppressWarnings("unchecked")
+    private final SetOperations<String, String> setOperations = mock(SetOperations.class);
     private final SystemServiceClient systemServiceClient = mock(SystemServiceClient.class);
     private final TenantServiceClient tenantServiceClient = mock(TenantServiceClient.class);
     private final AuthServiceImpl authService = new AuthServiceImpl(
@@ -53,6 +57,12 @@ class AuthServiceImplTest {
             mock(TotpService.class),
             mock(CaptchaSettingService.class)
     );
+
+    @BeforeEach
+    void setUp() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+    }
 
     @AfterEach
     void tearDown() {

@@ -17,8 +17,10 @@ import com.han.common.core.util.XuJsonUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -29,8 +31,12 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,6 +52,8 @@ class AuthServiceRefreshIdentityTest {
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+    @SuppressWarnings("unchecked")
+    private final SetOperations<String, String> setOperations = mock(SetOperations.class);
     private final SystemServiceClient systemServiceClient = mock(SystemServiceClient.class);
     private final TenantServiceClient tenantServiceClient = mock(TenantServiceClient.class);
     private final AuthServiceImpl authService = new AuthServiceImpl(
@@ -56,6 +64,12 @@ class AuthServiceRefreshIdentityTest {
             mock(TotpService.class),
             mock(CaptchaSettingService.class)
     );
+
+    @BeforeEach
+    void setUp() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+    }
 
     @AfterEach
     void tearDown() {
@@ -105,11 +119,13 @@ class AuthServiceRefreshIdentityTest {
         String refreshToken = "refresh-2";
         String oldAccessToken = "old-access-2";
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        // H5 教师不受 PC 门禁影响，岗位从 SCHOOL_ADMIN 降为 TEACHER 后仍可续期，
+        // 但不得再刷新出旧管理员角色与权限。
         stubRefreshPair(refreshToken, oldAccessToken, LoginUser.builder()
                 .userId(9L)
                 .tenantId(1L)
                 .username("admin")
-                .clientType(ClientType.PC)
+                .clientType(ClientType.H5)
                 .identityScoped(true)
                 .identityId(100L)
                 .dutyCode("SCHOOL_ADMIN")
@@ -164,6 +180,128 @@ class AuthServiceRefreshIdentityTest {
         // 身份失效时删除旧 access/refresh token，禁止继续持有旧权限
         verify(redisTemplate).delete(CacheConstants.TOKEN_KEY + oldAccessToken);
         verify(redisTemplate).delete(CacheConstants.REFRESH_TOKEN_KEY + refreshToken);
+    }
+
+    @Test
+    void refreshMovesTokenBetweenSessionIndexes() {
+        String refreshToken = "refresh-move";
+        String oldAccessToken = "old-access-move";
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        stubRefreshPair(refreshToken, oldAccessToken, LoginUser.builder()
+                .userId(9L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.H5)
+                .identityScoped(true)
+                .identityId(100L)
+                .build());
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三", false, "当前岗位未开通管理端"))));
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+
+        LoginVO result = authService.refreshToken(refreshToken);
+
+        assertThat(result.accessToken()).isNotBlank();
+        // 旧 token 从 user / identity 会话 Set 移除
+        verify(setOperations).remove(CacheConstants.SESSION_USER_KEY + 9L, oldAccessToken);
+        verify(setOperations).remove(CacheConstants.SESSION_IDENTITY_KEY + 9L + ":100", oldAccessToken);
+        // 新 token 加入相同 Set，且不等于旧 token
+        ArgumentCaptor<String> added = ArgumentCaptor.forClass(String.class);
+        verify(setOperations).add(eq(CacheConstants.SESSION_USER_KEY + 9L), added.capture());
+        assertThat(added.getValue()).isNotEqualTo(oldAccessToken);
+        verify(setOperations).add(eq(CacheConstants.SESSION_IDENTITY_KEY + 9L + ":100"), anyString());
+    }
+
+    @Test
+    void pcRefreshFailsAfterManagementRoleRemoved() {
+        String refreshToken = "refresh-mgmt";
+        String oldAccessToken = "old-access-mgmt";
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        stubRefreshPair(refreshToken, oldAccessToken, LoginUser.builder()
+                .userId(9L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.PC)
+                .identityScoped(true)
+                .identityId(100L)
+                .dutyCode("SCHOOL_ADMIN")
+                .build());
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "SCHOOL_ADMIN", "张三", false, "账号未配置管理端角色"))));
+
+        assertThatThrownBy(() -> authService.refreshToken(refreshToken))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("当前身份已无管理端权限，请重新登录");
+
+        verify(redisTemplate).delete(CacheConstants.TOKEN_KEY + oldAccessToken);
+        verify(redisTemplate).delete(CacheConstants.REFRESH_TOKEN_KEY + refreshToken);
+        verify(setOperations).remove(CacheConstants.SESSION_USER_KEY + 9L, oldAccessToken);
+        verify(setOperations).remove(CacheConstants.SESSION_IDENTITY_KEY + 9L + ":100", oldAccessToken);
+    }
+
+    @Test
+    void pcRefreshFailsAfterSchoolAdminDutyRemoved() {
+        String refreshToken = "refresh-duty";
+        String oldAccessToken = "old-access-duty";
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        stubRefreshPair(refreshToken, oldAccessToken, LoginUser.builder()
+                .userId(9L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.PC)
+                .identityScoped(true)
+                .identityId(100L)
+                .dutyCode("SCHOOL_ADMIN")
+                .build());
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+        // 岗位已从 SCHOOL_ADMIN 降为 TEACHER
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三", false, "当前岗位未开通管理端"))));
+
+        assertThatThrownBy(() -> authService.refreshToken(refreshToken))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("当前身份已无管理端权限，请重新登录");
+
+        verify(redisTemplate).delete(CacheConstants.TOKEN_KEY + oldAccessToken);
+        verify(redisTemplate).delete(CacheConstants.REFRESH_TOKEN_KEY + refreshToken);
+    }
+
+    @Test
+    void h5TeacherRefreshStillSucceeds() {
+        String refreshToken = "refresh-h5";
+        String oldAccessToken = "old-access-h5";
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        stubRefreshPair(refreshToken, oldAccessToken, LoginUser.builder()
+                .userId(9L)
+                .tenantId(1L)
+                .username("admin")
+                .clientType(ClientType.H5)
+                .identityScoped(true)
+                .identityId(100L)
+                .build());
+
+        UserVO user = user(9L, 1L);
+        when(systemServiceClient.getUserById(9L)).thenReturn(R.ok(user));
+        when(systemServiceClient.listClassroomIdentities(9L)).thenReturn(R.ok(List.of(
+                identity("100", "200", "示范小学", "TEACHER", "TEACHER", "张三", false, "当前岗位未开通管理端"))));
+        when(systemServiceClient.getPermissionsByUserId(9L)).thenReturn(R.ok(Set.of()));
+        when(systemServiceClient.getDataScopeDeptIds(9L)).thenReturn(R.ok(Set.of()));
+
+        LoginVO result = authService.refreshToken(refreshToken);
+
+        assertThat(result.accessToken()).isNotBlank();
+        LoginUser stored = capturedTokenUser();
+        assertThat(stored.getIdentityId()).isEqualTo(100L);
+        assertThat(stored.getDutyCode()).isEqualTo("TEACHER");
     }
 
     private void stubRefreshPair(String refreshToken, String oldAccessToken, LoginUser oldLoginUser) {
