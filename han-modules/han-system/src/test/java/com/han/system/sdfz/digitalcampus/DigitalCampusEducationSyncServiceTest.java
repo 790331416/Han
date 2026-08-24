@@ -4,10 +4,12 @@ import com.han.api.system.domain.DigitalCampusUserSyncDTO;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
+import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
+import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,13 +38,19 @@ class DigitalCampusEducationSyncServiceTest {
     private EduPersonMapper personMapper;
     @Mock
     private EduPersonClassMapper personClassMapper;
+    @Mock
+    private EduRegionMapper regionMapper;
 
     private DigitalCampusEducationSyncService service;
 
     @BeforeEach
     void setUp() {
         service = new DigitalCampusEducationSyncService(
-                schoolMapper, classMapper, personMapper, personClassMapper);
+                schoolMapper, classMapper, personMapper, personClassMapper, regionMapper);
+        EduRegionPo region = new EduRegionPo();
+        region.setId(51L);
+        region.setRegionCode("500100");
+        when(regionMapper.selectOne(any())).thenReturn(region);
     }
 
     @Test
@@ -69,6 +77,7 @@ class DigitalCampusEducationSyncServiceTest {
 
         assertThat(school.getValue().getSourceSystem()).isEqualTo("DIGITAL_CAMPUS");
         assertThat(school.getValue().getExternalId()).isEqualTo("school-1");
+        assertThat(school.getValue().getRegionId()).isEqualTo(51L);
         assertThat(classInfo.getValue().getSchoolId()).isEqualTo(11L);
         assertThat(classInfo.getValue().getExternalId()).isEqualTo("class-1");
         assertThat(person.getValue().getUserId()).isEqualTo(100L);

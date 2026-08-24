@@ -185,6 +185,24 @@ public class EducationMasterDataController {
         return R.ok(personService.save(form));
     }
 
+    @RepeatSubmit
+    @PostMapping("/people/reset-password")
+    @PreAuthorize("@ss.hasAuthority('education:person:resetPwd')")
+    @OperLog(module = "人员管理", type = OperLog.OperType.UPDATE, saveParams = false)
+    public R<Void> resetPersonPassword(@RequestParam Long personId, @RequestParam String password) {
+        personService.resetAccountPassword(personId, password);
+        return R.ok();
+    }
+
+    @RepeatSubmit
+    @PostMapping("/people/unbind")
+    @PreAuthorize("@ss.hasAuthority('system:client-user:unbind')")
+    @OperLog(module = "客户端用户", type = OperLog.OperType.UPDATE)
+    public R<Void> unbindClientUser(@RequestParam Long userId) {
+        personService.unbindClientUser(userId);
+        return R.ok();
+    }
+
     @GetMapping("/people/import-template")
     @PreAuthorize("@ss.hasAuthority('education:person:import')")
     public void personImportTemplate(@RequestParam Long schoolId, HttpServletResponse response) throws IOException {

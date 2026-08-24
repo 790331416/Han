@@ -49,15 +49,19 @@
         <if test="query.accountType != null and query.accountType != ''">
             <choose>
                 <when test="query.accountType == 'CLIENT'">
-                    AND EXISTS (
-                        SELECT 1 FROM edu_person ep
-                      WHERE ep.user_id = u.id AND ep.tenant_id = u.tenant_id
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM edu_person ep
+                            WHERE ep.user_id = u.id AND ep.tenant_id = u.tenant_id AND ep.del_flag = 0
+                        ) OR (u.status = 1 AND u.remark LIKE '教育人员%')
                     )
                 </when>
                 <when test="query.accountType == 'SYSTEM'">
-                    AND NOT EXISTS (
-                        SELECT 1 FROM edu_person ep
-                        WHERE ep.user_id = u.id AND ep.del_flag = 0 AND ep.tenant_id = u.tenant_id
+                    AND NOT (
+                        EXISTS (
+                            SELECT 1 FROM edu_person ep
+                            WHERE ep.user_id = u.id AND ep.tenant_id = u.tenant_id AND ep.del_flag = 0
+                        ) OR (u.status = 1 AND u.remark LIKE '教育人员%')
                     )
                 </when>
             </choose>
@@ -129,10 +133,10 @@
         SELECT post_id FROM sys_user_post WHERE user_id = #{userId}
     </select>
 
-    <select id="countEducationPersonsByUserId" resultType="int">
+    <select id="countActiveEducationPersonsByUserId" resultType="int">
         SELECT COUNT(1)
         FROM edu_person
-        WHERE user_id = #{userId}
+        WHERE user_id = #{userId} AND del_flag = 0
     </select>
 
     <!-- 检查用户名是否存在 -->

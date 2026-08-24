@@ -85,7 +85,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="userStore.hasPermission(`${config.permission}:edit`)"
@@ -95,6 +95,20 @@
               :disabled="!isLocalRow(row)"
               @click="handleEdit(row)"
             >编辑</el-button>
+            <el-button
+              v-if="entity === 'people' && row.userId && userStore.hasPermission('education:person:resetPwd')"
+              type="primary"
+              link
+              :icon="Key"
+              @click="handleResetPassword(row)"
+            >重置密码</el-button>
+            <el-button
+              v-else-if="entity === 'people' && !row.userId && userStore.hasPermission('education:person:edit')"
+              type="warning"
+              link
+              :icon="Connection"
+              @click="handleRebindAccount(row)"
+            >重新绑定并设置密码</el-button>
             <el-button
               v-if="userStore.hasPermission(`${config.permission}:remove`)"
               type="danger"
@@ -239,8 +253,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ArrowDown, Delete, Edit, Plus, QuestionFilled, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { ArrowDown, Connection, Delete, Edit, Key, Plus, QuestionFilled, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
+import { useRouter } from 'vue-router'
 import {
   addEducation,
   addPerson,
@@ -250,6 +265,7 @@ import {
   listPersonAssignments,
   listPersonMemberships,
   listPersonRoles,
+  resetPersonPassword,
   removeEducation,
   updateEducation,
   updatePerson,
@@ -313,6 +329,7 @@ const ASSET_STATUS_FALLBACKS = [
 
 const props = defineProps<{ entity: EducationEntity }>()
 const userStore = useUserStore()
+const router = useRouter()
 
 const configs: Record<EducationEntity, EntityConfig> = {
   schools: {
@@ -344,7 +361,7 @@ const configs: Record<EducationEntity, EntityConfig> = {
         hint: '管理员可进入课程预约、授课统计、学校设置、学校直播间；普通教师不可。与人员类型是两个维度，不会互相推导'
       },
       { key: 'phone', label: '手机号', required: true, hint: '校端使用手机号和密码登录' },
-      { key: 'classIds', label: '任教班级', selector: 'teachingClass', hint: '教师可勾选年级或班级；勾选年级会自动关联其下全部班级。学生只能选择一个班级' },
+      { key: 'classIds', label: '任教班级', selector: 'teachingClass', multiple: true, hint: '教师可勾选年级或班级；勾选年级会自动关联其下全部班级。学生只能选择一个班级' },
       { key: 'subjectIds', label: '任教科目', selector: 'subject', multiple: true, visibleWhen: (form) => form.personType !== 'STUDENT' },
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
       { key: 'loginEnabled', label: '启用校端登录', type: 'switch', initial: true, hint: '启用后可使用手机号和密码登录校端' },
@@ -558,6 +575,22 @@ async function handleEdit(row: EducationRecord) {
   dialogVisible.value = true
 }
 
+async function handleRebindAccount(row: EducationRecord) {
+  await handleEdit(row)
+  form.loginEnabled = true
+  form.password = ''
+  dialogTitle.value = '重新绑定并设置密码'
+}
+
+async function handleResetPassword(row: EducationRecord) {
+  const result = await ElMessageBox.prompt(`请输入“${row.personName}”的新密码`, '重置人员登录密码', {
+    inputPattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]).{8,32}$/,
+    inputErrorMessage: '密码须为8-32位且包含大小写字母、数字和特殊字符'
+  }) as unknown as { value: string }
+  await resetPersonPassword(row.id!, result.value)
+  ElMessage.success('重置成功')
+}
+
 async function handleRemove(row?: EducationRecord) {
   const targets = row ? [row] : selection.value
   if (targets.length === 0) return
@@ -687,6 +720,14 @@ async function submitPerson() {
     )
   } else {
     ElMessage.success(form.id ? '修改成功' : '新增成功')
+  }
+  if (!payload.id && payload.managementAccess && result?.userId) {
+    try {
+      await ElMessageBox.confirm('管理端角色已分配，请继续设置该人员可管理的教育局或学校。', '设置数据范围', {
+        type: 'info', confirmButtonText: '立即设置', cancelButtonText: '稍后设置'
+      })
+      await router.push({ path: '/education/scope', query: { userId: String(result.userId) } })
+    } catch { /* 稍后可从数据范围授权菜单进入 */ }
   }
 }
 

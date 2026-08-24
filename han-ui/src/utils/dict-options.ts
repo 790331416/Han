@@ -21,6 +21,7 @@ interface DictLike {
  */
 export const SYS_NORMAL_DISABLE_DICT = 'sys_normal_disable'
 export const OPEN_IDENTITY_SCOPE_DICT = 'open_identity_scope'
+export const OPEN_VENDOR_ROLE_DICT = 'open_vendor_role'
 
 /**
  * AI 模型与模板相关字典。

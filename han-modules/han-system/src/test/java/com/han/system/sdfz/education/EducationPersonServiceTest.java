@@ -71,6 +71,8 @@ class EducationPersonServiceTest {
     private SysDictDataMapper dictDataMapper;
     @Mock
     private EducationDataScopeService dataScopeService;
+    @Mock
+    private EducationAccountIdentityService accountIdentityService;
 
     private EducationPersonService service;
 
@@ -80,7 +82,7 @@ class EducationPersonServiceTest {
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                dataScopeService);
+                dataScopeService, accountIdentityService);
     }
 
     @AfterEach
@@ -538,6 +540,59 @@ class EducationPersonServiceTest {
         when(userRoleMapper.selectList(any())).thenReturn(List.of(new SysUserRolePo(9013L, TEACHER_ROLE_ID)));
 
         assertThat(service.listRoleIds(5013L)).containsExactly(TEACHER_ROLE_ID);
+    }
+
+    @Test
+    void rebindsDisabledClientAccountWithSamePhoneInsteadOfCreatingAnotherUser() {
+        EduPersonPo person = localPerson(5016L, "TEACHER");
+        when(personMapper.selectById(5016L)).thenReturn(person);
+        stubSchool();
+        stubNoDuplicatePersonNo();
+        SysUserPo detached = new SysUserPo();
+        detached.setId(9016L);
+        detached.setUsername("u_13900000001");
+        detached.setStatus(1);
+        detached.setRemark("教育人员统一入口建号");
+        when(userMapper.selectOne(any())).thenReturn(detached);
+
+        EducationForms.PersonResult result = service.save(new EducationForms.Person(5016L, SCHOOL_ID, "T016", "张老师",
+                "TEACHER", null, "13900000001", 0, null, null, true, null, "Teacher@2026", null,
+                null, null, null, null));
+
+        assertThat(result.userId()).isEqualTo(9016L);
+        assertThat(detached.getStatus()).isZero();
+        assertThat(PasswordUtil.matches("Teacher@2026", detached.getPassword())).isTrue();
+        verify(userMapper, never()).insert(any(SysUserPo.class));
+        verify(personMapper).updateById(person);
+    }
+
+    @Test
+    void unboundPersonCannotResetPassword() {
+        EduPersonPo person = localPerson(5017L, "TEACHER");
+        when(personMapper.selectById(5017L)).thenReturn(person);
+
+        assertThatThrownBy(() -> service.resetAccountPassword(5017L, "Teacher@2026"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("未绑定登录账号");
+    }
+
+    @Test
+    void unbindsClientAccountWithoutDeletingThePerson() {
+        EduPersonPo person = localPerson(5018L, "TEACHER");
+        person.setUserId(9018L);
+        when(personMapper.selectList(any())).thenReturn(List.of(person));
+        SysUserPo user = new SysUserPo();
+        user.setId(9018L);
+        user.setRemark("教育人员统一入口建号");
+        user.setStatus(0);
+        when(userMapper.selectById(9018L)).thenReturn(user);
+
+        service.unbindClientUser(9018L);
+
+        assertThat(person.getUserId()).isNull();
+        assertThat(user.getStatus()).isEqualTo(1);
+        verify(personMapper).updateById(person);
+        verify(userRoleMapper).delete(any());
     }
 
     private void stubSchool() {

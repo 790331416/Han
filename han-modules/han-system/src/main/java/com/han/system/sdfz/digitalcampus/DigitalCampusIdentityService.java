@@ -12,6 +12,7 @@ import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserSocialPo;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.service.SysUserSocialService;
+import com.han.system.sdfz.education.EducationAccountIdentityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,7 @@ public class DigitalCampusIdentityService {
     private final SysUserApiConverter userConverter;
     private final ObjectMapper objectMapper;
     private final DigitalCampusEducationSyncService educationSyncService;
+    private final EducationAccountIdentityService accountIdentityService;
 
     @Transactional(rollbackFor = Exception.class)
     public UserVO syncCurrentUser(DigitalCampusUserSyncDTO dto) {
@@ -75,6 +77,7 @@ public class DigitalCampusIdentityService {
 
         socialService.updateExtra(user.getId(), PROVIDER, snapshot(dto));
         educationSyncService.sync(dto, user.getId());
+        accountIdentityService.syncFromAccount(user);
         return userConverter.toApiUserVO(user);
     }
 

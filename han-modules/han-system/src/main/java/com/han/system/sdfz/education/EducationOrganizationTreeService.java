@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,6 +54,9 @@ public class EducationOrganizationTreeService {
             query.in(EduSchoolPo::getId, scope.organizationIds());
         }
         List<EduSchoolPo> schools = schoolMapper.selectList(query);
+        if (!scope.all()) {
+            schools = withBureauAncestors(schools);
+        }
         Map<Long, String> regionNames = regionNames(schools);
         Map<Long, EducationOrganizationNode> nodes = new LinkedHashMap<>();
         for (EduSchoolPo school : schools) {
@@ -95,11 +99,15 @@ public class EducationOrganizationTreeService {
         }
         String orgType = requireOrgType(form.orgType());
         EduSchoolPo parent = form.parentId() == null ? null : requireSchool(form.parentId());
-        EduRegionPo region = form.regionId() == null ? null : requireRegion(form.regionId());
-        if (SCHOOL.equals(orgType) && region == null) {
-            throw new BusinessException("学校必须选择区域关联");
+        EduRegionPo region = requireRegion(form.regionId());
+        if (parent != null) {
+            EduRegionPo parentRegion = requireRegion(parent.getRegionId());
+            if (!containsRegion(parentRegion.getId(), region)) {
+                throw new BusinessException("下级组织区域必须属于上级组织区域");
+            }
         }
         validateParent(item.getId(), parent, orgType);
+        if (item.getId() != null) validateDescendantRegions(item.getId(), region);
 
         String code = item.getId() == null
                 ? EducationCodeGenerator.unique("ORG", form.schoolName(), candidate -> schoolMapper.selectCount(
@@ -115,9 +123,9 @@ public class EducationOrganizationTreeService {
         item.setOrgType(orgType);
         item.setSchoolManageType(SCHOOL.equals(orgType) ? trimToNull(form.schoolManageType()) : null);
         item.setSchoolProperty(SCHOOL.equals(orgType) ? trimToNull(form.schoolProperty()) : null);
-        item.setRegionId(region == null ? null : region.getId());
+        item.setRegionId(region.getId());
         // 兼容仍读取 area_code 的旧三课堂接口；值只由所选区域派生，管理端不再接受手工输入。
-        item.setAreaCode(region == null ? null : region.getRegionCode());
+        item.setAreaCode(region.getRegionCode());
         item.setAutoUpgradeEnabled(normalStatus(form.autoUpgradeEnabled()));
         item.setStatus(normalStatus(form.status()));
         item.setRemark(trimToNull(form.remark()));
@@ -147,6 +155,34 @@ public class EducationOrganizationTreeService {
         }
     }
 
+    /** 直属学校授权只补教育局祖先用于展示，不扩大可操作组织集合。 */
+    private List<EduSchoolPo> withBureauAncestors(List<EduSchoolPo> scoped) {
+        Set<Long> ancestorIds = new LinkedHashSet<>();
+        for (EduSchoolPo item : scoped) {
+            if (item.getAncestors() == null) continue;
+            for (String value : item.getAncestors().split(",")) {
+                if (!value.isBlank() && !"0".equals(value)) ancestorIds.add(Long.parseLong(value));
+            }
+        }
+        if (ancestorIds.isEmpty()) return scoped;
+        Map<Long, EduSchoolPo> visible = new LinkedHashMap<>();
+        for (EduSchoolPo ancestor : schoolMapper.selectBatchIds(ancestorIds)) {
+            if (EDU_BUREAU.equals(ancestor.getOrgType())) visible.put(ancestor.getId(), ancestor);
+        }
+        for (EduSchoolPo item : scoped) visible.put(item.getId(), item);
+        return visible.values().stream()
+                .sorted(java.util.Comparator.comparingInt(item -> item.getNodeLevel() == null ? 0 : item.getNodeLevel()))
+                .toList();
+    }
+
+    private static boolean containsRegion(Long parentRegionId, EduRegionPo childRegion) {
+        if (Objects.equals(parentRegionId, childRegion.getId())) return true;
+        String ancestors = childRegion.getAncestors();
+        if (ancestors == null) return false;
+        return java.util.Arrays.stream(ancestors.split(","))
+                .map(String::trim).anyMatch(value -> value.equals(String.valueOf(parentRegionId)));
+    }
+
     private void validateParent(Long selfId, EduSchoolPo parent, String childType) {
         if (parent == null) {
             return;
@@ -160,6 +196,15 @@ public class EducationOrganizationTreeService {
         }
         if (selfId != null) {
             pathOf(parent, selfId);
+        }
+    }
+
+    private void validateDescendantRegions(Long organizationId, EduRegionPo parentRegion) {
+        for (EduSchoolPo child : schoolMapper.selectList(new LambdaQueryWrapper<EduSchoolPo>()
+                .apply("FIND_IN_SET({0}, ancestors)", organizationId))) {
+            if (!containsRegion(parentRegion.getId(), requireRegion(child.getRegionId()))) {
+                throw new BusinessException("所选区域不能覆盖现有下级组织：" + child.getSchoolName());
+            }
         }
     }
 
@@ -194,7 +239,7 @@ public class EducationOrganizationTreeService {
     }
 
     private EduRegionPo requireRegion(Long id) {
-        EduRegionPo region = regionMapper.selectById(id);
+        EduRegionPo region = id == null ? null : regionMapper.selectById(id);
         if (region == null || region.getStatus() == null || region.getStatus() != 0) {
             throw new BusinessException("所选区域不存在、已停用或不在当前租户");
         }

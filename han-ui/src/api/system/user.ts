@@ -48,6 +48,11 @@ export function listUser(query: UserQuery) {
   return get<PageResult<User>>('/system/user/list', query)
 }
 
+/** 仅返回关联有效教育人员的同表客户端用户，服务端强制 CLIENT 查询条件。 */
+export function listClientUser(query: Omit<UserQuery, 'accountType'>) {
+  return get<PageResult<User>>('/system/user/client/list', query)
+}
+
 // 获取用户详情
 export function getUser(userId: string | number) {
   return get<User>(`/system/user/info/${userId}`)

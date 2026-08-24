@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS edu_user_scope (
     ) STORED,
     UNIQUE KEY uq_edu_user_scope_active (tenant_id, user_id, active_scope_key),
     KEY idx_edu_user_scope_user (tenant_id, user_id, status, del_flag)
-) COMMENT='教育管理端用户可操作区域或教育组织范围；不替代 sys_dept';
+) COMMENT='教育管理端用户可操作的教育局或学校范围；不替代 sys_dept';
 
 CREATE TABLE IF NOT EXISTS edu_grade_promotion_batch (
     id BIGINT NOT NULL PRIMARY KEY,

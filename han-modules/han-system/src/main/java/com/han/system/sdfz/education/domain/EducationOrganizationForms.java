@@ -17,7 +17,7 @@ public final class EducationOrganizationForms {
             @NotBlank @Size(max = 32) String orgType,
             @Size(max = 32) String schoolManageType,
             @Size(max = 32) String schoolProperty,
-            Long regionId,
+            @NotNull Long regionId,
             @NotNull Integer autoUpgradeEnabled,
             @NotNull Integer status,
             @Size(max = 500) String remark) {

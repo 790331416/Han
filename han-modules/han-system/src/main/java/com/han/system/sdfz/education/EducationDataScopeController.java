@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** 仅租户超级管理员配置教育管理员范围，避免一般学校管理员自我扩权。 */
+/** 教育数据范围由菜单权限控制，并始终限制在当前登录租户内。 */
 @AdminAuth
 @RestController
 @RequestMapping("/system/education/scopes")
@@ -27,14 +27,14 @@ public class EducationDataScopeController {
     private final EducationDataScopeService service;
 
     @GetMapping("/list")
-    @PreAuthorize(EducationPermissions.HAS_SCOPE_MANAGE)
+    @PreAuthorize(EducationPermissions.HAS_SCOPE_LIST)
     public R<List<EduUserScopePo>> list(@RequestParam Long userId) {
         return R.ok(service.listForUser(userId));
     }
 
     @PostMapping("/replace")
     @RepeatSubmit
-    @PreAuthorize(EducationPermissions.HAS_SCOPE_MANAGE)
+    @PreAuthorize(EducationPermissions.HAS_SCOPE_EDIT)
     @OperLog(module = "教育数据范围", type = OperLog.OperType.UPDATE)
     public R<Integer> replace(@Valid @RequestBody EducationScopeForms.Replace form) {
         return R.ok(service.replaceForUser(form));

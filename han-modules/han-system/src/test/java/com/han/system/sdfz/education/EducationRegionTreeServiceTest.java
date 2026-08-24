@@ -75,6 +75,14 @@ class EducationRegionTreeServiceTest {
     }
 
     @Test
+    void ordinaryTenantUserCanReadRegionsWhenTheMenuPermissionHasBeenGranted() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
+        when(regionMapper.selectList(any())).thenReturn(List.of());
+
+        assertThat(service.tree(0)).isEmpty();
+    }
+
+    @Test
     void returnsSelectedRegionPathFromRoot() {
         when(regionMapper.selectById(310101L)).thenReturn(region(310101L, 3101L, "黄浦区"));
         when(regionMapper.selectById(3101L)).thenReturn(region(3101L, 31L, "上海市市辖区"));

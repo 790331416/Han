@@ -8,6 +8,7 @@ import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserSocialPo;
 import com.han.system.mapper.SysUserMapper;
 import com.han.system.service.SysUserSocialService;
+import com.han.system.sdfz.education.EducationAccountIdentityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,13 +40,15 @@ class DigitalCampusIdentityServiceTest {
     private SysUserApiConverter userConverter;
     @Mock
     private DigitalCampusEducationSyncService educationSyncService;
+    @Mock
+    private EducationAccountIdentityService accountIdentityService;
 
     private DigitalCampusIdentityService service;
 
     @BeforeEach
     void setUp() {
         service = new DigitalCampusIdentityService(
-                userMapper, socialService, userConverter, new ObjectMapper(), educationSyncService);
+                userMapper, socialService, userConverter, new ObjectMapper(), educationSyncService, accountIdentityService);
     }
 
     @Test

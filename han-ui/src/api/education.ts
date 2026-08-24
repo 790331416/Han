@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import { get, post, postParams } from '@/utils/request'
 import type { PageQuery, PageResult } from '@/types'
 
 // 不含 semesters：学期走 EducationCalendarController 与独立页面，不进通用 CRUD。
@@ -219,7 +219,7 @@ export function removePlaceTreeNodes(ids: (string | number)[]) { return post<num
 export interface EducationFloorRange { schoolId: string | number; buildingId: string | number; startNo: number; endNo: number; status: number }
 export function batchCreateFloors(data: EducationFloorRange) { return post<number>('/system/education/place-tree/batch-floors', data) }
 
-export type EducationScopeType = 'ORG' | 'REGION'
+export type EducationScopeType = 'ORG'
 export interface EducationScopeItem {
   id?: string | number
   userId?: string | number
@@ -382,6 +382,14 @@ export function addPerson(data: EducationRecord) {
 
 export function updatePerson(data: EducationRecord) {
   return post<PersonResult>('/system/education/people/edit', data)
+}
+
+export function resetPersonPassword(personId: string | number, password: string) {
+  return postParams<void>('/system/education/people/reset-password', { personId, password })
+}
+
+export function unbindClientUser(userId: string | number) {
+  return postParams<void>('/system/education/people/unbind', { userId })
 }
 
 export interface PersonImportResult {

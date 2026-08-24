@@ -48,6 +48,11 @@ public class SysBuiltinDictRegistry {
                     item("用户唯一标识（openid）", "openid", 1, "primary"),
                     item("用户基础资料（profile）", "profile", 2, "success")
             )),
+            definition("开放平台厂商角色", "open_vendor_role", "厂商关联用户角色", List.of(
+                    item("厂商所有者", "OWNER", 1, "primary"),
+                    item("厂商开发者", "DEVELOPER", 2, "success"),
+                    item("厂商查看者", "VIEWER", 3, "info")
+            )),
             definition("AI模型类型", "ai_model_type", "AI模型管理模型类型列表", List.of(
                     item("大语言模型", "LLM", 10, "primary"),
                     item("图片生成模型", "IMAGE", 20, "success"),

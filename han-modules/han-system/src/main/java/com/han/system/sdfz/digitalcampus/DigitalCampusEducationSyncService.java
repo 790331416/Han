@@ -2,14 +2,17 @@ package com.han.system.sdfz.digitalcampus;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.api.system.domain.DigitalCampusUserSyncDTO;
+import com.han.common.core.exception.BusinessException;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
+import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
+import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ public class DigitalCampusEducationSyncService {
     private final EduClassMapper classMapper;
     private final EduPersonMapper personMapper;
     private final EduPersonClassMapper personClassMapper;
+    private final EduRegionMapper regionMapper;
 
     @Transactional(rollbackFor = Exception.class)
     public void sync(DigitalCampusUserSyncDTO dto, Long hanUserId) {
@@ -117,13 +121,15 @@ public class DigitalCampusEducationSyncService {
                 .last("LIMIT 1"));
         boolean creating = value == null;
         if (creating) value = new EduSchoolPo();
+        EduRegionPo region = requireRegion(tenantId, snapshot.areaCode());
         value.setTenantId(tenantId);
         value.setSchoolCode(externalCode("dc_school_", externalId, 64));
         value.setSchoolName(trim(snapshot.name(), 128));
         value.setSchoolRole(trim(snapshot.role(), 16));
         value.setSourceSystem(SOURCE);
         value.setExternalId(trim(externalId, 128));
-        value.setAreaCode(snapshot.areaCode());
+        value.setRegionId(region.getId());
+        value.setAreaCode(region.getRegionCode());
         value.setSyncHash(hash(externalId, snapshot.name(), snapshot.areaCode(), snapshot.role()));
         value.setLastSyncTime(LocalDateTime.now());
         if (creating) {
@@ -133,6 +139,22 @@ public class DigitalCampusEducationSyncService {
             schoolMapper.updateById(value);
         }
         return value.getId();
+    }
+
+    private EduRegionPo requireRegion(Long tenantId, String areaCode) {
+        String code = trim(areaCode, 32);
+        if (isBlank(code)) {
+            throw new BusinessException("数字校园学校缺少有效区域编码");
+        }
+        EduRegionPo region = regionMapper.selectOne(new LambdaQueryWrapper<EduRegionPo>()
+                .eq(EduRegionPo::getTenantId, tenantId)
+                .eq(EduRegionPo::getRegionCode, code)
+                .eq(EduRegionPo::getStatus, 0)
+                .last("LIMIT 1"));
+        if (region == null) {
+            throw new BusinessException("数字校园学校区域编码不存在: " + code);
+        }
+        return region;
     }
 
     private Long upsertClass(Long tenantId, Long schoolId, ClassSnapshot snapshot) {

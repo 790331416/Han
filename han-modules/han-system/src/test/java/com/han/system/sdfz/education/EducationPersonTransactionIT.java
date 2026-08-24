@@ -351,7 +351,7 @@ class EducationPersonTransactionIT {
         EducationDataScopeService educationDataScopeService(EduUserScopeMapper userScopeMapper,
                                                             EduSchoolMapper schoolMapper,
                                                             EduRegionMapper regionMapper) {
-            return new EducationDataScopeService(userScopeMapper, schoolMapper, regionMapper);
+        return new EducationDataScopeService(userScopeMapper, schoolMapper);
         }
 
         @Bean
@@ -366,9 +366,9 @@ class EducationPersonTransactionIT {
                                                       SysRoleMapper roleMapper,
                                                       SysDictDataMapper dictDataMapper,
                                                       EducationDataScopeService dataScopeService) {
-            return new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
-                    schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
-                    dataScopeService);
+        return new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
+                schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
+                dataScopeService, new EducationAccountIdentityService(personMapper));
         }
     }
 }

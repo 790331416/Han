@@ -5,7 +5,7 @@ import com.han.common.mybatis.domain.entity.BizEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-/** 教育管理用户对区域或教育组织的显式数据范围。 */
+/** 教育管理用户对教育局或学校的显式数据范围。 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("edu_user_scope")

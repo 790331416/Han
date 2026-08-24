@@ -47,6 +47,13 @@ public class ASysUserController extends BSysUserController {
         return super.list(query);
     }
 
+    @GetMapping("/client/list")
+    @PreAuthorize("@ss.hasAuthority('system:client-user:list')")
+    public R<PageResult<UserVO>> listClientUsers(SysUserQuery query) {
+        query.setAccountType("CLIENT");
+        return super.list(query);
+    }
+
     @Override
     @GetMapping("/info/{userId}")
     @PreAuthorize("@ss.hasAuthority('system:user:query')")

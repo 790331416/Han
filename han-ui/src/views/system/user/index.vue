@@ -1,8 +1,6 @@
 <template>
   <div class="app-container">
-    <el-tabs v-model="activeTab" type="card" class="user-tabs" @tab-change="handleTabChange">
-      <el-tab-pane v-if="canViewSystemUsers" label="系统用户" name="system">
-    <el-row :gutter="16">
+    <el-row v-if="canViewSystemUsers" :gutter="16">
       <!-- 左侧部门树 -->
       <el-col v-if="canViewDept" :span="4">
         <el-card shadow="never" class="dept-tree-card">
@@ -122,11 +120,6 @@
 
       </el-col>
     </el-row>
-      </el-tab-pane>
-      <el-tab-pane v-if="canViewClientUsers" label="客户端用户" name="client" lazy>
-        <EducationPersonPage />
-      </el-tab-pane>
-    </el-tabs>
 
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="55%" class="dialog-md" destroy-on-close>
@@ -222,13 +215,11 @@ import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import type { User, UserQuery, UserForm } from '@/api/system/user'
 import type { FormInstance, FormRules } from 'element-plus'
-import EducationPersonPage from '@/views/education/person/index.vue'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.roles.includes('admin'))
 const canViewSystemUsers = computed(() => userStore.hasPermission('system:user:list'))
-const canViewClientUsers = computed(() => userStore.hasPermission('education:person:list'))
 const canViewDept = computed(() => userStore.hasPermission('system:dept:list'))
 const canAdd = computed(() => userStore.hasPermission('system:user:add'))
 const canEdit = computed(() => userStore.hasPermission('system:user:edit'))
@@ -236,7 +227,6 @@ const canRemove = computed(() => userStore.hasPermission('system:user:remove'))
 const canImport = computed(() => userStore.hasPermission('system:user:import'))
 const canExport = computed(() => userStore.hasPermission('system:user:export'))
 const canResetPwd = computed(() => userStore.hasPermission('system:user:resetPwd'))
-const activeTab = ref<'system' | 'client'>('system')
 const canSelectTenant = computed(() => isAdmin.value && appStore.isFeatureEnabled('tenantSelect'))
 const tenantOptions = ref<Tenant[]>([])
 
@@ -294,7 +284,7 @@ const dialogTitle = computed(() => form.userId ? '编辑用户' : '新增用户'
 
 // 获取列表
 const getList = async () => {
-  if (!canViewSystemUsers.value || activeTab.value !== 'system') return
+  if (!canViewSystemUsers.value) return
   loading.value = true
   try {
     const res = await listUser(queryParams)
@@ -507,7 +497,6 @@ const handleImport = () => {
 
 onMounted(async () => {
   await appStore.loadRuntimeCapabilities()
-  if (!canViewSystemUsers.value && canViewClientUsers.value) activeTab.value = 'client'
   getList()
   loadDeptTree()
   if (canSelectTenant.value) {
@@ -519,9 +508,6 @@ onMounted(async () => {
   }
 })
 
-function handleTabChange(name: string | number) {
-  if (name === 'system') getList()
-}
 </script>
 
 <style lang="scss" scoped>

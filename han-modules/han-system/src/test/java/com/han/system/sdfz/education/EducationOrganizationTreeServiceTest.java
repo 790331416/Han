@@ -57,6 +57,7 @@ class EducationOrganizationTreeServiceTest {
     void createsSchoolBelowBureau() {
         when(regionMapper.selectById(1L)).thenReturn(region(1L, "500000"));
         EduSchoolPo bureau = school(10L, null, "EDU_BUREAU", "教育局");
+        bureau.setRegionId(1L);
         when(schoolMapper.selectById(10L)).thenReturn(bureau);
         when(schoolMapper.selectCount(any())).thenReturn(0L);
         doAnswer(invocation -> {
@@ -82,6 +83,8 @@ class EducationOrganizationTreeServiceTest {
         when(regionMapper.selectById(1L)).thenReturn(region(1L, "500000"));
         EduSchoolPo school = school(1L, null, "SCHOOL", "两江大学");
         EduSchoolPo campus = school(2L, 1L, "SCHOOL", "两江大学北校区");
+        school.setRegionId(1L);
+        campus.setRegionId(1L);
         when(schoolMapper.selectById(1L)).thenReturn(school);
         when(schoolMapper.selectById(2L)).thenReturn(campus);
 
@@ -91,12 +94,68 @@ class EducationOrganizationTreeServiceTest {
     }
 
     @Test
+    @DisplayName("下级组织不能绑定到上级区域之外")
+    void rejectsRegionOutsideParentRegion() {
+        EduRegionPo parentRegion = region(1L, "50");
+        EduRegionPo outsideRegion = region(2L, "62");
+        when(regionMapper.selectById(1L)).thenReturn(parentRegion);
+        when(regionMapper.selectById(2L)).thenReturn(outsideRegion);
+        EduSchoolPo bureau = school(10L, null, "EDU_BUREAU", "重庆市教育局");
+        bureau.setRegionId(1L);
+        when(schoolMapper.selectById(10L)).thenReturn(bureau);
+
+        EducationOrganizationForms.Organization form = new EducationOrganizationForms.Organization(
+                null, 10L, "甘肃学校", "SCHOOL", "INDEPENDENT", "3", 2L, 1, 0, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("属于上级组织区域");
+    }
+
+    @Test
+    @DisplayName("修改教育局区域时不能甩开现有下级学校")
+    void rejectsRegionThatExcludesExistingChildren() {
+        EduSchoolPo bureau = school(10L, null, "EDU_BUREAU", "两江新区教育局");
+        bureau.setRegionId(1L);
+        EduSchoolPo child = school(20L, 10L, "SCHOOL", "两江中学");
+        child.setRegionId(1L);
+        child.setAncestors("0,10");
+        when(schoolMapper.selectById(10L)).thenReturn(bureau);
+        when(regionMapper.selectById(2L)).thenReturn(region(2L, "62"));
+        when(regionMapper.selectById(1L)).thenReturn(region(1L, "50"));
+        when(schoolMapper.selectList(any())).thenReturn(List.of(child));
+
+        EducationOrganizationForms.Organization changed = new EducationOrganizationForms.Organization(
+                10L, null, "两江新区教育局", "EDU_BUREAU", null, null, 2L, 1, 0, null);
+
+        assertThatThrownBy(() -> service.save(changed))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不能覆盖现有下级组织");
+    }
+
+    @Test
     @DisplayName("组织树按父子关系返回稳定层级")
     void buildsTree() {
         EduSchoolPo bureau = school(1L, null, "EDU_BUREAU", "教育局");
         EduSchoolPo school = school(2L, 1L, "SCHOOL", "两江中学");
         when(dataScopeService.current()).thenReturn(new EducationDataScopeService.Scope(true, java.util.Set.of(), java.util.Set.of()));
         when(schoolMapper.selectList(any())).thenReturn(List.of(bureau, school));
+
+        List<EducationOrganizationNode> nodes = service.tree(0);
+
+        assertThat(nodes).hasSize(1);
+        assertThat(nodes.getFirst().children()).extracting(EducationOrganizationNode::id).containsExactly(2L);
+    }
+
+    @Test
+    @DisplayName("直属学校授权补齐教育局祖先但不扩大业务学校")
+    void addsBureauAncestorsForDisplay() {
+        EduSchoolPo bureau = school(1L, null, "EDU_BUREAU", "重庆市教育局");
+        EduSchoolPo school = school(2L, 1L, "SCHOOL", "两江中学");
+        school.setAncestors("0,1");
+        when(dataScopeService.current()).thenReturn(new EducationDataScopeService.Scope(false, java.util.Set.of(2L), java.util.Set.of(2L)));
+        when(schoolMapper.selectList(any())).thenReturn(List.of(school));
+        when(schoolMapper.selectBatchIds(any())).thenReturn(List.of(bureau));
 
         List<EducationOrganizationNode> nodes = service.tree(0);
 

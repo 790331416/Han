@@ -23,7 +23,7 @@ public final class EducationForms {
             @Size(max = 64) String schoolCode,
             @NotBlank @Size(max = 128) String schoolName,
             @NotBlank @Size(max = 16) String schoolRole,
-            @Size(max = 32) String areaCode,
+            @NotBlank @Size(max = 32) String areaCode,
             @NotNull Integer status,
             @Size(max = 500) String remark) {
     }

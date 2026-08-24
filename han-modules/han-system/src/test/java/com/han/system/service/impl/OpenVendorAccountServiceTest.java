@@ -6,6 +6,7 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
 import com.han.system.converter.SysUserConverter;
+import com.han.system.sdfz.education.EducationAccountIdentityService;
 import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserPo;
 import com.han.system.domain.po.SysUserRolePo;
@@ -40,8 +41,9 @@ class OpenVendorAccountServiceTest {
         SysUserPostMapper userPostMapper = mock(SysUserPostMapper.class);
         roleMapper = mock(SysRoleMapper.class);
         TenantServiceClient tenantServiceClient = mock(TenantServiceClient.class);
+        EducationAccountIdentityService identityService = mock(EducationAccountIdentityService.class);
         service = new SysUserServiceImpl(userMapper, converter, userRoleMapper, userPostMapper,
-                roleMapper, tenantServiceClient);
+                roleMapper, tenantServiceClient, identityService);
     }
 
     @Test

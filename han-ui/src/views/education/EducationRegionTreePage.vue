@@ -2,7 +2,7 @@
   <div class="operation-page">
     <section class="page-header">
       <div><h2>区域管理</h2><p>维护教育局与学校归属区域，区域编码由系统按名称生成。</p></div>
-      <el-button type="primary" :icon="Plus" @click="openAdd()">新增根区域</el-button>
+      <el-button v-if="canAdd" type="primary" :icon="Plus" @click="openAdd()">新增根区域</el-button>
     </section>
     <el-alert type="info" :closable="false" show-icon class="hint">区域用于教育局、学校的归属和区域管理员授权；全国基准区域不允许修改。</el-alert>
     <section class="region-panel">
@@ -16,9 +16,9 @@
             <div class="tree-node">
               <div class="node-main"><span class="node-name">{{ data.regionName }}</span><el-tag v-if="data.sourceSystem === 'NATIONAL'" size="small" type="info">全国基准</el-tag><el-tag v-else-if="data.status !== 0" size="small" type="info">停用</el-tag></div>
               <div class="node-actions">
-                <el-tooltip content="新增下级" placement="top"><el-button text type="primary" :icon="Plus" aria-label="新增下级" @click.stop="openAdd(data)" /></el-tooltip>
-                <el-tooltip v-if="data.sourceSystem !== 'NATIONAL'" content="编辑" placement="top"><el-button text type="primary" :icon="Edit" aria-label="编辑" @click.stop="openEdit(data)" /></el-tooltip>
-                <el-tooltip v-if="data.sourceSystem !== 'NATIONAL'" content="删除" placement="top"><el-button text type="danger" :icon="Delete" aria-label="删除" @click.stop="remove(data)" /></el-tooltip>
+                <el-tooltip v-if="canAdd" content="新增下级" placement="top"><el-button text type="primary" :icon="Plus" aria-label="新增下级" @click.stop="openAdd(data)" /></el-tooltip>
+                <el-tooltip v-if="canEdit && data.sourceSystem !== 'NATIONAL'" content="编辑" placement="top"><el-button text type="primary" :icon="Edit" aria-label="编辑" @click.stop="openEdit(data)" /></el-tooltip>
+                <el-tooltip v-if="canRemove && data.sourceSystem !== 'NATIONAL'" content="删除" placement="top"><el-button text type="danger" :icon="Delete" aria-label="删除" @click.stop="remove(data)" /></el-tooltip>
               </div>
             </div>
           </template>
@@ -41,10 +41,11 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type LoadFunction, type TreeInstance } from 'element-plus'
 import { addRegion, listRegionChildren, removeRegions, updateRegion, type EduRegionOption, type EducationRegionForm } from '@/api/education'
+import { useUserStore } from '@/stores/user'
 
 const treeRef = ref<TreeInstance>()
 const formRef = ref<FormInstance>()
@@ -58,10 +59,15 @@ const dialogTitle = ref('')
 const parentName = ref('')
 const treeProps = { label: 'regionName', children: 'children', isLeaf: 'leaf' }
 const form = reactive<EducationRegionForm>(emptyForm())
+const userStore = useUserStore()
+const canList = computed(() => userStore.hasPermission('education:region:list'))
+const canAdd = computed(() => userStore.hasPermission('education:region:add'))
+const canEdit = computed(() => userStore.hasPermission('education:region:edit'))
+const canRemove = computed(() => userStore.hasPermission('education:region:remove'))
 const rules: FormRules = { regionName: [{ required: true, message: '请输入区域名称', trigger: 'blur' }], regionLevel: [{ required: true, message: '请选择区域层级', trigger: 'change' }] }
 
 watch(keyword, value => treeRef.value?.filter(value))
-loadTree()
+onMounted(() => { if (canList.value) loadTree() })
 
 function emptyForm(): EducationRegionForm { return { regionName: '', regionLevel: 'PROJECT', sort: 0, status: 0, remark: '' } }
 function toLazyNodes(items: EduRegionOption[]): LazyRegionNode[] { return items.map(item => ({ ...item, leaf: (item.nodeLevel || 0) >= 3 })) }

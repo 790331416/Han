@@ -81,6 +81,7 @@ public class EducationPersonService {
     private final SysRoleMapper roleMapper;
     private final SysDictDataMapper dictDataMapper;
     private final EducationDataScopeService dataScopeService;
+    private final EducationAccountIdentityService accountIdentityService;
 
     public PageResult<EduPersonPo> list(Long schoolId, String personType, String keyword,
                                         Integer status, int pageNum, int pageSize) {
@@ -135,6 +136,55 @@ public class EducationPersonService {
         return userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRolePo>()
                         .eq(SysUserRolePo::getUserId, person.getUserId()))
                 .stream().map(SysUserRolePo::getRoleId).toList();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void resetAccountPassword(Long personId, String password) {
+        requireTenant();
+        EduPersonPo person = requirePerson(personId);
+        requireLocalSource(person.getSourceSystem(), "人员");
+        if (person.getUserId() == null) {
+            throw new BusinessException("人员未绑定登录账号，请先重新绑定并设置密码");
+        }
+        SysUserPo user = userMapper.selectById(person.getUserId());
+        if (!isClientAccount(user)) {
+            throw new BusinessException("人员关联的客户端账号不存在");
+        }
+        if (Objects.equals(user.getStatus(), 1)) {
+            throw new BusinessException("人员关联账号已停用，请先重新绑定并设置密码");
+        }
+        PasswordUtil.validate(password);
+        user.setPassword(PasswordUtil.encrypt(password));
+        user.setPwdUpdateTime(LocalDateTime.now());
+        user.setPwdResetFlag(1);
+        userMapper.updateById(user);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void unbindClientUser(Long userId) {
+        requireTenant();
+        if (userId == null) {
+            throw new BusinessException("请选择客户端用户");
+        }
+        List<EduPersonPo> people = personMapper.selectList(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getUserId, userId));
+        if (people.isEmpty()) {
+            throw new BusinessException("客户端用户未绑定教育人员");
+        }
+        SysUserPo user = userMapper.selectById(userId);
+        if (!isClientAccount(user)) {
+            throw new BusinessException("客户端用户不存在或已失效");
+        }
+        for (EduPersonPo person : people) {
+            dataScopeService.requireSchool(person.getSchoolId());
+            requireLocalSource(person.getSourceSystem(), "人员");
+            person.setUserId(null);
+            personMapper.updateById(person);
+        }
+        user.setStatus(1);
+        user.setPwdResetFlag(1);
+        userMapper.updateById(user);
+        clearAccountRoles(userId);
     }
 
     EduSchoolPo requireImportSchool(Long schoolId) {
@@ -316,6 +366,15 @@ public class EducationPersonService {
     }
 
     private Account createAccount(Long tenantId, EducationForms.Person form, String personType, String phone) {
+        SysUserPo detachedAccount = userMapper.selectOne(new LambdaQueryWrapper<SysUserPo>()
+                .eq(SysUserPo::getTenantId, tenantId)
+                .eq(SysUserPo::getPhone, phone)
+                .eq(SysUserPo::getStatus, 1)
+                .likeRight(SysUserPo::getRemark, "教育人员")
+                .last("LIMIT 1"));
+        if (detachedAccount != null) {
+            return reactivateAccount(detachedAccount, form, personType, phone);
+        }
         String username = trimToNull(form.username());
         if (username == null) {
             username = "u_" + phone;
@@ -357,6 +416,30 @@ public class EducationPersonService {
         return new Account(user.getId(), username, generated ? rawPassword : null);
     }
 
+    private Account reactivateAccount(SysUserPo user, EducationForms.Person form, String personType, String phone) {
+        Set<Long> roleIds = resolveRoles(form.roleIds(), personType);
+        String rawPassword = trimToNull(form.password());
+        boolean generated = rawPassword == null;
+        if (generated) {
+            rawPassword = PasswordUtil.generatePassword(GENERATED_PASSWORD_LENGTH);
+        } else {
+            PasswordUtil.validate(rawPassword);
+        }
+        user.setNickname(truncate(form.personName().trim(), NICKNAME_MAX_LENGTH));
+        user.setPassword(PasswordUtil.encode(rawPassword));
+        user.setStatus(normalStatus(form.status()));
+        user.setPwdUpdateTime(LocalDateTime.now());
+        user.setPwdResetFlag(generated ? 1 : 0);
+        user.setRemark("教育人员重新绑定账号");
+        userMapper.updateById(user);
+        accountIdentityService.syncFromPerson(user.getId(), form.personName(), phone);
+        clearAccountRoles(user.getId());
+        for (Long roleId : roleIds) {
+            userRoleMapper.insert(new SysUserRolePo(user.getId(), roleId));
+        }
+        return new Account(user.getId(), user.getUsername(), generated ? rawPassword : null);
+    }
+
     /**
      * 已有账号只同步显示名、状态和角色，不改口令。
      *
@@ -384,6 +467,7 @@ public class EducationPersonService {
             user.setStatus(1);
         }
         userMapper.updateById(user);
+        accountIdentityService.syncFromPerson(userId, form.personName(), phone);
 
         String personType = form.personType().trim().toUpperCase(Locale.ROOT);
         if (STUDENT_TYPE.equals(personType)) {
@@ -416,6 +500,10 @@ public class EducationPersonService {
         }
         user.setStatus(1);
         userMapper.updateById(user);
+    }
+
+    private static boolean isClientAccount(SysUserPo user) {
+        return user != null && user.getRemark() != null && user.getRemark().startsWith("教育人员");
     }
 
     private Set<Long> resolveRoles(List<Long> requested, String personType) {

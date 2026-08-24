@@ -5,6 +5,7 @@ import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduDevicePo;
+import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduSubjectPo;
 import com.han.system.sdfz.education.domain.EducationForms;
@@ -14,6 +15,7 @@ import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduPersonSubjectMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
+import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
 import com.han.system.mapper.SysDictDataMapper;
@@ -58,6 +60,8 @@ class EducationMasterDataServiceTest {
     @Mock
     private SysDictDataMapper dictDataMapper;
     @Mock
+    private EduRegionMapper regionMapper;
+    @Mock
     private EducationDataScopeService dataScopeService;
 
     private EducationMasterDataService service;
@@ -66,8 +70,13 @@ class EducationMasterDataServiceTest {
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
+        EduRegionPo region = new EduRegionPo();
+        region.setId(51L);
+        region.setRegionCode("500100");
+        region.setStatus(0);
+        lenient().when(regionMapper.selectOne(any())).thenReturn(region);
         service = new EducationMasterDataService(schoolMapper, classMapper, personMapper, subjectMapper,
-                deviceMapper, roomMapper, personClassMapper, personSubjectMapper, dictDataMapper, dataScopeService);
+                deviceMapper, roomMapper, personClassMapper, personSubjectMapper, dictDataMapper, regionMapper, dataScopeService);
     }
 
     @AfterEach
@@ -85,15 +94,15 @@ class EducationMasterDataServiceTest {
         }).when(schoolMapper).insert(any(EduSchoolPo.class));
 
         Long id = service.saveSchool(new EducationForms.School(
-                null, null, " S001 ", " School One ", "MAIN", null, 0, null));
+                null, null, " S001 ", " School One ", "MAIN", "500100", 0, null));
 
         ArgumentCaptor<EduSchoolPo> captor = ArgumentCaptor.forClass(EduSchoolPo.class);
         verify(schoolMapper).insert(captor.capture());
         assertThat(id).isEqualTo(11L);
         assertThat(captor.getValue())
                 .extracting(EduSchoolPo::getTenantId, EduSchoolPo::getSourceSystem,
-                        EduSchoolPo::getSchoolCode, EduSchoolPo::getSchoolName)
-                .containsExactly(1L, "HAN", "SCHOOL_SCHOOL_ONE", "School One");
+                        EduSchoolPo::getSchoolCode, EduSchoolPo::getSchoolName, EduSchoolPo::getRegionId)
+                .containsExactly(1L, "HAN", "SCHOOL_SCHOOL_ONE", "School One", 51L);
     }
 
     @Test
@@ -101,7 +110,7 @@ class EducationMasterDataServiceTest {
         when(schoolMapper.selectCount(any())).thenReturn(1L);
 
         EducationForms.School form = new EducationForms.School(
-                null, null, "S001", "School One", "MAIN", null, 0, null);
+                null, null, "S001", "School One", "MAIN", "500100", 0, null);
 
         assertThatThrownBy(() -> service.saveSchool(form))
                 .isInstanceOf(BusinessException.class)
@@ -117,7 +126,7 @@ class EducationMasterDataServiceTest {
         when(schoolMapper.selectById(11L)).thenReturn(existing);
 
         EducationForms.School form = new EducationForms.School(
-                11L, null, "S001", "School One", "MAIN", null, 0, null);
+                11L, null, "S001", "School One", "MAIN", "500100", 0, null);
 
         assertThatThrownBy(() -> service.saveSchool(form))
                 .isInstanceOf(BusinessException.class)

@@ -88,7 +88,7 @@ const dialogTitle = ref('')
 const parentName = ref('')
 const treeProps = { label: 'schoolName', children: 'children' }
 const schoolPropertyOptions = [{ label: '幼儿园', value: '1' }, { label: '小学', value: '2' }, { label: '初中', value: '3' }, { label: '高中', value: '4' }, { label: '九年制', value: '5' }, { label: '小学附属幼儿园', value: '6' }, { label: '完全中学', value: '7' }, { label: '十二年制学校', value: '8' }, { label: '完全学校（幼到高）', value: '9' }, { label: '幼小初', value: '10' }]
-const rules: FormRules = { schoolName: [{ required: true, message: '请输入组织名称', trigger: 'blur' }], orgType: [{ required: true, message: '请选择机构类型', trigger: 'change' }], regionId: [{ validator: (_rule, value, callback) => form.orgType !== 'SCHOOL' || value ? callback() : callback(new Error('请选择区域关联')), trigger: 'change' }] }
+const rules: FormRules = { schoolName: [{ required: true, message: '请输入组织名称', trigger: 'blur' }], orgType: [{ required: true, message: '请选择机构类型', trigger: 'change' }], regionId: [{ required: true, message: '请选择区域关联', trigger: 'change' }] }
 const form = reactive<EducationOrganizationForm>(emptyForm())
 const flatRows = computed(() => flatten(nodes.value))
 const selectedRows = computed(() => selectedId.value === undefined ? flatRows.value : flatten(findSubtree(nodes.value, selectedId.value)))

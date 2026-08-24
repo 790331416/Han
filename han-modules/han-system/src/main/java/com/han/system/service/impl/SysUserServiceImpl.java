@@ -30,6 +30,7 @@ import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.domain.po.SysRolePo;
 import com.han.system.service.ISysUserService;
+import com.han.system.sdfz.education.EducationAccountIdentityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -57,6 +58,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     private final SysUserPostMapper userPostMapper;
     private final SysRoleMapper sysRoleMapper;
     private final TenantServiceClient tenantServiceClient;
+    private final EducationAccountIdentityService educationAccountIdentityService;
 
     @Override
     public PageResult<UserVO> selectUserPage(SysUserQuery query) {
@@ -182,6 +184,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
 
         sysUserConverter.updatePo(dto, existUser);
         updateById(existUser);
+        educationAccountIdentityService.syncFromAccount(existUser);
 
         if (dto.getRoleIds() != null) {
             DataOwnerUtil.checkRolePermission(dto.getRoleIds());
@@ -294,6 +297,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
                         if (HanStrUtil.isNotBlank(row.getEmail())) existing.setEmail(row.getEmail());
                         if (HanStrUtil.isNotBlank(row.getSexText())) existing.setSex(parseSex(row.getSexText()));
                         sysUserMapper.updateById(existing);
+                        educationAccountIdentityService.syncFromAccount(existing);
                         successCount++;
                     } else {
                         failCount++;
@@ -336,6 +340,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     // ==================== 个人中心 ====================
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateProfile(Long userId, ProfileDto dto) {
         SysUserPo user = sysUserMapper.selectById(userId);
         if (user == null) {
@@ -354,6 +359,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
             user.setSex(dto.getSex());
         }
         sysUserMapper.updateById(user);
+        educationAccountIdentityService.syncFromAccount(user);
     }
 
     @Override

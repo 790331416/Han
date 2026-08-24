@@ -4,10 +4,8 @@ import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
-import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EduUserScopePo;
 import com.han.system.sdfz.education.domain.EducationScopeForms;
-import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduUserScopeMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -32,11 +30,10 @@ import static org.mockito.Mockito.never;
 class EducationDataScopeServiceTest {
     @Mock private EduUserScopeMapper userScopeMapper;
     @Mock private EduSchoolMapper schoolMapper;
-    @Mock private EduRegionMapper regionMapper;
     private EducationDataScopeService service;
 
     @BeforeEach void setUp() {
-        service = new EducationDataScopeService(userScopeMapper, schoolMapper, regionMapper);
+        service = new EducationDataScopeService(userScopeMapper, schoolMapper);
     }
 
     @AfterEach void tearDown() { SecurityContextHolder.clear(); }
@@ -88,19 +85,21 @@ class EducationDataScopeServiceTest {
     }
 
     @Test
-    void regionGrantOnBureauAlsoIncludesItsUnlabeledChildSchools() {
+    void ordinaryTenantUserCanListScopesWhenTheMenuPermissionHasBeenGranted() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
-        EduUserScopePo grant = new EduUserScopePo();
-        grant.setScopeType("REGION"); grant.setScopeId(100L); grant.setIncludeChildren(1); grant.setStatus(0);
-        EduRegionPo region = new EduRegionPo(); region.setId(100L);
-        EduSchoolPo bureau = organization(10L, "EDU_BUREAU"); bureau.setRegionId(100L);
-        EduSchoolPo school = organization(11L, "SCHOOL");
-        when(userScopeMapper.selectList(any())).thenReturn(List.of(grant));
-        when(regionMapper.selectList(any())).thenReturn(List.of(region));
-        when(schoolMapper.selectList(any())).thenReturn(List.of(bureau), List.of(bureau, school));
-        when(schoolMapper.selectBatchIds(any())).thenReturn(List.of(bureau, school));
+        when(userScopeMapper.selectList(any())).thenReturn(List.of());
 
-        assertThat(service.current().schoolIds()).containsExactly(11L);
+        assertThat(service.listForUser(3L)).isEmpty();
+    }
+
+    @Test
+    void rejectsLegacyRegionGrantWhenReplacingScopes() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
+
+        assertThatThrownBy(() -> service.replaceForUser(new EducationScopeForms.Replace(3L,
+                List.of(new EducationScopeForms.Item("REGION", 100L, true, null)))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("教育局或学校");
     }
 
     @Test

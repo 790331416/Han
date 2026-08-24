@@ -8,6 +8,7 @@ import com.han.system.sdfz.education.domain.EduDevicePo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduPersonSubjectPo;
+import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EduRoomPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduSubjectPo;
@@ -17,6 +18,7 @@ import com.han.system.sdfz.education.mapper.EduDeviceMapper;
 import com.han.system.sdfz.education.mapper.EduPersonClassMapper;
 import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduPersonSubjectMapper;
+import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import com.han.system.sdfz.education.mapper.EduRoomMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduSubjectMapper;
@@ -69,6 +71,7 @@ public class EducationMasterDataService {
     private final EduPersonClassMapper personClassMapper;
     private final EduPersonSubjectMapper personSubjectMapper;
     private final SysDictDataMapper dictDataMapper;
+    private final EduRegionMapper regionMapper;
     private final EducationDataScopeService dataScopeService;
 
     // ---------------------------------------------------------------- 学校
@@ -97,13 +100,18 @@ public class EducationMasterDataService {
         if (form.id() != null) {
             requireLocalSource(school.getSourceSystem(), "学校");
         }
+        EduRegionPo region = requireRegionCode(form.areaCode());
         if (form.parentId() != null) {
             if (Objects.equals(form.parentId(), form.id())) {
                 throw new BusinessException("学校上级不能是自身");
             }
             dataScopeService.requireOrganization(form.parentId());
-            if (schoolMapper.selectById(form.parentId()) == null) {
+            EduSchoolPo parent = schoolMapper.selectById(form.parentId());
+            if (parent == null) {
                 throw new BusinessException("上级教育组织不存在或不在当前数据范围");
+            }
+            if (!containsRegion(parent.getRegionId(), region)) {
+                throw new BusinessException("学校区域必须属于上级教育组织区域");
             }
         } else if (form.id() == null && !scope.all()) {
             throw new BusinessException("当前数据范围不能创建根级学校");
@@ -117,7 +125,8 @@ public class EducationMasterDataService {
         school.setSchoolCode(code);
         school.setSchoolName(form.schoolName().trim());
         school.setSchoolRole(form.schoolRole().trim());
-        school.setAreaCode(trimToNull(form.areaCode()));
+        school.setRegionId(region.getId());
+        school.setAreaCode(region.getRegionCode());
         school.setStatus(normalStatus(form.status()));
         school.setRemark(trimToNull(form.remark()));
         if (form.id() == null) {
@@ -128,6 +137,23 @@ public class EducationMasterDataService {
             schoolMapper.updateById(school);
         }
         return school.getId();
+    }
+
+    private EduRegionPo requireRegionCode(String areaCode) {
+        String code = trimToNull(areaCode);
+        EduRegionPo region = code == null ? null : regionMapper.selectOne(new LambdaQueryWrapper<EduRegionPo>()
+                .eq(EduRegionPo::getRegionCode, code)
+                .eq(EduRegionPo::getStatus, 0)
+                .last("LIMIT 1"));
+        if (region == null) throw new BusinessException("学校区域编码不存在或已停用");
+        return region;
+    }
+
+    private static boolean containsRegion(Long parentRegionId, EduRegionPo childRegion) {
+        if (Objects.equals(parentRegionId, childRegion.getId())) return true;
+        if (parentRegionId == null || childRegion.getAncestors() == null) return false;
+        return java.util.Arrays.stream(childRegion.getAncestors().split(","))
+                .map(String::trim).anyMatch(value -> value.equals(String.valueOf(parentRegionId)));
     }
 
     @Transactional(rollbackFor = Exception.class)

@@ -51,6 +51,9 @@ public interface SysUserMapper extends BaseMapper<SysUserPo> {
      */
     Set<Long> selectPostIdsByUserId(@Param("userId") Long userId);
 
+    /** 用户是否关联有效教育人员，用于客户端用户操作边界。 */
+    int countActiveEducationPersonsByUserId(@Param("userId") Long userId);
+
     /**
      * 检查用户名是否存在
      */

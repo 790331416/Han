@@ -40,7 +40,7 @@ public class EducationRegionTreeService {
     private final EduUserScopeMapper userScopeMapper;
 
     public List<EducationRegionNode> tree(Integer status) {
-        EducationDataScopeService.requireTenantAdmin();
+        requireTenant();
         List<EduRegionPo> regions = regionMapper.selectList(new LambdaQueryWrapper<EduRegionPo>()
                 .eq(status != null, EduRegionPo::getStatus, status)
                 .orderByAsc(EduRegionPo::getNodeLevel)
@@ -60,7 +60,7 @@ public class EducationRegionTreeService {
      * 区域管理树的单层节点。全国数据必须按层加载，避免一次性组装四级树。
      */
     public List<EduRegionPo> children(Long parentId, Integer status) {
-        EducationDataScopeService.requireTenantAdmin();
+        requireTenant();
         return selectChildren(parentId, status);
     }
 
@@ -129,7 +129,7 @@ public class EducationRegionTreeService {
 
     @Transactional(rollbackFor = Exception.class)
     public Long save(EducationRegionForms.Region form) {
-        EducationDataScopeService.requireTenantAdmin();
+        requireTenant();
         EduRegionPo item = form.id() == null ? new EduRegionPo() : requireRegion(form.id());
         if (NATIONAL_SOURCE.equals(item.getSourceSystem())) {
             throw new BusinessException("全国行政区域基准数据不允许在管理端修改");
@@ -161,7 +161,7 @@ public class EducationRegionTreeService {
 
     @Transactional(rollbackFor = Exception.class)
     public int delete(List<Long> ids) {
-        EducationDataScopeService.requireTenantAdmin();
+        requireTenant();
         if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要删除的区域");
         int removed = 0;
         for (Long id : ids.stream().filter(Objects::nonNull).distinct().toList()) {
