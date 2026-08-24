@@ -1,8 +1,8 @@
 <template>
   <div class="app-container">
-    <el-button :icon="Refresh" @click="refresh" style="margin-bottom: 16px">刷新</el-button>
+    <el-button v-if="canInfo || canList" :icon="Refresh" @click="refresh" style="margin-bottom: 16px">刷新</el-button>
 
-    <el-row :gutter="16">
+    <el-row v-if="canInfo" :gutter="16">
       <el-col :span="24">
         <el-card shadow="never">
           <template #header><span>Redis 基本信息</span></template>
@@ -24,7 +24,7 @@
       </el-col>
     </el-row>
 
-    <el-card shadow="never" style="margin-top: 16px">
+    <el-card v-if="canList" shadow="never" style="margin-top: 16px">
       <template #header>
         <div style="display: flex; align-items: center; justify-content: space-between;">
           <span>缓存键列表</span>
@@ -64,6 +64,8 @@ const keyList = ref<any[]>([])
 const keyLoading = ref(false)
 const keyPattern = ref('han:*')
 const userStore = useUserStore()
+const canInfo = computed(() => userStore.hasPermission('monitor:cache:info'))
+const canList = computed(() => userStore.hasPermission('monitor:cache:list'))
 
 const hitRate = computed(() => {
   if (!cacheInfo.value) return '-'
@@ -74,6 +76,7 @@ const hitRate = computed(() => {
 })
 
 const getData = async () => {
+  if (!canInfo.value) return
   try {
     const res = await getCacheInfo()
     cacheInfo.value = res.data || {}
@@ -81,6 +84,7 @@ const getData = async () => {
 }
 
 const getKeys = async () => {
+  if (!canList.value) return
   keyLoading.value = true
   try {
     const res = await getCacheKeys(keyPattern.value)
@@ -98,8 +102,8 @@ const handleDelete = async (key: string) => {
 }
 
 const refresh = () => {
-  getData()
-  getKeys()
+  if (canInfo.value) getData()
+  if (canList.value) getKeys()
 }
 
 onMounted(() => {

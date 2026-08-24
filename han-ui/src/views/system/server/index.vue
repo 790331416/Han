@@ -1,9 +1,9 @@
 <template>
   <div class="app-container">
-    <el-button :icon="Refresh" @click="getServerData" style="margin-bottom: 16px">刷新</el-button>
+    <el-button v-if="canList || canJvm || canSystem" :icon="Refresh" @click="getServerData" style="margin-bottom: 16px">刷新</el-button>
 
     <el-row :gutter="16">
-      <el-col :span="12">
+      <el-col v-if="canList || canJvm" :span="12">
         <el-card shadow="never">
           <template #header><span>JVM信息</span></template>
           <el-descriptions :column="1" border v-if="serverInfo.jvm">
@@ -19,7 +19,7 @@
           </el-descriptions>
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col v-if="canList || canSystem" :span="12">
         <el-card shadow="never">
           <template #header><span>服务器信息</span></template>
           <el-descriptions :column="1" border v-if="serverInfo.sys">
@@ -39,16 +39,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
-import { getServerInfo } from '@/api/system/monitor'
+import { getServerInfo, getServerJvmInfo, getServerSystemInfo } from '@/api/system/monitor'
+import { useUserStore } from '@/stores/user'
 
 const serverInfo = ref<any>({})
+const userStore = useUserStore()
+const canList = computed(() => userStore.hasPermission('monitor:server:list'))
+const canJvm = computed(() => userStore.hasPermission('monitor:server:jvm'))
+const canSystem = computed(() => userStore.hasPermission('monitor:server:system'))
 
 const getServerData = async () => {
   try {
-    const res = await getServerInfo()
-    serverInfo.value = res.data || {}
+    if (canList.value) {
+      const res = await getServerInfo()
+      serverInfo.value = res.data || {}
+      return
+    }
+    const [jvm, sys] = await Promise.all([
+      canJvm.value ? getServerJvmInfo() : Promise.resolve({ data: undefined }),
+      canSystem.value ? getServerSystemInfo() : Promise.resolve({ data: undefined })
+    ])
+    serverInfo.value = { jvm: jvm.data, sys: sys.data }
   } catch { /* ignore */ }
 }
 
@@ -60,7 +73,7 @@ const formatUptime = (seconds?: number) => {
   return `${d}天${h}小时${m}分钟`
 }
 
-onMounted(() => getServerData())
+onMounted(() => { if (canList.value || canJvm.value || canSystem.value) getServerData() })
 </script>
 
 <style lang="scss" scoped>

@@ -12,6 +12,7 @@ import i18n from './locales'
 import { formatDate } from '@/utils/request'
 import { useAppStore } from '@/stores/app'
 import { useBrandStore } from '@/stores/brand'
+import { useUserStore } from '@/stores/user'
 
 import 'virtual:uno.css'
 import 'element-plus/dist/index.css'
@@ -27,6 +28,13 @@ async function bootstrap() {
   const elLocale = i18n.global.locale.value === 'en-US' ? en : zhCn
   app.use(ElementPlus, { locale: elLocale })
   app.use(i18n)
+
+  app.directive('perm', {
+    mounted(el, binding) {
+      const permissions = Array.isArray(binding.value) ? binding.value : [binding.value]
+      if (!permissions.every((permission) => useUserStore(pinia).hasPermission(permission))) el.remove()
+    }
+  })
 
   for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
     app.component(key, component)

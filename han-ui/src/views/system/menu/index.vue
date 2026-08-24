@@ -25,7 +25,7 @@
           <span>菜单列表</span>
           <div>
             <el-button :icon="isExpand ? 'ArrowUp' : 'ArrowDown'" @click="toggleExpand">{{ isExpand ? '折叠' : '展开' }}</el-button>
-            <el-button type="primary" :icon="Plus" @click="handleAdd()">新增菜单</el-button>
+            <el-button v-perm="'system:menu:add'" type="primary" :icon="Plus" @click="handleAdd()">新增菜单</el-button>
           </div>
         </div>
       </template>
@@ -54,9 +54,9 @@
         </el-table-column>
         <el-table-column label="操作" min-width="220">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Plus" @click="handleAdd(row.id)" v-if="row.menuType !== 'F'">新增</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="row.menuType !== 'F'" v-perm="'system:menu:add'" type="primary" link :icon="Plus" @click="handleAdd(row.id)">新增</el-button>
+            <el-button v-perm="['system:menu:edit', 'system:menu:query']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="'system:menu:remove'" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -214,7 +214,6 @@ async function handleDelete(row: Menu) {
   await deleteMenu(row.id)
   ElMessage.success('删除成功')
   await getList()
-  tableKey.value++
 }
 
 async function submitForm() {
@@ -231,7 +230,6 @@ async function submitForm() {
     }
     dialogVisible.value = false
     await getList()
-    tableKey.value++
   } finally {
     submitLoading.value = false
   }

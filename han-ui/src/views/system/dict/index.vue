@@ -24,7 +24,7 @@
       <template #header>
         <div class="card-header">
           <span>字典类型列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增字典</el-button>
+          <el-button v-perm="'system:dict:add'" type="primary" :icon="Plus" @click="handleAdd">新增字典</el-button>
         </div>
       </template>
 
@@ -57,8 +57,8 @@
         <el-table-column label="操作" min-width="240">
           <template #default="{ row }">
             <el-button type="success" link @click="handleViewData(row)">数据项</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="['system:dict:edit', 'system:dict:query']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="'system:dict:remove'" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

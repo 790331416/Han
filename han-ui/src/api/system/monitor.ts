@@ -5,6 +5,14 @@ export function getServerInfo() {
   return get<any>('/system/monitor/server')
 }
 
+export function getServerJvmInfo() {
+  return get<any>('/system/monitor/server/jvm')
+}
+
+export function getServerSystemInfo() {
+  return get<any>('/system/monitor/server/system')
+}
+
 // 获取缓存信息
 export function getCacheInfo() {
   return get<any>('/system/monitor/cache')

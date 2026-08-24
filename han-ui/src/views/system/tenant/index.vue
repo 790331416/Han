@@ -26,7 +26,7 @@
       <template #header>
         <div class="card-header">
           <span>租户列表</span>
-          <el-button type="primary" :icon="Plus" data-testid="tenant-add-button" @click="handleAdd">新增租户</el-button>
+          <el-button v-perm="'tenant:add'" type="primary" :icon="Plus" data-testid="tenant-add-button" @click="handleAdd">新增租户</el-button>
         </div>
       </template>
 
@@ -43,15 +43,15 @@
         <el-table-column label="过期时间" prop="expireTime" min-width="180" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-switch :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" />
+            <el-switch v-perm="'tenant:edit'" :model-value="row.status === 0" @change="(val: any) => handleStatusChange(row, !!val)" />
           </template>
         </el-table-column>
         <el-table-column label="创建时间" prop="createTime" min-width="180" />
         <el-table-column label="操作" min-width="260">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" :data-testid="`tenant-edit-button-${row.tenantId}`" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="warning" link :icon="Key" :data-testid="`tenant-reset-pwd-button-${row.tenantId}`" @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button type="danger" link :icon="Delete" :data-testid="`tenant-delete-button-${row.tenantId}`" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="['tenant:edit', 'tenant:query']" type="primary" link :icon="Edit" :data-testid="`tenant-edit-button-${row.tenantId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="['tenant:query', 'system:user:resetPwd']" type="warning" link :icon="Key" :data-testid="`tenant-reset-pwd-button-${row.tenantId}`" @click="handleResetPwd(row)">重置密码</el-button>
+            <el-button v-perm="'tenant:remove'" type="danger" link :icon="Delete" :data-testid="`tenant-delete-button-${row.tenantId}`" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

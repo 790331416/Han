@@ -3,7 +3,7 @@
     <el-card shadow="never" class="search-form">
       <el-form :model="queryParams" :inline="true">
         <el-form-item label="字典类型">
-          <el-tag>{{ dictTypeName || '未命名字典' }}（{{ dictTypeCode || '未指定' }}）</el-tag>
+          <el-tag>{{ dictTypeName || '字典数据' }}<template v-if="dictTypeCode">（{{ dictTypeCode }}）</template></el-tag>
         </el-form-item>
         <el-form-item label="字典标签" prop="dictLabel">
           <el-input v-model="queryParams.dictLabel" placeholder="请输入字典标签" clearable @keyup.enter="handleQuery" />
@@ -25,7 +25,7 @@
         <div class="card-header">
           <span>字典数据列表</span>
           <div class="header-actions">
-            <el-button type="primary" :icon="Plus" @click="handleAdd">新增数据</el-button>
+            <el-button v-perm="'system:dict:add'" type="primary" :icon="Plus" @click="handleAdd">新增数据</el-button>
             <el-button type="info" :icon="Back" @click="handleBack">返回</el-button>
           </div>
         </div>
@@ -50,8 +50,8 @@
         />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="['system:dict:edit', 'system:dict:query']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="'system:dict:remove'" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

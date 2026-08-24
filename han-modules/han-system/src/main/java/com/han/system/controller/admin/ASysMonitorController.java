@@ -31,8 +31,26 @@ public class ASysMonitorController {
     @GetMapping("/server")
     @PreAuthorize("@ss.hasAuthority('monitor:server:list')")
     public R<Map<String, Object>> server() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("jvm", jvmInfo());
+        result.put("sys", systemInfo());
+        return R.ok(result);
+    }
+
+    @GetMapping("/server/jvm")
+    @PreAuthorize("@ss.hasAuthority('monitor:server:jvm')")
+    public R<Map<String, Object>> jvm() {
+        return R.ok(jvmInfo());
+    }
+
+    @GetMapping("/server/system")
+    @PreAuthorize("@ss.hasAuthority('monitor:server:system')")
+    public R<Map<String, Object>> system() {
+        return R.ok(systemInfo());
+    }
+
+    private Map<String, Object> jvmInfo() {
         Runtime runtime = Runtime.getRuntime();
-        OperatingSystemMXBean os = ManagementFactory.getOperatingSystemMXBean();
         RuntimeMXBean rt = ManagementFactory.getRuntimeMXBean();
         MemoryUsage heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
         Map<String, Object> jvm = new LinkedHashMap<>();
@@ -45,7 +63,11 @@ public class ASysMonitorController {
         jvm.put("heapUsed", toMb(heap.getUsed()));
         jvm.put("heapMax", toMb(heap.getMax()));
         jvm.put("uptime", rt.getUptime() / 1000);
+        return jvm;
+    }
 
+    private Map<String, Object> systemInfo() {
+        OperatingSystemMXBean os = ManagementFactory.getOperatingSystemMXBean();
         InetAddress host = localHost();
         Map<String, Object> sys = new LinkedHashMap<>();
         sys.put("osName", valueOrDash(os.getName()));
@@ -56,15 +78,11 @@ public class ASysMonitorController {
         sys.put("hostName", host == null ? "-" : valueOrDash(host.getHostName()));
         sys.put("hostAddress", host == null ? "-" : valueOrDash(host.getHostAddress()));
         sys.put("userDir", valueOrDash(System.getProperty("user.dir")));
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("jvm", jvm);
-        result.put("sys", sys);
-        return R.ok(result);
+        return sys;
     }
 
     @GetMapping("/cache")
-    @PreAuthorize("@ss.hasAuthority('monitor:cache:list')")
+    @PreAuthorize("@ss.hasAuthority('monitor:cache:info')")
     public R<Map<String, Object>> cache() {
         Map<String, Object> result = redisTemplate.execute((RedisCallback<Map<String, Object>>) connection -> {
             Properties info = connection.serverCommands().info();

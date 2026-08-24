@@ -25,7 +25,7 @@
           <span>部门列表</span>
           <div>
             <el-button :icon="isExpand ? 'ArrowUp' : 'ArrowDown'" @click="toggleExpand">{{ isExpand ? '折叠' : '展开' }}</el-button>
-            <el-button type="primary" :icon="Plus" @click="handleAdd()">新增部门</el-button>
+            <el-button v-perm="'system:dept:add'" type="primary" :icon="Plus" @click="handleAdd()">新增部门</el-button>
           </div>
         </div>
       </template>
@@ -45,9 +45,9 @@
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="220">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Plus" @click="handleAdd(row.id)">新增</el-button>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="'system:dept:add'" type="primary" link :icon="Plus" @click="handleAdd(row.id)">新增</el-button>
+            <el-button v-perm="['system:dept:edit', 'system:dept:query']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="'system:dept:remove'" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -25,7 +25,7 @@
       <template #header>
         <div class="card-header">
           <span>套餐列表</span>
-          <el-button type="primary" :icon="Plus" data-testid="tenant-package-add-button" @click="handleAdd">新增</el-button>
+          <el-button v-perm="'tenant:package:add'" type="primary" :icon="Plus" data-testid="tenant-package-add-button" @click="handleAdd">新增</el-button>
         </div>
       </template>
 
@@ -35,6 +35,7 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-switch
+              v-perm="'tenant:package:edit'"
               v-model="row.status"
               :active-value="0"
               :inactive-value="1"
@@ -45,9 +46,9 @@
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" :data-testid="`tenant-package-edit-button-${row.packageId}`" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="primary" link :icon="Menu" :data-testid="`tenant-package-menu-button-${row.packageId}`" @click="handleMenus(row)">菜单</el-button>
-            <el-button type="danger" link :icon="Delete" :data-testid="`tenant-package-delete-button-${row.packageId}`" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="['tenant:package:edit', 'tenant:package:query']" type="primary" link :icon="Edit" :data-testid="`tenant-package-edit-button-${row.packageId}`" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="['tenant:package:edit', 'tenant:package:query']" type="primary" link :icon="Menu" :data-testid="`tenant-package-menu-button-${row.packageId}`" @click="handleMenus(row)">菜单</el-button>
+            <el-button v-perm="'tenant:package:remove'" type="danger" link :icon="Delete" :data-testid="`tenant-package-delete-button-${row.packageId}`" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

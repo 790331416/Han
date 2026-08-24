@@ -26,7 +26,7 @@
       <template #header>
         <div class="card-header">
           <span>岗位列表</span>
-          <el-button type="primary" :icon="Plus" @click="handleAdd">新增岗位</el-button>
+          <el-button v-perm="'system:post:add'" type="primary" :icon="Plus" @click="handleAdd">新增岗位</el-button>
         </div>
       </template>
 
@@ -42,8 +42,8 @@
         <el-table-column label="创建时间" prop="createTime" min-width="180" :formatter="(_r: any, _c: any, v: any) => $formatDate(v)" />
         <el-table-column label="操作" min-width="200">
           <template #default="{ row }">
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            <el-button v-perm="['system:post:edit', 'system:post:query']" type="primary" link :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-perm="'system:post:remove'" type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
