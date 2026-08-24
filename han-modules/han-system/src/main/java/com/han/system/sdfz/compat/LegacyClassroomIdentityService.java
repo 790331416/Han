@@ -1,6 +1,7 @@
 package com.han.system.sdfz.compat;
 
 import com.han.api.system.domain.ClassroomIdentityVO;
+import com.han.common.core.exception.BusinessException;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import lombok.RequiredArgsConstructor;
@@ -42,10 +43,20 @@ public class LegacyClassroomIdentityService {
                 .orElse(null);
     }
 
-    /** 指定身份必须属于当前账号、启用且在当前策略允许范围内。 */
+    /**
+     * 指定身份必须属于当前账号、启用且在当前策略允许范围内。
+     *
+     * <p>未指定身份时：多身份账号报业务错误、拒绝默认取第一条；单身份账号保持自动选择兼容。
+     */
     public ClassroomIdentityVO resolve(Long userId, String identityId) {
         if (identityId == null || identityId.isBlank()) {
-            return resolve(userId);
+            List<ClassroomIdentityVO> loginAllowed = list(userId).stream()
+                    .filter(ClassroomIdentityVO::isLoginAllowed)
+                    .toList();
+            if (loginAllowed.size() > 1) {
+                throw new BusinessException("当前账号存在多个教育身份，请先选择身份");
+            }
+            return loginAllowed.stream().findFirst().orElse(null);
         }
         return list(userId).stream()
                 .filter(item -> identityId.trim().equals(item.getIdentityId()))

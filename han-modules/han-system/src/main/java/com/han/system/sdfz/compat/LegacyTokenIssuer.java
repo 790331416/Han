@@ -74,13 +74,18 @@ public class LegacyTokenIssuer {
         if (!canIssueFor(person)) {
             throw new BusinessException(STUDENT_LOGIN_UNSUPPORTED);
         }
-        String activeKey = ClassroomTokenCodec.ACTIVE_KEY_PREFIX + personKey(person);
+        String userId = userIdOf(person);
+        String activeKey = ClassroomTokenCodec.activeIdentityKey(userId, String.valueOf(person.getId()));
         IssuedToken reused = reusableToken(activeKey);
         if (reused != null) {
             return reused;
         }
         IssuedToken issued = issue(person, ttlSeconds);
         redisTemplate.opsForValue().set(activeKey, issued.token(), Duration.ofSeconds(ttlSeconds));
+        // 登出撤销链（han-auth）按 userId 粒度读 Active Key；这里额外按人记一份当前凭证，
+        // 保证多身份账号切换身份后，旧身份的课堂凭证仍能被登出撤销到。
+        redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(userId), issued.token(),
+                Duration.ofSeconds(ttlSeconds));
         return issued;
     }
 
@@ -109,8 +114,11 @@ public class LegacyTokenIssuer {
         return remaining > 0 ? new IssuedToken(cached, remaining) : null;
     }
 
-    /** 复用粒度是「人」：同一个人的并发登录共用一张凭证，旧侧本来也只认这一个身份。 */
-    private static String personKey(EduPersonPo person) {
+    /**
+     * 复用粒度的用户标识，与 claims 里的 {@code hanUserId} 一致：
+     * 取 {@code edu_person.user_id}，为空时回落到人员主键。
+     */
+    private static String userIdOf(EduPersonPo person) {
         return person.getUserId() != null
                 ? String.valueOf(person.getUserId()) : String.valueOf(person.getId());
     }
@@ -121,8 +129,7 @@ public class LegacyTokenIssuer {
             throw new BusinessException(STUDENT_LOGIN_UNSUPPORTED);
         }
         String roleType = properties.roleTypeOf(person.getPersonType());
-        String userId = person.getUserId() != null
-                ? String.valueOf(person.getUserId()) : String.valueOf(person.getId());
+        String userId = userIdOf(person);
         Map<String, Object> claims = new LinkedHashMap<>(ClassroomClaims.build(
                 userId,
                 person.getPersonName(),
@@ -132,6 +139,7 @@ public class LegacyTokenIssuer {
                 person.getSchoolId() == null ? "" : String.valueOf(person.getSchoolId()),
                 userId));
         claims.put("tenantId", properties.getTenantId());
+        claims.put("personType", person.getPersonType() == null ? "" : person.getPersonType());
         // 岗位与身份类型分开签：roleType 是身份（教师 2），dutyType 是校内岗位码（普通教师 3 / 管理员 1）。
         // 凭证里带上岗位，下游要按岗位做服务端判定时不必再回查管理端。
         claims.put("dutyType", properties.dutyCodeOf(person.getDutyCode()));

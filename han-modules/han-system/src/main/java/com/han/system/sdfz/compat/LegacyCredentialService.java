@@ -113,7 +113,7 @@ public class LegacyCredentialService {
             throw new BusinessException(LegacyTokenIssuer.STUDENT_LOGIN_UNSUPPORTED);
         }
 
-        EduPersonPo primary = persons.getFirst();
+        EduPersonPo primary = selectPrimary(verified, persons);
         LegacyTokenIssuer.IssuedToken issued = tokenIssuer.issueSession(primary);
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("roles", persons.stream().map(directoryService::roleOf).toList());
@@ -134,6 +134,24 @@ public class LegacyCredentialService {
         return persons.stream()
                 .filter(person -> person.getStatus() != null && person.getStatus() == 0)
                 .toList();
+    }
+
+    /**
+     * 正式凭证必须落在中间态凭证所声明的身份上，不能随手取第一条。
+     *
+     * <p>中间态凭证在 C2 就绑定了身份，C3 换发正式凭证时按同样的 {@code identityId}
+     * 找回对应人员；找不到时回落第一条，保持旧单身份调用兼容。
+     */
+    private static EduPersonPo selectPrimary(ClassroomTokenCodec.VerifiedToken verified,
+                                             List<EduPersonPo> persons) {
+        Long identityId = claimAsLong(verified, "identityId");
+        if (identityId != null) {
+            return persons.stream()
+                    .filter(person -> identityId.equals(person.getId()))
+                    .findFirst()
+                    .orElse(persons.getFirst());
+        }
+        return persons.getFirst();
     }
 
     private void verifyCaptcha(String captcha, String checkKey) {

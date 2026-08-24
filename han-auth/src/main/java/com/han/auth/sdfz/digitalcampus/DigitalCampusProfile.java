@@ -16,8 +16,9 @@ public record DigitalCampusProfile(String phone, List<Identity> identities) {
 
     public Identity selectIdentity(String identityId) {
         if (identityId != null && !identityId.isBlank()) {
+            String selected = identityId.trim();
             return identities.stream()
-                    .filter(identity -> identityId.equals(identity.identityId()))
+                    .filter(identity -> selected.equals(identity.identityId()))
                     .findFirst()
                     .orElseThrow(() -> new BusinessException("指定的数字校园身份不可用"));
         }

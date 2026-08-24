@@ -112,10 +112,17 @@ public class LegacyDirectoryService {
 
     /** B3：{@code getLiveList} 无条件依赖的身份详情，拿不到旧侧直接 500。 */
     public LegacyPayload identity(LegacyRequest request) {
-        long schoolId = requireScope(request).schoolId();
+        LegacyRequest.Scope scope = requireScope(request);
+        long schoolId = scope.schoolId();
         String pkId = request.firstText("pkId", "identityId", "id");
         EduPersonPo person = personByPersonOrUserId(pkId);
         if (person == null || !Objects.equals(person.getSchoolId(), schoolId)) {
+            return LegacyPayload.same(Map.of());
+        }
+        // 同一 Han 账号下的其它教育身份，必须是当前 token 所绑定的那一个：
+        // 多身份账号只允许读自己身份的身份详情，不能跨身份读取同账号的另一个学校身份。
+        if (Objects.equals(person.getUserId(), scope.userId())
+                && !Objects.equals(person.getId(), scope.identityId())) {
             return LegacyPayload.same(Map.of());
         }
         return LegacyPayload.same(identityOf(person));

@@ -25,6 +25,7 @@ public final class ClassroomTokenCodec {
      */
     public static final String ACTIVE_KEY_PREFIX = "sdfz:classroom:active:";
     public static final String EXCHANGE_KEY_PREFIX = "sdfz:classroom:exchange:";
+    private static final String ACTIVE_IDENTITY_SEPARATOR = ":";
     private static final String HEADER = "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"han-classroom-v1\"}";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
@@ -77,6 +78,27 @@ public final class ClassroomTokenCodec {
             throw new IllegalArgumentException("Expired or invalid classroom token claims");
         }
         return new VerifiedToken(Map.copyOf(claims), tokenId, expiresAt);
+    }
+
+    /**
+     * 按人记的「当前会话」Active Key。
+     *
+     * <p>登出撤销链（han-auth {@code AuthServiceImpl.revokeClassroomSession}）按 {@code userId}
+     * 粒度读取该键来找到要作废的凭证，两个服务共用同一个 Redis，键约定必须一致。
+     */
+    public static String activeKey(String userId) {
+        return ACTIVE_KEY_PREFIX + (userId == null ? "" : userId);
+    }
+
+    /**
+     * 身份粒度的课堂 Active Key：{@code {userId}:{identityId}}。
+     *
+     * <p>同一账号的多个学校身份各自持有一张正式凭证，换发复用（幂等）按这个粒度判定，
+     * 避免身份 A 的凭证被复用到身份 B、claims 里的 identityId 与实际身份错位。
+     */
+    public static String activeIdentityKey(String userId, String identityId) {
+        return ACTIVE_KEY_PREFIX + (userId == null ? "" : userId)
+                + ACTIVE_IDENTITY_SEPARATOR + (identityId == null ? "" : identityId);
     }
 
     public static String sha256(String value) {

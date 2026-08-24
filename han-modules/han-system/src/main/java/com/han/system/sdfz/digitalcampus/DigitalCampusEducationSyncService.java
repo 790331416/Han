@@ -187,10 +187,12 @@ public class DigitalCampusEducationSyncService {
     private EduPersonPo upsertPerson(DigitalCampusUserSyncDTO dto, Long hanUserId, Long schoolId) {
         String externalUserId = trim(dto.getExternalUserId(), 128);
         String externalIdentityId = trim(dto.getExternalIdentityId(), 128);
+        // 幂等键对齐 DB 唯一索引 uq_edu_person_external(tenant_id, source_system, external_identity_id)：
+        // 一个外部身份就是一条独立 edu_person，不能把 external_user_id 掺进查询，
+        // 否则同一身份换外部账号标识时会查不到存量行、插入撞唯一索引。
         EduPersonPo value = personMapper.selectOne(new LambdaQueryWrapper<EduPersonPo>()
                 .eq(EduPersonPo::getTenantId, dto.getTenantId())
                 .eq(EduPersonPo::getSourceSystem, SOURCE)
-                .eq(EduPersonPo::getExternalUserId, externalUserId)
                 .eq(EduPersonPo::getExternalIdentityId, externalIdentityId)
                 .last("LIMIT 1"));
         boolean creating = value == null;

@@ -88,9 +88,14 @@ public class ClassroomTokenService {
             throw new BusinessException("当前没有可用的 Han 登录态");
         }
 
-        R<ClassroomIdentityVO> result = identityId == null || identityId.isBlank()
+        String selected = identityId == null || identityId.isBlank() ? null : identityId.trim();
+        if (selected == null) {
+            // 多身份账号必须显式选择 identityId；列表不可用时由 han-system 的 resolve 兜底判断。
+            requireSingleLoginIdentity(loginUser.getUserId());
+        }
+        R<ClassroomIdentityVO> result = selected == null
                 ? systemServiceClient.getClassroomIdentity(loginUser.getUserId())
-                : systemServiceClient.getClassroomIdentity(loginUser.getUserId(), identityId.trim());
+                : systemServiceClient.getClassroomIdentity(loginUser.getUserId(), selected);
         if (result == null || result.getCode() != Constants.SUCCESS || result.getData() == null) {
             throw new BusinessException("当前账号未开通三个课堂身份");
         }
@@ -113,8 +118,23 @@ public class ClassroomTokenService {
                 identity.getSchoolId(),
                 String.valueOf(loginUser.getUserId())));
         claims.put("tenantId", loginUser.getTenantId());
+        claims.put("personType", identity.getPersonType() == null ? "" : identity.getPersonType());
         claims.put("classIds", identity.getClassIds() == null ? List.of() : identity.getClassIds());
         return sign(claims, userId);
+    }
+
+    /** 未显式选择身份时，多身份账号必须报业务错误，不允许默认取第一条。 */
+    private void requireSingleLoginIdentity(Long userId) {
+        R<List<ClassroomIdentityVO>> listResult = systemServiceClient.listClassroomIdentities(userId);
+        if (listResult == null || listResult.getCode() != Constants.SUCCESS || listResult.getData() == null) {
+            return;
+        }
+        long loginAllowed = listResult.getData().stream()
+                .filter(ClassroomIdentityVO::isLoginAllowed)
+                .count();
+        if (loginAllowed > 1) {
+            throw new BusinessException("当前账号存在多个教育身份，请先选择身份");
+        }
     }
 
     /** 返回当前账号可展示的教育身份；是否可签发由 {@code loginAllowed} 标识。 */
@@ -157,6 +177,13 @@ public class ClassroomTokenService {
                 ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId,
                 String.valueOf(sessionUserId),
                 Duration.ofSeconds(ttlSeconds));
+        // 补写 Active Key：登出撤销链（AuthServiceImpl）按 hanUserId 粒度读它定位当前凭证，
+        // 不写这里登出/切换身份后撤销不到课堂凭证。
+        String hanUserId = claims.get("hanUserId") instanceof String text && !text.isBlank() ? text : null;
+        if (hanUserId != null) {
+            redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(hanUserId), token,
+                    Duration.ofSeconds(ttlSeconds));
+        }
         return new ClassroomTokenVO(token, ttlSeconds);
     }
 
