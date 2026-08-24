@@ -202,6 +202,13 @@ export const dynamicMenuRoutes = ref<RouteRecordRaw[]>([])
 let dynamicRouteNames: string[] = []
 let notFoundAdded = false
 
+function hasMenuPath(routes: RouteRecordRaw[], targetPath: string, parentPath = ''): boolean {
+  return routes.some((route) => {
+    const fullPath = resolveMenuPath(parentPath, String(route.path))
+    return fullPath === targetPath || Boolean(route.children?.length && hasMenuPath(route.children, targetPath, fullPath))
+  })
+}
+
 export function clearDynamicRoutes() {
   dynamicRouteNames.forEach((name) => router.hasRoute(name) && router.removeRoute(name))
   dynamicRouteNames = []
@@ -224,6 +231,15 @@ export async function loadDynamicRoutes() {
     }
     return [route]
   })
+  // 数据项不是独立菜单，跟随已授权的“字典管理”菜单注册，避免动态路由下落入 404。
+  if (hasMenuPath(routes, '/system/dict')) {
+    routes.push({
+      path: 'system/dict-data',
+      name: 'DictData',
+      component: viewComponent('system/dict/data'),
+      meta: { title: '字典数据', hidden: true }
+    })
+  }
   routes.forEach((route) => {
     router.addRoute('Layout', route)
     if (route.name) dynamicRouteNames.push(String(route.name))

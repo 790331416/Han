@@ -12,11 +12,16 @@ export interface TagView {
 }
 
 function toTag(route: RouteLocationNormalized): TagView {
+  const title = [...route.matched]
+    .reverse()
+    .map((record) => record.meta?.title)
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
   return {
     path: route.path,
     fullPath: route.fullPath,
     name: route.name,
-    title: (route.meta?.title as string) || '未命名',
+    title: title || '首页',
     meta: { ...route.meta },
     query: { ...route.query }
   }

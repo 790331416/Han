@@ -60,6 +60,7 @@ public class AuthServiceImpl implements IAuthService {
     private static final Duration PC_REFRESH_EXPIRE = Duration.ofDays(7);
     private static final Duration APP_REFRESH_EXPIRE = Duration.ofDays(30);
     private static final Duration WECHAT_REFRESH_EXPIRE = Duration.ofDays(90);
+    private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
 
     private static final int PASSWORD_EXPIRE_DAYS = 90;
 
@@ -194,6 +195,7 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(tokenKey, XuJsonUtil.toJsonString(loginUser), tokenExpire);
         redisTemplate.opsForValue().set(refreshKey, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, accessToken, tokenExpire);
+        markOnline(accessToken);
 
         recordLoginSuccess(user.getUserId(), user.getUsername(), clientType);
 
@@ -253,6 +255,7 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(newTokenKey, XuJsonUtil.toJsonString(loginUser), tokenExpire);
         redisTemplate.opsForValue().set(newRefreshKey, newAccessToken, refreshExpire);
         redisTemplate.opsForValue().set(userKey, newAccessToken, tokenExpire);
+        markOnline(newAccessToken);
 
         return buildLoginVO(newAccessToken, newRefreshToken, tokenExpire, false, loginUser.getUserId(),
                 loginUser.getUsername(), loginUser.getNickname(), loginUser.getAvatar(), loginUser.getPhone());
@@ -386,6 +389,7 @@ public class AuthServiceImpl implements IAuthService {
         redisTemplate.opsForValue().set(CacheConstants.REFRESH_TOKEN_KEY + refreshToken, accessToken, refreshExpire);
         redisTemplate.opsForValue().set(CacheConstants.LOGIN_USER_KEY + targetUser.getUserId() + ":" + clientType.getCode(),
                 accessToken, tokenExpire);
+        markOnline(accessToken);
 
         logout(authorization);
         recordLoginSuccess(targetUser.getUserId(), targetUser.getUsername(), clientType);
@@ -590,6 +594,10 @@ public class AuthServiceImpl implements IAuthService {
                 log.info("用户[{}]PC 端被踢出，新设备登录", userId);
             }
         }
+    }
+
+    private void markOnline(String accessToken) {
+        redisTemplate.opsForValue().set(CacheConstants.ONLINE_KEY + accessToken, accessToken, ONLINE_WINDOW);
     }
 
     private void recordLoginFail(String username, Long tenantId, String message) {

@@ -36,6 +36,9 @@ let sessionRefreshPromise: Promise<SessionRefreshResult> | null = null
 /** 防止刷新彻底失效时重复跳转登录页。 */
 let sessionRedirecting = false
 
+const browserBasePath = import.meta.env.BASE_URL.replace(/\/$/, '')
+const browserLoginPath = `${browserBasePath}/login`
+
 export interface SessionRefreshResult {
   status: 'success' | 'expired' | 'failed'
   accessToken?: string
@@ -86,16 +89,19 @@ export function clearSessionAndRedirectToLogin(redirectPath?: string): void {
     return
   }
 
-  if (window.location.pathname === '/login' || sessionRedirecting) {
+  if (window.location.pathname === browserLoginPath || sessionRedirecting) {
     return
   }
 
   sessionRedirecting = true
-  const redirect =
-    redirectPath ?? `${window.location.pathname}${window.location.search}${window.location.hash}`
+  const rawRedirect = redirectPath ?? router.currentRoute.value.fullPath
+  const redirect = browserBasePath && rawRedirect.startsWith(browserBasePath)
+    ? rawRedirect.slice(browserBasePath.length) || '/'
+    : rawRedirect
+  const loginQuery = `?redirect=${encodeURIComponent(redirect)}`
 
-  router.push(`/login?redirect=${encodeURIComponent(redirect)}`).catch(() => {
-    window.location.href = '/login'
+  router.push(`/login${loginQuery}`).catch(() => {
+    window.location.assign(`${browserLoginPath}${loginQuery}`)
   }).finally(() => {
     window.setTimeout(() => {
       sessionRedirecting = false

@@ -313,7 +313,7 @@ const handleUpdatePwd = async () => {
     // 修改密码后退出重新登录
     setTimeout(async () => {
       await userStore.logout()
-      window.location.href = '/login'
+      window.location.assign(`${import.meta.env.BASE_URL}login`)
     }, 1500)
   } finally {
     pwdLoading.value = false

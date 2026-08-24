@@ -10,6 +10,7 @@ import com.han.auth.domain.LoginVO;
 import com.han.auth.domain.TenantSimpleVo;
 import com.han.auth.service.CaptchaSettingService;
 import com.han.auth.service.TotpService;
+import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.domain.R;
 import com.han.common.core.enums.ClientType;
 import com.han.common.core.exception.BusinessException;
@@ -23,12 +24,15 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -191,6 +195,7 @@ class AuthServiceImplTest {
         when(systemServiceClient.recordLoginLog(any())).thenReturn(R.ok());
 
         assertThat(authService.issueLoginForUser(user, ClientType.PC, false).accessToken()).isNotBlank();
+        verify(valueOperations).set(startsWith(CacheConstants.ONLINE_KEY), anyString(), eq(Duration.ofMinutes(5)));
     }
 
     private UserVO user(Long userId, Long tenantId) {
