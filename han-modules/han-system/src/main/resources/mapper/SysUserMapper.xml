@@ -128,6 +128,43 @@
         SELECT role_id FROM sys_user_role WHERE user_id = #{userId}
     </select>
 
+    <!-- 查询用户管理端角色ID列表：排除 roleKey 等于或包含 teacher/student 的角色，
+         与 auth 侧 AuthServiceImpl.buildIdentityLoginUser 的过滤规则保持一致 -->
+    <select id="selectManagementRoleIdsByUserId" resultType="java.lang.Long">
+        SELECT DISTINCT ur.role_id
+        FROM sys_user_role ur
+        INNER JOIN sys_role r ON ur.role_id = r.id
+        WHERE ur.user_id = #{userId}
+          AND r.status = 0 AND r.del_flag = 0
+          AND r.role_key IS NOT NULL AND r.role_key != ''
+          AND LOWER(r.role_key) NOT LIKE '%teacher%'
+          AND LOWER(r.role_key) NOT LIKE '%student%'
+    </select>
+
+    <!-- 查询指定角色ID集合的权限列表 -->
+    <select id="selectPermissionsByRoleIds" resultType="java.lang.String">
+        SELECT DISTINCT m.perms
+        FROM sys_menu m
+        INNER JOIN sys_role_menu rm ON m.id = rm.menu_id
+        WHERE rm.role_id IN
+        <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+            #{roleId}
+        </foreach>
+          AND m.perms IS NOT NULL AND m.perms != ''
+          AND m.status = 0 AND m.del_flag = 0
+    </select>
+
+    <!-- 查询指定角色ID集合的角色Key列表 -->
+    <select id="selectRoleKeysByRoleIds" resultType="java.lang.String">
+        SELECT DISTINCT r.role_key
+        FROM sys_role r
+        WHERE r.id IN
+        <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+            #{roleId}
+        </foreach>
+          AND r.status = 0 AND r.del_flag = 0
+    </select>
+
     <!-- 查询用户岗位ID列表 -->
     <select id="selectPostIdsByUserId" resultType="java.lang.Long">
         SELECT post_id FROM sys_user_post WHERE user_id = #{userId}

@@ -47,6 +47,22 @@ public interface SysUserMapper extends BaseMapper<SysUserPo> {
     Set<Long> selectRoleIdsByUserId(@Param("userId") Long userId);
 
     /**
+     * 查询用户「管理端」角色ID列表（排除 roleKey 等于或包含 teacher/student 的角色，
+     * 过滤规则与 auth 侧 buildIdentityLoginUser 一致）
+     */
+    Set<Long> selectManagementRoleIdsByUserId(@Param("userId") Long userId);
+
+    /**
+     * 查询指定角色ID集合的权限列表
+     */
+    Set<String> selectPermissionsByRoleIds(@Param("roleIds") Set<Long> roleIds);
+
+    /**
+     * 查询指定角色ID集合的角色Key列表
+     */
+    Set<String> selectRoleKeysByRoleIds(@Param("roleIds") Set<Long> roleIds);
+
+    /**
      * 查询用户岗位ID列表
      */
     Set<Long> selectPostIdsByUserId(@Param("userId") Long userId);

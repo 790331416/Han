@@ -14,6 +14,7 @@ import com.han.common.core.util.PasswordUtil;
 import com.han.common.core.util.HanStrUtil;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import com.han.common.security.util.DataOwnerUtil;
 import com.han.system.converter.SysUserConverter;
 import com.han.system.domain.dto.ProfileDto;
@@ -256,7 +257,15 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         if (userId == 1L) {
             return Set.of("*:*:*");
         }
-        return TenantHelper.ignore(() -> sysUserMapper.selectPermissionsByUserId(userId));
+        return TenantHelper.ignore(() -> {
+            Set<Long> effectiveRoleIds = resolveIdentityRoleIds(userId);
+            if (effectiveRoleIds != null) {
+                return effectiveRoleIds.isEmpty()
+                        ? Set.<String>of()
+                        : sysUserMapper.selectPermissionsByRoleIds(effectiveRoleIds);
+            }
+            return sysUserMapper.selectPermissionsByUserId(userId);
+        });
     }
 
     @Override
@@ -264,7 +273,41 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         if (userId == 1L) {
             return Set.of("admin");
         }
-        return TenantHelper.ignore(() -> sysUserMapper.selectRoleKeysByUserId(userId));
+        return TenantHelper.ignore(() -> {
+            Set<Long> effectiveRoleIds = resolveIdentityRoleIds(userId);
+            if (effectiveRoleIds != null) {
+                return effectiveRoleIds.isEmpty()
+                        ? Set.<String>of()
+                        : sysUserMapper.selectRoleKeysByRoleIds(effectiveRoleIds);
+            }
+            return sysUserMapper.selectRoleKeysByUserId(userId);
+        });
+    }
+
+    /**
+     * 解析当前登录态下用于查询权限/角色的角色ID：
+     * <ul>
+     *   <li>非身份会话（或查询的不是当前身份用户本人）：返回 {@code null}，走原逻辑（按 userId 全角色）；</li>
+     *   <li>身份会话 + SCHOOL_ADMIN：返回管理角色ID（排除 roleKey 含 teacher/student 的角色）；</li>
+     *   <li>身份会话 + 其他岗位：返回空集合（教师/学生不继承账号管理角色）。</li>
+     * </ul>
+     */
+    private Set<Long> resolveIdentityRoleIds(Long userId) {
+        LoginUser loginUser = SecurityContextHolder.getLoginUser();
+        if (loginUser == null || !loginUser.isIdentityScoped()
+                || loginUser.getUserId() == null || !loginUser.getUserId().equals(userId)) {
+            return null;
+        }
+        if (!isSchoolAdmin(loginUser.getDutyCode())) {
+            return Set.of();
+        }
+        Set<Long> roleIds = sysUserMapper.selectManagementRoleIdsByUserId(userId);
+        return roleIds != null ? roleIds : Set.of();
+    }
+
+    /** 与 auth 侧一致：dutyCode 为 SCHOOL_ADMIN 才视为校内管理员。 */
+    private boolean isSchoolAdmin(String dutyCode) {
+        return dutyCode != null && "SCHOOL_ADMIN".equalsIgnoreCase(dutyCode.trim());
     }
 
     // ==================== 用户导入 ====================

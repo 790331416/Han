@@ -134,6 +134,7 @@ public class ASysUserController extends BSysUserController {
         }
         Set<String> roleKeys = baseService.selectRoleKeysByUserId(userId);
         Set<String> perms = baseService.selectPermissionsByUserId(userId);
+        com.han.common.security.domain.LoginUser loginUser = com.han.common.security.context.SecurityContextHolder.getLoginUser();
         CurrentUserVO vo = CurrentUserVO.builder()
                 .userId(user.getUserId())
                 .tenantId(com.han.common.security.context.SecurityContextHolder.getTenantId())
@@ -145,6 +146,14 @@ public class ASysUserController extends BSysUserController {
                 .email(user.getEmail())
                 .roles(roleKeys != null ? roleKeys : Set.of())
                 .permissions(perms != null ? perms : Set.of())
+                .identityScoped(loginUser != null && loginUser.isIdentityScoped())
+                .identityId(loginUser != null ? loginUser.getIdentityId() : null)
+                .schoolId(loginUser != null ? loginUser.getSchoolId() : null)
+                .schoolName(loginUser != null ? loginUser.getSchoolName() : null)
+                .personType(loginUser != null ? loginUser.getPersonType() : null)
+                .dutyCode(loginUser != null ? loginUser.getDutyCode() : null)
+                .dutyName(loginUser != null ? loginUser.getDutyName() : null)
+                .identityDisplayName(loginUser != null ? loginUser.getIdentityDisplayName() : null)
                 .build();
         return R.ok(vo);
     }

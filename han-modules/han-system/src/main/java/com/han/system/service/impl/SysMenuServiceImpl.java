@@ -2,6 +2,8 @@ package com.han.system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.common.core.exception.BusinessException;
+import com.han.common.security.context.SecurityContextHolder;
+import com.han.common.security.domain.LoginUser;
 import com.han.system.domain.po.SysMenuPo;
 import com.han.system.domain.po.SysRoleMenuPo;
 import com.han.system.domain.po.SysUserRolePo;
@@ -9,12 +11,14 @@ import com.han.system.domain.vo.MetaVO;
 import com.han.system.domain.vo.RouterVO;
 import com.han.system.mapper.SysMenuMapper;
 import com.han.system.mapper.SysRoleMenuMapper;
+import com.han.system.mapper.SysUserMapper;
 import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.service.ISysMenuService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +29,6 @@ import java.util.stream.Collectors;
  * 菜单服务实现
  */
 @Service
-@RequiredArgsConstructor
 public class SysMenuServiceImpl implements ISysMenuService {
 
     /** 菜单类型：目录 */
@@ -44,6 +47,22 @@ public class SysMenuServiceImpl implements ISysMenuService {
     private final SysMenuMapper menuMapper;
     private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
+    private final SysUserMapper sysUserMapper;
+
+    /** 兼容旧单测的三参构造（sysUserMapper 置空，仅超管/无身份会话路径使用）。 */
+    public SysMenuServiceImpl(SysMenuMapper menuMapper, SysRoleMenuMapper roleMenuMapper,
+                              SysUserRoleMapper userRoleMapper) {
+        this(menuMapper, roleMenuMapper, userRoleMapper, null);
+    }
+
+    @Autowired
+    public SysMenuServiceImpl(SysMenuMapper menuMapper, SysRoleMenuMapper roleMenuMapper,
+                              SysUserRoleMapper userRoleMapper, SysUserMapper sysUserMapper) {
+        this.menuMapper = menuMapper;
+        this.roleMenuMapper = roleMenuMapper;
+        this.userRoleMapper = userRoleMapper;
+        this.sysUserMapper = sysUserMapper;
+    }
 
     @Override
     public List<SysMenuPo> selectMenuList(String menuName, Integer status) {
@@ -237,20 +256,64 @@ public class SysMenuServiceImpl implements ISysMenuService {
     // ==================== 私有方法 ====================
 
     /**
-     * 通过 user_role + role_menu 查询用户的菜单ID列表
+     * 通过 user_role + role_menu 查询用户的菜单ID列表。
+     *
+     * <p>「一账号、多学校身份、按身份隔离」：当前登录态为身份会话时，
+     * 按当前身份（dutyCode）过滤角色后再查菜单，具体见 {@link #resolveMenuRoleIds(Long)}。
      */
     private List<Long> selectMenuIdsByUserId(Long userId) {
+        Collection<Long> roleIds = resolveMenuRoleIds(userId);
+        if (roleIds.isEmpty()) {
+            return List.of();
+        }
+        List<SysRoleMenuPo> roleMenus = roleMenuMapper.selectList(
+                new LambdaQueryWrapper<SysRoleMenuPo>().in(SysRoleMenuPo::getRoleId, roleIds)
+        );
+        return roleMenus.stream().map(SysRoleMenuPo::getMenuId).distinct().toList();
+    }
+
+    /**
+     * 解析当前登录态下用于查菜单的角色ID：
+     * <ul>
+     *   <li>超管（userId==1）或非身份会话：保持原逻辑，使用账号全部角色；</li>
+     *   <li>身份会话 + SCHOOL_ADMIN：仅保留管理角色（排除 roleKey 含 teacher/student 的角色）；</li>
+     *   <li>身份会话 + 其他岗位（TEACHER/STUDENT 等）：不返回任何角色（空菜单）。</li>
+     * </ul>
+     */
+    private Collection<Long> resolveMenuRoleIds(Long userId) {
+        if (userId != null && userId == 1L) {
+            return loadAllRoleIdsByUserId(userId);
+        }
+        LoginUser loginUser = SecurityContextHolder.getLoginUser();
+        boolean identityScoped = loginUser != null && loginUser.isIdentityScoped()
+                && loginUser.getUserId() != null && loginUser.getUserId().equals(userId);
+        if (!identityScoped) {
+            return loadAllRoleIdsByUserId(userId);
+        }
+        if (!isSchoolAdmin(loginUser.getDutyCode())) {
+            return List.of();
+        }
+        if (sysUserMapper == null) {
+            return List.of();
+        }
+        Set<Long> managementRoleIds = sysUserMapper.selectManagementRoleIdsByUserId(userId);
+        return managementRoleIds != null ? managementRoleIds : Set.of();
+    }
+
+    /** 查询账号全部角色ID（user_role 关联表）。 */
+    private List<Long> loadAllRoleIdsByUserId(Long userId) {
         List<SysUserRolePo> userRoles = userRoleMapper.selectList(
                 new LambdaQueryWrapper<SysUserRolePo>().eq(SysUserRolePo::getUserId, userId)
         );
         if (userRoles.isEmpty()) {
             return List.of();
         }
-        List<Long> roleIds = userRoles.stream().map(SysUserRolePo::getRoleId).toList();
-        List<SysRoleMenuPo> roleMenus = roleMenuMapper.selectList(
-                new LambdaQueryWrapper<SysRoleMenuPo>().in(SysRoleMenuPo::getRoleId, roleIds)
-        );
-        return roleMenus.stream().map(SysRoleMenuPo::getMenuId).distinct().toList();
+        return userRoles.stream().map(SysUserRolePo::getRoleId).toList();
+    }
+
+    /** 与 auth 侧一致：dutyCode 为 SCHOOL_ADMIN 才视为校内管理员。 */
+    private boolean isSchoolAdmin(String dutyCode) {
+        return dutyCode != null && "SCHOOL_ADMIN".equalsIgnoreCase(dutyCode.trim());
     }
 
     private List<SysMenuPo> buildTree(List<SysMenuPo> menus) {

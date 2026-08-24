@@ -18,6 +18,14 @@ public record CurrentUserVO(
         String phone,
         String email,
         Set<String> roles,
-        Set<String> permissions
+        Set<String> permissions,
+        boolean identityScoped,
+        Long identityId,
+        Long schoolId,
+        String schoolName,
+        String personType,
+        String dutyCode,
+        String dutyName,
+        String identityDisplayName
 ) {
 }

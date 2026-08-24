@@ -295,9 +295,10 @@ public class ISysUserController {
             return vo;
         }
 
-        Set<String> perms = sysUserMapper.selectPermissionsByUserId(po.getId());
+        // 走服务层：非身份会话保持原逻辑，身份会话下按当前身份过滤角色后返回权限/角色。
+        Set<String> perms = sysUserService.selectPermissionsByUserId(po.getId());
         vo.setPermissions(perms != null ? perms : Set.of());
-        Set<String> roleKeys = sysUserMapper.selectRoleKeysByUserId(po.getId());
+        Set<String> roleKeys = sysUserService.selectRoleKeysByUserId(po.getId());
         vo.setRoleKeys(roleKeys != null ? roleKeys : Set.of());
         return vo;
     }

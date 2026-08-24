@@ -34,6 +34,9 @@ public class EducationDataScopeService {
         if (user == null || user.getUserId() == null || user.getTenantId() == null) {
             throw new BusinessException("缺少登录租户上下文");
         }
+        if (user.isIdentityScoped()) {
+            return identityScope(user);
+        }
         if (isTenantAdmin(user)) {
             return Scope.tenantWide();
         }
@@ -67,6 +70,13 @@ public class EducationDataScopeService {
     }
 
     public void requireSchool(Long schoolId) {
+        LoginUser user = SecurityContextHolder.getLoginUser();
+        if (user != null && user.isIdentityScoped()) {
+            if (schoolId == null || !schoolId.equals(user.getSchoolId())) {
+                throw new BusinessException("学校不存在或不在当前身份数据范围");
+            }
+            return;
+        }
         Scope scope = current();
         if (!scope.all() && (schoolId == null || !scope.schoolIds().contains(schoolId))) {
             throw new BusinessException("学校不存在或不在当前数据范围");
@@ -122,6 +132,15 @@ public class EducationDataScopeService {
             userScopeMapper.insert(value);
         }
         return form.items().size();
+    }
+
+    /** 学校身份会话：数据范围只收敛为当前学校，忽略 edu_user_scope 的多校并集。 */
+    private static Scope identityScope(LoginUser user) {
+        Long schoolId = user.getSchoolId();
+        if (schoolId == null) {
+            return Scope.denyAll();
+        }
+        return new Scope(false, Set.of(schoolId), Set.of(schoolId));
     }
 
     private Set<Long> organizationsUnder(Long organizationId, boolean includeChildren) {
