@@ -140,7 +140,11 @@ public class LegacyCredentialService {
      * 正式凭证必须落在中间态凭证所声明的身份上，不能随手取第一条。
      *
      * <p>中间态凭证在 C2 就绑定了身份，C3 换发正式凭证时按同样的 {@code identityId}
-     * 找回对应人员；找不到时回落第一条，保持旧单身份调用兼容。
+     * 找回对应人员。声明了 {@code identityId} 却找不到对应身份，说明该身份已被解绑 / 停用 /
+     * 离校，直接报身份失效，禁止回退到列表第一条、禁止自动切学校。
+     *
+     * <p>仅「旧凭证未声明 identityId 且账号只有一个有效身份」才允许单身份兼容；
+     * 多身份或无身份声明且多身份的旧凭证一律要求重新登录。
      */
     private static EduPersonPo selectPrimary(ClassroomTokenCodec.VerifiedToken verified,
                                              List<EduPersonPo> persons) {
@@ -149,9 +153,12 @@ public class LegacyCredentialService {
             return persons.stream()
                     .filter(person -> identityId.equals(person.getId()))
                     .findFirst()
-                    .orElse(persons.getFirst());
+                    .orElseThrow(() -> new BusinessException("当前身份已失效，请重新登录"));
         }
-        return persons.getFirst();
+        if (persons.size() == 1) {
+            return persons.getFirst();
+        }
+        throw new BusinessException("当前账号存在多个教育身份，请重新登录");
     }
 
     private void verifyCaptcha(String captcha, String checkKey) {

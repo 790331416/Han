@@ -59,4 +59,18 @@ public class ClassroomIdentityVO implements Serializable {
 
     /** 写入 Token 的角色集合。 */
     private List<String> roles;
+
+    /**
+     * PC 管理端是否可用，按「人员/学校/岗位/管理角色」四要素计算：
+     * 人员与学校均有效，且岗位为校内管理员（{@code dutyCode=SCHOOL_ADMIN}），
+     * 且账号关联了非 teacher/student 的管理端角色。
+     *
+     * <p>与 {@link #loginAllowed} 是两个维度：{@code loginAllowed} 管能否进课堂，
+     * 本字段管能否以该身份进 PC 管理端。普通教师 {@code loginAllowed=true} 但
+     * {@code managementAvailable=false} 是常态。
+     */
+    private boolean managementAvailable;
+
+    /** {@code managementAvailable=false} 时的原因文案；可用时为空串。 */
+    private String managementUnavailableReason;
 }

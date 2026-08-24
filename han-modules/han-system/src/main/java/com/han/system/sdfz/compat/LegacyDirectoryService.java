@@ -110,7 +110,14 @@ public class LegacyDirectoryService {
         return LegacyPayload.same(value);
     }
 
-    /** B3：{@code getLiveList} 无条件依赖的身份详情，拿不到旧侧直接 500。 */
+    /**
+     * B3：{@code getLiveList} 无条件依赖的身份详情，拿不到旧侧直接 500。
+     *
+     * <p>身份详情只允许读当前 token 所绑定的那一个身份：{@code person.id == Token identityId}。
+     * 只校验 {@code schoolId} 不够——同一账号在其它学校的身份、同一学校下其它账号的身份，
+     * 都不得通过这里读取。多身份账号切换身份后，旧 token 的 identityId 与目标身份不匹配，
+     * 这里直接返回空对象，防止用 A 身份的凭证读到 B 身份（或同校他人）的详情。
+     */
     public LegacyPayload identity(LegacyRequest request) {
         LegacyRequest.Scope scope = requireScope(request);
         long schoolId = scope.schoolId();
@@ -119,10 +126,7 @@ public class LegacyDirectoryService {
         if (person == null || !Objects.equals(person.getSchoolId(), schoolId)) {
             return LegacyPayload.same(Map.of());
         }
-        // 同一 Han 账号下的其它教育身份，必须是当前 token 所绑定的那一个：
-        // 多身份账号只允许读自己身份的身份详情，不能跨身份读取同账号的另一个学校身份。
-        if (Objects.equals(person.getUserId(), scope.userId())
-                && !Objects.equals(person.getId(), scope.identityId())) {
+        if (!Objects.equals(person.getId(), scope.identityId())) {
             return LegacyPayload.same(Map.of());
         }
         return LegacyPayload.same(identityOf(person));
@@ -578,6 +582,21 @@ public class LegacyDirectoryService {
         }
         return personMapper.selectOne(tenantScoped(new LambdaQueryWrapper<EduPersonPo>())
                 .eq(EduPersonPo::getId, personId).last("limit 1"));
+    }
+
+    /**
+     * 账号是否关联了「管理端角色」（role_key 非空且不包含 teacher/student）。
+     *
+     * <p>与 {@code han-auth} 的 {@code filterManagementRoleKeys} 同口径：教师/学生角色不算管理端角色，
+     * 只有账号上挂着其它角色（如学校管理员、局端角色）才允许进 PC 管理端。
+     * 该查询按 {@code user_id}（雪花主键、全局唯一）精确过滤，角色归属跟随用户本身，不跨账号。
+     */
+    public boolean hasManagementRole(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        Set<Long> roleIds = userMapper.selectManagementRoleIdsByUserId(userId);
+        return roleIds != null && !roleIds.isEmpty();
     }
 
     public SysUserPo userByLoginName(String loginName) {

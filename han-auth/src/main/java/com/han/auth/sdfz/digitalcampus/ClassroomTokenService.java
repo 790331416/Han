@@ -89,6 +89,15 @@ public class ClassroomTokenService {
         }
 
         String selected = identityId == null || identityId.isBlank() ? null : identityId.trim();
+        // identityScoped 登录态在签发时就已经绑定了身份：只能用该身份换发课堂 Token，
+        // 不能用 A 会话传 B 的 identityId 去套出 B 身份的凭证。
+        if (loginUser.isIdentityScoped() && loginUser.getIdentityId() != null) {
+            String scoped = String.valueOf(loginUser.getIdentityId());
+            if (selected != null && !scoped.equals(selected)) {
+                throw new BusinessException("当前会话身份不匹配，请重新登录");
+            }
+            selected = scoped;
+        }
         if (selected == null) {
             // 多身份账号必须显式选择 identityId；列表不可用时由 han-system 的 resolve 兜底判断。
             requireSingleLoginIdentity(loginUser.getUserId());
@@ -177,8 +186,18 @@ public class ClassroomTokenService {
                 ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId,
                 String.valueOf(sessionUserId),
                 Duration.ofSeconds(ttlSeconds));
-        // 补写 Active Key：登出撤销链（AuthServiceImpl）按 hanUserId 粒度读它定位当前凭证，
-        // 不写这里登出/切换身份后撤销不到课堂凭证。
+        // 身份级 Active Key：同一账号的多个学校身份各持一张正式凭证，换发复用（幂等）
+        // 与撤销都按「身份」粒度判定，与 han-system 的 LegacyTokenIssuer 同一键规则，
+        // 避免身份 A 的凭证被复用到身份 B、claims 里的 identityId 与实际身份错位。
+        String identityId = claims.get("identityId") instanceof String text && !text.isBlank() ? text : null;
+        if (identityId != null) {
+            redisTemplate.opsForValue().set(
+                    ClassroomTokenCodec.activeIdentityKey(String.valueOf(sessionUserId), identityId),
+                    token,
+                    Duration.ofSeconds(ttlSeconds));
+        }
+        // 账号级 Active Key 仅作旧版兼容索引：登出撤销链（AuthServiceImpl）按 hanUserId 粒度读它
+        // 定位当前凭证；不写这里登出/切换身份后撤销不到课堂凭证。隔离依据是上面的身份级 Key。
         String hanUserId = claims.get("hanUserId") instanceof String text && !text.isBlank() ? text : null;
         if (hanUserId != null) {
             redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(hanUserId), token,

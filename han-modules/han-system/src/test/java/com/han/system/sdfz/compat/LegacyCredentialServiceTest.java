@@ -216,18 +216,15 @@ class LegacyCredentialServiceTest {
     }
 
     @Test
-    void buildsAStudentSessionWhenTheAccountOnlyHasStudentIdentities() {
+    void refusesWhenTheDeclaredIdentityIsGoneInsteadOfFallingBackToFirst() {
         EduPersonPo teacher = person(11L, 100L, LegacyDirectoryService.TEACHER, 0);
         EduPersonPo student = person(21L, 100L, LegacyDirectoryService.STUDENT, 0);
         String interim = tokenIssuer.issueInterim(teacher).token();
         when(directoryService.personsByUserId(100L)).thenReturn(List.of(student));
-        when(directoryService.roleOf(student)).thenReturn(Map.of("roleType", 4, "userId", "100"));
-        when(directoryService.externalUserId(student)).thenReturn("100");
 
-        Map<String, Object> result = asMap(service.currentUser(currentUserRequest(interim)).value());
-
-        assertThat((List<?>) result.get("roles")).hasSize(1);
-        assertThat(((Map<?, ?>) ((List<?>) result.get("roles")).get(0)).get("roleType")).isEqualTo(4);
+        assertThatThrownBy(() -> service.currentUser(currentUserRequest(interim)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("当前身份已失效，请重新登录");
     }
 
     @Test

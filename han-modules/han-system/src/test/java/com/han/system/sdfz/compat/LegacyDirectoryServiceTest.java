@@ -123,7 +123,7 @@ class LegacyDirectoryServiceTest {
     }
 
     @Test
-    void keepsStudentsVisibleInTheDirectoryWithTheirOwnRoleType() {
+    void identityOnlyResolvesThePersonBoundToTheTokenIdentity() {
         EduPersonPo student = teacher(21L, 200L, 7L, 0);
         student.setPersonType(LegacyDirectoryService.STUDENT);
         student.setPersonName("李同学");
@@ -131,9 +131,13 @@ class LegacyDirectoryServiceTest {
         when(schoolMapper.selectOne(any())).thenReturn(school(7L, "附中", "620100"));
         when(personClassMapper.selectList(any())).thenReturn(List.of());
 
-        Map<String, Object> identity = asMap(service.identity(request(Map.of("pkId", "21"))).value());
+        // token identityId(11) 与同校人员(21) 不一致：不可读，返回空 Map。
+        assertThat(asMap(service.identity(request(Map.of("pkId", "21"))).value())).isEmpty();
 
-        assertThat(identity)
+        // identityId 与人员一致时才能读，且保留学生自己的 roleType。
+        LegacyRequest matching = new LegacyRequest(LegacyProtocol.Consumer.LEGACY_API, null, "test",
+                Map.of("pkId", "21"), new LegacyRequest.Scope(1L, 7L, 21L, 200L));
+        assertThat(asMap(service.identity(matching).value()))
                 .containsEntry("roleType", "4")
                 .containsEntry("identityName", "学生")
                 .containsEntry("userName", "李同学");
