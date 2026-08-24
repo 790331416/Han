@@ -1,6 +1,8 @@
 package com.han.system.sdfz.education;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import com.han.system.sdfz.education.domain.EduClassPo;
@@ -26,6 +28,7 @@ import com.han.system.domain.po.SysDictDataPo;
 import com.han.system.mapper.SysDictDataMapper;
 import com.han.common.mybatis.helper.TenantHelper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +58,7 @@ import static com.han.system.sdfz.education.EducationSupport.trimToNull;
  * 见 {@code sql/sdfz/mysql/20260812b_education_active_unique_index.sql}。</p>
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EducationMasterDataService {
 
@@ -73,6 +77,7 @@ public class EducationMasterDataService {
     private final SysDictDataMapper dictDataMapper;
     private final EduRegionMapper regionMapper;
     private final EducationDataScopeService dataScopeService;
+    private final AuthServiceClient authServiceClient;
 
     // ---------------------------------------------------------------- 学校
 
@@ -97,6 +102,7 @@ public class EducationMasterDataService {
         requireTenant();
         EducationDataScopeService.Scope scope = dataScopeService.current();
         EduSchoolPo school = form.id() == null ? new EduSchoolPo() : requireSchool(form.id());
+        Integer oldStatus = school.getStatus();
         if (form.id() != null) {
             requireLocalSource(school.getSourceSystem(), "学校");
         }
@@ -120,6 +126,8 @@ public class EducationMasterDataService {
                 ? EducationCodeGenerator.unique("SCHOOL", form.schoolName(), candidate -> schoolMapper.selectCount(
                         new LambdaQueryWrapper<EduSchoolPo>().eq(EduSchoolPo::getSchoolCode, candidate)) > 0)
                 : school.getSchoolCode();
+        int newStatus = normalStatus(form.status());
+        boolean disabling = Objects.equals(oldStatus, 0) && newStatus == 1;
 
         school.setParentId(form.parentId());
         school.setSchoolCode(code);
@@ -127,16 +135,45 @@ public class EducationMasterDataService {
         school.setSchoolRole(form.schoolRole().trim());
         school.setRegionId(region.getId());
         school.setAreaCode(region.getRegionCode());
-        school.setStatus(normalStatus(form.status()));
+        school.setStatus(newStatus);
         school.setRemark(trimToNull(form.remark()));
         if (form.id() == null) {
             school.setTenantId(requireTenant());
             school.setSourceSystem(LOCAL_SOURCE);
             schoolMapper.insert(school);
         } else {
+            // 学校由正常停用：先撤销该校全部已绑定教育身份的会话，撤销失败事务回滚学校状态更新。
+            if (disabling) {
+                revokeSchoolIdentitySessions(school.getId());
+            }
             schoolMapper.updateById(school);
         }
         return school.getId();
+    }
+
+    /** 学校停用时逐条撤销该校全部已绑定教育身份的会话；撤销失败抛出异常回滚学校状态更新。 */
+    private void revokeSchoolIdentitySessions(Long schoolId) {
+        List<EduPersonPo> people = personMapper.selectList(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getSchoolId, schoolId)
+                .isNotNull(EduPersonPo::getUserId));
+        for (EduPersonPo person : people) {
+            if (person.getUserId() == null) {
+                continue;
+            }
+            revokeIdentitySession(person.getUserId(), person.getId());
+        }
+    }
+
+    private void revokeIdentitySession(Long userId, Long identityId) {
+        try {
+            SessionRevokeRequest request = new SessionRevokeRequest();
+            request.setUserId(userId);
+            request.setIdentityId(identityId);
+            authServiceClient.revokeSession(request);
+        } catch (RuntimeException e) {
+            log.error("撤销教育身份会话失败: userId={}, identityId={}", userId, identityId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
     }
 
     private EduRegionPo requireRegionCode(String areaCode) {

@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.han.common.core.domain.PageResult;
 import com.han.api.tenant.TenantServiceClient;
+import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.api.system.domain.OpenVendorAccountCreateDTO;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
@@ -34,6 +36,7 @@ import com.han.system.service.ISysUserService;
 import com.han.system.sdfz.education.EducationAccountIdentityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +63,10 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     private final SysRoleMapper sysRoleMapper;
     private final TenantServiceClient tenantServiceClient;
     private final EducationAccountIdentityService educationAccountIdentityService;
+
+    /** han-auth 会话撤销客户端（字段注入，保持既有构造器签名兼容）。 */
+    @Autowired
+    private AuthServiceClient authServiceClient;
 
     @Override
     public PageResult<UserVO> selectUserPage(SysUserQuery query) {
@@ -178,6 +185,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
             throw new BusinessException("用户不存在");
         }
 
+        // 修改前读原角色 ID，用于判断角色集合是否发生变化（变化才撤销会话）。
+        Set<Long> originalRoleIds = sysUserMapper.selectRoleIdsByUserId(existUser.getId());
+
         if (HanStrUtil.isNotBlank(dto.getPhone()) &&
                 sysUserMapper.checkPhoneUnique(dto.getPhone(), tenantId, dto.getUserId()) > 0) {
             throw new ConflictException("手机号“" + dto.getPhone() + "”已存在，请更换后重试");
@@ -188,10 +198,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         educationAccountIdentityService.syncFromAccount(existUser);
 
         if (dto.getRoleIds() != null) {
+            boolean rolesChanged = !rolesEquals(originalRoleIds, dto.getRoleIds());
             DataOwnerUtil.checkRolePermission(dto.getRoleIds());
             deleteUserRole(existUser.getId());
             if (!dto.getRoleIds().isEmpty()) {
                 insertUserRole(existUser.getId(), dto.getRoleIds());
+            }
+            if (rolesChanged) {
+                revokeUserSession(existUser.getId());
             }
         }
 
@@ -213,6 +227,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         if (id.equals(SecurityContextHolder.getUserId())) {
             throw new BusinessException("不能删除当前登录用户");
         }
+        // 删除前撤销会话，撤销失败则整个删除事务回滚（不删用户）。
+        revokeUserSession(id);
         deleteUserRole(id);
         deleteUserPost(id);
         removeById(id);
@@ -231,6 +247,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void resetPwd(Long userId, String password) {
         PasswordUtil.validate(password);
         SysUserPo po = new SysUserPo();
@@ -239,17 +256,26 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         po.setPwdUpdateTime(java.time.LocalDateTime.now());
         po.setPwdResetFlag(1);
         updateById(po);
+        // 重置后撤销现有会话，强制用新密码重新登录；撤销失败则回滚密码重置。
+        revokeUserSession(userId);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateUserStatus(Long userId, Integer status) {
         if (userId == 1L && status == 1) {
             throw new BusinessException("不允许停用超级管理员");
         }
+        SysUserPo existing = getById(userId);
+        boolean wasEnabled = existing != null && (existing.getStatus() == null || existing.getStatus() == 0);
         SysUserPo po = new SysUserPo();
         po.setId(userId);
         po.setStatus(status);
         updateById(po);
+        // 仅 0→1（启用→停用）时撤销全部会话，恢复启用不撤销；撤销失败回滚状态变更。
+        if (wasEnabled && status != null && status == 1) {
+            revokeUserSession(userId);
+        }
     }
 
     @Override
@@ -432,6 +458,32 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         }
         user.setAvatar(avatarUrl);
         sysUserMapper.updateById(user);
+    }
+
+    // ==================== 会话撤销 ====================
+
+    /**
+     * 撤销账号全部会话：调用 han-auth 内部接口，失败抛业务异常使外层事务回滚，不静默忽略。
+     */
+    private void revokeUserSession(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        SessionRevokeRequest request = new SessionRevokeRequest();
+        request.setUserId(userId);
+        try {
+            authServiceClient.revokeSession(request);
+        } catch (RuntimeException e) {
+            log.error("撤销用户会话失败: userId={}", userId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
+    }
+
+    /** 角色集合比较：null 与空集合视为等价（都不代表任何角色）。 */
+    private static boolean rolesEquals(Set<Long> before, Set<Long> after) {
+        Set<Long> left = before == null ? Set.of() : before;
+        Set<Long> right = after == null ? Set.of() : after;
+        return left.equals(right);
     }
 
     // ==================== 关联表操作 ====================

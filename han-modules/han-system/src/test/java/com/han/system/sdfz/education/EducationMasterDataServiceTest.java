@@ -1,5 +1,6 @@
 package com.han.system.sdfz.education;
 
+import com.han.api.system.AuthServiceClient;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
@@ -63,6 +64,8 @@ class EducationMasterDataServiceTest {
     private EduRegionMapper regionMapper;
     @Mock
     private EducationDataScopeService dataScopeService;
+    @Mock
+    private AuthServiceClient authServiceClient;
 
     private EducationMasterDataService service;
 
@@ -76,7 +79,8 @@ class EducationMasterDataServiceTest {
         region.setStatus(0);
         lenient().when(regionMapper.selectOne(any())).thenReturn(region);
         service = new EducationMasterDataService(schoolMapper, classMapper, personMapper, subjectMapper,
-                deviceMapper, roomMapper, personClassMapper, personSubjectMapper, dictDataMapper, regionMapper, dataScopeService);
+                deviceMapper, roomMapper, personClassMapper, personSubjectMapper, dictDataMapper, regionMapper, dataScopeService,
+                authServiceClient);
     }
 
     @AfterEach

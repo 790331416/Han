@@ -1,14 +1,19 @@
 package com.han.system.sdfz.education;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.exception.BusinessException;
+import com.han.system.sdfz.education.domain.EduPersonPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EducationOrganizationForms;
 import com.han.system.sdfz.education.domain.EducationOrganizationNode;
+import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +35,7 @@ import static com.han.system.sdfz.education.EducationSupport.trimToNull;
 
 /** 教育局、学校和校区的受约束树形管理。 */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class EducationOrganizationTreeService {
 
@@ -38,7 +44,9 @@ public class EducationOrganizationTreeService {
 
     private final EduSchoolMapper schoolMapper;
     private final EduRegionMapper regionMapper;
+    private final EduPersonMapper personMapper;
     private final EducationDataScopeService dataScopeService;
+    private final AuthServiceClient authServiceClient;
 
     public List<EducationOrganizationNode> tree(Integer status) {
         requireTenant();
@@ -94,6 +102,7 @@ public class EducationOrganizationTreeService {
             throw new BusinessException("仅租户超级管理员可以新增根教育组织");
         }
         EduSchoolPo item = form.id() == null ? new EduSchoolPo() : requireSchool(form.id());
+        Integer oldStatus = item.getStatus();
         if (form.id() != null) {
             requireLocalSource(item.getSourceSystem(), "教育组织");
         }
@@ -127,17 +136,47 @@ public class EducationOrganizationTreeService {
         // 兼容仍读取 area_code 的旧三课堂接口；值只由所选区域派生，管理端不再接受手工输入。
         item.setAreaCode(region.getRegionCode());
         item.setAutoUpgradeEnabled(normalStatus(form.autoUpgradeEnabled()));
-        item.setStatus(normalStatus(form.status()));
+        int newStatus = normalStatus(form.status());
+        item.setStatus(newStatus);
         item.setRemark(trimToNull(form.remark()));
         if (item.getId() == null) {
             item.setTenantId(requireTenant());
             item.setSourceSystem(LOCAL_SOURCE);
             schoolMapper.insert(item);
         } else {
+            // 教育组织由正常停用：先撤销该校全部已绑定教育身份的会话，撤销失败事务回滚状态更新。
+            if (Objects.equals(oldStatus, 0) && newStatus == 1) {
+                revokeSchoolIdentitySessions(item.getId());
+            }
             schoolMapper.updateById(item);
             refreshDescendants(item.getId(), new HashSet<>());
         }
         return item.getId();
+    }
+
+    /** 教育组织停用时逐条撤销该校全部已绑定教育身份的会话；撤销失败抛出异常回滚状态更新。 */
+    private void revokeSchoolIdentitySessions(Long schoolId) {
+        List<EduPersonPo> people = personMapper.selectList(new LambdaQueryWrapper<EduPersonPo>()
+                .eq(EduPersonPo::getSchoolId, schoolId)
+                .isNotNull(EduPersonPo::getUserId));
+        for (EduPersonPo person : people) {
+            if (person.getUserId() == null) {
+                continue;
+            }
+            revokeIdentitySession(person.getUserId(), person.getId());
+        }
+    }
+
+    private void revokeIdentitySession(Long userId, Long identityId) {
+        try {
+            SessionRevokeRequest request = new SessionRevokeRequest();
+            request.setUserId(userId);
+            request.setIdentityId(identityId);
+            authServiceClient.revokeSession(request);
+        } catch (RuntimeException e) {
+            log.error("撤销教育身份会话失败: userId={}, identityId={}", userId, identityId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
     }
 
     private void refreshDescendants(Long parentId, Set<Long> visited) {

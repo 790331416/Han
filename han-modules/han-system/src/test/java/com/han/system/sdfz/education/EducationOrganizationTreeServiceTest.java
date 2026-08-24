@@ -1,5 +1,6 @@
 package com.han.system.sdfz.education;
 
+import com.han.api.system.AuthServiceClient;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
@@ -7,6 +8,7 @@ import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EduRegionPo;
 import com.han.system.sdfz.education.domain.EducationOrganizationForms;
 import com.han.system.sdfz.education.domain.EducationOrganizationNode;
+import com.han.system.sdfz.education.mapper.EduPersonMapper;
 import com.han.system.sdfz.education.mapper.EduSchoolMapper;
 import com.han.system.sdfz.education.mapper.EduRegionMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -35,16 +37,21 @@ class EducationOrganizationTreeServiceTest {
     private EduSchoolMapper schoolMapper;
     @Mock
     private EduRegionMapper regionMapper;
+    @Mock
+    private EduPersonMapper personMapper;
 
     @Mock
     private EducationDataScopeService dataScopeService;
+    @Mock
+    private AuthServiceClient authServiceClient;
 
     private EducationOrganizationTreeService service;
 
     @BeforeEach
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
-        service = new EducationOrganizationTreeService(schoolMapper, regionMapper, dataScopeService);
+        service = new EducationOrganizationTreeService(schoolMapper, regionMapper, personMapper,
+                dataScopeService, authServiceClient);
     }
 
     @AfterEach
