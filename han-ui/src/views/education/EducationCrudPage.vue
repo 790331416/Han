@@ -249,6 +249,17 @@
             title="未找到与该手机号匹配的已有账号，请确认手机号或改用“创建新账号”"
           />
         </div>
+        <div
+          v-if="entity === 'people' && showRoleSharedAlert"
+          class="account-link-preview"
+        >
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            title="账号角色是共享的：修改管理端角色后，会影响该账号在全部学校的 SCHOOL_ADMIN 身份。"
+          />
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -398,8 +409,8 @@ const configs: Record<EducationEntity, EntityConfig> = {
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
       { key: 'accountMode', label: '登录账号', type: 'select', clearable: false, initial: 'CREATE', hint: '创建新账号 / 关联已有账号 / 保持既有账号 / 暂不启用登录；关联已有账号按手机号精确查询并脱敏确认' },
       { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => form.accountMode === 'CREATE', hint: '留空则由系统生成并要求首次登录修改' },
-      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && form.accountMode === 'CREATE', hint: '开启后才可选择管理端角色；不会改变校端职务' },
-      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess && form.accountMode === 'CREATE' },
+      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && (form.accountMode === 'CREATE' || form.accountMode === 'KEEP'), hint: '开启后才可选择管理端角色；不会改变校端职务。账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
+      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.managementAccess && (form.accountMode === 'CREATE' || form.accountMode === 'KEEP'), hint: '账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
       { key: 'status', label: '状态', required: true, type: 'status' },
       { key: 'remark', label: '备注', type: 'textarea' }
     ]
@@ -445,11 +456,17 @@ const linkAccountChecking = ref(false)
 let linkAccountQueryTimer: ReturnType<typeof setTimeout> | null = null
 let linkAccountQuerySeq = 0
 
+// 编辑已绑定人员时记录其原有管理角色，用于判断关闭权限时是否需要账号级撤销（clearRoles）。
+let editingHadRoles = false
+
 // KEEP（保持既有账号）仅在编辑已有账号时出现：新增人员没有可保持的账号。
 const accountModeOptions = computed(() => {
   if (!form.userId) return ACCOUNT_MODE_OPTIONS.filter((item) => item.value !== 'KEEP')
   return ACCOUNT_MODE_OPTIONS
 })
+
+// 管理角色正在被编辑时，显式提示角色是账号级共享的。
+const showRoleSharedAlert = computed(() => form.personType === 'TEACHER' && !!form.managementAccess && (form.accountMode === 'CREATE' || form.accountMode === 'KEEP'))
 
 const visibleFields = computed(() => config.value.fields.filter((field) => !field.visibleWhen || field.visibleWhen(form)))
 const deviceSceneTree = computed(() => {
@@ -607,6 +624,7 @@ function resetQuery() {
 }
 
 function resetForm() {
+  editingHadRoles = false
   for (const key of Object.keys(form)) delete form[key]
   for (const field of config.value.fields) {
     if (field.initial !== undefined) form[field.key] = field.initial
@@ -644,8 +662,10 @@ async function handleEdit(row: EducationRecord) {
     form.classIds = (memberships.data || []).map((item) => String(item.classId))
     form.subjectIds = (assignments.data || []).map((item) => String(item.subjectId))
     const availableRoleIds = new Set((options.roleIds || []).map((item) => String(item.value)))
-    form.roleIds = (roles.data || []).map((item) => String(item)).filter((item) => availableRoleIds.has(item))
-    form.managementAccess = form.personType === 'TEACHER' && form.roleIds.length > 0
+    const roleIds = (roles.data || []).map((item) => String(item)).filter((item) => availableRoleIds.has(item))
+    editingHadRoles = roleIds.length > 0
+    form.roleIds = roleIds
+    form.managementAccess = form.personType === 'TEACHER' && roleIds.length > 0
   }
   dialogTitle.value = `编辑${config.value.title}`
   dialogVisible.value = true
@@ -791,28 +811,23 @@ async function submitPerson() {
     delete payload.dutyCode
     delete payload.roleIds
     if (payload.id && payload.userId) payload.clearRoles = true
-  } else if (accountMode === 'KEEP' || accountMode === 'LINK') {
-    // 保持既有账号 / 关联已有账号：不建新号、不动口令与角色。
-    delete payload.roleIds
-    delete payload.clearRoles
-    delete payload.password
-    delete payload.username
-  } else if (accountMode === 'DISABLED') {
-    // 暂不启用登录：不建号，也不提交口令与角色。
-    delete payload.username
-    delete payload.password
-    delete payload.roleIds
-    delete payload.clearRoles
-  } else if (!managementAccess) {
-    if (payload.id && payload.userId) {
-      await ElMessageBox.confirm('关闭管理端权限后将清除该人员的管理端角色，确认继续吗？', '确认变更', { type: 'warning' })
-      payload.clearRoles = true
+  } else if (accountMode === 'CREATE' || accountMode === 'KEEP') {
+    // 创建新账号 / 保持既有账号：均可配置管理端角色；KEEP 分支后端支持角色更新与账号级撤销。
+    if (!managementAccess) {
+      if (payload.id && payload.userId && editingHadRoles) {
+        await ElMessageBox.confirm('关闭管理端权限后将清除该人员的管理端角色。\n\n注意：账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份。确认继续吗？', '确认变更', { type: 'warning' })
+        payload.clearRoles = true
+      }
+      delete payload.roleIds
+    } else if (!payload.roleIds?.length) {
+      ElMessage.warning('请选择管理端角色')
+      return
+    } else {
+      delete payload.clearRoles
     }
-    delete payload.roleIds
-  } else if (!payload.roleIds?.length) {
-    ElMessage.warning('请选择管理端角色')
-    return
   } else {
+    // 关联已有账号 / 暂不启用登录：不建新号，也不提交口令与角色。
+    delete payload.roleIds
     delete payload.clearRoles
   }
 
