@@ -2,6 +2,7 @@ package com.han.system.sdfz.education;
 
 import com.han.api.system.AuthServiceClient;
 import com.han.api.system.domain.SessionRevokeRequest;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
@@ -86,6 +87,8 @@ class EducationSchoolDisableRevokeTest {
         region.setRegionCode("500100");
         region.setStatus(0);
         lenient().when(regionMapper.selectOne(any())).thenReturn(region);
+        // 会话撤销默认成功：个别用例再按需覆盖为 R.fail / 抛网络异常。
+        lenient().when(authServiceClient.revokeSession(any())).thenReturn(R.ok());
         service = new EducationMasterDataService(schoolMapper, classMapper, personMapper, subjectMapper,
                 deviceMapper, roomMapper, personClassMapper, personSubjectMapper, dictDataMapper, regionMapper,
                 dataScopeService, authServiceClient);
@@ -149,6 +152,22 @@ class EducationSchoolDisableRevokeTest {
         when(personMapper.selectList(any())).thenReturn(List.of(person(5003L, 11L, 300L)));
         when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
                 .thenThrow(new RuntimeException("auth down"));
+
+        assertThatThrownBy(() -> service.saveSchool(
+                new EducationForms.School(11L, null, "S001", "School One", "MAIN", "500100", 1, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("会话撤销失败");
+        verify(schoolMapper, never()).updateById(any(EduSchoolPo.class));
+    }
+
+    /** 学校停用撤销返回 R.fail（非成功 code）：抛业务异常，学校 updateById 未调用。 */
+    @Test
+    void revokeBusinessFailureRollsBackSchoolDisable() {
+        EduSchoolPo school = school(11L, 0, "S001");
+        when(schoolMapper.selectById(11L)).thenReturn(school);
+        when(personMapper.selectList(any())).thenReturn(List.of(person(5004L, 11L, 400L)));
+        when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
+                .thenReturn(R.fail(500, "auth down"));
 
         assertThatThrownBy(() -> service.saveSchool(
                 new EducationForms.School(11L, null, "S001", "School One", "MAIN", "500100", 1, null)))

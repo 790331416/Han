@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.api.system.AuthServiceClient;
 import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.domain.PageResult;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
@@ -43,6 +44,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static com.han.system.sdfz.education.EducationSupport.LOCAL_SOURCE;
 import static com.han.system.sdfz.education.EducationSupport.normalStatus;
@@ -315,9 +317,14 @@ public class EducationPersonService {
         if (mode != null) {
             switch (mode) {
                 case KEEP -> {
-                    // 编辑已绑定人员默认保留绑定：只同步账号显示资料，不动口令/状态/角色。
+                    // 编辑已绑定人员默认保留绑定：同步账号显示资料；显式要求改角色时才动角色，
+                    // 角色集合真正变化时账号级撤销会话，不动口令/状态。
                     if (userId != null) {
-                        username = keepAccount(userId, form, phone);
+                        KeepResult kept = keepAccount(userId, form, phone, personType, duty, form.id());
+                        username = kept.username();
+                        if (kept.rolesChanged()) {
+                            revokeAccountSession(userId);
+                        }
                     }
                 }
                 case CREATE -> {
@@ -686,8 +693,12 @@ public class EducationPersonService {
         return new AccountRefresh(user.getUsername(), rolesCleared);
     }
 
-    /** {@code KEEP} 模式：保留绑定，只同步账号显示资料，不改口令/状态/角色。 */
-    private String keepAccount(Long userId, EducationForms.Person form, String phone) {
+    /**
+     * {@code KEEP} 模式：保留绑定与口令/状态，同步账号显示资料；显式要求改角色时更新角色集合，
+     * 角色真正变化时由调用方账号级撤销会话，未变化不撤销。
+     */
+    private KeepResult keepAccount(Long userId, EducationForms.Person form, String phone,
+                                   String personType, String duty, Long excludePersonId) {
         SysUserPo user = userMapper.selectById(userId);
         if (user == null) {
             throw new BusinessException("人员关联的登录账号不存在，请先修复账号数据");
@@ -700,7 +711,35 @@ public class EducationPersonService {
         user.setPhone(phone);
         userMapper.updateById(user);
         accountIdentityService.syncFromPerson(userId, form.personName(), phone);
-        return user.getUsername();
+
+        // 账号还关联其他学校的有效管理员身份时，普通教师/学生身份的编辑不得清空其角色（任务书 12 节）。
+        boolean protectAdminRoles = !isSchoolAdmin(personType, duty)
+                && accountHasSchoolAdminIdentity(userId, excludePersonId);
+        boolean rolesChanged = false;
+        if (form.wantsRoleChange() && !protectAdminRoles) {
+            Set<Long> roleIds = resolveRoles(form.effectiveRoleIds(), personType);
+            if (!rolesEqual(currentRoleIds(userId), roleIds)) {
+                clearAccountRoles(userId);
+                for (Long roleId : roleIds) {
+                    userRoleMapper.insert(new SysUserRolePo(userId, roleId));
+                }
+                rolesChanged = true;
+            }
+        }
+        return new KeepResult(user.getUsername(), rolesChanged);
+    }
+
+    private Set<Long> currentRoleIds(Long userId) {
+        return userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRolePo>()
+                        .eq(SysUserRolePo::getUserId, userId))
+                .stream().map(SysUserRolePo::getRoleId).collect(Collectors.toSet());
+    }
+
+    /** 角色集合比较：null 与空集合视为等价（都不代表任何角色）。 */
+    private static boolean rolesEqual(Set<Long> before, Set<Long> after) {
+        Set<Long> left = before == null ? Set.of() : before;
+        Set<Long> right = after == null ? Set.of() : after;
+        return left.equals(right);
     }
 
     /** {@code LINK} 模式的保存期复核：目标账号存在、属当前租户、正常且手机号一致。 */
@@ -869,15 +908,17 @@ public class EducationPersonService {
         if (userId == null || identityId == null) {
             return;
         }
+        SessionRevokeRequest request = new SessionRevokeRequest();
+        request.setUserId(userId);
+        request.setIdentityId(identityId);
+        R<Void> result;
         try {
-            SessionRevokeRequest request = new SessionRevokeRequest();
-            request.setUserId(userId);
-            request.setIdentityId(identityId);
-            authServiceClient.revokeSession(request);
+            result = authServiceClient.revokeSession(request);
         } catch (RuntimeException e) {
             log.error("撤销教育身份会话失败: userId={}, identityId={}", userId, identityId, e);
             throw new BusinessException("会话撤销失败，请稍后重试");
         }
+        requireRevokeSuccess(result);
     }
 
     /** 账号级撤销全部会话与课堂凭证；撤销失败抛出业务异常，由外层事务回滚账号变更。 */
@@ -885,12 +926,24 @@ public class EducationPersonService {
         if (userId == null) {
             return;
         }
+        SessionRevokeRequest request = new SessionRevokeRequest();
+        request.setUserId(userId);
+        R<Void> result;
         try {
-            SessionRevokeRequest request = new SessionRevokeRequest();
-            request.setUserId(userId);
-            authServiceClient.revokeSession(request);
+            result = authServiceClient.revokeSession(request);
         } catch (RuntimeException e) {
             log.error("撤销账号会话失败: userId={}", userId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
+        requireRevokeSuccess(result);
+    }
+
+    /**
+     * han-auth 内部异常由全局异常处理转成 HTTP 200 的 {@code R.fail(code,msg)}，调用方不会收到
+     * 网络异常，因此必须按返回码判断撤销是否成功；失败抛出业务异常使外层事务回滚。
+     */
+    private void requireRevokeSuccess(R<Void> result) {
+        if (result == null || !result.isSuccess()) {
             throw new BusinessException("会话撤销失败，请稍后重试");
         }
     }
@@ -1109,5 +1162,8 @@ public class EducationPersonService {
     }
 
     private record AccountRefresh(String username, boolean rolesCleared) {
+    }
+
+    private record KeepResult(String username, boolean rolesChanged) {
     }
 }

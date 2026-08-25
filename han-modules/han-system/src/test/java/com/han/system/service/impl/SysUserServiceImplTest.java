@@ -68,6 +68,8 @@ class SysUserServiceImplTest {
         // 字段注入的会话撤销客户端 + MyBatis-Plus ServiceImpl 的 baseMapper（单测无 Spring 容器）。
         ReflectionTestUtils.setField(service, "authServiceClient", authServiceClient);
         ReflectionTestUtils.setField(service, "baseMapper", userMapper);
+        // 会话撤销默认成功：个别用例再按需覆盖为 R.fail / 抛网络异常。
+        when(authServiceClient.revokeSession(any())).thenReturn(R.ok());
         // 以超级管理员身份调用，使 DataOwnerUtil.checkRolePermission 放行。
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(1L).build());
     }
@@ -168,6 +170,24 @@ class SysUserServiceImplTest {
         when(userMapper.selectRoleIdsByUserId(9L)).thenReturn(Set.of(100L));
         when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
                 .thenThrow(new RuntimeException("down"));
+
+        SysUserDto dto = new SysUserDto();
+        dto.setUserId(9L);
+        dto.setRoleIds(Set.of(200L));
+
+        assertThatThrownBy(() -> service.update(dto))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("会话撤销失败，请稍后重试");
+    }
+
+    /** 会话撤销返回 R.fail（非成功 code）同样抛业务异常使角色更新事务回滚。 */
+    @Test
+    void revokeBusinessFailureOnRoleChangeThrowsBusinessException() {
+        SysUserPo existUser = user(9L);
+        when(userMapper.selectById(9L)).thenReturn(existUser);
+        when(userMapper.selectRoleIdsByUserId(9L)).thenReturn(Set.of(100L));
+        when(authServiceClient.revokeSession(any(SessionRevokeRequest.class)))
+                .thenReturn(R.fail(500, "auth down"));
 
         SysUserDto dto = new SysUserDto();
         dto.setUserId(9L);

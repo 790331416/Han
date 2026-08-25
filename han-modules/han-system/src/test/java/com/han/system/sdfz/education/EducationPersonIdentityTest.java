@@ -2,12 +2,15 @@ package com.han.system.sdfz.education;
 
 import com.han.api.system.AuthServiceClient;
 import com.han.api.system.domain.SessionRevokeRequest;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.util.PasswordUtil;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
+import com.han.system.domain.po.SysRolePo;
 import com.han.system.domain.po.SysUserPo;
+import com.han.system.domain.po.SysUserRolePo;
 import com.han.system.mapper.SysDictDataMapper;
 import com.han.system.mapper.SysRoleMapper;
 import com.han.system.mapper.SysUserMapper;
@@ -52,6 +55,7 @@ class EducationPersonIdentityTest {
 
     private static final Long SCHOOL_A = 11L;
     private static final Long SCHOOL_B = 12L;
+    private static final Long MGMT_ROLE_ID = 202608120101L;
 
     @Mock
     private EduPersonMapper personMapper;
@@ -86,6 +90,8 @@ class EducationPersonIdentityTest {
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(1L).build());
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
+        // 会话撤销默认成功：个别用例再按需覆盖为 R.fail / 抛网络异常。
+        lenient().when(authServiceClient.revokeSession(any())).thenReturn(R.ok());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
                 dataScopeService, accountIdentityService, authServiceClient);
@@ -386,6 +392,84 @@ class EducationPersonIdentityTest {
         verify(userRoleMapper).delete(any());
     }
 
+    // ------------------------------------------------------------ KEEP 模式角色
+
+    /** KEEP 模式显式改角色：更新账号角色集合并账号级撤销会话（identityId 为空），不改账号状态。 */
+    @Test
+    void keepModeUpdatesRolesAndRevokesAccountSessions() {
+        EduPersonPo person = boundTeacher(5301L, SCHOOL_A, 9301L, "T301");
+        when(personMapper.selectById(5301L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo user = account(9301L, "教育人员统一入口建号");
+        user.setPhone("13900000001");
+        when(userMapper.selectById(9301L)).thenReturn(user);
+        when(userRoleMapper.selectList(any())).thenReturn(List.of());
+        when(roleMapper.selectById(MGMT_ROLE_ID)).thenReturn(role("common"));
+        stubSchool(SCHOOL_A);
+
+        service.save(new EducationForms.Person(5301L, SCHOOL_A, "T301", "张老师", "TEACHER",
+                null, "13900000001", 0, null, null, null, null, null,
+                List.of(MGMT_ROLE_ID), null, null, null, null,
+                "KEEP", null));
+
+        verify(userRoleMapper).delete(any());
+        verify(userRoleMapper).insert(new SysUserRolePo(9301L, MGMT_ROLE_ID));
+        SessionRevokeRequest request = captureSingleRevoke();
+        assertThat(request.getUserId()).isEqualTo(9301L);
+        assertThat(request.getIdentityId()).as("KEEP 角色变化按账号级撤销").isNull();
+        assertThat(user.getStatus()).as("KEEP 不得改动账号状态").isZero();
+        assertThat(user.getPassword()).as("KEEP 不得改动账号口令").isNull();
+    }
+
+    /** KEEP 模式无角色变化：不删角色、不撤销会话，仅同步姓名手机号。 */
+    @Test
+    void keepModeWithoutRoleChangeKeepsRolesAndSession() {
+        EduPersonPo person = boundTeacher(5302L, SCHOOL_A, 9302L, "T302");
+        when(personMapper.selectById(5302L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo user = account(9302L, "教育人员统一入口建号");
+        user.setPhone("13900000002");
+        when(userMapper.selectById(9302L)).thenReturn(user);
+        stubSchool(SCHOOL_A);
+
+        service.save(new EducationForms.Person(5302L, SCHOOL_A, "T302", "张老师", "TEACHER",
+                null, "13900000002", 0, null, null, null, null, null,
+                null, null, null, null, null,
+                "KEEP", null));
+
+        verify(userMapper).updateById(user);
+        verify(accountIdentityService).syncFromPerson(9302L, "张老师", "13900000002");
+        verify(userRoleMapper, never()).delete(any());
+        verify(userRoleMapper, never()).insert(any(SysUserRolePo.class));
+        verify(authServiceClient, never()).revokeSession(any(SessionRevokeRequest.class));
+    }
+
+    /** KEEP 角色变化时撤销返回 R.fail：抛业务异常，人员保存回滚（updateById 未调用）。 */
+    @Test
+    void revokeBusinessFailureRollsBackPersonChange() {
+        EduPersonPo person = boundTeacher(5303L, SCHOOL_A, 9303L, "T303");
+        when(personMapper.selectById(5303L)).thenReturn(person);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        when(personMapper.selectList(any())).thenReturn(List.of());
+        SysUserPo user = account(9303L, "教育人员统一入口建号");
+        user.setPhone("13900000003");
+        when(userMapper.selectById(9303L)).thenReturn(user);
+        when(userRoleMapper.selectList(any())).thenReturn(List.of());
+        when(roleMapper.selectById(MGMT_ROLE_ID)).thenReturn(role("common"));
+        when(authServiceClient.revokeSession(any())).thenReturn(R.fail(500, "auth down"));
+        stubSchool(SCHOOL_A);
+
+        assertThatThrownBy(() -> service.save(new EducationForms.Person(5303L, SCHOOL_A, "T303", "张老师",
+                "TEACHER", null, "13900000003", 0, null, null, null, null, null,
+                List.of(MGMT_ROLE_ID), null, null, null, null,
+                "KEEP", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("会话撤销失败");
+        verify(personMapper, never()).updateById(any(EduPersonPo.class));
+    }
+
     /** 关联账号精确匹配：只返回一条脱敏信息，不暴露完整邮箱/手机号。 */
     @Test
     void linkableAccountReturnsSingleMaskedMatch() {
@@ -645,6 +729,12 @@ class EducationPersonIdentityTest {
         return value;
     }
 
+    private EduPersonPo boundTeacher(Long id, Long schoolId, Long userId, String personNo) {
+        EduPersonPo value = boundPerson(id, schoolId, userId);
+        value.setPersonNo(personNo);
+        return value;
+    }
+
     private EduPersonPo validOther(Long id, Long userId, Long schoolId) {
         return boundPerson(id, schoolId, userId);
     }
@@ -655,6 +745,14 @@ class EducationPersonIdentityTest {
         value.setUsername("u_" + id);
         value.setStatus(0);
         value.setRemark(remark);
+        return value;
+    }
+
+    private static SysRolePo role(String roleKey) {
+        SysRolePo value = new SysRolePo();
+        value.setRoleKey(roleKey);
+        value.setRoleName(roleKey);
+        value.setStatus(0);
         return value;
     }
 

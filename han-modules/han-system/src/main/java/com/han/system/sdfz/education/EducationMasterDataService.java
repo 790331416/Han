@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.han.api.system.AuthServiceClient;
 import com.han.api.system.domain.SessionRevokeRequest;
 import com.han.common.core.domain.PageResult;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduDevicePo;
@@ -165,13 +166,17 @@ public class EducationMasterDataService {
     }
 
     private void revokeIdentitySession(Long userId, Long identityId) {
+        SessionRevokeRequest request = new SessionRevokeRequest();
+        request.setUserId(userId);
+        request.setIdentityId(identityId);
+        R<Void> result;
         try {
-            SessionRevokeRequest request = new SessionRevokeRequest();
-            request.setUserId(userId);
-            request.setIdentityId(identityId);
-            authServiceClient.revokeSession(request);
+            result = authServiceClient.revokeSession(request);
         } catch (RuntimeException e) {
             log.error("撤销教育身份会话失败: userId={}, identityId={}", userId, identityId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
+        if (result == null || !result.isSuccess()) {
             throw new BusinessException("会话撤销失败，请稍后重试");
         }
     }

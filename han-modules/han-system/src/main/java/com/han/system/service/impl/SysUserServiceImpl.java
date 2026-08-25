@@ -464,6 +464,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
 
     /**
      * 撤销账号全部会话：调用 han-auth 内部接口，失败抛业务异常使外层事务回滚，不静默忽略。
+     * han-auth 内部异常由全局异常处理转成 HTTP 200 的 {@code R.fail(code,msg)}，因此按返回码判断。
      */
     private void revokeUserSession(Long userId) {
         if (userId == null) {
@@ -471,10 +472,14 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUserPo> im
         }
         SessionRevokeRequest request = new SessionRevokeRequest();
         request.setUserId(userId);
+        R<Void> result;
         try {
-            authServiceClient.revokeSession(request);
+            result = authServiceClient.revokeSession(request);
         } catch (RuntimeException e) {
             log.error("撤销用户会话失败: userId={}", userId, e);
+            throw new BusinessException("会话撤销失败，请稍后重试");
+        }
+        if (result == null || !result.isSuccess()) {
             throw new BusinessException("会话撤销失败，请稍后重试");
         }
     }
