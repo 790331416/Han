@@ -51,7 +51,7 @@ class OpenApiIntegrationExportServiceTest {
         version.setDelFlag(0);
         version.setOpenapiJson("{\"openapi\":\"3.0.3\",\"paths\":{\"/open/api/v1/classroom/course/deliveryClassroom/getLiveStatusByUUID\":{\"get\":{\"operationId\":\"liveStatus\",\"responses\":{\"200\":{\"description\":\"成功\"}}}}}}");
         version.setRequestExampleJson("{\"roomId\":\"room-001\",\"clientSecret\":\"must-not-leak\"}");
-        version.setResponseExamplesJson("{\"200\":{\"code\":200,\"data\":{\"liveStatus\":1}}}");
+        version.setResponseExamplesJson("{\"200\":{\"code\":200,\"data\":{\"liveStatus\":1,\"recordUrl\":null}}}");
         version.setErrorExamplesJson("{\"401\":{\"code\":401,\"message\":\"unauthorized\",\"accessToken\":\"must-not-leak\"}}");
 
         when(resourceMapper.selectList(any())).thenReturn(List.of(resource));
@@ -65,6 +65,9 @@ class OpenApiIntegrationExportServiceTest {
         assertThat(operation.path("responses").path("200").path("content").path("application/json")
                 .path("examples").path("200").path("value").path("data").path("liveStatus").asInt())
                 .as(operation.toPrettyString()).isEqualTo(1);
+        assertThat(operation.path("responses").path("200").path("content").path("application/json")
+                .path("schema").path("properties").path("data").path("properties").path("recordUrl")
+                .path("type").asText()).isEqualTo("string");
 
         String collection = new String(export.postmanCollectionJson(), StandardCharsets.UTF_8);
         String environment = new String(export.postmanEnvironmentJson(), StandardCharsets.UTF_8);

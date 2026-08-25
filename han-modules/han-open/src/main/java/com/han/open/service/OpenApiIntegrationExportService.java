@@ -268,6 +268,7 @@ public class OpenApiIntegrationExportService {
     private ObjectNode inferSchema(JsonNode value) {
         ObjectNode schema = objectMapper.createObjectNode();
         if (value == null || value.isNull() || value.isMissingNode()) {
+            schema.put("type", "string");
             schema.put("nullable", true);
         } else if (value.isObject()) {
             schema.put("type", "object");
