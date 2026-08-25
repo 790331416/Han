@@ -278,7 +278,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
         Long tenantId = requireTenantId();
         OpenAppPo app = requireOwnedApp(appId, tenantId, currentUserId);
-        if (hasEducationDirectoryScope(app.getScopes()) && !StringUtils.hasText(app.getSchoolScope())) {
+        if (requiresSchoolScope(app.getScopes()) && !StringUtils.hasText(app.getSchoolScope())) {
             throw new BusinessException("请联系平台管理员配置授权学校后再提交开通申请");
         }
         int lifecycle = app.getLifecycleStatus() == null ? LIFECYCLE_DRAFT : app.getLifecycleStatus();
@@ -883,10 +883,11 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
     }
 
-    private static boolean hasEducationDirectoryScope(String scopes) {
+    private static boolean requiresSchoolScope(String scopes) {
         return scopes != null && java.util.Arrays.stream(scopes.split(","))
                 .map(String::trim)
-                .anyMatch(item -> item.equals("edu.teacher.read")
+                .anyMatch(item -> item.startsWith("classroom.")
+                        || item.equals("edu.teacher.read")
                         || item.equals("edu.student.read")
                         || item.equals("edu.device.read"));
     }

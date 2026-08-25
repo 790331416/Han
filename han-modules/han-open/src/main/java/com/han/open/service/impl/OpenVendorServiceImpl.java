@@ -21,6 +21,7 @@ import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.po.OpenVendorUserPo;
 import com.han.open.domain.vo.VendorApplicationVO;
 import com.han.open.domain.vo.VendorDetailVO;
+import com.han.open.domain.vo.VendorProfileUpdateVO;
 import com.han.open.domain.vo.OpenVendorApplicationAdminVO;
 import com.han.open.mapper.OpenAppMapper;
 import com.han.open.mapper.OpenVendorApplicationMapper;
@@ -435,6 +436,51 @@ public class OpenVendorServiceImpl extends ServiceImpl<OpenVendorMapper, OpenVen
         List<VendorDetailVO.VendorAppVO> apps = appPos.stream()
                 .map(OpenVendorConverter::toAppVO).collect(Collectors.toList());
         return OpenVendorConverter.toDetailVO(vendor, users, apps);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateProfile(Long vendorId, VendorProfileUpdateVO profile) {
+        if (profile == null) {
+            throw new BusinessException("厂商资料不能为空");
+        }
+        OpenVendorPo vendor = requireVendorAccess(vendorId, true);
+        String name = requiredText(profile.getName(), "厂商名称不能为空");
+        if (baseMapper.selectCount(new LambdaQueryWrapper<OpenVendorPo>()
+                .eq(OpenVendorPo::getTenantId, vendor.getTenantId())
+                .eq(OpenVendorPo::getName, name)
+                .eq(OpenVendorPo::getDelFlag, 0)
+                .ne(OpenVendorPo::getId, vendorId)) > 0) {
+            throw new BusinessException("厂商名称已存在");
+        }
+        vendor.setName(name);
+        vendor.setIndustry(trimToNull(profile.getIndustry()));
+        vendor.setContactName(trimToNull(profile.getContactName()));
+        vendor.setContactPhone(trimToNull(profile.getContactPhone()));
+        vendor.setContactEmail(trimToNull(profile.getContactEmail()));
+        vendor.setWebsite(trimToNull(profile.getWebsite()));
+        vendor.setUpdateBy(requireCurrentUser());
+        return updateById(vendor);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeVendor(Long vendorId) {
+        requireAdministrator();
+        OpenVendorPo vendor = requireVendorAccess(vendorId, true);
+        if (appMapper.selectCount(new LambdaQueryWrapper<OpenAppPo>()
+                .eq(OpenAppPo::getVendorId, vendorId)
+                .eq(OpenAppPo::getTenantId, vendor.getTenantId())
+                .eq(OpenAppPo::getDelFlag, 0)) > 0) {
+            throw new BusinessException("该厂商仍有关联应用，请先删除应用");
+        }
+        vendorUserMapper.delete(new LambdaQueryWrapper<OpenVendorUserPo>()
+                .eq(OpenVendorUserPo::getVendorId, vendorId)
+                .eq(OpenVendorUserPo::getTenantId, vendor.getTenantId()));
+        vendorApplicationMapper.delete(new LambdaQueryWrapper<OpenVendorApplicationPo>()
+                .eq(OpenVendorApplicationPo::getVendorId, vendorId)
+                .eq(OpenVendorApplicationPo::getTenantId, vendor.getTenantId()));
+        return removeById(vendorId);
     }
 
     /** 关联表仅保存用户 ID；用户资料查询失败时仍返回厂商详情。 */

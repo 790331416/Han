@@ -50,7 +50,7 @@
             <el-table-column label="统一社会信用代码" prop="qualificationNo" min-width="190" />
             <el-table-column label="联系人" prop="contactName" min-width="120" />
             <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="vendorStatusType(row.status)">{{ vendorStatusLabel(row.status) }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="100"><template #default="{ row }"><el-button type="primary" link @click="openVendorDetail(row)">详情</el-button></template></el-table-column>
+            <el-table-column label="操作" width="210"><template #default="{ row }"><el-button type="primary" link @click="openVendorDetail(row)">详情</el-button><el-button type="primary" link @click="openVendorEdit(row)">编辑资料（所有者）</el-button></template></el-table-column>
           </el-table>
         </el-card>
         <el-card v-if="vendorDetail" shadow="never" class="detail-card">
@@ -113,7 +113,12 @@
                <el-form-item label="Scope"><el-text type="info">由所选接口自动生成，无需重复填写。</el-text></el-form-item>
               <el-form-item label="调用配额"><el-input-number v-model="grantForm.quota" :min="0" :step="100" style="width: 100%" /></el-form-item>
               <el-form-item label="有效期（天）"><el-input-number v-model="grantForm.expireDays" :min="0" style="width: 100%" /><span class="form-tip">0 表示永久</span></el-form-item>
-              <el-form-item label="数据范围" class="full-row"><el-input v-model="grantForm.dataScope" type="textarea" :rows="2" placeholder="按接口约定填写 JSON 数据范围，可留空" /></el-form-item>
+              <el-form-item label="授权学校" class="full-row">
+                <el-select v-model="grantForm.schoolIds" multiple clearable :disabled="!grantSchoolOptions.length" placeholder="从应用已授权学校中选择" style="width: 100%">
+                  <el-option v-for="schoolId in grantSchoolOptions" :key="String(schoolId)" :label="String(schoolId)" :value="schoolId" />
+                </el-select>
+                <span class="form-tip">只能选择平台管理员在应用管理中授权的学校；留空表示使用应用全部学校范围。</span>
+              </el-form-item>
               <el-form-item label="申请理由" required class="full-row"><el-input v-model="grantForm.applyReason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="说明业务场景和数据使用范围" /></el-form-item>
             </div>
             <div class="form-actions"><el-button type="primary" :loading="grantSubmitting" @click="submitGrant">提交授权申请</el-button></div>
@@ -158,7 +163,23 @@
       <el-tab-pane label="在线调测" name="debug">
     <el-card shadow="never" class="debug-card">
       <template #header>
-        <div class="card-header"><span>在线调测</span><el-tag type="warning">仅调用已发布目录</el-tag></div>
+        <div class="card-header">
+          <span>在线调测</span>
+          <span>
+            <el-tag type="warning">仅调用已发布目录</el-tag>
+            <el-dropdown style="margin-left: 12px" @command="downloadIntegrationDocument">
+              <el-button type="primary" :icon="Download">导出对接文档<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="zip">完整对接包（推荐）</el-dropdown-item>
+                  <el-dropdown-item command="openapi">OpenAPI 3.0（Apifox / ApiPost）</el-dropdown-item>
+                  <el-dropdown-item command="postman">Postman Collection v2.1</el-dropdown-item>
+                  <el-dropdown-item command="environment">Postman 环境模板</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </span>
+        </div>
       </template>
       <el-alert
         title="浏览器直连同源开放接口；平台不做代理。Client Secret 和 Access Token 只在当前页面内存中使用，不会写入存储、日志或调测审计。"
@@ -234,6 +255,19 @@
       </el-tab-pane>
     </el-tabs>
 
+    <el-dialog v-model="vendorEditVisible" title="编辑厂商资料" width="560px" destroy-on-close>
+      <el-form ref="vendorEditFormRef" :model="vendorEditForm" :rules="vendorEditRules" label-width="100px">
+        <el-form-item label="厂商名称" prop="name"><el-input v-model="vendorEditForm.name" /></el-form-item>
+        <el-form-item label="所属行业"><el-input v-model="vendorEditForm.industry" /></el-form-item>
+        <el-form-item label="联系人" prop="contactName"><el-input v-model="vendorEditForm.contactName" /></el-form-item>
+        <el-form-item label="联系电话" prop="contactPhone"><el-input v-model="vendorEditForm.contactPhone" /></el-form-item>
+        <el-form-item label="联系邮箱"><el-input v-model="vendorEditForm.contactEmail" /></el-form-item>
+        <el-form-item label="官网地址"><el-input v-model="vendorEditForm.website" /></el-form-item>
+        <el-alert title="仅厂商所有者可保存；统一社会信用代码和审核状态不可修改。" type="info" :closable="false" />
+      </el-form>
+      <template #footer><el-button @click="vendorEditVisible = false">取消</el-button><el-button type="primary" :loading="vendorEditSubmitting" @click="submitVendorEdit">保存</el-button></template>
+    </el-dialog>
+
     <el-dialog v-model="appDialogVisible" :title="appForm.appId ? '编辑应用' : '创建应用'" width="620px" destroy-on-close>
       <el-form ref="appFormRef" :model="appForm" :rules="appRules" label-width="110px">
         <el-form-item label="所属厂商" prop="vendorId"><el-select v-model="appForm.vendorId" placeholder="选择厂商" style="width: 100%"><el-option v-for="vendor in vendors" :key="vendor.id" :label="vendor.name" :value="vendor.id" /></el-select></el-form-item>
@@ -294,13 +328,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Key, Plus, Refresh } from '@element-plus/icons-vue'
+import { ArrowDown, Download, Key, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
 import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, submitAppLifecycleApply, type OpenApp, type OpenAppForm } from '@/api/open/app'
-import { getOpenVendor, type OpenVendor } from '@/api/open/vendor'
-import { listOpenApiResource, getOpenApiResourceDetail, type OpenApiResource, type OpenApiResourceDetail } from '@/api/open/resource'
+import { getOpenVendor, updateOpenVendor, type OpenVendor, type OpenVendorProfileForm } from '@/api/open/vendor'
+import { listOpenApiResource, getOpenApiResourceDetail, openIntegrationExportUrl, type OpenApiResource, type OpenApiResourceDetail, type OpenIntegrationExportFormat } from '@/api/open/resource'
 import { listAuthorizationRequests, listAppGrants, listAppCredentials, generateAppCredential, rotateAppCredential, type OpenAuthorizationRequest, type OpenAuthorizationRequestQuery, type OpenCredential, type OpenCredentialSecret, type OpenGrant } from '@/api/open/authorization'
 import { addOpenApiTestRun, listOpenApiTestRuns, listMyOpenVendors, submitGrantApply, type GrantApplyForm, type OpenApiTestRun } from '@/api/open/portal'
 import { loadDictOptions, OPEN_IDENTITY_SCOPE_DICT, type DictOption } from '@/utils/dict-options'
@@ -312,6 +346,13 @@ const activeTab = ref('guide')
 const vendorLoading = ref(false)
 const vendors = ref<OpenVendor[]>([])
 const vendorDetail = ref<OpenVendor | null>(null)
+const vendorEditVisible = ref(false)
+const vendorEditSubmitting = ref(false)
+const vendorEditFormRef = ref<FormInstance>()
+const vendorEditForm = reactive<OpenVendorProfileForm & { id: string | number }>({ id: '', name: '', industry: '', contactName: '', contactPhone: '', contactEmail: '', website: '' })
+const vendorEditRules: FormRules = {
+  name: [{ required: true, message: '请输入厂商名称', trigger: 'blur' }]
+}
 const appLoading = ref(false)
 const apps = ref<OpenApp[]>([])
 const resourceLoading = ref(false)
@@ -364,7 +405,7 @@ const debugResources = computed(() => {
   return resources.value.filter(item => item.status === 0 && item.publishStatus === 2 && item.allowTest === 1
     && scopes.has(item.scopeCode) && grantedIds.has(String(item.id)))
 })
-const needsSchoolScope = computed(() => (appForm.scopes || []).some(scope => ['edu.teacher.read', 'edu.student.read', 'edu.device.read'].includes(scope)))
+const needsSchoolScope = computed(() => (appForm.scopes || []).some(scope => scope.startsWith('classroom.') || ['edu.teacher.read', 'edu.student.read', 'edu.device.read'].includes(scope)))
 const guideApp = computed(() => apps.value[0])
 const guideScopeText = computed(() => {
   const scopes = new Set((guideApp.value?.scopes || []).filter(scope => scope !== 'openid' && scope !== 'profile'))
@@ -393,7 +434,8 @@ const identityScopeOptions = ref<DictOption[]>([])
 const identityScopes = ref<string[]>([])
 const redirectUrisText = computed({ get: () => (appForm.redirectUris || []).join('\n'), set: (value: string) => { appForm.redirectUris = value.split('\n').map(item => item.trim()).filter(Boolean) } })
 const appRules: FormRules = { vendorId: [{ required: true, message: '请选择厂商', trigger: 'change' }], appName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }], appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }] }
-const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', dataScope: '', quota: 0, expireDays: 0, applyReason: '' })
+const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', schoolIds: [] as Array<string | number>, quota: 0, expireDays: 0, applyReason: '' })
+const grantSchoolOptions = computed(() => apps.value.find(app => String(app.appId) === String(grantForm.appId))?.schoolIds || [])
 
 async function loadVendors() {
   vendorLoading.value = true
@@ -402,6 +444,29 @@ async function loadVendors() {
 
 async function openVendorDetail(vendor: OpenVendor) {
   try { vendorDetail.value = (await getOpenVendor(vendor.id)).data } catch (error) { notifyError(error, '加载厂商详情失败') }
+}
+
+async function openVendorEdit(vendor: OpenVendor) {
+  try {
+    const detail = (await getOpenVendor(vendor.id)).data
+    Object.assign(vendorEditForm, {
+      id: detail.id, name: detail.name, industry: detail.industry || '', contactName: detail.contactName || '',
+      contactPhone: detail.contactPhone || '', contactEmail: detail.contactEmail || '', website: detail.website || ''
+    })
+    vendorEditVisible.value = true
+  } catch (error) { notifyError(error, '加载厂商资料失败') }
+}
+
+async function submitVendorEdit() {
+  if (!(await vendorEditFormRef.value?.validate())) return
+  vendorEditSubmitting.value = true
+  try {
+    await updateOpenVendor(vendorEditForm.id, vendorEditForm)
+    ElMessage.success('厂商资料已更新')
+    vendorEditVisible.value = false
+    vendorDetail.value = null
+    await loadVendors()
+  } catch (error) { notifyError(error, '更新厂商资料失败') } finally { vendorEditSubmitting.value = false }
 }
 
 async function loadApps() {
@@ -557,18 +622,53 @@ function parseDebugRequest() {
   }
 }
 
-function buildDebugTarget(resource: OpenApiResource, requestBody: Record<string, unknown>) {
-  if (!resource.path.startsWith('/open/api/')) throw new Error('接口路径不在开放平台目录范围内')
+function debugOperation(resource: OpenApiResource) {
+  const schema = debugResourceDetail.value?.currentVersion?.openapiSchema as Record<string, unknown> | undefined
+  const paths = schema?.paths as Record<string, Record<string, Record<string, unknown>>> | undefined
+  return paths?.[resource.path]?.[resource.httpMethod.toLowerCase()]
+}
+
+function usesQueryPayload(resource: OpenApiResource) {
   const method = resource.httpMethod.toUpperCase()
-  if (method === 'GET' || method === 'DELETE') {
+  return method === 'GET' || method === 'DELETE'
+    || debugParameters.value.some(parameter => parameter.in === 'query' || parameter.in === 'path')
+    || (resource.path.startsWith('/open/api/v1/classroom/') && !resource.path.endsWith('/tb-course-info/saveCourseInfo'))
+}
+
+function buildDebugTarget(resource: OpenApiResource, requestData: Record<string, unknown>) {
+  if (!resource.path.startsWith('/open/api/')) throw new Error('接口路径不在开放平台目录范围内')
+  let path = resource.path
+  for (const parameter of debugParameters.value.filter(item => item.in === 'path')) {
+    const value = requestData[parameter.name]
+    if (parameter.required && (value === undefined || value === null || value === '')) throw new Error(`缺少路径参数：${parameter.name}`)
+    path = path.replace(`{${parameter.name}}`, encodeURIComponent(String(value ?? '')))
+  }
+  if (usesQueryPayload(resource)) {
     const query = new URLSearchParams()
-    Object.entries(requestBody).forEach(([key, value]) => {
+    const queryNames = new Set(debugParameters.value.filter(item => item.in === 'query').map(item => item.name))
+    for (const parameter of debugParameters.value.filter(item => item.in === 'query' && item.required)) {
+      const value = requestData[parameter.name]
+      if (value === undefined || value === null || value === '') throw new Error(`缺少查询参数：${parameter.name}`)
+    }
+    Object.entries(requestData).forEach(([key, value]) => {
+      if (queryNames.size && !queryNames.has(key)) return
       if (value !== undefined && value !== null) query.set(key, typeof value === 'string' ? value : JSON.stringify(value))
     })
     const suffix = query.toString()
-    return suffix ? `${resource.path}?${suffix}` : resource.path
+    return suffix ? `${path}?${suffix}` : path
   }
-  return resource.path
+  return path
+}
+
+function buildDebugHeaders(requestData: Record<string, unknown>, accessToken: string, hasBody: boolean) {
+  const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` }
+  if (hasBody) headers['Content-Type'] = 'application/json'
+  debugParameters.value.filter(parameter => parameter.in === 'header' && parameter.name.toLowerCase() !== 'authorization').forEach(parameter => {
+    const value = requestData[parameter.name]
+    if (parameter.required && (value === undefined || value === null || value === '')) throw new Error(`缺少请求头参数：${parameter.name}`)
+    if (value !== undefined && value !== null && value !== '') headers[parameter.name] = String(value)
+  })
+  return headers
 }
 
 async function runOnlineDebug() {
@@ -595,16 +695,17 @@ async function runOnlineDebug() {
     if (!tokenResponse.ok || !tokenPayload.access_token) throw new Error(tokenPayload.msg || '客户端凭证校验失败')
     accessToken = tokenPayload.access_token
 
-    const requestBody = parseDebugRequest()
+    const requestData = parseDebugRequest()
     const method = resource.httpMethod.toUpperCase()
-    const target = buildDebugTarget(resource, requestBody)
+    const target = buildDebugTarget(resource, requestData)
+    const hasBody = Boolean(debugOperation(resource)?.requestBody) || (!usesQueryPayload(resource) && method !== 'GET' && method !== 'DELETE')
     const startedAt = performance.now()
     apiStartedAt = startedAt
     apiAttempted = true
     const response = await fetch(target, {
       method,
-      headers: { Authorization: `Bearer ${accessToken}`, ...(method === 'GET' || method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }) },
-      body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(requestBody)
+      headers: buildDebugHeaders(requestData, accessToken, hasBody),
+      body: hasBody ? JSON.stringify(requestData) : undefined
     })
     const responseText = await response.text()
     const durationMs = Math.max(0, Math.round(performance.now() - startedAt))
@@ -636,6 +737,15 @@ function formatResponse(value: string) {
   try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
 }
 
+function downloadIntegrationDocument(format: OpenIntegrationExportFormat) {
+  const link = document.createElement('a')
+  link.href = openIntegrationExportUrl(format, window.location.origin)
+  link.download = ''
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
 async function loadGrantRequests() {
   grantLoading.value = true
   try { const query: OpenAuthorizationRequestQuery = { pageNum: 1, pageSize: 100 }; const data = (await listAuthorizationRequests(query)).data; grantRequests.value = data?.rows || [] } catch (error) { grantRequests.value = []; notifyError(error, '加载授权申请失败') } finally { grantLoading.value = false }
@@ -644,7 +754,8 @@ async function loadGrantRequests() {
 async function submitGrant() {
   if (!grantForm.appId || !grantForm.resourceIds.length || !grantForm.applyReason.trim()) { ElMessage.warning('请选择应用和接口，并填写申请理由'); return }
   const resourcesById = new Map(resources.value.map(item => [String(item.id), item]))
-  const payload: GrantApplyForm = { appId: grantForm.appId, environment: grantForm.environment, applyReason: grantForm.applyReason.trim(), resources: grantForm.resourceIds.map(id => ({ resourceId: id, scopes: grantForm.scopes.trim() || resourcesById.get(String(id))?.scopeCode || '', dataScope: grantForm.dataScope.trim() || undefined, quota: grantForm.quota || 0, expireDays: grantForm.expireDays || 0 })) }
+  const dataScope = grantForm.schoolIds.length ? JSON.stringify({ schoolIds: grantForm.schoolIds }) : undefined
+  const payload: GrantApplyForm = { appId: grantForm.appId, environment: grantForm.environment, applyReason: grantForm.applyReason.trim(), resources: grantForm.resourceIds.map(id => ({ resourceId: id, scopes: grantForm.scopes.trim() || resourcesById.get(String(id))?.scopeCode || '', dataScope, quota: grantForm.quota || 0, expireDays: grantForm.expireDays || 0 })) }
   if (payload.resources.some(item => !item.scopes)) { ElMessage.warning('所选接口缺少默认 Scope，请手动填写'); return }
   grantSubmitting.value = true
   try { await submitGrantApply(payload); ElMessage.success('授权申请已提交'); grantForm.resourceIds = []; grantForm.applyReason = ''; await loadGrantRequests() } catch (error) { notifyError(error, '提交授权申请失败') } finally { grantSubmitting.value = false }
@@ -748,6 +859,7 @@ watch([identityScopes, selectedAppResourceIds, resources], () => {
     .map(resource => resource.scopeCode)
   appForm.scopes = [...new Set([...identityScopes.value, ...resourceScopes])]
 }, { deep: true })
+watch(() => grantForm.appId, () => { grantForm.schoolIds = [...grantSchoolOptions.value] })
 onMounted(async () => {
   identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [{ label: '用户唯一标识（openid）', value: 'openid' }, { label: '用户基础资料（profile）', value: 'profile' }])
   await Promise.all([loadVendors(), loadResources()])

@@ -77,3 +77,10 @@ export function publishOpenApiResourceVersion(versionId: string | number) {
 export function deprecateOpenApiResourceVersion(versionId: string | number) {
   return post<OpenApiResourceVersion>(`/open/api-resource/versions/${versionId}/deprecate`)
 }
+
+export type OpenIntegrationExportFormat = 'zip' | 'openapi' | 'postman' | 'environment'
+
+export function openIntegrationExportUrl(format: OpenIntegrationExportFormat, baseUrl: string) {
+  const file = { zip: 'package.zip', openapi: 'openapi.json', postman: 'postman.json', environment: 'environment.json' }[format]
+  return `/open/public/integration/${file}?baseUrl=${encodeURIComponent(baseUrl)}`
+}

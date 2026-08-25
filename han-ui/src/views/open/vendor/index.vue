@@ -39,10 +39,12 @@
         <el-table-column label="申请时间" min-width="170">
           <template #default="{ row }">{{ formatDate(row.applyTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" min-width="300" fixed="right">
+        <el-table-column label="操作" min-width="330" fixed="right">
           <template #default="{ row }">
             <el-button v-if="canQuery" type="primary" link :icon="View" @click="openDetail(row)">详情</el-button>
+            <el-button v-if="canManage" type="primary" link :icon="Edit" @click="openEdit(row)">编辑</el-button>
             <el-button v-if="canManage && nextStatuses(row).length" type="primary" link @click="openStatus(row)">变更状态</el-button>
+            <el-button v-if="canManage" type="danger" link :icon="Delete" @click="removeVendor(row)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>
@@ -125,6 +127,19 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="editVisible" title="编辑厂商资料" width="560px" destroy-on-close>
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="100px">
+        <el-form-item label="厂商名称" prop="name"><el-input v-model="editForm.name" /></el-form-item>
+        <el-form-item label="所属行业"><el-input v-model="editForm.industry" /></el-form-item>
+        <el-form-item label="联系人" prop="contactName"><el-input v-model="editForm.contactName" /></el-form-item>
+        <el-form-item label="联系电话" prop="contactPhone"><el-input v-model="editForm.contactPhone" /></el-form-item>
+        <el-form-item label="联系邮箱"><el-input v-model="editForm.contactEmail" /></el-form-item>
+        <el-form-item label="官网地址"><el-input v-model="editForm.website" /></el-form-item>
+        <el-alert title="统一社会信用代码及审核状态属于审计字段，不能在此修改。" type="info" :closable="false" />
+      </el-form>
+      <template #footer><el-button @click="editVisible = false">取消</el-button><el-button type="primary" :loading="submitLoading" @click="submitEdit">保存</el-button></template>
+    </el-dialog>
+
     <el-dialog v-model="statusVisible" title="变更厂商状态" width="460px" destroy-on-close>
       <el-form ref="statusFormRef" :model="statusForm" label-width="90px">
         <el-form-item label="目标状态">
@@ -174,8 +189,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Plus, Refresh, Search, View } from '@element-plus/icons-vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { Delete, Edit, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { formatDate } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { findDictLabel, loadDictOptions, OPEN_VENDOR_ROLE_DICT, type DictOption } from '@/utils/dict-options'
@@ -184,12 +199,15 @@ import {
   listOpenVendorApplications,
   listOpenVendor,
   reviewOpenVendorApplication,
+  removeOpenVendor,
   submitOpenVendorApplication,
+  updateOpenVendor,
   updateOpenVendorStatus,
   type OpenVendor,
   type OpenVendorApplicationForm,
   type OpenVendorApplication,
   type OpenVendorApplicationQuery,
+  type OpenVendorProfileForm,
   type OpenVendorQuery
 } from '@/api/open/vendor'
 
@@ -239,6 +257,12 @@ const statusFormRef = ref<FormInstance>()
 const statusForm = reactive({ vendorId: '', currentStatus: 0, status: 0, reason: '' })
 const statusOptionsForCurrent = computed(() => vendorTransitions[statusForm.currentStatus] || [])
 
+const editVisible = ref(false)
+const editFormRef = ref<FormInstance>()
+const editForm = reactive<OpenVendorProfileForm & { id: string | number }>({ id: '', name: '', industry: '', contactName: '', contactPhone: '', contactEmail: '', website: '' })
+const editRules: FormRules = {
+  name: [{ required: true, message: '请输入厂商名称', trigger: 'blur' }]
+}
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -315,6 +339,34 @@ async function openDetail(row: OpenVendor) {
   try { detail.value = (await getOpenVendor(row.id) as any).data }
   catch (error) { notifyError(error, '加载厂商详情失败') }
   finally { detailLoading.value = false }
+}
+
+function openEdit(row: OpenVendor) {
+  Object.assign(editForm, {
+    id: row.id, name: row.name, industry: row.industry || '', contactName: row.contactName || '',
+    contactPhone: row.contactPhone || '', contactEmail: row.contactEmail || '', website: row.website || ''
+  })
+  editVisible.value = true
+}
+
+async function submitEdit() {
+  if (!(await editFormRef.value?.validate())) return
+  submitLoading.value = true
+  try {
+    await updateOpenVendor(editForm.id, editForm)
+    ElMessage.success('厂商资料已更新')
+    editVisible.value = false
+    await getList()
+  } catch (error) { notifyError(error, '更新厂商资料失败') } finally { submitLoading.value = false }
+}
+
+async function removeVendor(row: OpenVendor) {
+  try {
+    await ElMessageBox.confirm(`确认删除厂商“${row.name}”？有关联应用时系统会阻止删除，请先在应用管理中清理。`, '删除厂商', { type: 'warning' })
+    await removeOpenVendor(row.id)
+    ElMessage.success('厂商已删除')
+    await Promise.all([getList(), loadApplications()])
+  } catch (error) { if (error !== 'cancel') notifyError(error, '删除厂商失败') }
 }
 
 function openReview(row: OpenVendorApplication) {

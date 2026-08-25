@@ -10,6 +10,7 @@ import com.han.common.security.context.SecurityContextHolder;
 import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.vo.VendorApplicationVO;
 import com.han.open.domain.vo.VendorDetailVO;
+import com.han.open.domain.vo.VendorProfileUpdateVO;
 import com.han.open.domain.vo.OpenVendorApplicationAdminVO;
 import com.han.open.service.OpenVendorService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -79,6 +80,27 @@ public class OpenVendorController {
     @PreAuthorize("@ss.hasAuthority('open:vendor:query')")
     public R<VendorDetailVO> getDetail(@PathVariable Long id) {
         return R.ok(vendorService.getDetail(id));
+    }
+
+    @Operation(summary = "修改厂商基础资料")
+    @RequestMapping(value = "/{vendorId}", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("@ss.hasAnyAuthority('open:vendor:manage','open:vendor:my')")
+    @RepeatSubmit
+    @OperLog(module = "厂商管理", type = OperLog.OperType.UPDATE)
+    public R<Void> updateProfile(@PathVariable Long vendorId,
+                                 @Validated @RequestBody VendorProfileUpdateVO profile) {
+        vendorService.updateProfile(vendorId, profile);
+        return R.ok();
+    }
+
+    @Operation(summary = "删除厂商")
+    @PostMapping("/remove/{vendorId}")
+    @PreAuthorize("@ss.hasAuthority('open:vendor:manage')")
+    @RepeatSubmit
+    @OperLog(module = "厂商管理", type = OperLog.OperType.DELETE)
+    public R<Void> removeVendor(@PathVariable Long vendorId) {
+        vendorService.removeVendor(vendorId);
+        return R.ok();
     }
 
     @Operation(summary = "查询当前用户所属厂商列表")

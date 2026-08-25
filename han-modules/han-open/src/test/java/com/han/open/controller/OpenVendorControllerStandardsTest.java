@@ -4,6 +4,7 @@ import com.han.common.log.annotation.OperLog;
 import com.han.common.security.annotation.AdminAuth;
 import com.han.common.security.annotation.RepeatSubmit;
 import com.han.open.domain.vo.VendorApplicationVO;
+import com.han.open.domain.vo.VendorProfileUpdateVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -41,6 +42,10 @@ class OpenVendorControllerStandardsTest {
         assertThat(requestMethods("updateStatus", Long.class, Integer.class, String.class))
                 .containsExactlyInAnyOrder(RequestMethod.POST, RequestMethod.PUT);
         assertThat(OpenVendorController.class.getDeclaredMethod("bindUser", Long.class, Long.class, String.class)
+                .isAnnotationPresent(RepeatSubmit.class)).isTrue();
+        assertThat(requestMethods("updateProfile", Long.class, VendorProfileUpdateVO.class))
+                .containsExactlyInAnyOrder(RequestMethod.POST, RequestMethod.PUT);
+        assertThat(OpenVendorController.class.getDeclaredMethod("removeVendor", Long.class)
                 .isAnnotationPresent(RepeatSubmit.class)).isTrue();
     }
 

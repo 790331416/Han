@@ -6,6 +6,7 @@ import com.han.open.domain.po.OpenVendorPo;
 import com.han.open.domain.vo.OpenVendorApplicationAdminVO;
 import com.han.open.domain.vo.VendorApplicationVO;
 import com.han.open.domain.vo.VendorDetailVO;
+import com.han.open.domain.vo.VendorProfileUpdateVO;
 import com.han.api.open.domain.OpenVendorApplicationCreateDTO;
 import com.han.api.open.domain.OpenVendorApplicationStatusVO;
 import java.util.List;
@@ -44,6 +45,12 @@ public interface OpenVendorService extends IService<OpenVendorPo> {
      * @return 厂商详情
      */
     VendorDetailVO getDetail(Long vendorId);
+
+    /** 管理员或厂商所有者维护基础资料。 */
+    boolean updateProfile(Long vendorId, VendorProfileUpdateVO profile);
+
+    /** 管理员删除没有关联应用的厂商。 */
+    boolean removeVendor(Long vendorId);
 
     /**
      * 关联用户到厂商

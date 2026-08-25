@@ -30,6 +30,7 @@ class AuthFilterOpenPlatformContractTest {
                 "/open/oauth2/revoke",
                 "/open/oauth2/userinfo",
                 "/open/oauth2/.well-known/openid-configuration",
+                "/open/public/integration/package.zip",
                 "/open/api/v1/directory/teachers",
                 "/open/sso/login",
                 "/open/sso/logout",
@@ -53,5 +54,21 @@ class AuthFilterOpenPlatformContractTest {
         filter.filter(exchange, chain).block();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void publicIntegrationWhitelistIsExactAndReadOnly() {
+        AuthFilter filter = new AuthFilter(mock(ReactiveStringRedisTemplate.class));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        MockServerWebExchange post = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/open/public/integration/package.zip").build());
+        MockServerWebExchange other = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/open/public/integration/private.json").build());
+
+        filter.filter(post, chain).block();
+        filter.filter(other, chain).block();
+
+        assertThat(post.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(other.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }

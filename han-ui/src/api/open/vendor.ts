@@ -71,6 +71,15 @@ export interface OpenVendorApplicationForm {
   applyReason?: string
 }
 
+export interface OpenVendorProfileForm {
+  name: string
+  industry?: string
+  contactName: string
+  contactPhone: string
+  contactEmail?: string
+  website?: string
+}
+
 export function listOpenVendor(query: OpenVendorQuery) {
   return get<PageResult<OpenVendor>>('/open/vendor/list', query)
 }
@@ -93,6 +102,14 @@ export function reviewOpenVendorApplication(id: string | number, status: number,
 
 export function updateOpenVendorStatus(id: string | number, status: number, reason?: string) {
   return post<void>(`/open/vendor/${id}/status`, undefined, { params: { status, reason } })
+}
+
+export function updateOpenVendor(id: string | number, data: OpenVendorProfileForm) {
+  return post<void>(`/open/vendor/${id}`, data)
+}
+
+export function removeOpenVendor(id: string | number) {
+  return post<void>(`/open/vendor/remove/${id}`)
 }
 
 export function bindOpenVendorUser(vendorId: string | number, userId: string | number, role: string) {

@@ -134,9 +134,10 @@
           </div>
         </el-form-item>
         <el-form-item v-if="needsSchoolScope" label="授权学校" prop="schoolIds">
-          <el-select v-model="form.schoolIds" multiple filterable clearable placeholder="选择可读取目录的学校" style="width: 100%">
+          <el-select v-model="form.schoolIds" multiple filterable allow-create default-first-option clearable placeholder="选择学校或输入平台学校ID" style="width: 100%">
             <el-option v-for="school in schools" :key="school.value" :label="school.label" :value="school.value" />
           </el-select>
+          <div class="form-hint">视频课堂及教育目录接口必须限定学校；可选择校内学校，也可直接输入平台学校ID。</div>
         </el-form-item>
         <el-form-item label="联系人">
           <el-input v-model="form.contactName" placeholder="请输入联系人" data-testid="open-app-form-contact-name" />
@@ -225,7 +226,7 @@ const redirectUrisStr = computed({
 })
 
 const needsSchoolScope = computed(() => (form.scopes || []).some(scope =>
-  scope === 'edu.teacher.read' || scope === 'edu.student.read' || scope === 'edu.device.read'))
+  scope.startsWith('classroom.') || scope === 'edu.teacher.read' || scope === 'edu.student.read' || scope === 'edu.device.read'))
 
 const apiResourcesByCategory = computed<Record<string, OpenApiResource[]>>(() => apiResources.value.reduce((groups, resource) => {
   const category = resource.category || '其他接口'
@@ -306,7 +307,7 @@ async function handleEdit(row: OpenApp) {
   try {
     const res = await getOpenApp(row.appId)
     const d = (res as any).data
-    Object.assign(form, { appId: d.appId, appName: d.appName, appDesc: d.appDesc, appType: d.appType, redirectUris: d.redirectUris || [], scopes: d.scopes || [], grantTypes: d.grantTypes || [], schoolIds: d.schoolIds || [], contactName: d.contactName, accessTokenTtl: d.accessTokenTtl, refreshTokenTtl: d.refreshTokenTtl, status: d.status })
+    Object.assign(form, { appId: d.appId, vendorId: d.vendorId, appName: d.appName, appDesc: d.appDesc, appType: d.appType, redirectUris: d.redirectUris || [], scopes: d.scopes || [], grantTypes: d.grantTypes || [], schoolIds: d.schoolIds || [], contactName: d.contactName, accessTokenTtl: d.accessTokenTtl, refreshTokenTtl: d.refreshTokenTtl, status: d.status })
     selectedProtocolScopes.value = (d.scopes || []).filter((scope: string) => scope === 'openid' || scope === 'profile')
     selectedApiResourceIds.value = apiResources.value.filter(resource => (d.scopes || []).includes(resource.scopeCode)).map(resource => resource.id)
   } catch (error) { notifyError(error, '加载应用详情失败') }
@@ -335,7 +336,7 @@ async function submitForm() {
   if (!formRef.value) return
   await formRef.value.validate()
   if (needsSchoolScope.value && !(form.schoolIds || []).length) {
-    ElMessage.warning('授权教师、学生或设备目录时必须选择学校范围')
+    ElMessage.warning('视频课堂或教育目录接口必须选择授权学校')
     return
   }
   submitLoading.value = true

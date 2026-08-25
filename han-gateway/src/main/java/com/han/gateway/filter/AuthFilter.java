@@ -23,6 +23,7 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 认证过滤器
@@ -36,6 +37,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private static final String PUBLIC_BRAND_PATH = "/system/public/brand";
     private static final String PUBLIC_BRAND_LOGO_PATH = "/system/public/brand/logo";
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
+    private static final Set<String> PUBLIC_INTEGRATION_EXPORTS = Set.of(
+            "/open/public/integration/openapi.json",
+            "/open/public/integration/postman.json",
+            "/open/public/integration/environment.json",
+            "/open/public/integration/package.zip"
+    );
 
     private static final List<String> WHITE_LIST = List.of(
             "/auth/login",
@@ -108,6 +115,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         String path = sanitizedRequest.getURI().getPath();
 
         if (isPublicBrandRead(sanitizedRequest) || isWhitelist(path)
+                || isPublicIntegrationExportRequest(sanitizedRequest)
                 || isPublicVendorAuthRequest(sanitizedRequest)
                 || isIdentitySelectRequest(sanitizedRequest)) {
             return chain.filter(exchange.mutate().request(sanitizedRequest).build());
@@ -170,6 +178,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
         return HttpMethod.GET.equals(request.getMethod())
                 && (PUBLIC_BRAND_PATH.equals(request.getURI().getPath())
                 || PUBLIC_BRAND_LOGO_PATH.equals(request.getURI().getPath()));
+    }
+
+    /** 对接文档只公开四个精确 GET 地址，不放开整个 /open/public 前缀。 */
+    private boolean isPublicIntegrationExportRequest(ServerHttpRequest request) {
+        return HttpMethod.GET.equals(request.getMethod())
+                && PUBLIC_INTEGRATION_EXPORTS.contains(request.getURI().getPath());
     }
 
     /** 厂商注册只公开精确 auth 路径，不能放行整个 vendor 前缀。 */

@@ -624,9 +624,9 @@ public class OpenAppServiceImpl implements IOpenAppService {
         if (po.getRefreshTokenTtl() == null || po.getRefreshTokenTtl() < 60) {
             throw new BusinessException("RefreshToken 有效期不能小于 60 秒");
         }
-        if (hasEducationDirectoryScope(po.getScopes()) && !StringUtils.hasText(po.getSchoolScope())
+        if (requiresSchoolScope(po.getScopes()) && !StringUtils.hasText(po.getSchoolScope())
                 && !Objects.equals(po.getLifecycleStatus(), LIFECYCLE_DRAFT)) {
-            throw new BusinessException("授权教师、学生或设备目录时必须指定学校范围");
+            throw new BusinessException("视频课堂或教育目录接口必须指定授权学校");
         }
         validateStatus(po.getStatus());
         validateLifecycleStatus(po.getLifecycleStatus());
@@ -697,10 +697,11 @@ public class OpenAppServiceImpl implements IOpenAppService {
         }
     }
 
-    private static boolean hasEducationDirectoryScope(String scopes) {
+    private static boolean requiresSchoolScope(String scopes) {
         return scopes != null && java.util.Arrays.stream(scopes.split(","))
                 .map(String::trim)
-                .anyMatch(item -> item.equals("edu.teacher.read")
+                .anyMatch(item -> item.startsWith("classroom.")
+                        || item.equals("edu.teacher.read")
                         || item.equals("edu.student.read")
                         || item.equals("edu.device.read"));
     }

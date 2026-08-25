@@ -540,6 +540,21 @@ class OpenAppAuthorizationServiceImplTest {
     }
 
     @Test
+    void submitLifecycleApplyRequiresAdministratorSchoolScopeForClassroomApi() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenAppPo app = ownedApp();
+        app.setLifecycleStatus(0);
+        app.setScopes("classroom.live.start");
+        app.setSchoolScope(null);
+        when(appMapper.selectOne(any())).thenReturn(app);
+
+        assertThatThrownBy(() -> service.submitAppLifecycleApply(123L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请联系平台管理员配置授权学校后再提交开通申请");
+        verify(appMapper, org.mockito.Mockito.times(0)).update(any(), any());
+    }
+
+    @Test
     void reviewLifecycleApplyApprovesSandboxAndPersistsReviewer() {
         SecurityContextHolder.setLoginUser(adminLoginUser());
         OpenAppPo app = ownedApp();
