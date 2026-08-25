@@ -843,26 +843,66 @@ public class OpenApiIntegrationExportService {
         return """
                 package main
 
-                import ("encoding/json"; "fmt"; "io"; "net/http"; "net/url"; "os"; "strings")
-                func env(name, fallback string) string { if value := os.Getenv(name); value != "" { return value }; return fallback }
+                import (
+                    "encoding/json"
+                    "fmt"
+                    "io"
+                    "net/http"
+                    "net/url"
+                    "os"
+                    "strings"
+                )
+
+                func env(name, fallback string) string {
+                    if value := os.Getenv(name); value != "" {
+                        return value
+                    }
+                    return fallback
+                }
+
                 func main() {
-                  base := strings.TrimRight(env("OPEN_PLATFORM_BASE_URL", "@@BASE_URL@@"), "/")
-                  clientID, secret := os.Getenv("OPEN_PLATFORM_CLIENT_ID"), os.Getenv("OPEN_PLATFORM_CLIENT_SECRET")
-                  if clientID == "" || secret == "" { panic("missing Client ID/Secret") }
-                  form := url.Values{"grant_type":{"client_credentials"}, "client_id":{clientID}, "client_secret":{secret},
-                    "scope":{env("OPEN_PLATFORM_SCOPE", "classroom.app.read")}}
-                  tokenResponse, err := http.PostForm(base+"/open/oauth2/token", form); if err != nil { panic(err) }
-                  defer tokenResponse.Body.Close()
-                  var token map[string]interface{}; json.NewDecoder(tokenResponse.Body).Decode(&token)
-                  accessToken, _ := token["access_token"].(string); if accessToken == "" { panic("no access_token returned") }
-                  query, body := env("OPEN_PLATFORM_QUERY", "appId=com.example.video&versionCode=1"), os.Getenv("OPEN_PLATFORM_BODY")
-                  endpoint := base+env("OPEN_PLATFORM_PATH", "/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo")
-                  if query != "" { endpoint += "?"+query }
-                  request, _ := http.NewRequest(env("OPEN_PLATFORM_METHOD", "GET"), endpoint, strings.NewReader(body))
-                  request.Header.Set("Authorization", "Bearer "+accessToken); if body != "" { request.Header.Set("Content-Type", "application/json") }
-                  response, err := http.DefaultClient.Do(request); if err != nil { panic(err) }; defer response.Body.Close()
-                  content, _ := io.ReadAll(response.Body); fmt.Println(string(content))
-                  if response.StatusCode < 200 || response.StatusCode >= 300 { os.Exit(1) }
+                    base := strings.TrimRight(env("OPEN_PLATFORM_BASE_URL", "@@BASE_URL@@"), "/")
+                    clientID, secret := os.Getenv("OPEN_PLATFORM_CLIENT_ID"), os.Getenv("OPEN_PLATFORM_CLIENT_SECRET")
+                    if clientID == "" || secret == "" {
+                        panic("missing Client ID/Secret")
+                    }
+                    form := url.Values{
+                        "grant_type": {"client_credentials"},
+                        "client_id": {clientID},
+                        "client_secret": {secret},
+                        "scope": {env("OPEN_PLATFORM_SCOPE", "classroom.app.read")},
+                    }
+                    tokenResponse, err := http.PostForm(base+"/open/oauth2/token", form)
+                    if err != nil {
+                        panic(err)
+                    }
+                    defer tokenResponse.Body.Close()
+                    var token map[string]interface{}
+                    json.NewDecoder(tokenResponse.Body).Decode(&token)
+                    accessToken, _ := token["access_token"].(string)
+                    if accessToken == "" {
+                        panic("no access_token returned")
+                    }
+                    query, body := env("OPEN_PLATFORM_QUERY", "appId=com.example.video&versionCode=1"), os.Getenv("OPEN_PLATFORM_BODY")
+                    endpoint := base + env("OPEN_PLATFORM_PATH", "/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo")
+                    if query != "" {
+                        endpoint += "?" + query
+                    }
+                    request, _ := http.NewRequest(env("OPEN_PLATFORM_METHOD", "GET"), endpoint, strings.NewReader(body))
+                    request.Header.Set("Authorization", "Bearer "+accessToken)
+                    if body != "" {
+                        request.Header.Set("Content-Type", "application/json")
+                    }
+                    response, err := http.DefaultClient.Do(request)
+                    if err != nil {
+                        panic(err)
+                    }
+                    defer response.Body.Close()
+                    content, _ := io.ReadAll(response.Body)
+                    fmt.Println(string(content))
+                    if response.StatusCode < 200 || response.StatusCode >= 300 {
+                        os.Exit(1)
+                    }
                 }
                 """.replace("@@BASE_URL@@", baseUrl);
     }
