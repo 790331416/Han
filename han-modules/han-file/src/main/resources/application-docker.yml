@@ -40,15 +40,11 @@ spring:
           min-idle: 0
           max-wait: -1ms
 
-# 存储配置
+# 存储配置：具体 Endpoint、桶和密钥从数据库活动配置读取；主密钥仅来自受控环境变量或 Secret。
 han:
   storage:
-    type: rustfs
-    rustfs:
-      endpoint: ${RUSTFS_ENDPOINT:http://rustfs:9000}
-      accessKey: ${RUSTFS_ACCESS_KEY:hanadmin}
-      secretKey: ${RUSTFS_SECRET_KEY:han@2026}
-      bucket: han
+    type: s3
+    master-key: ${HAN_STORAGE_MASTER_KEY:}
 
 logging:
   level:

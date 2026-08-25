@@ -6,7 +6,7 @@ import com.han.starter.storage.StorageProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
@@ -16,19 +16,20 @@ import org.springframework.core.env.Environment;
 public class StorageAutoConfiguration {
 
     @Bean
-    @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs", matchIfMissing = true)
+    @ConditionalOnExpression("'${han.storage.type:s3}' == 's3' || '${han.storage.type:s3}' == 'rustfs'")
     @ConditionalOnMissingBean
     public StorageConfigRepository storageConfigRepository(Environment environment,
-                                                           ObjectProvider<SecurityContext> securityContextProvider) {
+                                                           ObjectProvider<SecurityContext> securityContextProvider,
+                                                           StorageProperties properties) {
         StorageDatabaseProperties databaseProperties = StorageDatabaseProperties.fromEnvironment(environment);
         if (!databaseProperties.isConfigured()) {
             return null;
         }
-        return new JdbcStorageConfigRepository(databaseProperties, securityContextProvider.getIfAvailable());
+        return new JdbcStorageConfigRepository(databaseProperties, securityContextProvider.getIfAvailable(), properties.getMasterKey());
     }
 
     @Bean
-    @ConditionalOnProperty(name = "han.storage.type", havingValue = "rustfs", matchIfMissing = true)
+    @ConditionalOnExpression("'${han.storage.type:s3}' == 's3' || '${han.storage.type:s3}' == 'rustfs'")
     @ConditionalOnMissingBean
     public StorageProvider rustFSStorageProvider(StorageProperties properties,
                                                  ObjectProvider<StorageConfigRepository> configRepositoryProvider) {

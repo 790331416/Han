@@ -11,6 +11,7 @@ SQL = ROOT / "sql"
 ALLOWED_SQL_TOP_LEVEL = {
     "README.md",
     "archive",
+    "han",
     "sdfz",
     "tiers",
     "upgrades",
@@ -176,6 +177,17 @@ def main() -> int:
         head = "\n".join(read_sql(sdfz_file).splitlines()[:12]).lower()
         if "set names utf8mb4;" not in head:
             violations.append(f"SDFZ MySQL SQL 必须在文件头声明 SET NAMES utf8mb4;: {sdfz_file}")
+
+    # 巴蜀云校现网是受控的既有 MySQL 库，不能误用 small 初始化脚本覆盖。
+    # 该目录只允许存放经过客户发布方案确认的加法型升级，不得混入其他项目 SQL。
+    for bashu_mysql in sorted((SQL / "han" / "mysql").glob("*.sql")):
+        head = "\n".join(read_sql(bashu_mysql).splitlines()[:12]).lower()
+        if "set names utf8mb4;" not in head:
+            violations.append(f"巴蜀 MySQL SQL 必须在文件头声明 SET NAMES utf8mb4;: {bashu_mysql}")
+        text = read_sql(bashu_mysql).upper()
+        for token in FORBIDDEN_MYSQL_TOKENS:
+            if token in text:
+                violations.append(f"巴蜀 MySQL SQL 包含 PostgreSQL 语法 {token!r}: {bashu_mysql}")
 
     sdfz_mysql = SQL / "sdfz" / "mysql" / "20260811_education_master.sql"
     if sdfz_mysql.exists():

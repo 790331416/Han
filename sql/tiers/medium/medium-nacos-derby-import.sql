@@ -404,12 +404,10 @@ INSERT INTO nacos.config_info (
 
 han:
   storage:
-    type: rustfs
-    rustfs:
-      endpoint: ${RUSTFS_ENDPOINT:http://rustfs:9000}
-      accessKey: ${RUSTFS_ACCESS_KEY:hanadmin}
-      secretKey: ${RUSTFS_SECRET_KEY:han@2026}
-      bucket: han
+    type: s3
+    config-source: database
+    cache-ttl-seconds: 30
+    temporary-url-seconds: 600
 ',
   NULL,
   CURRENT_TIMESTAMP,

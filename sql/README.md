@@ -40,7 +40,9 @@
 - `20260703_ai_agent_share_key.sql`：`ai_agent` 增 `share_key` 分享链接 key，配套应用发布公开对话接口与免登录分享页
 - `20260715_aivideo_admin_menu_alignment.sql`：补齐 AI 短剧任务监管、基础配置菜单及查询/编辑权限，并只关联有效超管角色
 - `20260715_sys_dict_type_exact_duplicate_alignment.sql`：软删除同租户、同类型且名称/状态/备注完全一致的重复字典类型，保留最小 ID；内容冲突的重复继续由升级演练拦截
-- `20260823_open_platform_tables.sql`：开放平台（han-open）厂商/授权/审批/凭证/接口目录 9 张新表 + `open_app` 补 `school_scope`/`vendor_id`/`lifecycle_status`/`environment_policy` 4 列 + 接口目录 3 条种子 + tenant=1 的 `openVendor` 门户角色及最小自服务权限，与 `sql/tiers/{medium,full}/*-init.sql` 的 open 段保持同步（结构冻结见下文「开放平台表结构冻结矩阵」）
+  - `20260823_open_platform_tables.sql`：开放平台（han-open）厂商/授权/审批/凭证/接口目录 9 张新表 + `open_app` 补 `school_scope`/`vendor_id`/`lifecycle_status`/`environment_policy` 4 列 + 接口目录 3 条种子 + tenant=1 的 `openVendor` 门户角色及最小自服务权限，与 `sql/tiers/{medium,full}/*-init.sql` 的 open 段保持同步（结构冻结见下文「开放平台表结构冻结矩阵」）
+  - `han/mysql/20260825_unified_file_storage.sql`：巴蜀生产 MySQL 的统一文件服务加法型升级，新增对象存储配置/活动指针，并补齐 `sys_file` 的存储配置、对象Key、学校与可见性字段；不包含任何密钥或生产数据
+  - `upgrades/postgres/20260825_unified_file_storage.sql`：PostgreSQL 同步升级 `sys_file`、`sys_oss_config`、`sys_storage_active` 与 AI 知识库 `file_id`，现有明文配置不自动迁移，必须通过管理端重新加密录入
 - `sdfz/mysql/20260823_open_vendor_portal.sql`：附中 MySQL 厂商门户 `openVendor` 角色、门户路由及最小自服务权限；不授予厂商审核/管理员权限
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
@@ -49,6 +51,7 @@
 
 - PostgreSQL 初始化只认 `sql/tiers/<tier>/<tier>-init.sql`
 - MySQL 初始化当前只认 `sql/tiers/small/small-init-mysql.sql`
+- 巴蜀云校既有生产 MySQL 的受控加法升级只允许进入 `sql/han/mysql/`；该例外不表示 medium/full MySQL 已成为通用正式支持，执行前必须按巴蜀发布方案备份、核验和人工确认
 - Nacos 导入只认 `sql/tiers/<tier>/<tier>-nacos-derby-import.sql`
 - PostgreSQL 增量升级只认 `sql/upgrades/postgres/`；MySQL 当前仅支持 clean small 初始化，暂无存量升级入口
 - 不再从 `sql/` 根目录、旧 `postgres/`、旧 `upgrade/`、旧拆分模块目录寻找正式初始化脚本

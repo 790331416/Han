@@ -15,17 +15,21 @@ import com.han.ai.mapper.AiParagraphMapper;
 import com.han.ai.service.IAiKnowledgeBaseService;
 import com.han.ai.service.IAiKnowledgeRetrievalService;
 import com.han.ai.util.AiVectorUtil;
+import com.han.api.file.FileServiceClient;
 import com.han.common.core.domain.PageResult;
 import com.han.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -62,6 +66,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     private final AiEmbeddingClient embeddingClient;
     private final IAiKnowledgeRetrievalService knowledgeRetrievalService;
     private final AiDocumentTextExtractor textExtractor;
+    private final FileServiceClient fileServiceClient;
 
     @Value("${han.ai.document-storage-path:./data/ai-documents}")
     private String documentStoragePath;
@@ -128,7 +133,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         List<AiDocumentPo> documents = aiDocumentMapper.selectList(new LambdaQueryWrapper<AiDocumentPo>()
                 .eq(AiDocumentPo::getKbId, kbId));
         for (AiDocumentPo document : documents) {
-            deleteDocumentFile(document.getFilePath());
+            deleteDocumentFile(document);
         }
         aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getKbId, kbId));
         aiDocumentMapper.delete(new LambdaQueryWrapper<AiDocumentPo>().eq(AiDocumentPo::getKbId, kbId));
@@ -163,13 +168,14 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         String originalFilename = file.getOriginalFilename();
         String docName = StringUtils.hasText(originalFilename) ? originalFilename.trim() : "unnamed.txt";
         String docType = textExtractor.resolveDocumentType(docName);
-        Path storedPath = storeFile(kbId, docName, file);
+        StoredDocument storedDocument = storeFile(docName, file);
 
         AiDocumentPo document = new AiDocumentPo();
         document.setKbId(kbId);
         document.setDocName(docName);
         document.setDocType(docType);
-        document.setFilePath(storedPath.toString());
+        document.setFilePath(storedDocument.filePath());
+        document.setFileId(storedDocument.fileId());
         document.setFileSize(file.getSize());
         document.setCharCount(0L);
         document.setParagraphCount(0);
@@ -199,7 +205,7 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         AiDocumentPo document = requireDocument(docId);
         aiParagraphMapper.delete(new LambdaQueryWrapper<AiParagraphPo>().eq(AiParagraphPo::getDocId, docId));
         aiDocumentMapper.deleteById(docId);
-        deleteDocumentFile(document.getFilePath());
+        deleteDocumentFile(document);
         refreshKnowledgeBaseStats(document.getKbId());
     }
 
@@ -448,12 +454,19 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     }
 
     private IndexOutcome buildIndexOutcome(AiKnowledgeBasePo knowledgeBase, AiDocumentPo document) throws IOException {
-        Path path = Paths.get(document.getFilePath());
-        if (!Files.exists(path)) {
+        MaterializedDocument materialized = materializeDocument(document);
+        if (materialized == null || !Files.exists(materialized.path())) {
             return new IndexOutcome(List.of(), 0, true, "文档文件不存在，无法重建索引");
         }
         String docType = textExtractor.resolveDocumentType(document.getDocName());
-        String content = textExtractor.extract(path, docType);
+        String content;
+        try {
+            content = textExtractor.extract(materialized.path(), docType);
+        } finally {
+            if (materialized.temporary()) {
+                Files.deleteIfExists(materialized.path());
+            }
+        }
         if (!StringUtils.hasText(content)) {
             String message = switch (docType) {
                 case "pdf", "docx", "xlsx" -> "未能从文档中提取到文本内容（可能为扫描件、图片型或空文档）";
@@ -524,23 +537,56 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         return result;
     }
 
-    private Path storeFile(Long kbId, String docName, MultipartFile file) {
-        Path directory = Paths.get(documentStoragePath, String.valueOf(kbId));
+    private StoredDocument storeFile(String docName, MultipartFile file) {
+        Path temporary = null;
         try {
-            Files.createDirectories(directory);
-            String suffix = "";
-            int lastDot = docName.lastIndexOf('.');
-            if (lastDot >= 0) {
-                suffix = docName.substring(lastDot);
+            temporary = Files.createTempFile("han-kb-upload-", suffix(docName));
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, temporary, StandardCopyOption.REPLACE_EXISTING);
             }
-            Path target = directory.resolve(UUID.randomUUID() + suffix);
-            try (var inputStream = file.getInputStream()) {
-                Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
+            var result = fileServiceClient.uploadInternal(new FileSystemResource(temporary),
+                    "ai_knowledge_document", "PRIVATE", null);
+            if (result == null || !result.isSuccess() || result.getData() == null || result.getData().getId() == null) {
+                throw new BusinessException(result == null || !StringUtils.hasText(result.getMsg())
+                        ? "知识库文档归档失败" : result.getMsg());
             }
-            return target;
+            Long fileId = result.getData().getId();
+            return new StoredDocument(fileId, "han:" + fileId);
         } catch (IOException ex) {
             throw new BusinessException("保存文档失败: " + ex.getMessage());
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException ignored) {
+                    // 临时文件由系统兜底清理，不影响已经归档的文件。
+                }
+            }
         }
+    }
+
+    private MaterializedDocument materializeDocument(AiDocumentPo document) throws IOException {
+        if (document.getFileId() != null) {
+            var result = fileServiceClient.temporaryUrl(document.getFileId());
+            if (result == null || !result.isSuccess() || !StringUtils.hasText(result.getData())) {
+                throw new IOException(result == null || !StringUtils.hasText(result.getMsg())
+                        ? "知识库文档下载地址获取失败" : result.getMsg());
+            }
+            Path temporary = Files.createTempFile("han-kb-index-", suffix(document.getDocName()));
+            try (InputStream input = new URL(result.getData()).openStream()) {
+                Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return new MaterializedDocument(temporary, true);
+        }
+        if (!StringUtils.hasText(document.getFilePath())) {
+            return null;
+        }
+        return new MaterializedDocument(Paths.get(document.getFilePath()), false);
+    }
+
+    private String suffix(String docName) {
+        int lastDot = docName == null ? -1 : docName.lastIndexOf('.');
+        return lastDot >= 0 ? docName.substring(lastDot) : ".tmp";
     }
 
     private void refreshKnowledgeBaseStats(Long kbId) {
@@ -561,7 +607,19 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
         aiKnowledgeBaseMapper.updateById(knowledgeBase);
     }
 
-    private void deleteDocumentFile(String filePath) {
+    private void deleteDocumentFile(AiDocumentPo document) {
+        if (document.getFileId() != null) {
+            try {
+                var result = fileServiceClient.removeInternal(document.getFileId());
+                if (result == null || !result.isSuccess()) {
+                    log.warn("知识库对象存储文件删除未完成，fileId={}", document.getFileId());
+                }
+            } catch (Exception ex) {
+                log.warn("知识库对象存储文件删除调用失败，fileId={}", document.getFileId(), ex);
+            }
+            return;
+        }
+        String filePath = document.getFilePath();
         if (!StringUtils.hasText(filePath)) {
             return;
         }
@@ -591,5 +649,11 @@ public class AiKnowledgeBaseServiceImpl extends AiServiceSupport implements IAiK
     }
 
     private record IndexOutcome(List<AiParagraphPo> paragraphs, int charCount, boolean failed, String errorMessage) {
+    }
+
+    private record StoredDocument(Long fileId, String filePath) {
+    }
+
+    private record MaterializedDocument(Path path, boolean temporary) {
     }
 }

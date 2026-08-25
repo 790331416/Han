@@ -25,6 +25,9 @@ public class AiDocumentPo {
 
     private String filePath;
 
+    /** Han统一文件服务ID；为空时兼容历史本地文档路径。 */
+    private Long fileId;
+
     private Long fileSize;
 
     private Long charCount;

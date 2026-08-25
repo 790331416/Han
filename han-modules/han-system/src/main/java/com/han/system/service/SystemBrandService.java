@@ -1,6 +1,8 @@
 package com.han.system.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.han.api.file.FileServiceClient;
+import com.han.api.file.domain.FileBase64DTO;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.mybatis.helper.TenantHelper;
 import com.han.common.security.context.SecurityContextHolder;
@@ -10,18 +12,16 @@ import com.han.system.domain.vo.SystemBrandVo;
 import com.han.system.domain.vo.SystemBrandSettingsVo;
 import com.han.system.mapper.SysConfigMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
+import java.util.Base64;
 import java.util.Optional;
 import java.util.Set;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * 平台统一品牌配置。
@@ -40,9 +40,10 @@ public class SystemBrandService {
     private static final String KEY_SHORT_NAME = "sys.brand.shortName";
     private static final String KEY_DISPLAY_MODE = "sys.brand.displayMode";
     private static final String KEY_LOGIN_SUBTITLE = "sys.brand.loginSubtitle";
+    private static final String KEY_LOGO_FILE_ID = "sys.brand.logoFileId";
     private static final String KEY_ALLOW_INSECURE_VENDOR_REGISTRATION = "sys.open.vendorRegistration.allowInsecureHttp";
     private static final Set<String> RESERVED_KEYS = Set.of(
-            KEY_FULL_NAME, KEY_SHORT_NAME, KEY_DISPLAY_MODE, KEY_LOGIN_SUBTITLE,
+            KEY_FULL_NAME, KEY_SHORT_NAME, KEY_DISPLAY_MODE, KEY_LOGIN_SUBTITLE, KEY_LOGO_FILE_ID,
             KEY_ALLOW_INSECURE_VENDOR_REGISTRATION);
 
     private static final String DEFAULT_FULL_NAME = "HAN Cloud";
@@ -52,12 +53,14 @@ public class SystemBrandService {
     private static final long MAX_LOGO_SIZE = 1024 * 1024;
 
     private final SysConfigMapper configMapper;
-    private final Path logoFile;
+    private final FileServiceClient fileServiceClient;
+    private final Path legacyLogoFile;
 
-    public SystemBrandService(SysConfigMapper configMapper,
+    public SystemBrandService(SysConfigMapper configMapper, FileServiceClient fileServiceClient,
                               @Value("${han.brand.logo-path:/data/brand}") String logoPath) {
         this.configMapper = configMapper;
-        this.logoFile = Path.of(logoPath).resolve("logo.bin");
+        this.fileServiceClient = fileServiceClient;
+        this.legacyLogoFile = Path.of(logoPath).resolve("logo.bin");
     }
 
     /** 登录前与登录后共用的只读品牌信息；永远不会返回任意系统参数。 */
@@ -128,34 +131,48 @@ public class SystemBrandService {
             if (content.length > MAX_LOGO_SIZE) {
                 throw new BusinessException("Logo文件不能超过1MB");
             }
-            if (contentType(content) == null) {
+            String mimeType = contentType(content);
+            if (mimeType == null) {
                 throw new BusinessException("Logo仅支持PNG、JPG或WebP格式");
             }
-            Files.createDirectories(logoFile.getParent());
-            Path temporary = Files.createTempFile(logoFile.getParent(), "logo-", ".tmp");
-            try {
-                Files.write(temporary, content, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
-                moveReplacing(temporary, logoFile);
-            } finally {
-                Files.deleteIfExists(temporary);
+            ByteArrayResource resource = new ByteArrayResource(content) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename() == null ? "brand-logo" : file.getOriginalFilename();
+                }
+            };
+            var result = fileServiceClient.uploadInternal(resource, "brand_logo", "PUBLIC", null);
+            if (result == null || !result.isSuccess() || result.getData() == null || result.getData().getId() == null) {
+                throw new BusinessException(result == null || result.getMsg() == null ? "Logo上传失败" : result.getMsg());
             }
+            TenantHelper.ignore(() -> upsert(KEY_LOGO_FILE_ID, "平台品牌Logo文件ID",
+                    String.valueOf(result.getData().getId())));
         } catch (BusinessException e) {
             throw e;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new BusinessException("Logo保存失败，请稍后重试");
         }
     }
 
     public Optional<BrandLogo> getLogo() {
-        if (!Files.isRegularFile(logoFile)) {
-            return Optional.empty();
+        String rawFileId = TenantHelper.ignore(() -> valueOf(KEY_LOGO_FILE_ID, ""));
+        Long fileId;
+        try {
+            fileId = Long.valueOf(rawFileId);
+        } catch (NumberFormatException ex) {
+            return legacyLogo();
         }
         try {
-            byte[] content = Files.readAllBytes(logoFile);
+            var result = fileServiceClient.loadBase64(fileId);
+            if (result == null || !result.isSuccess() || result.getData() == null) {
+                return Optional.empty();
+            }
+            FileBase64DTO file = result.getData();
+            byte[] content = Base64.getDecoder().decode(file.getBase64());
             String contentType = contentType(content);
             return contentType == null ? Optional.empty() : Optional.of(new BrandLogo(content, contentType));
-        } catch (IOException e) {
-            return Optional.empty();
+        } catch (Exception e) {
+            return legacyLogo();
         }
     }
 
@@ -204,7 +221,7 @@ public class SystemBrandService {
                 normalizedMode,
                 displayName,
                 safeOptionalReadText(subtitle, 128),
-                Files.isRegularFile(logoFile) ? PUBLIC_LOGO_URL : ""
+                hasLogoFile() ? PUBLIC_LOGO_URL : ""
         );
     }
 
@@ -279,11 +296,26 @@ public class SystemBrandService {
         return null;
     }
 
-    private void moveReplacing(Path source, Path target) throws IOException {
+    private boolean hasLogoFile() {
+        String rawFileId = TenantHelper.ignore(() -> valueOf(KEY_LOGO_FILE_ID, ""));
         try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            return Long.parseLong(rawFileId) > 0;
+        } catch (NumberFormatException ex) {
+            return Files.isRegularFile(legacyLogoFile);
+        }
+    }
+
+    /** 仅兼容既有本地 Logo，新的上传全部写入 han-file；完成迁移前不得删除该文件。 */
+    private Optional<BrandLogo> legacyLogo() {
+        if (!Files.isRegularFile(legacyLogoFile)) {
+            return Optional.empty();
+        }
+        try {
+            byte[] content = Files.readAllBytes(legacyLogoFile);
+            String contentType = contentType(content);
+            return contentType == null ? Optional.empty() : Optional.of(new BrandLogo(content, contentType));
+        } catch (Exception ex) {
+            return Optional.empty();
         }
     }
 

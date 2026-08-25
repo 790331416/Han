@@ -1,6 +1,7 @@
 package com.han.starter.storage;
 
 import java.io.InputStream;
+import java.time.Duration;
 
 /**
  * 存储提供者接口（可插拔）
@@ -25,6 +26,13 @@ public interface StorageProvider {
      * @return 访问URL
      */
     String upload(String path, InputStream stream, String contentType);
+
+    /**
+     * 上传已知长度的文件流。默认实现保持旧适配器兼容。
+     */
+    default String upload(String path, InputStream stream, String contentType, long contentLength) {
+        return upload(path, stream, contentType);
+    }
 
     /**
      * 下载文件
@@ -56,4 +64,9 @@ public interface StorageProvider {
      * @return 是否存在
      */
     boolean exists(String path);
+
+    /** 生成受限时长的下载地址；不支持的实现必须明确拒绝。 */
+    default String createTemporaryUrl(String path, Duration duration) {
+        throw new UnsupportedOperationException("当前对象存储不支持临时下载地址");
+    }
 }

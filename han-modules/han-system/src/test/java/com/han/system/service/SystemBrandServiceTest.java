@@ -3,6 +3,10 @@ package com.han.system.service;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.security.context.SecurityContextHolder;
 import com.han.common.security.domain.LoginUser;
+import com.han.api.file.FileServiceClient;
+import com.han.api.file.domain.FileBase64DTO;
+import com.han.api.file.domain.FileDTO;
+import com.han.common.core.domain.R;
 import com.han.system.domain.dto.SystemBrandDto;
 import com.han.system.domain.po.SysConfigPo;
 import com.han.system.domain.vo.SystemBrandVo;
@@ -34,6 +38,9 @@ class SystemBrandServiceTest {
     @Mock
     private SysConfigMapper configMapper;
 
+    @Mock
+    private FileServiceClient fileServiceClient;
+
     @TempDir
     Path tempDir;
 
@@ -41,7 +48,7 @@ class SystemBrandServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SystemBrandService(configMapper, tempDir.toString());
+        service = new SystemBrandService(configMapper, fileServiceClient, tempDir.toString());
     }
 
     @AfterEach
@@ -132,7 +139,18 @@ class SystemBrandServiceTest {
     @Test
     void storesAValidLogoAndRejectsAFileWithOnlyAnImageMimeType() {
         byte[] png = new byte[]{(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+        FileDTO uploaded = new FileDTO(100L, "logo.png", "/file/public/100");
+        when(fileServiceClient.uploadInternal(any(), org.mockito.ArgumentMatchers.eq("brand_logo"),
+                org.mockito.ArgumentMatchers.eq("PUBLIC"), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(R.ok(uploaded));
         service.updateLogo(new MockMultipartFile("file", "logo.png", "image/png", png));
+
+        SysConfigPo logoConfig = new SysConfigPo();
+        logoConfig.setConfigValue("100");
+        when(configMapper.selectOne(any())).thenReturn(logoConfig);
+        FileBase64DTO logo = new FileBase64DTO();
+        logo.setBase64(java.util.Base64.getEncoder().encodeToString(png));
+        when(fileServiceClient.loadBase64(100L)).thenReturn(R.ok(logo));
 
         assertThat(service.getLogo()).isPresent();
         assertThat(service.getLogo().orElseThrow().contentType()).isEqualTo("image/png");

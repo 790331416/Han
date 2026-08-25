@@ -2,7 +2,7 @@ package com.han.starter.storage;
 
 import com.han.starter.storage.config.StorageConfigRepository;
 import com.han.starter.storage.config.StorageRuntimeConfig;
-import com.han.starter.storage.impl.RustFSStorageProvider;
+import com.han.starter.storage.impl.S3CompatibleStorageProvider;
 
 import java.io.InputStream;
 import java.util.Map;
@@ -56,6 +56,6 @@ public class DynamicStorageProvider implements StorageProvider {
         StorageRuntimeConfig runtimeConfig = configRepository == null
                 ? fallbackConfig
                 : configRepository.findActiveConfig().orElse(fallbackConfig);
-        return providerCache.computeIfAbsent(runtimeConfig.signature(), key -> new RustFSStorageProvider(runtimeConfig));
+        return providerCache.computeIfAbsent(runtimeConfig.signature(), key -> new S3CompatibleStorageProvider(runtimeConfig));
     }
 }

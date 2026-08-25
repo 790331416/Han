@@ -80,4 +80,12 @@ public class ASysOssConfigController {
         ossConfigService.changeStatus(ossConfigId);
         return R.ok();
     }
+
+    @RepeatSubmit
+    @PostMapping("/{ossConfigId}/test")
+    @PreAuthorize("@ss.hasAuthority('system:oss:edit')")
+    public R<Void> test(@PathVariable Long ossConfigId) {
+        ossConfigService.testConnection(ossConfigId);
+        return R.ok();
+    }
 }

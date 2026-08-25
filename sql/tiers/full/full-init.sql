@@ -1870,6 +1870,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_video_setting_tenant_global ON ai_video_projec
 CREATE TABLE sys_file (
     id              BIGINT          NOT NULL PRIMARY KEY,
     tenant_id       BIGINT,
+    school_id       BIGINT,
     file_name       VARCHAR(200)    NOT NULL,
     file_path       VARCHAR(500)    NOT NULL,
     file_url        VARCHAR(500),
@@ -1878,6 +1879,11 @@ CREATE TABLE sys_file (
     mime_type       VARCHAR(100)    DEFAULT '',
     storage_type    VARCHAR(20)     DEFAULT 'local',
     bucket          VARCHAR(100)    DEFAULT '',
+    storage_config_id BIGINT,
+    object_key      VARCHAR(500),
+    biz_type        VARCHAR(64)     DEFAULT 'general',
+    visibility      VARCHAR(16)     DEFAULT 'PRIVATE',
+    checksum        VARCHAR(128),
     md5             VARCHAR(64)     DEFAULT '',
     create_by       BIGINT,
     create_time     TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
@@ -1886,23 +1892,39 @@ CREATE TABLE sys_file (
 
 CREATE TABLE sys_oss_config (
     oss_config_id  BIGSERIAL       PRIMARY KEY,
+    tenant_id      BIGINT          NOT NULL DEFAULT 0,
     config_key     VARCHAR(100)    NOT NULL,
-    access_key     VARCHAR(500),
-    secret_key     VARCHAR(500),
-    bucket_name    VARCHAR(200),
+    config_name    VARCHAR(128),
+    provider_type  VARCHAR(32)     NOT NULL DEFAULT 'S3',
+    access_key_ciphertext VARCHAR(1024) NOT NULL,
+    secret_key_ciphertext VARCHAR(1024) NOT NULL,
+    key_version    INTEGER         NOT NULL DEFAULT 1,
+    bucket_name    VARCHAR(200)    NOT NULL,
     prefix         VARCHAR(200)    DEFAULT '',
     endpoint       VARCHAR(500),
+    public_endpoint VARCHAR(500),
     region         VARCHAR(100),
     is_https       CHAR(1)         DEFAULT '0',
+    path_style     BOOLEAN         NOT NULL DEFAULT TRUE,
     status         CHAR(1)         DEFAULT '1',
+    config_version INTEGER         NOT NULL DEFAULT 1,
     remark         VARCHAR(500),
-    tenant_id      BIGINT,
     create_by      VARCHAR(64),
     create_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     update_by      VARCHAR(64),
     update_time    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
 COMMENT ON TABLE sys_oss_config IS 'OSS存储配置';
+CREATE UNIQUE INDEX uk_sys_oss_config_tenant_key ON sys_oss_config(tenant_id, config_key);
+
+CREATE TABLE sys_storage_active (
+    tenant_id     BIGINT      NOT NULL PRIMARY KEY,
+    oss_config_id BIGINT      NOT NULL,
+    version       INTEGER     NOT NULL DEFAULT 1,
+    update_by     BIGINT,
+    update_time   TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE sys_storage_active IS '当前默认写入对象存储指针';
 
 
 -- ============================================================
@@ -1969,6 +1991,7 @@ CREATE TABLE ai_document (
     doc_name        VARCHAR(500)    NOT NULL,
     doc_type        VARCHAR(20)     DEFAULT 'txt',
     file_path       VARCHAR(1000)   DEFAULT '',
+    file_id         BIGINT,
     file_size       BIGINT          DEFAULT 0,
     char_count      BIGINT          DEFAULT 0,
     paragraph_count INTEGER         DEFAULT 0,

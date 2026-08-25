@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 -- 巴蜀云校：一账号多学校身份生产索引补充
 -- 执行人：具备 han.edu_person ALTER 权限的 DBA 账号
 -- 执行库：han（已在生产 MySQL 8.0.36 预检）

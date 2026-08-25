@@ -127,6 +127,8 @@ export function updateUserAvatar(data: { avatar: string }) {
 export function uploadUserAvatar(file: File) {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('bizType', 'avatar')
+  formData.append('visibility', 'PUBLIC')
   return post<{ id: string | number; name: string; url: string }>('/file/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })

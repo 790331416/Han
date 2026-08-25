@@ -502,6 +502,9 @@ export function sendChatMessage(data: ChatRequest) {
 export function uploadChatImage(file: File) {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('bizType', 'ai_chat_image')
+  // 兼容现有对话图片渲染：历史图片均使用公开受控路径；私有会话图片后续按临时地址单独收口。
+  formData.append('visibility', 'PUBLIC')
   return post<{ id: string | number; name: string; url: string }>('/file/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })

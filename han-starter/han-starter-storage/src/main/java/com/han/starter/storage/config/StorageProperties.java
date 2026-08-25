@@ -6,6 +6,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class StorageProperties {
 
     /**
+     * Base64 编码的 32 字节 AES-GCM 主密钥，仅允许来自受控环境变量或 Secret。
+     */
+    private String masterKey;
+
+    /**
      * 存储类型: local, rustfs, oss
      */
     private String type = "local";
@@ -21,6 +26,14 @@ public class StorageProperties {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getMasterKey() {
+        return masterKey;
+    }
+
+    public void setMasterKey(String masterKey) {
+        this.masterKey = masterKey;
     }
 
     public RustFS getRustfs() {

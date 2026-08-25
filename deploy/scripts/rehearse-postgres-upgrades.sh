@@ -71,6 +71,7 @@ UPGRADE_FILES=(
   "sql/upgrades/postgres/20260720_ai_agent_chat_tuning.sql"
   "sql/upgrades/postgres/20260720_wechat_social_login.sql"
   "sql/upgrades/postgres/20260823_open_platform_tables.sql"
+  "sql/upgrades/postgres/20260825_unified_file_storage.sql"
 )
 cleanup() {
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true

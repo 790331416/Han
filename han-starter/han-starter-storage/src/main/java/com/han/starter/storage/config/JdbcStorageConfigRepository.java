@@ -1,6 +1,7 @@
 package com.han.starter.storage.config;
 
 import com.han.common.core.context.SecurityContext;
+import com.han.common.core.util.AesGcmCipher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
@@ -12,30 +13,37 @@ import java.sql.SQLException;
 import java.util.Optional;
 
 /**
- * PostgreSQL-based storage configuration lookup.
+ * Database-backed storage configuration lookup.
  */
 @Slf4j
 public class JdbcStorageConfigRepository implements StorageConfigRepository {
 
     private static final String SELECT_COLUMNS = """
-            SELECT oss_config_id, config_key, endpoint, access_key, secret_key, bucket_name, prefix, region, is_https
-              FROM sys_oss_config
-             WHERE status = '0'
+            SELECT config.oss_config_id, config.config_key, config.endpoint, config.public_endpoint,
+                   config.access_key_ciphertext, config.secret_key_ciphertext,
+                   config.bucket_name, config.prefix, config.region, config.is_https, config.path_style
+              FROM sys_storage_active active
+              JOIN sys_oss_config config ON config.oss_config_id = active.oss_config_id
+             WHERE config.status = '0'
             """;
 
     private static final String SELECT_BY_ID = """
-            SELECT oss_config_id, config_key, endpoint, access_key, secret_key, bucket_name, prefix, region, is_https
+            SELECT oss_config_id, config_key, endpoint, public_endpoint, access_key_ciphertext, secret_key_ciphertext,
+                   bucket_name, prefix, region, is_https, path_style
               FROM sys_oss_config
-             WHERE oss_config_id = ?
+             WHERE oss_config_id = ? AND status IN ('0', '2')
              LIMIT 1
             """;
 
     private final StorageDatabaseProperties databaseProperties;
     private final SecurityContext securityContext;
+    private final String masterKey;
 
-    public JdbcStorageConfigRepository(StorageDatabaseProperties databaseProperties, SecurityContext securityContext) {
+    public JdbcStorageConfigRepository(StorageDatabaseProperties databaseProperties, SecurityContext securityContext,
+                                       String masterKey) {
         this.databaseProperties = databaseProperties;
         this.securityContext = securityContext;
+        this.masterKey = masterKey;
     }
 
     @Override
@@ -48,7 +56,7 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
         try {
             if (tenantId != null) {
                 Optional<StorageRuntimeConfig> tenantConfig = queryFirst(
-                        SELECT_COLUMNS + " AND tenant_id = ? ORDER BY update_time DESC NULLS LAST, create_time DESC NULLS LAST LIMIT 1",
+                        SELECT_COLUMNS + " AND active.tenant_id = ? LIMIT 1",
                         tenantId
                 );
                 if (tenantConfig.isPresent()) {
@@ -57,15 +65,13 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
             }
 
             Optional<StorageRuntimeConfig> globalConfig = queryFirst(
-                    SELECT_COLUMNS + " AND tenant_id IS NULL ORDER BY update_time DESC NULLS LAST, create_time DESC NULLS LAST LIMIT 1"
+                    SELECT_COLUMNS + " AND active.tenant_id = 0 LIMIT 1"
             );
             if (globalConfig.isPresent()) {
                 return globalConfig.map(this::toRecord);
             }
 
-            return queryFirst(
-                    SELECT_COLUMNS + " ORDER BY update_time DESC NULLS LAST, create_time DESC NULLS LAST LIMIT 1"
-            ).map(this::toRecord);
+            return Optional.empty();
         } catch (SQLException ex) {
             log.debug("Skipping database-backed storage config lookup: {}", ex.getMessage());
             return Optional.empty();
@@ -107,12 +113,14 @@ public class JdbcStorageConfigRepository implements StorageConfigRepository {
                         resultSet.getLong("oss_config_id"),
                         resultSet.getString("config_key"),
                         resultSet.getString("endpoint"),
-                        resultSet.getString("access_key"),
-                        resultSet.getString("secret_key"),
+                        resultSet.getString("public_endpoint"),
+                        AesGcmCipher.decrypt(masterKey, resultSet.getString("access_key_ciphertext")),
+                        AesGcmCipher.decrypt(masterKey, resultSet.getString("secret_key_ciphertext")),
                         resultSet.getString("bucket_name"),
                         normalizePrefix(resultSet.getString("prefix")),
                         firstNonBlank(resultSet.getString("region"), "us-east-1"),
-                        firstNonBlank(resultSet.getString("is_https"), "1")
+                        firstNonBlank(resultSet.getString("is_https"), "1"),
+                        resultSet.getBoolean("path_style")
                 ));
             }
         }

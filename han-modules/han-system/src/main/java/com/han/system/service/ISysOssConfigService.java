@@ -21,4 +21,6 @@ public interface ISysOssConfigService {
     void deleteById(Long ossConfigId);
 
     void changeStatus(Long ossConfigId);
+
+    void testConnection(Long ossConfigId);
 }
