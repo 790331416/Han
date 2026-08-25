@@ -5810,6 +5810,7 @@ SET version_row.openapi_json = '{
                             "description": "事件产生时间戳，毫秒字符串"
                           },
                           "params": {
+                            "type": "string",
                             "nullable": true,
                             "description": "事件附加参数；可能是下游 Result 的 JSON 字符串"
                           },
@@ -6261,4 +6262,3 @@ WHERE resource_row.resource_code = 'classroom.event.class-over'
   AND version_row.del_flag = 0;
 
 COMMIT;
-
