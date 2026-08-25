@@ -7,6 +7,7 @@ import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.ClassroomTokenCodec;
 import com.han.common.security.domain.LoginUser;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -43,10 +45,18 @@ class ClassroomTokenServiceTest {
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private SetOperations<String, String> setOperations;
 
     private ClassroomTokenService service(boolean enabled) {
         return new ClassroomTokenService(
                 loginService, systemServiceClient, redisTemplate, enabled, SECRET, 900, "2");
+    }
+
+    @BeforeEach
+    void setUp() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
     }
 
     @Test
@@ -130,6 +140,38 @@ class ClassroomTokenServiceTest {
         assertThat(keyList)
                 .as("账号级 Active Key 保留作旧版兼容索引")
                 .contains(ClassroomTokenCodec.activeKey("100"));
+    }
+
+    @Test
+    void secondClassroomTokenInvalidatesFirstToken() {
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        when(loginService.synchronize("external-token", "identity-1"))
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity(), 900L, "77"));
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        ClassroomTokenVO first = service(true).exchange("external-token", "identity-1");
+        String firstTokenId = ClassroomTokenCodec.verify(first.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).tokenId();
+        String identityKey = ClassroomTokenCodec.activeIdentityKey("100", "900");
+
+        // 第二次换证时，身份 Active Key 已指向第一张凭证。
+        when(valueOperations.get(identityKey)).thenReturn(first.accessToken());
+
+        ClassroomTokenVO second = service(true).exchange("external-token", "identity-1");
+        String secondTokenId = ClassroomTokenCodec.verify(second.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).tokenId();
+
+        assertThat(second.accessToken())
+                .as("同一身份第二次换证必须签发新凭证，而不是复用第一张")
+                .isNotEqualTo(first.accessToken());
+        verify(redisTemplate).delete(ClassroomTokenCodec.SESSION_KEY_PREFIX + firstTokenId);
+        ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+        verify(valueOperations, atLeastOnce()).set(keys.capture(), any(), any(Duration.class));
+        assertThat(keys.getAllValues())
+                .as("第二张课堂 Session Key 正常写入")
+                .contains(ClassroomTokenCodec.SESSION_KEY_PREFIX + secondTokenId);
     }
 
     @Test

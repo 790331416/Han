@@ -1,5 +1,6 @@
 package com.han.system.sdfz.compat;
 
+import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.util.ClassroomAesCodec;
 import com.han.common.core.util.ClassroomClaims;
@@ -35,6 +36,9 @@ public class LegacyTokenIssuer {
 
     /** 非教师身份请求凭证时的固定文案，便于旧侧与联调日志识别这是范围限制而非故障。 */
     public static final String STUDENT_LOGIN_UNSUPPORTED = "本期仅支持教师登录三个课堂，学生登录暂未开放";
+
+    /** 身份索引 Set 的过期时间，与 han-auth 会话索引一致（覆盖 access token 最大有效期留余量）。 */
+    private static final Duration IDENTITY_INDEX_TTL = Duration.ofDays(31);
 
     private final LegacyCompatProperties properties;
     private final StringRedisTemplate redisTemplate;
@@ -86,7 +90,19 @@ public class LegacyTokenIssuer {
         // 保证多身份账号切换身份后，旧身份的课堂凭证仍能被登出撤销到。
         redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(userId), issued.token(),
                 Duration.ofSeconds(ttlSeconds));
+        // 身份索引：只有课堂换证、没有管理端/H5 登录 Token 的身份也要能被账号级撤销枚举到。
+        registerIdentityIndex(userId, person.getId());
         return issued;
+    }
+
+    /** 把本地身份登记进账号身份索引，账号级撤销据此枚举到「只有课堂凭证」的身份。 */
+    private void registerIdentityIndex(String userId, Long identityId) {
+        if (userId == null || userId.isBlank() || identityId == null) {
+            return;
+        }
+        String identitiesKey = CacheConstants.IDENTITIES_USER_KEY + userId;
+        redisTemplate.opsForSet().add(identitiesKey, String.valueOf(identityId));
+        redisTemplate.expire(identitiesKey, IDENTITY_INDEX_TTL);
     }
 
     /**

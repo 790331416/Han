@@ -128,6 +128,23 @@ class AuthSessionRevokeTest {
     }
 
     @Test
+    void legacyLoginUserTokenIsDeletedDuringAccountRevoke() {
+        Long userId = 9L;
+        when(setOperations.members(CacheConstants.SESSION_USER_KEY + userId)).thenReturn(Set.of());
+        when(setOperations.members(CacheConstants.IDENTITIES_USER_KEY + userId)).thenReturn(Set.of());
+        String legacyKey = CacheConstants.LOGIN_USER_KEY + userId + ":" + ClientType.PC.getCode();
+        // 部署前签发、未进新会话 Set 的旧 access token 只存在于 login_user 旧索引里。
+        when(valueOperations.get(legacyKey)).thenReturn("legacy-token");
+
+        authService.revokeSession(userId, null);
+
+        // 账号级撤销通过遍历 ClientType 的 login_user 旧索引把旧 access token 一并删除。
+        verify(redisTemplate).delete(CacheConstants.TOKEN_KEY + "legacy-token");
+        verify(redisTemplate).delete(CacheConstants.ONLINE_KEY + "legacy-token");
+        verify(redisTemplate).delete(legacyKey);
+    }
+
+    @Test
     void logoutOnlyDeletesCurrentToken() {
         String token = "token-current";
         LoginUser loginUser = LoginUser.builder().userId(9L).tenantId(1L).username("admin")

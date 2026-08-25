@@ -24,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -64,6 +65,8 @@ class LegacyClassroomIdentityTest {
     @Mock
     private ValueOperations<String, String> valueOperations;
     @Mock
+    private SetOperations<String, String> setOperations;
+    @Mock
     private EduPersonMapper personMapper;
 
     /** 用内存 map 当 Redis：键的生灭是身份隔离用例的判定依据，不能用 mock 糊过去。 */
@@ -78,6 +81,7 @@ class LegacyClassroomIdentityTest {
     @BeforeEach
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         doAnswer(inv -> {
             store.put(inv.getArgument(0), inv.getArgument(1));
             keys.add(inv.getArgument(0));

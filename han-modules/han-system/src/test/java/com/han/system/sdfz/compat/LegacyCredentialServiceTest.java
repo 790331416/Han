@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -42,6 +43,8 @@ class LegacyCredentialServiceTest {
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private SetOperations<String, String> setOperations;
 
     private LegacyCompatProperties properties;
     private LegacyTokenIssuer tokenIssuer;
@@ -57,6 +60,7 @@ class LegacyCredentialServiceTest {
         properties.setAnonymousIv(ANONYMOUS_IV);
         properties.setCaptchaEnabled(false);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         when(redisTemplate.hasKey(anyString())).thenReturn(true);
         tokenIssuer = new LegacyTokenIssuer(properties, redisTemplate);
         service = new LegacyCredentialService(properties, directoryService, tokenIssuer, redisTemplate,

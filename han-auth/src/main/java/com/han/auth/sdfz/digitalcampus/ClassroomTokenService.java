@@ -3,6 +3,7 @@ package com.han.auth.sdfz.digitalcampus;
 import com.han.api.system.SystemServiceClient;
 import com.han.api.system.domain.ClassroomIdentityVO;
 import com.han.api.system.domain.UserVO;
+import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.constant.Constants;
 import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
@@ -49,6 +50,9 @@ public class ClassroomTokenService {
     private final String secret;
     private final long ttlSeconds;
     private final Set<String> loginRoleTypes;
+
+    /** 身份索引 Set 的过期时间，与 han-auth 会话索引一致（覆盖 access token 最大有效期留余量）。 */
+    private static final Duration IDENTITY_INDEX_TTL = Duration.ofDays(31);
 
     public ClassroomTokenService(
             DigitalCampusLoginService loginService,
@@ -172,7 +176,11 @@ public class ClassroomTokenService {
         DigitalCampusProfile.Identity identity = synchronizedIdentity.identity();
         Map<String, Object> claims = claims(hanUser, identity,
                 synchronizedIdentity.localIdentityId(), synchronizedIdentity.localSchoolId());
-        return sign(claims, hanUser.getUserId(), synchronizedIdentity.localIdentityId());
+        ClassroomTokenVO token = sign(claims, hanUser.getUserId(), synchronizedIdentity.localIdentityId());
+        // 数字校园通路没有 Han 登录 Token，只有课堂凭证；把本地身份登记进账号身份索引，
+        // 账号级撤销才能枚举到这个「只有课堂凭证」的身份并作废其课堂 Active/Session Key。
+        registerIdentityIndex(hanUser.getUserId(), synchronizedIdentity.localIdentityId());
+        return token;
     }
 
     private ClassroomTokenVO sign(Map<String, Object> claims, Long hanUserId, Long localIdentityId) {
@@ -194,17 +202,49 @@ public class ClassroomTokenService {
         // LegacyTokenIssuer 同一键规则，避免身份 A 的凭证被复用到身份 B、claims 里的
         // identityId 与实际身份错位。
         if (localIdentityId != null) {
-            redisTemplate.opsForValue().set(
-                    ClassroomTokenCodec.activeIdentityKey(
-                            String.valueOf(hanUserId), String.valueOf(localIdentityId)),
-                    token,
-                    Duration.ofSeconds(ttlSeconds));
+            String activeIdentityKey = ClassroomTokenCodec.activeIdentityKey(
+                    String.valueOf(hanUserId), String.valueOf(localIdentityId));
+            // 同一身份换发新凭证前，先作废上一张课堂凭证的会话键：只覆盖 Active Key
+            // 而不删旧 Session Key 的话，旧课堂 Token 在 TTL 内依然有效，撤销/换证会漏。
+            String previousToken = redisTemplate.opsForValue().get(activeIdentityKey);
+            if (previousToken != null && !previousToken.isBlank() && !previousToken.equals(token)) {
+                String previousTokenId = classroomTokenId(previousToken);
+                if (previousTokenId != null) {
+                    redisTemplate.delete(ClassroomTokenCodec.SESSION_KEY_PREFIX + previousTokenId);
+                }
+            }
+            redisTemplate.opsForValue().set(activeIdentityKey, token, Duration.ofSeconds(ttlSeconds));
         }
         // 账号级 Active Key 仅作旧版兼容索引：登出撤销链（AuthServiceImpl）按 hanUserId 粒度读它
         // 定位当前凭证；不写这里登出/切换身份后撤销不到课堂凭证。隔离依据是上面的身份级 Key。
         redisTemplate.opsForValue().set(ClassroomTokenCodec.activeKey(String.valueOf(hanUserId)), token,
                 Duration.ofSeconds(ttlSeconds));
         return new ClassroomTokenVO(token, ttlSeconds);
+    }
+
+    /** 把本地身份登记进账号身份索引，账号级撤销据此枚举到「只有课堂凭证」的身份。 */
+    private void registerIdentityIndex(Long hanUserId, Long localIdentityId) {
+        if (hanUserId == null || localIdentityId == null) {
+            return;
+        }
+        String identitiesKey = CacheConstants.IDENTITIES_USER_KEY + hanUserId;
+        redisTemplate.opsForSet().add(identitiesKey, String.valueOf(localIdentityId));
+        redisTemplate.expire(identitiesKey, IDENTITY_INDEX_TTL);
+    }
+
+    /** 只读 payload 里的 jti，不验签：撤销场景，拿不准就多删一个键，不存在误放行风险。 */
+    private static String classroomTokenId(String token) {
+        try {
+            String[] parts = token.split("\\.", -1);
+            if (parts.length != 3) {
+                return null;
+            }
+            String json = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            Object jti = HanJsonUtil.parseMap(json).get("jti");
+            return jti instanceof String text && !text.isBlank() ? text : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private Map<String, Object> claims(UserVO hanUser, DigitalCampusProfile.Identity identity,

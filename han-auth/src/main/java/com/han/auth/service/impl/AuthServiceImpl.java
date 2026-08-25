@@ -692,8 +692,16 @@ public class AuthServiceImpl implements IAuthService {
             redisTemplate.delete(CacheConstants.TOKEN_KEY + accessToken);
             redisTemplate.delete(CacheConstants.ONLINE_KEY + accessToken);
         }
+        // 旧索引兜底：部署前签发的 token 可能未进新会话 Set，遍历全部 ClientType 读
+        // login_user:{userId}:{clientType} 指向的 accessToken 一并删除，避免漏撤旧 Token。
         for (ClientType clientType : ClientType.values()) {
-            redisTemplate.delete(CacheConstants.LOGIN_USER_KEY + userId + ":" + clientType.getCode());
+            String userKey = CacheConstants.LOGIN_USER_KEY + userId + ":" + clientType.getCode();
+            String accessToken = redisTemplate.opsForValue().get(userKey);
+            if (XuStrUtil.isNotBlank(accessToken)) {
+                redisTemplate.delete(CacheConstants.TOKEN_KEY + accessToken);
+                redisTemplate.delete(CacheConstants.ONLINE_KEY + accessToken);
+            }
+            redisTemplate.delete(userKey);
         }
         String identities = userIdentitiesKey(userId);
         for (String identityId : sessionMembers(identities)) {

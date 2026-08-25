@@ -1,5 +1,6 @@
 package com.han.system.sdfz.compat;
 
+import com.han.common.core.constant.CacheConstants;
 import com.han.common.core.util.ClassroomTokenCodec;
 import com.han.system.sdfz.education.domain.EduPersonPo;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -22,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -43,6 +46,8 @@ class LegacyTokenIssuerIdempotencyTest {
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private SetOperations<String, String> setOperations;
 
     /** 用内存 map 当 Redis：键的生灭是这批用例的判定依据，不能用 mock 糊过去。 */
     private final Map<String, String> store = new HashMap<>();
@@ -59,6 +64,7 @@ class LegacyTokenIssuerIdempotencyTest {
         properties.setTokenTtlSeconds(3600L);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         doAnswer(inv -> {
             store.put(inv.getArgument(0), inv.getArgument(1));
             keys.add(inv.getArgument(0));
@@ -115,6 +121,14 @@ class LegacyTokenIssuerIdempotencyTest {
         assertThat(second.token())
                 .as("会话已被撤销就必须重新签发，不能把作废的凭证再发一遍")
                 .isNotEqualTo(first.token());
+    }
+
+    @Test
+    void issueRegistersIdentityIndexForAccountRevoke() {
+        issuer.issueSession(teacher());
+
+        // 只有课堂换证、没有管理端/H5 登录 Token 的身份也要能被账号级撤销枚举到。
+        verify(setOperations).add(CacheConstants.IDENTITIES_USER_KEY + "900002", "900001");
     }
 
     @Test

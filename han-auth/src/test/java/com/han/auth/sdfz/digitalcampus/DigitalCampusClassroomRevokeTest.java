@@ -75,6 +75,53 @@ class DigitalCampusClassroomRevokeTest {
         verify(redisTemplate).delete(ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId);
     }
 
+    @Test
+    void accountRevokeFindsIdentityCreatedOnlyByClassroomExchange() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+        @SuppressWarnings("unchecked")
+        SetOperations<String, String> setOperations = mock(SetOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+
+        // 只有课堂换证写入的身份索引，没有管理端/H5 登录 Token。
+        DigitalCampusLoginService loginService = mock(DigitalCampusLoginService.class);
+        UserVO user = new UserVO();
+        user.setUserId(100L);
+        user.setStatus(0);
+        when(loginService.synchronize("external-token", "identity-1"))
+                .thenReturn(new DigitalCampusLoginService.SynchronizedIdentity(user, identity(), 900L, "77"));
+        ClassroomTokenService tokenService = new ClassroomTokenService(
+                loginService, mock(SystemServiceClient.class), redisTemplate, true, SECRET, 900, "2");
+        ClassroomTokenVO issued = tokenService.exchange("external-token", "identity-1");
+        String tokenId = ClassroomTokenCodec.verify(issued.accessToken(), SECRET,
+                Instant.now().getEpochSecond()).tokenId();
+
+        // 课堂换证把 identityId=900 写入了账号身份索引 Set。
+        String identitiesKey = CacheConstants.IDENTITIES_USER_KEY + 100L;
+        verify(setOperations).add(identitiesKey, "900");
+
+        // 账号级撤销：user 会话 Set 为空，身份索引 Set 只含课堂换证写入的 900。
+        when(setOperations.members(CacheConstants.SESSION_USER_KEY + 100L)).thenReturn(Set.of());
+        when(setOperations.members(identitiesKey)).thenReturn(Set.of("900"));
+        String identityKey = ClassroomTokenCodec.activeIdentityKey("100", "900");
+        when(valueOperations.get(identityKey)).thenReturn(issued.accessToken());
+
+        AuthServiceImpl authService = new AuthServiceImpl(
+                redisTemplate,
+                mock(SystemServiceClient.class),
+                mock(TenantServiceClient.class),
+                new SecurityProperties(),
+                mock(TotpService.class),
+                mock(CaptchaSettingService.class));
+        authService.revokeSession(100L, null);
+
+        // 身份课堂 Active/Session Key 被账号级撤销枚举并作废。
+        verify(redisTemplate).delete(identityKey);
+        verify(redisTemplate).delete(ClassroomTokenCodec.SESSION_KEY_PREFIX + tokenId);
+    }
+
     private static DigitalCampusProfile.Identity identity() {
         return new DigitalCampusProfile.Identity(
                 "external-user-1", "Teacher One", "identity-1", "Teacher", "2",
