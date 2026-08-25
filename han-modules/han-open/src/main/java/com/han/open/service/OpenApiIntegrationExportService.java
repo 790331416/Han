@@ -692,7 +692,7 @@ public class OpenApiIntegrationExportService {
                 - python python/demo.py
                 - node node/demo.mjs
                 - javac java/OpenPlatformDemo.java && java -cp java OpenPlatformDemo
-                - cd go && go run .
+                - go run go/main.go
 
                 控制类接口不会自动批量运行，请使用隔离测试数据逐条执行。
                 """;
