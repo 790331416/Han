@@ -123,6 +123,15 @@ export function updateUserAvatar(data: { avatar: string }) {
   return post<void>('/system/user/profile/avatar', data)
 }
 
+/** 上传个人头像，保存时只使用文件服务返回的受控访问地址。 */
+export function uploadUserAvatar(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post<{ id: string | number; name: string; url: string }>('/file/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
 // ==================== 导入导出 ====================
 
 // 导出用户

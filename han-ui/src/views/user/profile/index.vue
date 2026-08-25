@@ -10,7 +10,7 @@
           <div class="user-info-card">
             <div class="avatar-section">
               <el-avatar :size="100" :src="userInfo.avatar || defaultAvatar" />
-              <el-button type="primary" link class="change-avatar-btn" @click="showAvatarDialog = true">
+              <el-button type="primary" link class="change-avatar-btn" @click="openAvatarDialog">
                 修改头像
               </el-button>
             </div>
@@ -152,12 +152,15 @@
     <!-- 修改头像对话框 -->
     <el-dialog v-model="showAvatarDialog" title="修改头像" width="40%" class="dialog-sm" destroy-on-close>
       <el-form label-width="80px">
-        <el-form-item label="头像地址">
-          <el-input v-model="avatarUrl" placeholder="请输入头像URL地址" />
+        <el-form-item label="头像图片">
+          <el-upload :auto-upload="false" :show-file-list="false" accept=".png,.jpg,.jpeg,.webp" :on-change="handleAvatarChange">
+            <el-button>选择图片</el-button>
+            <template #tip><div class="el-upload__tip">支持 PNG、JPG、WebP，文件不超过 2MB。</div></template>
+          </el-upload>
         </el-form-item>
-        <div class="avatar-preview" v-if="avatarUrl">
+        <div class="avatar-preview">
           <span class="label">预览：</span>
-          <el-avatar :size="80" :src="avatarUrl" />
+          <el-avatar :size="80" :src="avatarUrl || defaultAvatar" />
         </div>
       </el-form>
       <template #footer>
@@ -169,14 +172,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onBeforeUnmount, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, Iphone, Message, OfficeBuilding, Calendar } from '@element-plus/icons-vue'
-import { getUserProfile, updateUserProfile, updateUserPassword, updateUserAvatar } from '@/api/system/user'
+import { getUserProfile, updateUserProfile, updateUserPassword, updateUserAvatar, uploadUserAvatar } from '@/api/system/user'
 import { getTotpStatus, getTotpSetup, bindTotp, unbindTotp } from '@/api/system/totp'
 import { useUserStore } from '@/stores/user'
 import { useRoute } from 'vue-router'
-import type { FormInstance, FormRules } from 'element-plus'
+import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 
 const userStore = useUserStore()
 const route = useRoute()
@@ -188,6 +191,8 @@ const pwdLoading = ref(false)
 const avatarLoading = ref(false)
 const showAvatarDialog = ref(false)
 const avatarUrl = ref('')
+const avatarFile = ref<File | null>(null)
+let avatarObjectUrl = ''
 
 const infoFormRef = ref<FormInstance>()
 const pwdFormRef = ref<FormInstance>()
@@ -328,15 +333,42 @@ const resetPwdForm = () => {
   pwdFormRef.value?.resetFields()
 }
 
+function openAvatarDialog() {
+  avatarFile.value = null
+  avatarUrl.value = userInfo.avatar || ''
+  showAvatarDialog.value = true
+}
+
+function handleAvatarChange(uploadFile: UploadFile) {
+  const file = uploadFile.raw
+  if (!file) return
+  const validType = ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)
+  if (!validType) {
+    ElMessage.warning('头像仅支持 PNG、JPG 或 WebP 格式')
+    return
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    ElMessage.warning('头像文件不能超过 2MB')
+    return
+  }
+  if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl)
+  avatarObjectUrl = URL.createObjectURL(file)
+  avatarFile.value = file
+  avatarUrl.value = avatarObjectUrl
+}
+
 // 修改头像
 const handleUpdateAvatar = async () => {
-  if (!avatarUrl.value) {
-    ElMessage.warning('请输入头像地址')
+  if (!avatarFile.value) {
+    ElMessage.warning('请选择头像图片')
     return
   }
   avatarLoading.value = true
   try {
-    await updateUserAvatar({ avatar: avatarUrl.value })
+    const uploaded = await uploadUserAvatar(avatarFile.value)
+    const uploadedUrl = uploaded.data?.url
+    if (!uploadedUrl) throw new Error('头像上传失败')
+    await updateUserAvatar({ avatar: uploadedUrl })
     ElMessage.success('头像修改成功')
     showAvatarDialog.value = false
     await loadProfile()
@@ -421,6 +453,7 @@ onMounted(() => {
   loadProfile()
   loadTotpStatus()
 })
+onBeforeUnmount(() => { if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl) })
 </script>
 
 <style lang="scss" scoped>
