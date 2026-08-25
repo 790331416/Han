@@ -482,7 +482,17 @@ public class OpenApiIntegrationExportService {
     }
 
     private ArrayNode testEvents() {
-        return event("test", "pm.test('HTTP status is 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));");
+        return event("test", """
+                pm.test('HTTP status is 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));
+                let payload = null;
+                try { payload = pm.response.json(); } catch (ignored) {}
+                if (payload && Object.prototype.hasOwnProperty.call(payload, 'success')) {
+                  pm.test('Business success is true', () => pm.expect(payload.success).to.eql(true));
+                }
+                if (payload && Object.prototype.hasOwnProperty.call(payload, 'code')) {
+                  pm.test('Business code is 200', () => pm.expect(String(payload.code)).to.eql('200'));
+                }
+                """);
     }
 
     private ArrayNode event(String listen, String script) {

@@ -71,7 +71,8 @@ class OpenApiIntegrationExportServiceTest {
 
         String collection = new String(export.postmanCollectionJson(), StandardCharsets.UTF_8);
         String environment = new String(export.postmanEnvironmentJson(), StandardCharsets.UTF_8);
-        assertThat(collection).contains("pm.sendRequest", "/open/oauth2/token", "{{accessToken}}", "roomId=room-001")
+        assertThat(collection).contains("pm.sendRequest", "/open/oauth2/token", "{{accessToken}}",
+                        "roomId=room-001", "Business code is 200")
                 .doesNotContain("must-not-leak");
         assertThat(environment).contains("\"clientSecret\"").doesNotContain("must-not-leak");
 
