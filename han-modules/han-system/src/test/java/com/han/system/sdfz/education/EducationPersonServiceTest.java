@@ -1,6 +1,8 @@
 package com.han.system.sdfz.education;
 
 import com.han.api.system.AuthServiceClient;
+import com.han.api.system.domain.SessionRevokeRequest;
+import com.han.common.core.domain.R;
 import com.han.common.core.exception.BusinessException;
 import com.han.common.core.exception.ConflictException;
 import com.han.common.core.exception.ForbiddenException;
@@ -83,6 +85,7 @@ class EducationPersonServiceTest {
     void setUp() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(1L).build());
         lenient().when(dataScopeService.current()).thenReturn(EducationDataScopeService.Scope.tenantWide());
+        lenient().when(authServiceClient.revokeSession(any(SessionRevokeRequest.class))).thenReturn(R.ok());
         service = new EducationPersonService(personMapper, personClassMapper, personSubjectMapper,
                 schoolMapper, classMapper, subjectMapper, userMapper, userRoleMapper, roleMapper, dictDataMapper,
                 dataScopeService, accountIdentityService, authServiceClient);
