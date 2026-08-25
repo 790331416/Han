@@ -76,6 +76,27 @@ class AuthFilterTest {
     }
 
     @Test
+    void allowsOnlyPostIdentitySelectForTheOneTimeLoginTicket() {
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        MockServerWebExchange select = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/auth/identity/select").build());
+        filter.filter(select, chain).block();
+        verify(chain).filter(any());
+
+        MockServerWebExchange wrongMethod = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/auth/identity/select").build());
+        filter.filter(wrongMethod, chain).block();
+        assertThat(wrongMethod.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        MockServerWebExchange adjacentPath = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/auth/identity/select/extra").build());
+        filter.filter(adjacentPath, chain).block();
+        assertThat(adjacentPath.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void recordsRecentActivityForAValidatedToken() {
         GatewayFilterChain chain = mock(GatewayFilterChain.class);
         when(chain.filter(any())).thenReturn(Mono.empty());

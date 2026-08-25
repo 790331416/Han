@@ -108,7 +108,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
         String path = sanitizedRequest.getURI().getPath();
 
         if (isPublicBrandRead(sanitizedRequest) || isWhitelist(path)
-                || isPublicVendorAuthRequest(sanitizedRequest)) {
+                || isPublicVendorAuthRequest(sanitizedRequest)
+                || isIdentitySelectRequest(sanitizedRequest)) {
             return chain.filter(exchange.mutate().request(sanitizedRequest).build());
         }
 
@@ -184,6 +185,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
         }
         return HttpMethod.GET.equals(request.getMethod())
                 && "/auth/vendor/application/status".equals(path);
+    }
+
+    /** 多学校登录使用一次性票据，尚未持有 Han Token；只允许精确 POST 路径。 */
+    private boolean isIdentitySelectRequest(ServerHttpRequest request) {
+        return HttpMethod.POST.equals(request.getMethod())
+                && "/auth/identity/select".equals(request.getURI().getPath());
     }
 
     private String getToken(ServerHttpRequest request) {
