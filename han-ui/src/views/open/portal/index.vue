@@ -171,8 +171,8 @@
               <el-button type="primary" :icon="Download">导出对接文档<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="zip">完整对接包（推荐）</el-dropdown-item>
-                  <el-dropdown-item command="openapi">OpenAPI 3.0（Apifox / ApiPost）</el-dropdown-item>
+                  <el-dropdown-item command="zip">完整对接包（文档 + 五语言 Demo）</el-dropdown-item>
+                  <el-dropdown-item command="openapi">OpenAPI 3.0 最新通用版</el-dropdown-item>
                   <el-dropdown-item command="postman">Postman Collection v2.1</el-dropdown-item>
                   <el-dropdown-item command="environment">Postman 环境模板</el-dropdown-item>
                 </el-dropdown-menu>

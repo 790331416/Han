@@ -61,9 +61,9 @@ public class OpenApiIntegrationExportService {
         byte[] openApiBytes = json(openApi);
         byte[] collectionBytes = json(collection);
         byte[] environmentBytes = json(environment);
-        byte[] readmeBytes = readme(baseUrl).getBytes(StandardCharsets.UTF_8);
+        byte[] readmeBytes = readme(baseUrl, documents.size()).getBytes(StandardCharsets.UTF_8);
         return new OpenApiIntegrationExportDTO(openApiBytes, collectionBytes, environmentBytes, readmeBytes,
-                zip(openApiBytes, collectionBytes, environmentBytes, readmeBytes));
+                zip(baseUrl, documents, openApiBytes, collectionBytes, environmentBytes, readmeBytes));
     }
 
     String normalizeBaseUrl(String value) {
@@ -529,12 +529,26 @@ public class OpenApiIntegrationExportService {
         variable.put("enabled", true);
     }
 
-    private byte[] zip(byte[] openApi, byte[] collection, byte[] environment, byte[] readme) {
+    private byte[] zip(String baseUrl, List<ResourceDocument> documents, byte[] openApi,
+                       byte[] collection, byte[] environment, byte[] readme) {
         try (ByteArrayOutputStream output = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             writeZipEntry(zip, "openapi.json", openApi);
             writeZipEntry(zip, "lubashu-open-platform.postman_collection.json", collection);
             writeZipEntry(zip, "lubashu-open-platform.postman_environment.json", environment);
             writeZipEntry(zip, "README.md", readme);
+            writeZipEntry(zip, "docs/鉴权与密钥使用说明.md", authGuide(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "docs/完整接口参考.md", apiReference(documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "docs/接口清单.csv", endpointCsv(documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/README.md", demoGuide().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/demo.env.example", demoEnvironment(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/curl/demo.sh", curlDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/python/demo.py", pythonDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/node/demo.mjs", nodeDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/java/OpenPlatformDemo.java", javaDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, "demos/go/main.go", goDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            for (ResourceDocument document : documents) {
+                writeExamples(zip, document);
+            }
             zip.finish();
             return output.toByteArray();
         } catch (IOException ex) {
@@ -548,22 +562,321 @@ public class OpenApiIntegrationExportService {
         zip.closeEntry();
     }
 
-    private String readme(String baseUrl) {
+    private String readme(String baseUrl, int apiCount) {
         return """
-                # 鲁巴教育开放平台对接包
+                 # 鲁巴教育开放平台对接包
 
-                - `openapi.json`：公开 OpenAPI 3.0.3 文档，不含任何应用密钥，可导入 Apifox、ApiPost、Postman。
+                本包包含 %d 个当前已启用、已发布接口。每个接口仅保留最新发布版本。
+
+                - `openapi.json`：唯一的 OpenAPI 3.0.3 最新通用版，不含应用密钥，可导入 Apifox、ApiPost、Postman。
                 - `*.postman_collection.json`：Postman Collection v2.1，包含获取和缓存 Access Token 的集合级脚本。
                 - `*.postman_environment.json`：环境模板，`clientId` 和 `clientSecret` 故意留空。
+                - `docs/`：Key/Secret 使用说明、完整接口参考和 CSV 接口清单。
+                - `examples/`：每个接口的请求、成功响应和错误响应实例。
+                - `demos/`：cURL、Python、Node.js、Java、Go 五种可运行 Demo。
 
-                ## 直接调测
+                 ## 直接调测
 
                 1. 导入 Collection 和 Environment，并选中该环境。
                 2. 填写同一应用、同一环境的 `clientId` / `clientSecret`。
                 3. 运行已授权的接口；脚本会调用 `%s/open/oauth2/token` 换取 Bearer Token。
 
-                公开文档不需要密钥，真实接口调用必须使用已开通对应 Scope 的应用凭证。
+                 公开文档不需要密钥，真实接口调用必须使用已开通对应 Scope 的应用凭证。
+                """.formatted(apiCount, baseUrl);
+    }
+
+    private String authGuide(String baseUrl) {
+        return """
+                # 鉴权与 Key/Secret 使用说明
+
+                ## 凭证含义
+
+                - Client ID：开放平台凭证页显示的 Key/客户端标识。
+                - Client Secret：客户端密钥，只在生成或轮换时显示一次。
+                - Access Token：使用 Client ID/Secret 临时换取，调用接口时放入 Authorization: Bearer TOKEN。
+                - Scope：每个接口所需权限，详见完整接口参考或 openapi.json。
+
+                沙箱和生产凭证不能混用。Secret 遗失后无法找回，只能在凭证管理中轮换。
+
+                ## 获取 Access Token
+
+                    curl -X POST '%s/open/oauth2/token' \
+                      -H 'Content-Type: application/x-www-form-urlencoded' \
+                      --data-urlencode 'grant_type=client_credentials' \
+                      --data-urlencode 'client_id=YOUR_CLIENT_ID' \
+                      --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' \
+                      --data-urlencode 'scope=接口要求的Scope'
+
+                成功响应中的 access_token 是临时令牌，expires_in 是有效秒数。
+
+                ## 调用接口
+
+                    curl '%s/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo?appId=com.example.video&versionCode=1' \
+                      -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+
+                HTTP 2xx 不等于业务成功；兼容接口还必须检查 success=true 和 code=200。
+                Secret 不得写入前端、Git、URL、日志或公开文档。
+                """.formatted(baseUrl, baseUrl);
+    }
+
+    private String apiReference(List<ResourceDocument> documents) {
+        StringBuilder result = new StringBuilder("# 完整接口参考\n\n")
+                .append("本文件列出当前已启用、已发布接口；完整字段约束以同包 openapi.json 为准。\n\n")
+                .append("| 接口编码 | 名称 | 方法 | 路径 | Scope | 最新版本 |\n")
+                .append("|---|---|---|---|---|---|\n");
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            result.append("| ").append(markdown(resource.getResourceCode())).append(" | ")
+                    .append(markdown(resource.getResourceName())).append(" | ")
+                    .append(markdown(resource.getHttpMethod())).append(" | ")
+                    .append(markdown(resource.getPath())).append(" | ")
+                    .append(markdown(resource.getScopeCode())).append(" | ")
+                    .append(markdown(document.version().getVersion())).append(" |\n");
+        }
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            result.append("\n## ").append(resource.getResourceName()).append("\n\n")
+                    .append("- 编码：").append(resource.getResourceCode()).append("\n")
+                    .append("- 请求：").append(resource.getHttpMethod()).append(' ').append(resource.getPath()).append("\n")
+                    .append("- Scope：").append(resource.getScopeCode()).append("\n")
+                    .append("- 最新版本：").append(defaultText(document.version().getVersion(), "-")).append("\n")
+                    .append("- 说明：").append(defaultText(resource.getDescription(), "-")).append("\n\n")
+                    .append("请求实例：\n\n").append(pretty(redactPayload(parse(document.version().getRequestExampleJson()))))
+                    .append("\n\n成功响应实例：\n\n").append(pretty(redactPayload(parse(document.version().getResponseExamplesJson()))))
+                    .append("\n\n错误响应实例：\n\n").append(pretty(redactPayload(parse(document.version().getErrorExamplesJson()))))
+                    .append("\n");
+        }
+        return result.toString();
+    }
+
+    private String endpointCsv(List<ResourceDocument> documents) {
+        StringBuilder result = new StringBuilder("\uFEFFresourceCode,name,category,method,path,scope,latestVersion\r\n");
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            result.append(csv(resource.getResourceCode())).append(',')
+                    .append(csv(resource.getResourceName())).append(',')
+                    .append(csv(resource.getCategory())).append(',')
+                    .append(csv(resource.getHttpMethod())).append(',')
+                    .append(csv(resource.getPath())).append(',')
+                    .append(csv(resource.getScopeCode())).append(',')
+                    .append(csv(document.version().getVersion())).append("\r\n");
+        }
+        return result.toString();
+    }
+
+    private void writeExamples(ZipOutputStream zip, ResourceDocument document) throws IOException {
+        String name = safeFilename(document.resource().getResourceCode());
+        writeZipEntry(zip, "examples/" + name + ".request.json", jsonExample(document.version().getRequestExampleJson()));
+        writeZipEntry(zip, "examples/" + name + ".response.json", jsonExample(document.version().getResponseExamplesJson()));
+        writeZipEntry(zip, "examples/" + name + ".errors.json", jsonExample(document.version().getErrorExamplesJson()));
+    }
+
+    private byte[] jsonExample(String value) {
+        JsonNode node = redactPayload(parse(value));
+        return json(node == null ? objectMapper.createObjectNode() : node);
+    }
+
+    private String demoGuide() {
+        return """
+                # 多语言 Demo
+
+                五个 Demo 都只使用语言标准库，通过环境变量读取凭证，默认调用“查询应用升级信息”只读接口。
+                调用其他接口时，从 docs/接口清单.csv 复制 Method、Path、Scope，并按 examples 目录填写 Query 或 Body。
+
+                必填变量：OPEN_PLATFORM_CLIENT_ID、OPEN_PLATFORM_CLIENT_SECRET。
+                可选变量：OPEN_PLATFORM_BASE_URL、OPEN_PLATFORM_METHOD、OPEN_PLATFORM_PATH、
+                OPEN_PLATFORM_SCOPE、OPEN_PLATFORM_QUERY、OPEN_PLATFORM_BODY。
+
+                运行：
+                - sh curl/demo.sh
+                - python python/demo.py
+                - node node/demo.mjs
+                - javac java/OpenPlatformDemo.java && java -cp java OpenPlatformDemo
+                - cd go && go run .
+
+                控制类接口不会自动批量运行，请使用隔离测试数据逐条执行。
+                """;
+    }
+
+    private String demoEnvironment(String baseUrl) {
+        return """
+                OPEN_PLATFORM_BASE_URL=%s
+                OPEN_PLATFORM_CLIENT_ID=
+                OPEN_PLATFORM_CLIENT_SECRET=
+                OPEN_PLATFORM_METHOD=GET
+                OPEN_PLATFORM_PATH=/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo
+                OPEN_PLATFORM_SCOPE=classroom.app.read
+                OPEN_PLATFORM_QUERY=appId=com.example.video&versionCode=1
+                OPEN_PLATFORM_BODY=
                 """.formatted(baseUrl);
+    }
+
+    private String curlDemo(String baseUrl) {
+        return """
+                #!/usr/bin/env sh
+                set -eu
+                : "${OPEN_PLATFORM_CLIENT_ID:?Please set OPEN_PLATFORM_CLIENT_ID}"
+                : "${OPEN_PLATFORM_CLIENT_SECRET:?Please set OPEN_PLATFORM_CLIENT_SECRET}"
+                base_url="${OPEN_PLATFORM_BASE_URL:-@@BASE_URL@@}"
+                method="${OPEN_PLATFORM_METHOD:-GET}"
+                path="${OPEN_PLATFORM_PATH:-/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo}"
+                scope="${OPEN_PLATFORM_SCOPE:-classroom.app.read}"
+                query="${OPEN_PLATFORM_QUERY:-appId=com.example.video&versionCode=1}"
+                body="${OPEN_PLATFORM_BODY:-}"
+                token_json="$(curl -fsS -X POST "$base_url/open/oauth2/token" \
+                  -H 'Content-Type: application/x-www-form-urlencoded' \
+                  --data-urlencode 'grant_type=client_credentials' \
+                  --data-urlencode "client_id=$OPEN_PLATFORM_CLIENT_ID" \
+                  --data-urlencode "client_secret=$OPEN_PLATFORM_CLIENT_SECRET" \
+                  --data-urlencode "scope=$scope")"
+                token="$(printf '%s' "$token_json" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
+                test -n "$token"
+                url="$base_url$path"
+                test -z "$query" || url="$url?$query"
+                if [ -n "$body" ]; then
+                  curl -fsS -X "$method" "$url" -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$body"
+                else
+                  curl -fsS -X "$method" "$url" -H "Authorization: Bearer $token"
+                fi
+                """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String pythonDemo(String baseUrl) {
+        return """
+                import json, os, urllib.parse, urllib.request
+
+                base = os.getenv("OPEN_PLATFORM_BASE_URL", "@@BASE_URL@@").rstrip("/")
+                token_data = urllib.parse.urlencode({
+                    "grant_type": "client_credentials",
+                    "client_id": os.environ["OPEN_PLATFORM_CLIENT_ID"],
+                    "client_secret": os.environ["OPEN_PLATFORM_CLIENT_SECRET"],
+                    "scope": os.getenv("OPEN_PLATFORM_SCOPE", "classroom.app.read")
+                }).encode()
+                request = urllib.request.Request(base + "/open/oauth2/token", token_data,
+                    {"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+                with urllib.request.urlopen(request) as response:
+                    token = json.load(response)["access_token"]
+                method = os.getenv("OPEN_PLATFORM_METHOD", "GET")
+                path = os.getenv("OPEN_PLATFORM_PATH", "/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo")
+                query = os.getenv("OPEN_PLATFORM_QUERY", "appId=com.example.video&versionCode=1")
+                body = os.getenv("OPEN_PLATFORM_BODY", "")
+                url = base + path + (("?" + query) if query else "")
+                headers = {"Authorization": "Bearer " + token}
+                if body: headers["Content-Type"] = "application/json"
+                api_request = urllib.request.Request(url, body.encode() if body else None, headers, method=method)
+                with urllib.request.urlopen(api_request) as response: payload = json.load(response)
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                if "success" in payload and (payload["success"] is not True or str(payload.get("code")) != "200"):
+                    raise SystemExit("business request failed")
+                """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String nodeDemo(String baseUrl) {
+        return """
+                const env = process.env;
+                const base = (env.OPEN_PLATFORM_BASE_URL || '@@BASE_URL@@').replace(/\\/$/, '');
+                if (!env.OPEN_PLATFORM_CLIENT_ID || !env.OPEN_PLATFORM_CLIENT_SECRET) throw new Error('Missing Client ID/Secret');
+                const tokenResponse = await fetch(base + '/open/oauth2/token', {
+                  method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                  body: new URLSearchParams({grant_type: 'client_credentials', client_id: env.OPEN_PLATFORM_CLIENT_ID,
+                    client_secret: env.OPEN_PLATFORM_CLIENT_SECRET, scope: env.OPEN_PLATFORM_SCOPE || 'classroom.app.read'})
+                });
+                if (!tokenResponse.ok) throw new Error('token HTTP ' + tokenResponse.status);
+                const {access_token} = await tokenResponse.json();
+                const query = env.OPEN_PLATFORM_QUERY ?? 'appId=com.example.video&versionCode=1';
+                const body = env.OPEN_PLATFORM_BODY || '';
+                const response = await fetch(base + (env.OPEN_PLATFORM_PATH ||
+                  '/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo') + (query ? '?' + query : ''), {
+                  method: env.OPEN_PLATFORM_METHOD || 'GET',
+                  headers: {Authorization: 'Bearer ' + access_token, ...(body ? {'Content-Type': 'application/json'} : {})},
+                  body: body || undefined
+                });
+                const payload = await response.json();
+                console.log(JSON.stringify(payload, null, 2));
+                if (!response.ok || (Object.hasOwn(payload, 'success') && (!payload.success || String(payload.code) !== '200'))) process.exit(1);
+                """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String javaDemo(String baseUrl) {
+        return """
+                import java.net.URI;
+                import java.net.URLEncoder;
+                import java.net.http.*;
+                import java.nio.charset.StandardCharsets;
+                import java.util.regex.*;
+
+                public class OpenPlatformDemo {
+                  static String env(String name, String fallback) {
+                    String value = System.getenv(name); return value == null || value.isBlank() ? fallback : value;
+                  }
+                  static String form(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
+                  public static void main(String[] args) throws Exception {
+                    String base = env("OPEN_PLATFORM_BASE_URL", "@@BASE_URL@@").replaceAll("/$", "");
+                    String clientId = env("OPEN_PLATFORM_CLIENT_ID", "");
+                    String secret = env("OPEN_PLATFORM_CLIENT_SECRET", "");
+                    if (clientId.isBlank() || secret.isBlank()) throw new IllegalArgumentException("Missing Client ID/Secret");
+                    String tokenBody = "grant_type=client_credentials&client_id=" + form(clientId)
+                        + "&client_secret=" + form(secret) + "&scope=" + form(env("OPEN_PLATFORM_SCOPE", "classroom.app.read"));
+                    HttpClient client = HttpClient.newHttpClient();
+                    HttpRequest tokenRequest = HttpRequest.newBuilder(URI.create(base + "/open/oauth2/token"))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(tokenBody)).build();
+                    String tokenJson = client.send(tokenRequest, HttpResponse.BodyHandlers.ofString()).body();
+                    Matcher matcher = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(tokenJson);
+                    if (!matcher.find()) throw new IllegalStateException("No access_token returned");
+                    String query = env("OPEN_PLATFORM_QUERY", "appId=com.example.video&versionCode=1");
+                    String url = base + env("OPEN_PLATFORM_PATH", "/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo")
+                        + (query.isBlank() ? "" : "?" + query);
+                    String body = env("OPEN_PLATFORM_BODY", "");
+                    HttpRequest.Builder api = HttpRequest.newBuilder(URI.create(url)).header("Authorization", "Bearer " + matcher.group(1));
+                    if (body.isBlank()) api.method(env("OPEN_PLATFORM_METHOD", "GET"), HttpRequest.BodyPublishers.noBody());
+                    else api.header("Content-Type", "application/json").method(env("OPEN_PLATFORM_METHOD", "POST"), HttpRequest.BodyPublishers.ofString(body));
+                    HttpResponse<String> response = client.send(api.build(), HttpResponse.BodyHandlers.ofString());
+                    System.out.println(response.body());
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) System.exit(1);
+                  }
+                }
+                """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String goDemo(String baseUrl) {
+        return """
+                package main
+
+                import ("encoding/json"; "fmt"; "io"; "net/http"; "net/url"; "os"; "strings")
+                func env(name, fallback string) string { if value := os.Getenv(name); value != "" { return value }; return fallback }
+                func main() {
+                  base := strings.TrimRight(env("OPEN_PLATFORM_BASE_URL", "@@BASE_URL@@"), "/")
+                  clientID, secret := os.Getenv("OPEN_PLATFORM_CLIENT_ID"), os.Getenv("OPEN_PLATFORM_CLIENT_SECRET")
+                  if clientID == "" || secret == "" { panic("missing Client ID/Secret") }
+                  form := url.Values{"grant_type":{"client_credentials"}, "client_id":{clientID}, "client_secret":{secret},
+                    "scope":{env("OPEN_PLATFORM_SCOPE", "classroom.app.read")}}
+                  tokenResponse, err := http.PostForm(base+"/open/oauth2/token", form); if err != nil { panic(err) }
+                  defer tokenResponse.Body.Close()
+                  var token map[string]interface{}; json.NewDecoder(tokenResponse.Body).Decode(&token)
+                  accessToken, _ := token["access_token"].(string); if accessToken == "" { panic("no access_token returned") }
+                  query, body := env("OPEN_PLATFORM_QUERY", "appId=com.example.video&versionCode=1"), os.Getenv("OPEN_PLATFORM_BODY")
+                  endpoint := base+env("OPEN_PLATFORM_PATH", "/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo")
+                  if query != "" { endpoint += "?"+query }
+                  request, _ := http.NewRequest(env("OPEN_PLATFORM_METHOD", "GET"), endpoint, strings.NewReader(body))
+                  request.Header.Set("Authorization", "Bearer "+accessToken); if body != "" { request.Header.Set("Content-Type", "application/json") }
+                  response, err := http.DefaultClient.Do(request); if err != nil { panic(err) }; defer response.Body.Close()
+                  content, _ := io.ReadAll(response.Body); fmt.Println(string(content))
+                  if response.StatusCode < 200 || response.StatusCode >= 300 { os.Exit(1) }
+                }
+                """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String markdown(String value) {
+        return defaultText(value, "-").replace("|", "\\|").replace("\r", " ").replace("\n", " ");
+    }
+
+    private String csv(String value) {
+        return "\"" + defaultText(value, "").replace("\"", "\"\"") + "\"";
+    }
+
+    private String safeFilename(String value) {
+        return defaultText(value, "api").replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     private byte[] json(JsonNode node) {

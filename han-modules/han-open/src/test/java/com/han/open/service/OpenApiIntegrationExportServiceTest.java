@@ -13,7 +13,9 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -53,9 +55,16 @@ class OpenApiIntegrationExportServiceTest {
         version.setRequestExampleJson("{\"roomId\":\"room-001\",\"clientSecret\":\"must-not-leak\"}");
         version.setResponseExamplesJson("{\"200\":{\"code\":200,\"data\":{\"liveStatus\":1,\"recordUrl\":null}}}");
         version.setErrorExamplesJson("{\"401\":{\"code\":401,\"message\":\"unauthorized\",\"accessToken\":\"must-not-leak\"}}");
+        OpenApiResourceVersionPo obsolete = new OpenApiResourceVersionPo();
+        obsolete.setId(1L);
+        obsolete.setResourceId(1L);
+        obsolete.setStatus(1);
+        obsolete.setDelFlag(0);
+        obsolete.setVersion("obsolete");
+        obsolete.setOpenapiJson("{\"openapi\":\"3.0.3\",\"paths\":{\"/obsolete\":{\"get\":{\"responses\":{\"200\":{\"description\":\"old\"}}}}}}");
 
         when(resourceMapper.selectList(any())).thenReturn(List.of(resource));
-        when(versionMapper.selectList(any())).thenReturn(List.of(version));
+        when(versionMapper.selectList(any())).thenReturn(List.of(version, obsolete));
 
         OpenApiIntegrationExportDTO export = service.build("https://example.test/");
         JsonNode openApi = objectMapper.readTree(export.openApiJson());
@@ -77,14 +86,24 @@ class OpenApiIntegrationExportServiceTest {
         assertThat(environment).contains("\"clientSecret\"").doesNotContain("must-not-leak");
 
         List<String> entries = new ArrayList<>();
+        Map<String, String> contents = new LinkedHashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(export.zip()), StandardCharsets.UTF_8)) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 entries.add(entry.getName());
+                contents.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
             }
         }
-        assertThat(entries).containsExactly("openapi.json", "lubashu-open-platform.postman_collection.json",
-                "lubashu-open-platform.postman_environment.json", "README.md");
+        assertThat(entries).contains("openapi.json", "lubashu-open-platform.postman_collection.json",
+                "lubashu-open-platform.postman_environment.json", "README.md", "docs/鉴权与密钥使用说明.md",
+                "docs/完整接口参考.md", "docs/接口清单.csv", "demos/curl/demo.sh", "demos/python/demo.py",
+                "demos/node/demo.mjs", "demos/java/OpenPlatformDemo.java", "demos/go/main.go",
+                "examples/classroom.live-status.read.request.json");
+        assertThat(contents.get("README.md")).contains("最新通用版", "五种可运行 Demo");
+        assertThat(contents.get("docs/完整接口参考.md")).contains(resource.getPath(), resource.getScopeCode());
+        assertThat(contents.get("demos/python/demo.py")).contains("OPEN_PLATFORM_CLIENT_SECRET", "/open/oauth2/token");
+        assertThat(contents.values()).allMatch(value -> !value.contains("must-not-leak"));
+        assertThat(contents.get("openapi.json")).doesNotContain("/obsolete");
     }
 
     @Test
