@@ -32,6 +32,23 @@ ON DUPLICATE KEY UPDATE
     icon = VALUES(icon), sort = VALUES(sort), visible = VALUES(visible), status = VALUES(status),
     permission_type = VALUES(permission_type);
 
+-- openVendor 只保留厂商自服务门户。清理早期误授的开放平台管理端页面及按钮；
+-- 管理员仍通过自身角色访问应用管理、厂商管理、接口目录和授权审批。
+DELETE role_menu
+FROM sys_role_menu role_menu
+JOIN sys_role role ON role.id = role_menu.role_id
+WHERE role.tenant_id = 1
+  AND role.role_key = 'openVendor'
+  AND role.del_flag = 0
+  AND role_menu.menu_id IN (
+    500, 501, 502, 503,
+    5001, 5002, 5003, 5004,
+    5101, 5102, 5103, 5104,
+    5201, 5202, 5203,
+    5301, 5304, 5305,
+    202608210117
+  );
+
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
 SELECT role.id, menu.id
 FROM sys_role role

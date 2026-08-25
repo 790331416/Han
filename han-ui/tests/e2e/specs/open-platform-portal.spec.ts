@@ -7,9 +7,10 @@ const app = {
   appName: 'E2E 服务端应用',
   vendorId: 301,
   appType: 'server',
-  lifecycleStatus: 2,
+  lifecycleStatus: 5,
   status: 0,
-  scopes: ['edu.teacher.read']
+  scopes: ['edu.teacher.read'],
+  schoolIds: [1001]
 }
 
 const resource = {
@@ -65,6 +66,7 @@ async function installPortalShell(page: Page) {
     contentType: 'text/event-stream',
     body: 'event: connected\ndata: {}\n\n'
   }))
+  await page.route('**/auth/identities', (route) => json(route, { code: 200, data: [] }))
   await page.route('**/system/user/current', (route) => json(route, {
     code: 200,
     data: {
@@ -77,7 +79,13 @@ async function installPortalShell(page: Page) {
       phone: '',
       email: '',
       roles: ['vendor'],
-      permissions: ['*:*:*']
+      permissions: [
+        'open:vendor:my', 'open:vendor:apply', 'open:vendor:query',
+        'open:app:list', 'open:app:query', 'open:app:add', 'open:app:edit', 'open:app:remove',
+        'open:grant:apply', 'open:grant:query', 'open:grant:revoke',
+        'open:credential:query', 'open:credential:manage',
+        'open:api-resource:query', 'open:api-resource:list'
+      ]
     }
   }))
   await page.route('**/system/menu/routers', (route) => json(route, {
@@ -114,8 +122,9 @@ async function installPortalShell(page: Page) {
   await page.route('**/open/api-resource/list**', (route) => json(route, { code: 200, data: [resource] }))
   await page.route('**/open/api-resource/401', (route) => json(route, { code: 200, data: resource }))
   await page.route('**/open/api-resource/401**', (route) => json(route, { code: 200, data: resource }))
-  await page.route('**/open/authorization/app/201', (route) => json(route, { code: 200, data: [{ id: 501, appId: app.appId, resourceId: resource.id, environment: 'SANDBOX', scopes: resource.scopeCode, status: 1 }] }))
-  await page.route('**/open/authorization/credential/list**', (route) => json(route, { code: 200, data: [{ id: 601, appId: app.appId, environment: 'SANDBOX', clientId: 'e2e-client-id', status: 0 }] }))
+  await page.route('**/open/authorization/app/201', (route) => json(route, { code: 200, data: [{ id: 501, appId: app.appId, resourceId: resource.id, environment: 'PROD', scopes: resource.scopeCode, status: 1 }] }))
+  await page.route('**/open/authorization/request/list**', (route) => json(route, { code: 200, data: { rows: [], total: 0, pageNum: 1, pageSize: 100, pages: 0 } }))
+  await page.route('**/open/authorization/credential/list**', (route) => json(route, { code: 200, data: [{ id: 601, appId: app.appId, environment: 'PROD', clientId: 'e2e-client-id', status: 0 }] }))
   await page.route('**/open/debug/run/list**', (route) => json(route, { code: 200, data: [] }))
 }
 
@@ -124,6 +133,8 @@ async function openPortal(page: Page, tokenHandler: (route: Route) => Promise<vo
   await page.route('**/open/oauth2/token', tokenHandler)
   await page.goto('/open/portal')
   await expect(page.getByTestId('open-portal-page')).toBeVisible()
+  await expect(page.getByText('凭证已就绪', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 个接口（1 个 Scope）', { exact: true })).toBeVisible()
   await page.getByRole('tab', { name: '在线调测' }).click()
   await selectDebugInputs(page)
 }
@@ -147,7 +158,11 @@ test.describe('厂商门户在线调测受控联调', () => {
     let auditRequestBody = ''
     const pageErrors: string[] = []
     const consoleErrors: string[] = []
+    const organizationRequests: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
+    page.on('request', (request) => {
+      if (request.url().includes('/system/education/organizations/tree')) organizationRequests.push(request.url())
+    })
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text())
     })
@@ -188,6 +203,7 @@ test.describe('厂商门户在线调测受控联调', () => {
     expect(audit).not.toHaveProperty('responseBody')
     expect(pageErrors).toEqual([])
     expect(consoleErrors).toEqual([])
+    expect(organizationRequests).toEqual([])
   })
 
   test('Token 业务错误和 HTTP 错误会中断调测并保留 Secret 便于重试', async ({ page }) => {

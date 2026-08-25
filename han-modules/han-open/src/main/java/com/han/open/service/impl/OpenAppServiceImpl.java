@@ -146,6 +146,8 @@ public class OpenAppServiceImpl implements IOpenAppService {
         prepareCreateOwnership(po, administrator, legacyCall);
         normalizeForCreate(po);
         if (!administrator && !legacyCall) {
+            // 学校数据范围只能由平台管理员授权，厂商提交的 schoolIds 一律忽略。
+            po.setSchoolScope(null);
             po.setLifecycleStatus(LIFECYCLE_DRAFT);
             po.setStatus(STATUS_ENABLED);
         } else if (po.getLifecycleStatus() == null) {
@@ -185,10 +187,15 @@ public class OpenAppServiceImpl implements IOpenAppService {
         Long vendorId = existing.getVendorId();
         Integer lifecycleStatus = existing.getLifecycleStatus();
         String environmentPolicy = existing.getEnvironmentPolicy();
+        String schoolScope = existing.getSchoolScope();
         openAppConverter.updatePo(dto, existing);
         existing.setVendorId(vendorId);
         existing.setLifecycleStatus(lifecycleStatus);
         existing.setEnvironmentPolicy(environmentPolicy);
+        if (!administrator && !isLegacyCall()) {
+            // 厂商可以维护应用信息，但不能绕过管理端扩大已批准的学校范围。
+            existing.setSchoolScope(schoolScope);
+        }
         normalizeForUpdate(existing);
         validateForSave(existing, existing.getId());
         return openAppMapper.updateById(existing);
@@ -617,7 +624,8 @@ public class OpenAppServiceImpl implements IOpenAppService {
         if (po.getRefreshTokenTtl() == null || po.getRefreshTokenTtl() < 60) {
             throw new BusinessException("RefreshToken 有效期不能小于 60 秒");
         }
-        if (hasEducationDirectoryScope(po.getScopes()) && !StringUtils.hasText(po.getSchoolScope())) {
+        if (hasEducationDirectoryScope(po.getScopes()) && !StringUtils.hasText(po.getSchoolScope())
+                && !Objects.equals(po.getLifecycleStatus(), LIFECYCLE_DRAFT)) {
             throw new BusinessException("授权教师、学生或设备目录时必须指定学校范围");
         }
         validateStatus(po.getStatus());

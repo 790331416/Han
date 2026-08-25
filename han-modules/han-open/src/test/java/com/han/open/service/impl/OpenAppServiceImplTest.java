@@ -51,6 +51,7 @@ class OpenAppServiceImplTest {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
         OpenVendorPo vendor = approvedVendor();
         OpenAppPo app = app(100L, 42L);
+        app.setSchoolScope("1001");
         OpenAppDTO dto = dto(app);
         when(vendorMapper.selectById(100L)).thenReturn(vendor);
         when(vendorUserMapper.selectCount(any())).thenReturn(1L);
@@ -67,6 +68,53 @@ class OpenAppServiceImplTest {
         assertThat(result.appSecret()).isNull();
         assertThat(app.getLifecycleStatus()).isEqualTo(OpenAppServiceImpl.LIFECYCLE_DRAFT);
         assertThat(app.getTenantId()).isEqualTo(99L);
+        assertThat(app.getSchoolScope()).isNull();
+    }
+
+    @Test
+    void vendorUserUpdatePreservesApprovedSchoolScope() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenAppPo existing = app(100L, 42L);
+        existing.setId(206L);
+        existing.setSchoolScope("1001");
+        OpenAppDTO dto = dto(existing);
+        dto.setSchoolIds(java.util.List.of(9999L));
+        when(appMapper.selectById(206L)).thenReturn(existing);
+        when(vendorUserMapper.selectCount(any())).thenReturn(1L);
+        when(appMapper.selectCount(any())).thenReturn(0L);
+        when(converter.stringToLongList("1001")).thenReturn(java.util.List.of(1001L));
+        doAnswer(invocation -> {
+            ((OpenAppPo) invocation.getArgument(1)).setSchoolScope("9999");
+            return null;
+        }).when(converter).updatePo(dto, existing);
+
+        service.update(dto);
+
+        assertThat(existing.getSchoolScope()).isEqualTo("1001");
+        verify(appMapper).updateById(existing);
+    }
+
+    @Test
+    void administratorUpdateCanChangeSchoolScope() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(1L).tenantId(99L).build());
+        OpenAppPo existing = app(100L, null);
+        existing.setId(207L);
+        existing.setLifecycleStatus(OpenAppServiceImpl.LIFECYCLE_DRAFT);
+        existing.setSchoolScope("1001");
+        OpenAppDTO dto = dto(existing);
+        dto.setSchoolIds(java.util.List.of(2002L));
+        when(appMapper.selectById(207L)).thenReturn(existing);
+        when(appMapper.selectCount(any())).thenReturn(0L);
+        when(converter.stringToLongList("2002")).thenReturn(java.util.List.of(2002L));
+        doAnswer(invocation -> {
+            ((OpenAppPo) invocation.getArgument(1)).setSchoolScope("2002");
+            return null;
+        }).when(converter).updatePo(dto, existing);
+
+        service.update(dto);
+
+        assertThat(existing.getSchoolScope()).isEqualTo("2002");
+        verify(appMapper).updateById(existing);
     }
 
     @Test

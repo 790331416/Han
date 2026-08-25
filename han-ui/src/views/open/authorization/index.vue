@@ -34,6 +34,7 @@
             <el-table-column label="环境" width="90" align="center"><template #default="{ row }">{{ environmentLabel(row.environment) }}</template></el-table-column>
             <el-table-column label="申请类型" width="100" align="center"><template #default="{ row }">{{ requestTypeLabel(row.requestType) }}</template></el-table-column>
             <el-table-column label="申请理由" prop="reason" min-width="220" show-overflow-tooltip />
+            <el-table-column label="申请内容" min-width="260" show-overflow-tooltip><template #default="{ row }">{{ requestDataSummary(row.requestData) }}</template></el-table-column>
             <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="requestStatusTagType(row.status)">{{ requestStatusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="申请时间" min-width="170"><template #default="{ row }">{{ formatDate(row.createTime) }}</template></el-table-column>
             <el-table-column label="操作" width="100" fixed="right">
@@ -61,6 +62,7 @@
             <el-table-column label="资源" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.resourceName || row.resourceCode || row.resourceId }}</template></el-table-column>
             <el-table-column label="环境" width="90" align="center"><template #default="{ row }">{{ environmentLabel(row.environment) }}</template></el-table-column>
             <el-table-column label="Scope" prop="scopes" min-width="180" show-overflow-tooltip />
+            <el-table-column label="数据范围" prop="dataScope" min-width="220" show-overflow-tooltip />
             <el-table-column label="配额" width="90" align="center"><template #default="{ row }">{{ row.quota || '不限' }}</template></el-table-column>
             <el-table-column label="过期时间" min-width="170"><template #default="{ row }">{{ row.expiresAt ? formatDate(row.expiresAt) : '永久' }}</template></el-table-column>
             <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="grantStatusTagType(row.status)">{{ grantStatusLabel(row.status) }}</el-tag></template></el-table-column>
@@ -102,6 +104,7 @@
 
     <el-dialog v-model="reviewVisible" title="审核授权申请" width="520px" destroy-on-close>
       <el-form ref="reviewFormRef" :model="reviewForm" :rules="reviewRules" label-width="90px">
+        <el-form-item label="申请内容"><el-input :model-value="reviewForm.requestData" type="textarea" :rows="8" readonly /></el-form-item>
         <el-form-item label="审核结果" prop="status"><el-radio-group v-model="reviewForm.status"><el-radio :value="1">通过</el-radio><el-radio :value="2">驳回</el-radio></el-radio-group></el-form-item>
         <el-form-item label="审核说明"><el-input v-model="reviewForm.reason" type="textarea" :rows="3" /></el-form-item>
       </el-form>
@@ -173,7 +176,7 @@ const submitLoading = ref(false)
 
 const reviewVisible = ref(false)
 const reviewFormRef = ref<FormInstance>()
-const reviewForm = reactive({ id: '', status: 1, reason: '' })
+const reviewForm = reactive({ id: '', requestData: '', status: 1, reason: '' })
 const reviewRules: FormRules = { status: [{ required: true, message: '请选择审核结果', trigger: 'change' }] }
 const generateVisible = ref(false)
 const generateFormRef = ref<FormInstance>()
@@ -228,7 +231,7 @@ async function loadCredentials() {
   finally { credentialLoading.value = false }
 }
 
-function openReview(row: OpenAuthorizationRequest) { Object.assign(reviewForm, { id: String(row.id), status: 1, reason: '' }); reviewVisible.value = true }
+function openReview(row: OpenAuthorizationRequest) { Object.assign(reviewForm, { id: String(row.id), requestData: formatRequestData(row.requestData), status: 1, reason: '' }); reviewVisible.value = true }
 async function submitReview() {
   if (!(await reviewFormRef.value?.validate())) return
   submitLoading.value = true
@@ -272,6 +275,8 @@ async function copySecret(value: string, label: string) {
 }
 
 function environmentLabel(value?: string) { return value === 'SANDBOX' ? '沙箱' : value === 'PROD' ? '生产' : value || '-' }
+function formatRequestData(value?: string) { if (!value) return '未提供'; try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value } }
+function requestDataSummary(value?: string) { const formatted = formatRequestData(value); return formatted.length > 120 ? `${formatted.slice(0, 120)}…` : formatted }
 function requestTypeLabel(value?: number) { return ({ 0: '新增授权', 1: '变更授权', 2: '撤销授权' } as Record<number, string>)[value ?? -1] || '未知' }
 function requestStatusLabel(value?: number) { return requestStatusOptions.find(item => item.value === value)?.label || '未知' }
 function requestStatusTagType(value?: number): TagType { return value === 1 ? 'success' : value === 2 ? 'danger' : value === 0 ? 'warning' : 'info' }

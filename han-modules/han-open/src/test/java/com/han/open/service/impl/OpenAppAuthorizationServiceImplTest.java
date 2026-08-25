@@ -90,6 +90,42 @@ class OpenAppAuthorizationServiceImplTest {
     }
 
     @Test
+    void submitGrantApplyAcceptsSchoolSubsetOfApplicationScope() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        GrantApplyVO apply = grantApplyVO();
+        apply.getResources().get(0).setDataScope("{\"schoolIds\":[1002]}");
+
+        service.submitGrantApply(apply);
+
+        ArgumentCaptor<OpenAppResourceGrantPo> captor = ArgumentCaptor.forClass(OpenAppResourceGrantPo.class);
+        verify(baseMapper).insert(captor.capture());
+        assertThat(captor.getValue().getDataScope()).isEqualTo("{\"schoolIds\":[1002]}");
+    }
+
+    @Test
+    void submitGrantApplyRejectsSchoolOutsideApplicationScope() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        GrantApplyVO apply = grantApplyVO();
+        apply.getResources().get(0).setDataScope("{\"schoolIds\":[9999]}");
+
+        assertThatThrownBy(() -> service.submitGrantApply(apply))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("资源数据范围不能超出应用授权学校");
+        verify(baseMapper, org.mockito.Mockito.times(0)).insert(any(OpenAppResourceGrantPo.class));
+    }
+
+    @Test
+    void submitGrantApplyRejectsMalformedDataScope() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        GrantApplyVO apply = grantApplyVO();
+        apply.getResources().get(0).setDataScope("not-json");
+
+        assertThatThrownBy(() -> service.submitGrantApply(apply))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("授权数据范围格式非法");
+    }
+
+    @Test
     void reviewGrantApplyPersistsReviewerAndUpdaterFromRealUser() {
         SecurityContextHolder.setLoginUser(adminLoginUser());
         OpenAuthorizationRequestPo pending = new OpenAuthorizationRequestPo();
@@ -305,6 +341,24 @@ class OpenAppAuthorizationServiceImplTest {
     }
 
     @Test
+    void reviewGrantApplyRechecksApplicationSchoolScope() {
+        SecurityContextHolder.setLoginUser(adminLoginUser());
+        OpenAuthorizationRequestPo pending = new OpenAuthorizationRequestPo();
+        pending.setId(2L);
+        pending.setTenantId(99L);
+        pending.setAppId(123L);
+        pending.setStatus(0);
+        pending.setEnvironment("SANDBOX");
+        pending.setRequestData("[{\"resourceId\":456,\"scopes\":\"edu.teacher.read\",\"dataScope\":\"{\\\"schoolIds\\\":[9999]}\"}]");
+        when(authorizationRequestMapper.selectById(2L)).thenReturn(pending);
+
+        assertThatThrownBy(() -> service.reviewGrantApply(2L, 1, "通过"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("资源数据范围不能超出应用授权学校");
+        verify(baseMapper, org.mockito.Mockito.times(0)).insert(any(OpenAppResourceGrantPo.class));
+    }
+
+    @Test
     void adminCanListCredentialsAcrossVendors() {
         SecurityContextHolder.setLoginUser(adminLoginUser());
         when(appCredentialMapper.selectList(any())).thenReturn(List.of());
@@ -471,6 +525,21 @@ class OpenAppAuthorizationServiceImplTest {
     }
 
     @Test
+    void submitLifecycleApplyRequiresAdministratorSchoolScopeForEducationDirectory() {
+        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
+        OpenAppPo app = ownedApp();
+        app.setLifecycleStatus(0);
+        app.setScopes("edu.teacher.read");
+        app.setSchoolScope(null);
+        when(appMapper.selectOne(any())).thenReturn(app);
+
+        assertThatThrownBy(() -> service.submitAppLifecycleApply(123L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请联系平台管理员配置授权学校后再提交开通申请");
+        verify(appMapper, org.mockito.Mockito.times(0)).update(any(), any());
+    }
+
+    @Test
     void reviewLifecycleApplyApprovesSandboxAndPersistsReviewer() {
         SecurityContextHolder.setLoginUser(adminLoginUser());
         OpenAppPo app = ownedApp();
@@ -547,6 +616,7 @@ class OpenAppAuthorizationServiceImplTest {
         app.setVendorId(789L);
         app.setStatus(0);
         app.setLifecycleStatus(2);
+        app.setSchoolScope("1001,1002");
         return app;
     }
 
