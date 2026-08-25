@@ -45,6 +45,9 @@ public class ClassroomIdentityVO implements Serializable {
     /** 校内岗位；学生为空或普通学生默认值。 */
     private String dutyCode;
 
+    /** 校内岗位中文名称，如管理员、普通教师；身份选择页优先展示该字段。 */
+    private String dutyName;
+
     /** 当前有效班级 ID；学生凭证用于服务端课程范围收敛。 */
     private List<String> classIds;
 

@@ -147,6 +147,7 @@ public class LegacyClassroomIdentityService {
                 .userName(person.getPersonName())
                 .personType(person.getPersonType())
                 .dutyCode(person.getDutyCode())
+                .dutyName(properties.dutyNameOf(person.getDutyCode()))
                 .classIds(directoryService.classesOf(person.getId()).stream()
                         .map(item -> String.valueOf(item.getId()))
                         .toList())
