@@ -110,7 +110,7 @@ class OpenApiIntegrationExportServiceTest {
                 root + "示例项目/Java/src/main/java/com/lubashu/openplatform/demo/OpenPlatformDemo.java",
                 root + "示例项目/Go/go.mod", root + "示例项目/Go/cmd/demo/main.go",
                 root + "文档/接口示例/classroom.live-status.read.请求.json");
-        assertThat(contents.get(root + "README.md")).contains("通用目录", "示例项目", "Java");
+        assertThat(contents.get(root + "README.md")).contains("通用目录", "当前已启用、已发布接口", "示例项目", "Java");
         assertThat(contents.get(root + "文档/02-鉴权与Scope说明.md"))
                 .contains("多个 Scope 使用空格分隔", "scope=classroom.live.read",
                         "\\\n", "-H 'Content-Type: application/x-www-form-urlencoded'");

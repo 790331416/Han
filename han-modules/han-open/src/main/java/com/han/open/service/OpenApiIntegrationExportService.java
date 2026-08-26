@@ -662,10 +662,12 @@ public class OpenApiIntegrationExportService {
     }
 
     private String readme(String baseUrl, String packageName, int apiCount, String scopeText) {
+        String resourceDescription = "通用目录".equals(packageName)
+                ? "当前已启用、已发布接口" : "当前环境已授权接口";
         return """
                 # %s
 
-                本包包含 %d 个当前环境已授权接口，只保留最新发布版本。
+                本包包含 %d 个%s，只保留最新发布版本。
 
                 - `文档/`：快速接入、Scope 说明、接口清单与完整字段示例。
                 - `API导入文件/`：Apifox、ApiPost、Postman 可直接导入。
@@ -679,7 +681,7 @@ public class OpenApiIntegrationExportService {
                 ```
 
                 Token 地址：`%s/open/oauth2/token`。Secret 不得提交到 Git 或写入日志。
-                """.formatted(packageName, apiCount, scopeText, baseUrl);
+                """.formatted(packageName, apiCount, resourceDescription, scopeText, baseUrl);
     }
 
     private String quickStart(String baseUrl, String scopeText) {
@@ -732,7 +734,7 @@ public class OpenApiIntegrationExportService {
 
                 成功响应中的 access_token 是临时令牌，expires_in 是有效秒数。
 
-                当前应用对接包已经按有效授权生成 Scope：
+                当前对接包包含以下 Scope：
 
                     scope=%s
 
