@@ -11,6 +11,14 @@
             <el-option label="学生" value="STUDENT" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="entity === 'people'" label="手机号">
+          <el-input v-model="query.phone" clearable placeholder="请输入手机号" @keyup.enter="handleQuery" />
+        </el-form-item>
+        <el-form-item v-if="entity === 'people'" label="校内岗位">
+          <el-select v-model="query.dutyCode" clearable filterable style="width: 140px">
+            <el-option v-for="item in (options.dutyCode?.length ? options.dutyCode : DUTY_FALLBACKS)" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item v-if="entity === 'people' || entity === 'subjects'" label="学校">
           <EducationSchoolSelector v-model="query.schoolId" :nodes="organizations" clearable style="width: 220px" />
         </el-form-item>
@@ -377,8 +385,8 @@ const configs: Record<EducationEntity, EntityConfig> = {
     fields: [{ key: 'schoolId', label: '学校', required: true, selector: 'school' }, { key: 'className', label: '班级名称', required: true, hint: '请按“X年级X班”填写；保存后自动生成年级编码和班级编码' }, { key: 'classRole', label: '班级角色', required: true }, { key: 'status', label: '状态', required: true, type: 'status' }, { key: 'remark', label: '备注', type: 'textarea' }]
   },
   people: {
-    title: '人员', permission: 'education:person',
-    columns: [{ key: 'personName', label: '姓名', width: 160 }, { key: 'personType', label: '人员类型', format: (row) => personTypeLabel(row.personType) }, { key: 'dutyCode', label: '校内岗位', format: (row: EducationRecord) => row.personType === 'STUDENT' && !row.dutyCode ? '—' : dutyLabel(row.dutyCode) }, { key: 'phone', label: '手机号' }],
+    title: '人员', permission: 'education:person', showSource: false,
+    columns: [{ key: 'schoolId', label: '学校名称', width: 220, format: (row) => schoolName(row.schoolId) }, { key: 'personName', label: '姓名', width: 160 }, { key: 'personType', label: '人员类型', format: (row) => personTypeLabel(row.personType) }, { key: 'dutyCode', label: '校内岗位', format: (row: EducationRecord) => row.personType === 'STUDENT' && !row.dutyCode ? '—' : dutyLabel(row.dutyCode) }, { key: 'phone', label: '手机号' }],
     fields: [
       { key: 'schoolId', label: '学校', required: true, selector: 'school' },
       { key: 'personName', label: '姓名', required: true, hint: '保存后按姓名自动生成人员编号' },
@@ -400,8 +408,8 @@ const configs: Record<EducationEntity, EntityConfig> = {
       { key: 'leaveFlag', label: '离校状态', type: 'flag', hint: '离校只影响教育身份，不改动登录账号的启用状态' },
       { key: 'loginEnabled', label: '启用校端登录', type: 'switch', initial: true, hint: '开启后：同租户同手机号账号自动绑定；未命中时自动创建账号。关闭仅解绑当前学校身份。' },
       { key: 'password', label: '初始密码', type: 'password', visibleWhen: (form) => !!form.loginEnabled && (!!form.id || !linkAccountPreview.value), hint: '仅新建账号时生效；留空由系统生成并要求首次登录修改' },
-      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && !!form.loginEnabled && (!!form.id || !linkAccountPreview.value), hint: '开启后才可选择管理端角色；不会改变校端职务。账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
-      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && !!form.loginEnabled && !!form.managementAccess && (!!form.id || !linkAccountPreview.value), hint: '账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
+      { key: 'managementAccess', label: '设置管理端权限', type: 'switch', initial: false, visibleWhen: (form) => form.personType === 'TEACHER' && form.dutyCode === 'SCHOOL_ADMIN' && !!form.loginEnabled && (!!form.id || !linkAccountPreview.value), hint: '仅校级管理员身份可设置；账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
+      { key: 'roleIds', label: '系统管理权限', type: 'multi', source: 'roles', visibleWhen: (form) => form.personType === 'TEACHER' && form.dutyCode === 'SCHOOL_ADMIN' && !!form.loginEnabled && !!form.managementAccess && (!!form.id || !linkAccountPreview.value), hint: '账号角色是共享的，修改后会影响该账号在全部学校的 SCHOOL_ADMIN 身份' },
       { key: 'status', label: '状态', required: true, type: 'status' },
       { key: 'remark', label: '备注', type: 'textarea' }
     ]
@@ -439,7 +447,7 @@ const form = reactive<EducationRecord>({})
 const options = reactive<Record<string, Array<{ label: string; value: any }>>>({})
 const schoolOptions = ref<Array<{ label: string; value: any }>>([])
 const organizations = ref<EducationOrganizationNode[]>([])
-const query = reactive<EducationQuery>({ keyword: '', status: '', personType: '', pageNum: 1, pageSize: 20 })
+const query = reactive<EducationQuery>({ keyword: '', phone: '', dutyCode: '', status: '', personType: '', pageNum: 1, pageSize: 20 })
 
 // 「关联已有账号」模式的候选账号脱敏确认（按手机号精确查询，服务端已脱敏）。
 const linkAccountPreview = ref<LinkableAccount | null>(null)
@@ -449,9 +457,10 @@ let linkAccountQuerySeq = 0
 
 // 编辑已绑定人员时记录其原有管理角色，用于判断关闭权限时是否需要账号级撤销（clearRoles）。
 let editingHadRoles = false
+let editingSchoolId: string | number | undefined
 
 // 管理角色正在被编辑时，显式提示角色是账号级共享的。
-const showRoleSharedAlert = computed(() => form.personType === 'TEACHER' && !!form.managementAccess && !!form.loginEnabled)
+const showRoleSharedAlert = computed(() => form.personType === 'TEACHER' && form.dutyCode === 'SCHOOL_ADMIN' && !!form.managementAccess && !!form.loginEnabled)
 
 const visibleFields = computed(() => config.value.fields.filter((field) => !field.visibleWhen || field.visibleWhen(form)))
 const deviceSceneTree = computed(() => {
@@ -586,7 +595,7 @@ async function getList() {
 }
 
 function isLocalRow(row: EducationRecord) {
-  return config.value.showSource === false || row.sourceSystem === 'HAN'
+  return row.sourceSystem === 'HAN'
 }
 
 function onSelectionChange(rows: EducationRecord[]) {
@@ -600,6 +609,8 @@ function handleQuery() {
 
 function resetQuery() {
   query.keyword = ''
+  query.phone = ''
+  query.dutyCode = ''
   query.status = ''
   query.personType = ''
   query.schoolId = undefined
@@ -608,6 +619,7 @@ function resetQuery() {
 
 function resetForm() {
   editingHadRoles = false
+  editingSchoolId = undefined
   for (const key of Object.keys(form)) delete form[key]
   for (const field of config.value.fields) {
     if (field.initial !== undefined) form[field.key] = field.initial
@@ -629,6 +641,7 @@ async function handleEdit(row: EducationRecord) {
   if (!isLocalRow(row)) return
   resetForm()
   Object.assign(form, row)
+  editingSchoolId = row.schoolId
   if (props.entity === 'devices') {
     form.applicationTypes = String(row.applicationTypes || '').split(',').filter(Boolean)
   }
@@ -648,7 +661,7 @@ async function handleEdit(row: EducationRecord) {
     const roleIds = (roles.data || []).map((item) => String(item)).filter((item) => availableRoleIds.has(item))
     editingHadRoles = roleIds.length > 0
     form.roleIds = roleIds
-    form.managementAccess = form.personType === 'TEACHER' && roleIds.length > 0
+    form.managementAccess = form.personType === 'TEACHER' && form.dutyCode === 'SCHOOL_ADMIN' && roleIds.length > 0
   }
   dialogTitle.value = `编辑${config.value.title}`
   dialogVisible.value = true
@@ -771,7 +784,14 @@ async function submitForm() {
 async function submitPerson() {
   const payload: EducationRecord = { ...form }
   const isStudent = payload.personType === 'STUDENT'
-  const managementAccess = !isStudent && !!payload.managementAccess
+  const managementAccess = !isStudent && payload.dutyCode === 'SCHOOL_ADMIN' && !!payload.managementAccess
+  if (payload.id && editingSchoolId !== undefined && String(editingSchoolId) !== String(payload.schoolId)) {
+    await ElMessageBox.confirm(
+      '修改学校只适用于录入纠错；系统会清理原学校的班级和任教科目，并立即使旧身份会话失效。正式调校请将原身份设为离校后，在新学校新增身份。确认继续吗？',
+      '确认修改学校',
+      { type: 'warning' }
+    )
+  }
   // 不传 accountMode/linkUserId：服务端按 loginEnabled 的兼容语义自动绑定同手机号账号。
   delete payload.accountMode
   delete payload.linkUserId

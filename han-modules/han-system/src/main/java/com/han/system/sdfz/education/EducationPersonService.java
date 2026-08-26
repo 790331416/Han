@@ -98,7 +98,8 @@ public class EducationPersonService {
     private final AuthServiceClient authServiceClient;
 
     public PageResult<EduPersonPo> list(Long schoolId, String personType, String keyword,
-                                        Integer status, int pageNum, int pageSize) {
+                                        String phone, String dutyCode, Integer status,
+                                        int pageNum, int pageSize) {
         requireTenant();
         EducationDataScopeService.Scope scope = dataScopeService.current();
         if (schoolId != null) {
@@ -108,10 +109,15 @@ public class EducationPersonService {
             int safeSize = Math.min(Math.max(pageSize, 1), 100);
             return new PageResult<>(List.of(), 0, safePage, safeSize);
         }
+        String phoneKeyword = trimToNull(phone);
+        boolean exactPhone = phoneKeyword != null && PHONE_PATTERN.matcher(phoneKeyword).matches();
         LambdaQueryWrapper<EduPersonPo> query = new LambdaQueryWrapper<EduPersonPo>()
                 .eq(schoolId != null, EduPersonPo::getSchoolId, schoolId)
                 .in(schoolId == null && !scope.all(), EduPersonPo::getSchoolId, scope.schoolIds())
                 .eq(notBlank(personType), EduPersonPo::getPersonType, personType)
+                .eq(notBlank(dutyCode), EduPersonPo::getDutyCode, dutyCode)
+                .eq(exactPhone, EduPersonPo::getPhone, phoneKeyword)
+                .like(phoneKeyword != null && !exactPhone, EduPersonPo::getPhone, phoneKeyword)
                 .eq(status != null, EduPersonPo::getStatus, status)
                 .and(notBlank(keyword), item -> item.like(EduPersonPo::getPersonNo, keyword)
                         .or().like(EduPersonPo::getPersonName, keyword))
@@ -141,10 +147,10 @@ public class EducationPersonService {
     public List<Long> listRoleIds(Long personId) {
         requireTenant();
         EduPersonPo person = requirePerson(personId);
-        if (person.getUserId() == null) {
-            return List.of();
-        }
-        if (STUDENT_TYPE.equalsIgnoreCase(person.getPersonType())) {
+        if (person.getUserId() == null
+                || !isSchoolAdmin(person.getPersonType(), person.getDutyCode())
+                || !Objects.equals(person.getStatus(), 0)
+                || Objects.equals(person.getLeaveFlag(), 1)) {
             return List.of();
         }
         return userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRolePo>()
@@ -286,6 +292,9 @@ public class EducationPersonService {
         if (STUDENT_TYPE.equals(personType) && form.roleIds() != null && !form.roleIds().isEmpty()) {
             throw new BusinessException("学生账号不能分配管理端角色");
         }
+        if (!isSchoolAdmin(personType, duty) && form.roleIds() != null && !form.roleIds().isEmpty()) {
+            throw new BusinessException("只有校级管理员身份可以分配管理端角色");
+        }
         boolean editing = form.id() != null;
         EduPersonPo person = editing ? requirePerson(form.id()) : new EduPersonPo();
         if (editing) {
@@ -305,6 +314,10 @@ public class EducationPersonService {
         Long oldSchoolId = person.getSchoolId();
         Integer oldLeaveFlag = person.getLeaveFlag();
         Integer oldStatus = person.getStatus();
+        boolean schoolChanged = editing && !Objects.equals(oldSchoolId, form.schoolId());
+        if (schoolChanged && oldUserId != null) {
+            requireNoDuplicateIdentity(tenantId, form.schoolId(), oldUserId, form.id());
+        }
 
         EducationForms.AccountMode mode = parseAccountMode(form.accountMode());
 
@@ -413,11 +426,11 @@ public class EducationPersonService {
             accountIdentityService.syncFromAccount(linkedAccount);
         }
 
-        if (form.classIds() != null) {
-            applyMemberships(person, form.classIds(), form.membershipRole());
+        if (form.classIds() != null || schoolChanged) {
+            applyMemberships(person, form.classIds() == null ? List.of() : form.classIds(), form.membershipRole());
         }
-        if (form.subjectIds() != null) {
-            applyAssignments(person, form.subjectIds(), null);
+        if (form.subjectIds() != null || schoolChanged) {
+            applyAssignments(person, form.subjectIds() == null ? List.of() : form.subjectIds(), null);
         }
         return new EducationForms.PersonResult(person.getId(), userId, username, initialPassword);
     }
@@ -636,10 +649,15 @@ public class EducationPersonService {
 
     /** 同一账号在同一学校只能存在一条有效身份（任务书 12 节）。 */
     private void requireNoDuplicateIdentity(Long tenantId, Long schoolId, Long userId) {
+        requireNoDuplicateIdentity(tenantId, schoolId, userId, null);
+    }
+
+    private void requireNoDuplicateIdentity(Long tenantId, Long schoolId, Long userId, Long excludePersonId) {
         Long count = personMapper.selectCount(new LambdaQueryWrapper<EduPersonPo>()
                 .eq(EduPersonPo::getTenantId, tenantId)
                 .eq(EduPersonPo::getUserId, userId)
                 .eq(EduPersonPo::getSchoolId, schoolId)
+                .ne(excludePersonId != null, EduPersonPo::getId, excludePersonId)
                 .eq(EduPersonPo::getStatus, 0));
         if (count != null && count > 0) {
             throw new BusinessException("该账号在此学校已有有效身份，不能重复新增");

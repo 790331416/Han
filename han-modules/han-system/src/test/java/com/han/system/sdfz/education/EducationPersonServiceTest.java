@@ -19,6 +19,7 @@ import com.han.system.mapper.SysUserRoleMapper;
 import com.han.system.sdfz.education.domain.EduClassPo;
 import com.han.system.sdfz.education.domain.EduPersonClassPo;
 import com.han.system.sdfz.education.domain.EduPersonPo;
+import com.han.system.sdfz.education.domain.EduPersonSubjectPo;
 import com.han.system.sdfz.education.domain.EduSchoolPo;
 import com.han.system.sdfz.education.domain.EducationForms;
 import com.han.system.sdfz.education.mapper.EduClassMapper;
@@ -179,8 +180,6 @@ class EducationPersonServiceTest {
     void rejectsAssigningSuperAdminRoleThroughPersonEntry() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(2L).tenantId(1L).build());
         stubSchool();
-        stubNoDuplicatePersonNo();
-        when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
 
         EducationForms.Person form = new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER",
                 null, "13900000001", 0, null, null, true, "t.zhang", "Teacher@2026", List.of(1L), null, null, null, null);
@@ -474,7 +473,6 @@ class EducationPersonServiceTest {
         stubSchool();
         stubNoDuplicatePersonNo();
         when(userMapper.checkUsernameUnique("t.zhang", 1L, null)).thenReturn(0);
-        when(roleMapper.selectById(TEACHER_ROLE_ID)).thenReturn(role("common"));
         stubGeneratedIds(9020L, 5020L);
 
         service.save(teacherForm("t.zhang", "Teacher@2026", null));
@@ -543,10 +541,74 @@ class EducationPersonServiceTest {
     void readsBackRoleIdsForEditForm() {
         EduPersonPo person = localPerson(5013L, "TEACHER");
         person.setUserId(9013L);
+        person.setDutyCode("SCHOOL_ADMIN");
+        person.setStatus(0);
+        person.setLeaveFlag(0);
         when(personMapper.selectById(5013L)).thenReturn(person);
         when(userRoleMapper.selectList(any())).thenReturn(List.of(new SysUserRolePo(9013L, TEACHER_ROLE_ID)));
 
         assertThat(service.listRoleIds(5013L)).containsExactly(TEACHER_ROLE_ID);
+    }
+
+    @Test
+    void hidesSharedAccountRolesFromPlainTeacherIdentity() {
+        EduPersonPo person = localPerson(5019L, "TEACHER");
+        person.setUserId(9013L);
+        person.setDutyCode("TEACHER");
+        person.setStatus(0);
+        person.setLeaveFlag(0);
+        when(personMapper.selectById(5019L)).thenReturn(person);
+
+        assertThat(service.listRoleIds(5019L)).isEmpty();
+        verify(userRoleMapper, never()).selectList(any());
+    }
+
+    @Test
+    void rejectsMovingIdentityToSchoolWhereAccountAlreadyHasIdentity() {
+        EduPersonPo person = localPerson(5020L, "TEACHER");
+        person.setPersonNo("T020");
+        person.setUserId(9020L);
+        when(personMapper.selectById(5020L)).thenReturn(person);
+        EduSchoolPo targetSchool = new EduSchoolPo();
+        targetSchool.setId(22L);
+        targetSchool.setSourceSystem("HAN");
+        when(schoolMapper.selectById(22L)).thenReturn(targetSchool);
+        when(personMapper.selectCount(any())).thenReturn(0L, 1L);
+
+        EducationForms.Person form = new EducationForms.Person(5020L, 22L, "T020", "张老师", "TEACHER",
+                "TEACHER", "13900000020", 0, null, 0, true, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.save(form))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已有有效身份");
+        verify(personMapper, never()).updateById(any(EduPersonPo.class));
+    }
+
+    @Test
+    void clearsOldSchoolRelationsWhenSchoolChangesAndCallerOmitsRelations() {
+        EduPersonPo person = localPerson(5021L, "TEACHER");
+        person.setPersonNo("T021");
+        when(personMapper.selectById(5021L)).thenReturn(person);
+        EduSchoolPo targetSchool = new EduSchoolPo();
+        targetSchool.setId(22L);
+        targetSchool.setSourceSystem("HAN");
+        when(schoolMapper.selectById(22L)).thenReturn(targetSchool);
+        when(personMapper.selectCount(any())).thenReturn(0L);
+        EduPersonClassPo oldClass = new EduPersonClassPo();
+        oldClass.setId(701L);
+        oldClass.setClassId(31L);
+        when(personClassMapper.selectList(any())).thenReturn(List.of(oldClass));
+        EduPersonSubjectPo oldSubject = new EduPersonSubjectPo();
+        oldSubject.setId(702L);
+        oldSubject.setSubjectId(41L);
+        when(personSubjectMapper.selectList(any())).thenReturn(List.of(oldSubject));
+
+        EducationForms.Person form = new EducationForms.Person(5021L, 22L, "T021", "李老师", "TEACHER",
+                "TEACHER", "13900000021", 0, null, 0, false, null, null, null, null, null, null, null);
+        service.save(form);
+
+        verify(personClassMapper).deleteById(701L);
+        verify(personSubjectMapper).deleteById(702L);
     }
 
     @Test
@@ -625,12 +687,12 @@ class EducationPersonServiceTest {
     }
 
     private static EducationForms.Person teacherForm(String username, String password) {
-        return teacherForm(username, password, null);
+        return teacherForm(username, password, "SCHOOL_ADMIN");
     }
 
     private static EducationForms.Person teacherForm(String username, String password, String dutyCode) {
         return new EducationForms.Person(null, SCHOOL_ID, "T001", "张老师", "TEACHER", dutyCode, "13900000001", 0, null, null,
-                true, username, password, password == null ? null : List.of(TEACHER_ROLE_ID), null,
+                true, username, password, "SCHOOL_ADMIN".equals(dutyCode) && password != null ? List.of(TEACHER_ROLE_ID) : null, null,
                 null, null, null);
     }
 

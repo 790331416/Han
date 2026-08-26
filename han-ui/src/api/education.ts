@@ -18,6 +18,8 @@ export interface EducationQuery extends PageQuery {
   schoolId?: string | number
   roomId?: string | number
   personType?: string
+  phone?: string
+  dutyCode?: string
 }
 
 export type OrganizationType = 'EDU_BUREAU' | 'SCHOOL'

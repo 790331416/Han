@@ -398,9 +398,9 @@ class EducationPersonIdentityTest {
     @Test
     void keepModeUpdatesRolesAndRevokesAccountSessions() {
         EduPersonPo person = boundTeacher(5301L, SCHOOL_A, 9301L, "T301");
+        person.setDutyCode("SCHOOL_ADMIN");
         when(personMapper.selectById(5301L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
-        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = account(9301L, "教育人员统一入口建号");
         user.setPhone("13900000001");
         when(userMapper.selectById(9301L)).thenReturn(user);
@@ -409,7 +409,7 @@ class EducationPersonIdentityTest {
         stubSchool(SCHOOL_A);
 
         service.save(new EducationForms.Person(5301L, SCHOOL_A, "T301", "张老师", "TEACHER",
-                null, "13900000001", 0, null, null, null, null, null,
+                "SCHOOL_ADMIN", "13900000001", 0, null, null, null, null, null,
                 List.of(MGMT_ROLE_ID), null, null, null, null,
                 "KEEP", null));
 
@@ -450,9 +450,9 @@ class EducationPersonIdentityTest {
     @Test
     void revokeBusinessFailureRollsBackPersonChange() {
         EduPersonPo person = boundTeacher(5303L, SCHOOL_A, 9303L, "T303");
+        person.setDutyCode("SCHOOL_ADMIN");
         when(personMapper.selectById(5303L)).thenReturn(person);
         when(personMapper.selectCount(any())).thenReturn(0L);
-        when(personMapper.selectList(any())).thenReturn(List.of());
         SysUserPo user = account(9303L, "教育人员统一入口建号");
         user.setPhone("13900000003");
         when(userMapper.selectById(9303L)).thenReturn(user);
@@ -462,7 +462,7 @@ class EducationPersonIdentityTest {
         stubSchool(SCHOOL_A);
 
         assertThatThrownBy(() -> service.save(new EducationForms.Person(5303L, SCHOOL_A, "T303", "张老师",
-                "TEACHER", null, "13900000003", 0, null, null, null, null, null,
+                "TEACHER", "SCHOOL_ADMIN", "13900000003", 0, null, null, null, null, null,
                 List.of(MGMT_ROLE_ID), null, null, null, null,
                 "KEEP", null)))
                 .isInstanceOf(BusinessException.class)

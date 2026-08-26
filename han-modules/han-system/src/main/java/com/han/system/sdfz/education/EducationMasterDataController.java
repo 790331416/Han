@@ -38,11 +38,15 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.ClientAnchor;
@@ -52,9 +56,17 @@ import org.apache.poi.ss.usermodel.DataValidation;
 import org.apache.poi.ss.usermodel.DataValidationConstraint;
 import org.apache.poi.ss.usermodel.DataValidationHelper;
 import org.apache.poi.ss.usermodel.Drawing;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellReference;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 /**
@@ -161,10 +173,12 @@ public class EducationMasterDataController {
             @RequestParam(required = false) Long schoolId,
             @RequestParam(required = false) String personType,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String dutyCode,
             @RequestParam(required = false) Integer status,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return R.ok(personService.list(schoolId, personType, keyword, status, pageNum, pageSize));
+        return R.ok(personService.list(schoolId, personType, keyword, phone, dutyCode, status, pageNum, pageSize));
     }
 
     @RepeatSubmit
@@ -227,11 +241,12 @@ public class EducationMasterDataController {
         for (int index = 0; index < rows.size(); index++) {
             EducationPersonImportVo row = rows.get(index);
             int rowNumber = index + 2;
-            if ("示例数据（请删除本行）".equals(text(row.getSchoolName()))) {
+            if ("示例数据（请删除本行）".equals(text(row.getSchoolName()))
+                    || "示例数据（请删除本行）".equals(text(row.getRemark()))) {
                 continue;
             }
             try {
-                if (text(row.getSchoolName()) != null && !text(row.getSchoolName()).equals(importSchoolName)) {
+                if (!required(row.getSchoolName(), "学校").equals(importSchoolName)) {
                     throw new BusinessException("学校必须是当前选择的导入学校");
                 }
                 EducationForms.PersonResult saved = personService.save(toPersonForm(row, schoolId));
@@ -388,15 +403,26 @@ public class EducationMasterDataController {
         String personType = required(row.getPersonType(), "人员类型").toUpperCase(Locale.ROOT);
         if ("教师".equals(personType)) personType = "TEACHER";
         if ("学生".equals(personType)) personType = "STUDENT";
+        if (!List.of("TEACHER", "STUDENT").contains(personType)) {
+            throw new BusinessException("人员类型只能选择教师或学生");
+        }
         String duty = resolveDutyName(row.getDutyName(), personType);
+        Boolean loginEnabled = booleanValue(required(row.getLoginEnabled(), "启用校端登录"), "启用校端登录", null);
+        String password = text(row.getPassword());
+        if (Boolean.TRUE.equals(loginEnabled) && password == null) {
+            throw new BusinessException("启用校端登录时必须填写校端初始密码");
+        }
+        List<Long> roleIds = resolveRoles(row.getRoleNames(), personType);
+        if (!roleIds.isEmpty() && !"SCHOOL_ADMIN".equals(duty)) {
+            throw new BusinessException("只有校级管理员可以设置系统管理权限");
+        }
         return new EducationForms.Person(
                 null, schoolId, null, name, personType, duty,
-                required(row.getPhone(), "手机号"), statusValue(row.getStatus()),
+                required(row.getPhone(), "手机号"), statusValue(required(row.getStatus(), "状态")),
                 text(row.getRemark()), flagValue(row.getLeaveFlag(), "离校状态", 0),
-                booleanValue(row.getLoginEnabled(), "启用校端登录", null), text(row.getUsername()),
-                text(row.getPassword()), resolveRoles(row.getRoleNames(), personType),
-                booleanValue(row.getClearRoles(), "清除管理端角色", false), resolveClasses(row.getClassNames(), schoolId),
-                membershipRole(row.getMembershipRole()), resolveSubjects(row.getSubjectNames(), schoolId));
+                loginEnabled, text(row.getUsername()), password, roleIds,
+                false, resolveClasses(row.getGradeNames(), row.getClassNames(), schoolId, personType),
+                null, resolveSubjects(row.getSubjectNames(), schoolId));
     }
 
     private String resolveDutyName(String value, String personType) {
@@ -412,13 +438,89 @@ public class EducationMasterDataController {
         return item.getDictValue();
     }
 
-    private List<Long> resolveClasses(String value, Long schoolId) {
-        return resolveNames(value, "班级", classMapper.selectList(new LambdaQueryWrapper<com.han.system.sdfz.education.domain.EduClassPo>()
-                .eq(com.han.system.sdfz.education.domain.EduClassPo::getSchoolId, schoolId)
-                .eq(com.han.system.sdfz.education.domain.EduClassPo::getNodeType, "CLASS")
-                .eq(com.han.system.sdfz.education.domain.EduClassPo::getStatus, 0)),
-                com.han.system.sdfz.education.domain.EduClassPo::getClassName,
-                com.han.system.sdfz.education.domain.EduClassPo::getId);
+    private List<Long> resolveClasses(String gradeValue, String classValue, Long schoolId, String personType) {
+        if (text(gradeValue) == null && text(classValue) == null) {
+            if ("STUDENT".equals(personType)) throw new BusinessException("学生必须选择所属年级和班级");
+            return List.of();
+        }
+        List<EduClassPo> nodes = classNodes(schoolId);
+        Map<Long, EduClassPo> byId = nodes.stream().collect(Collectors.toMap(EduClassPo::getId, item -> item));
+        Set<Long> gradeIds = new LinkedHashSet<>();
+        for (String name : textList(gradeValue == null ? "" : gradeValue)) {
+            List<EduClassPo> matches = nodes.stream()
+                    .filter(item -> "GRADE".equals(item.getNodeType()) && name.equals(item.getClassName())).toList();
+            if (matches.isEmpty()) throw new BusinessException("年级不属于所选学校: " + name);
+            if (matches.size() > 1) throw new BusinessException("年级名称重复，请先停用非当前学年的同名年级: " + name);
+            gradeIds.add(matches.get(0).getId());
+        }
+
+        Set<Long> classIds = new LinkedHashSet<>();
+        if ("TEACHER".equals(personType)) {
+            nodes.stream().filter(item -> "CLASS".equals(item.getNodeType()))
+                    .filter(item -> gradeIds.stream().anyMatch(gradeId -> isDescendant(item, gradeId, byId)))
+                    .map(EduClassPo::getId).forEach(classIds::add);
+        }
+        for (String name : textList(classValue == null ? "" : classValue)) {
+            List<EduClassPo> matches = nodes.stream().filter(item -> "CLASS".equals(item.getNodeType()))
+                    .filter(item -> name.equals(classPath(item, byId))).toList();
+            if (matches.isEmpty() && !name.contains("/")) {
+                matches = nodes.stream().filter(item -> "CLASS".equals(item.getNodeType()) && name.equals(item.getClassName())).toList();
+            }
+            if (matches.isEmpty()) throw new BusinessException("班级不属于所选学校: " + name);
+            if (matches.size() > 1) throw new BusinessException("班级名称重复，请填写完整年级/班级路径: " + name);
+            classIds.add(matches.get(0).getId());
+        }
+        if ("STUDENT".equals(personType)) {
+            if (gradeIds.isEmpty() || classIds.isEmpty()) throw new BusinessException("学生必须选择所属年级和班级");
+            if (classIds.size() > 1) throw new BusinessException("学生只能归属一个班级");
+            EduClassPo selected = byId.get(classIds.iterator().next());
+            if (gradeIds.stream().noneMatch(gradeId -> isDescendant(selected, gradeId, byId))) {
+                throw new BusinessException("所属班级不在所选年级下");
+            }
+        }
+        return List.copyOf(classIds);
+    }
+
+    private List<EduClassPo> classNodes(Long schoolId) {
+        return classMapper.selectList(new LambdaQueryWrapper<EduClassPo>()
+                .eq(EduClassPo::getSchoolId, schoolId).eq(EduClassPo::getStatus, 0)
+                .orderByAsc(EduClassPo::getSort).orderByAsc(EduClassPo::getId));
+    }
+
+    private static boolean isDescendant(EduClassPo item, Long ancestorId, Map<Long, EduClassPo> byId) {
+        Set<Long> visited = new LinkedHashSet<>();
+        Long parentId = item.getParentId();
+        while (parentId != null && parentId != 0L && visited.add(parentId)) {
+            if (ancestorId.equals(parentId)) return true;
+            EduClassPo parent = byId.get(parentId);
+            parentId = parent == null ? null : parent.getParentId();
+        }
+        return false;
+    }
+
+    private static String classPath(EduClassPo item, Map<Long, EduClassPo> byId) {
+        List<String> names = new ArrayList<>();
+        Set<Long> visited = new LinkedHashSet<>();
+        EduClassPo current = item;
+        while (current != null && current.getId() != null && visited.add(current.getId())) {
+            if (text(current.getClassName()) != null) names.add(current.getClassName().trim());
+            if ("GRADE".equals(current.getNodeType())) break;
+            Long parentId = current.getParentId();
+            current = parentId == null || parentId == 0L ? null : byId.get(parentId);
+        }
+        Collections.reverse(names);
+        return String.join("/", names);
+    }
+
+    private static String gradeName(EduClassPo item, Map<Long, EduClassPo> byId) {
+        Set<Long> visited = new LinkedHashSet<>();
+        EduClassPo current = item;
+        while (current != null && current.getId() != null && visited.add(current.getId())) {
+            if ("GRADE".equals(current.getNodeType())) return current.getClassName();
+            Long parentId = current.getParentId();
+            current = parentId == null || parentId == 0L ? null : byId.get(parentId);
+        }
+        return null;
     }
 
     private List<Long> resolveSubjects(String value, Long schoolId) {
@@ -451,20 +553,21 @@ public class EducationMasterDataController {
         if (id == null) throw new BusinessException(message + ": " + name);
         return id;
     }
-    private static String membershipRole(String value) {
-        String text = text(value);
-        if ("教师".equals(text)) return "TEACHER";
-        if ("学生".equals(text)) return "STUDENT";
-        return text;
-    }
-    private static List<String> textList(String value) { return java.util.Arrays.stream(value.split(",")).map(EducationMasterDataController::text).filter(java.util.Objects::nonNull).toList(); }
+    private static List<String> textList(String value) { return java.util.Arrays.stream(value.split("[,，]")).map(EducationMasterDataController::text).filter(java.util.Objects::nonNull).toList(); }
 
     private void exportPersonTemplate(HttpServletResponse response, Long schoolId, String schoolName) throws IOException {
-        List<String> classes = classMapper.selectList(new LambdaQueryWrapper<com.han.system.sdfz.education.domain.EduClassPo>()
-                        .eq(com.han.system.sdfz.education.domain.EduClassPo::getSchoolId, schoolId)
-                        .eq(com.han.system.sdfz.education.domain.EduClassPo::getNodeType, "CLASS")
-                        .eq(com.han.system.sdfz.education.domain.EduClassPo::getStatus, 0))
-                .stream().map(com.han.system.sdfz.education.domain.EduClassPo::getClassName).toList();
+        List<EduClassPo> nodes = classNodes(schoolId);
+        Map<Long, EduClassPo> nodeMap = nodes.stream().collect(Collectors.toMap(EduClassPo::getId, item -> item));
+        Map<String, List<String>> gradeClasses = new LinkedHashMap<>();
+        for (EduClassPo grade : nodes.stream().filter(item -> "GRADE".equals(item.getNodeType())).toList()) {
+            if (text(grade.getClassName()) == null) continue;
+            List<String> paths = nodes.stream().filter(item -> "CLASS".equals(item.getNodeType()))
+                    .filter(item -> isDescendant(item, grade.getId(), nodeMap))
+                    .map(item -> classPath(item, nodeMap)).filter(value -> !value.isBlank()).toList();
+            gradeClasses.computeIfAbsent(grade.getClassName(), ignored -> new ArrayList<>()).addAll(paths);
+        }
+        gradeClasses.replaceAll((grade, paths) -> paths.stream().distinct().toList());
+        List<String> grades = List.copyOf(gradeClasses.keySet());
         List<String> subjects = subjectMapper.selectList(new LambdaQueryWrapper<com.han.system.sdfz.education.domain.EduSubjectPo>()
                         .eq(com.han.system.sdfz.education.domain.EduSubjectPo::getSchoolId, schoolId)
                         .eq(com.han.system.sdfz.education.domain.EduSubjectPo::getStatus, 0))
@@ -475,36 +578,96 @@ public class EducationMasterDataController {
         List<String> roles = roleMapper.selectList(new LambdaQueryWrapper<SysRolePo>().eq(SysRolePo::getStatus, 0))
                 .stream().filter(item -> allowedImportRole(item.getRoleKey()))
                 .map(SysRolePo::getRoleName).toList();
-        String[] headers = {"学校", "姓名", "人员类型", "校内岗位", "手机号", "状态", "备注", "离校状态", "启用校端登录", "用户名", "校端初始密码", "系统管理权限", "清除管理端角色", "所属班级", "归班角色", "任教科目"};
+        String[] headers = {"学校（必填）", "姓名（必填）", "人员类型（必填）", "校内岗位（教师选填）", "手机号（必填）",
+                "状态（必填）", "备注（选填）", "离校状态（选填）", "启用校端登录（必填）", "用户名（选填）",
+                "校端初始密码（启用登录必填）", "系统管理权限（校级管理员选填）", "所属年级（学生必填/教师选填）",
+                "所属班级（学生必填/教师选填）", "任教科目（教师选填）"};
+        String[] requirement = {"必填", "必填", "必填", "选填", "必填", "必填", "选填", "选填", "必填", "选填", "条件必填", "选填", "条件必填", "条件必填", "选填"};
+        String[] descriptions = {
+                "必填。固定为下载模板时选择的学校，只能使用本列下拉值。",
+                "必填。填写人员真实姓名；人员编号由系统自动生成。",
+                "必填。只能选择“教师”或“学生”。",
+                "教师选填，学生不填。教师留空时默认为“普通教师”；需要管理端权限时必须选择“管理员”。",
+                "必填。11位手机号，同一租户下不能重复。",
+                "必填。只能选择“正常”或“停用”。",
+                "选填。补充人员说明。模板中的示例行已在此列标记，导入时会自动跳过。",
+                "选填。选择“是”或“否”，留空默认为“否”。",
+                "必填。选择“是”时创建校端登录账号；选择“否”时只创建人员档案。",
+                "选填。留空时自动生成 u_手机号。",
+                "启用校端登录时必填。8~20位，大写字母、小写字母、数字、特殊字符至少包含3类。",
+                "仅校内岗位为管理员时选填。留空表示不调整管理端角色；多个角色用逗号分隔。",
+                "学生必填，教师选填。教师选择年级时会关联该年级下全部班级；多个年级用逗号分隔。",
+                "学生必填且只能选一个，教师选填。下拉项随本行年级变化；多个班级可手工用逗号分隔。",
+                "教师选填，学生不填。多个科目用逗号分隔。"
+        };
         try (Workbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("人员导入");
             Sheet dict = workbook.createSheet("填写说明");
+            workbook.createSheet("下拉选项");
             Row header = sheet.createRow(0);
-            CellStyle headerStyle = workbook.createCellStyle();
-            headerStyle.setWrapText(true);
             Drawing<?> drawing = sheet.createDrawingPatriarch();
             for (int i = 0; i < headers.length; i++) {
-                Cell cell = header.createCell(i); cell.setCellValue(headers[i]); cell.setCellStyle(headerStyle);
-                Comment comment = cellComment(workbook, drawing, i, "填写说明：" + (i == 0 ? "固定为当前选择的学校。" : "按模板示例填写；多个值使用中文名称并用逗号分隔。"));
-                cell.setCellComment(comment);
-                sheet.setColumnWidth(i, 18 * 256);
+                Cell cell = header.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(templateHeaderStyle(workbook, requirement[i]));
+                cell.setCellComment(cellComment(workbook, drawing, i, descriptions[i]));
+                sheet.setColumnWidth(i, (i == 6 ? 28 : i >= 9 ? 26 : 22) * 256);
             }
-            Row sample = sheet.createRow(1);
-            String[] values = {"示例数据（请删除本行）", "张三", "教师", duties.contains("普通教师") ? "普通教师" : "", "13800000000", "正常", "", "否", "是", "", "请填写初始密码", "", "否", classes.isEmpty() ? "" : classes.get(0), "教师", subjects.isEmpty() ? "" : subjects.get(0)};
-            for (int i = 0; i < values.length; i++) sample.createCell(i).setCellValue(values[i]);
-            addValidation(sheet, 2, 1000, 2, List.of("教师", "学生"), workbook);
-            addValidation(sheet, 2, 1000, 0, List.of(schoolName), workbook);
-            addValidation(sheet, 2, 1000, 3, duties, workbook);
-            addValidation(sheet, 2, 1000, 5, List.of("正常", "停用"), workbook);
-            addValidation(sheet, 2, 1000, 7, List.of("是", "否"), workbook);
-            addValidation(sheet, 2, 1000, 8, List.of("是", "否"), workbook);
-            addValidation(sheet, 2, 1000, 11, roles, workbook);
-            addValidation(sheet, 2, 1000, 12, List.of("是", "否"), workbook);
-            addValidation(sheet, 2, 1000, 13, classes, workbook);
-            addValidation(sheet, 2, 1000, 14, List.of("教师", "学生"), workbook);
-            addValidation(sheet, 2, 1000, 15, subjects, workbook);
-            Row note = dict.createRow(0); note.createCell(0).setCellValue("当前导入学校"); note.createCell(1).setCellValue(schoolName);
-            Row note2 = dict.createRow(1); note2.createCell(0).setCellValue("规则"); note2.createCell(1).setCellValue("第二行是示例数据，请删除；学校、班级、科目、职务和管理端角色均按中文名称填写，多个值用逗号分隔。学生不填写校内岗位和管理端权限。管理端角色留空表示无管理端权限。");
+
+            String sampleGrade = grades.isEmpty() ? "" : grades.get(0);
+            String sampleClass = gradeClasses.getOrDefault(sampleGrade, List.of()).stream().findFirst().orElse("");
+            String[][] samples = {
+                    {schoolName, "张老师", "教师", duties.contains("普通教师") ? "普通教师" : "", "13800000000", "正常", "示例数据（请删除本行）", "否", "是", "zhanglaoshi", "Szxy@2026", "", sampleGrade, sampleClass, subjects.isEmpty() ? "" : subjects.get(0)},
+                    {schoolName, "李同学", "学生", "", "13900000000", "正常", "示例数据（请删除本行）", "否", "是", "", "Student@2026", "", sampleGrade, sampleClass, ""}
+            };
+            CellStyle sampleStyle = workbook.createCellStyle();
+            sampleStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+            sampleStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            for (int rowIndex = 0; rowIndex < samples.length; rowIndex++) {
+                Row sample = sheet.createRow(rowIndex + 1);
+                for (int i = 0; i < samples[rowIndex].length; i++) {
+                    Cell cell = sample.createCell(i);
+                    cell.setCellValue(samples[rowIndex][i] == null ? "" : samples[rowIndex][i]);
+                    cell.setCellStyle(sampleStyle);
+                }
+            }
+            sheet.createFreezePane(0, 1);
+            sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.length - 1));
+            header.setHeightInPoints(42);
+
+            addValidation(sheet, 3, 1002, 0, List.of(schoolName), workbook);
+            addValidation(sheet, 3, 1002, 2, List.of("教师", "学生"), workbook);
+            addValidation(sheet, 3, 1002, 3, duties, workbook);
+            addValidation(sheet, 3, 1002, 5, List.of("正常", "停用"), workbook);
+            addValidation(sheet, 3, 1002, 7, List.of("是", "否"), workbook);
+            addValidation(sheet, 3, 1002, 8, List.of("是", "否"), workbook);
+            addValidation(sheet, 3, 1002, 11, roles, workbook);
+            addValidation(sheet, 3, 1002, 12, grades, workbook);
+            addDependentClassValidation(sheet, 3, 1002, 12, 13, gradeClasses, workbook);
+            addValidation(sheet, 3, 1002, 14, subjects, workbook);
+
+            Row infoHeader = dict.createRow(0);
+            String[] infoHeaders = {"字段", "必填性", "填写规则"};
+            for (int i = 0; i < infoHeaders.length; i++) {
+                Cell cell = infoHeader.createCell(i);
+                cell.setCellValue(infoHeaders[i]);
+                cell.setCellStyle(templateHeaderStyle(workbook, "必填"));
+            }
+            Row schoolRow = dict.createRow(1);
+            schoolRow.createCell(0).setCellValue("当前导入学校");
+            schoolRow.createCell(1).setCellValue("必填");
+            schoolRow.createCell(2).setCellValue(schoolName);
+            for (int i = 0; i < headers.length; i++) {
+                Row row = dict.createRow(i + 2);
+                row.createCell(0).setCellValue(headers[i]);
+                row.createCell(1).setCellValue(requirement[i]);
+                row.createCell(2).setCellValue(descriptions[i]);
+            }
+            dict.setColumnWidth(0, 38 * 256);
+            dict.setColumnWidth(1, 16 * 256);
+            dict.setColumnWidth(2, 100 * 256);
+            dict.createFreezePane(0, 1);
+            workbook.setSheetHidden(workbook.getSheetIndex("下拉选项"), true);
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             response.setCharacterEncoding("utf-8");
             response.setHeader("Content-Disposition", "attachment;filename=person-import-template.xlsx");
@@ -516,9 +679,9 @@ public class EducationMasterDataController {
         CreationHelper helper = workbook.getCreationHelper();
         ClientAnchor anchor = helper.createClientAnchor();
         anchor.setCol1(column);
-        anchor.setCol2(column + 3);
+        anchor.setCol2(column + 5);
         anchor.setRow1(0);
-        anchor.setRow2(3);
+        anchor.setRow2(6);
         Comment comment = drawing.createCellComment(anchor);
         comment.setString(helper.createRichTextString(text));
         return comment;
@@ -526,18 +689,87 @@ public class EducationMasterDataController {
 
     private static void addValidation(Sheet sheet, int firstRow, int lastRow, int column, List<String> values, Workbook workbook) {
         if (values == null || values.isEmpty()) return;
-        Sheet dict = workbook.getSheet("填写说明");
-        int start = dict.getLastRowNum() + 2;
-        for (int i = 0; i < values.size(); i++) dict.createRow(start + i).createCell(0).setCellValue(values.get(i));
+        Sheet dict = workbook.getSheet("下拉选项");
+        Row title = dict.getRow(0) == null ? dict.createRow(0) : dict.getRow(0);
+        title.createCell(column).setCellValue(sheet.getRow(0).getCell(column).getStringCellValue());
+        for (int i = 0; i < values.size(); i++) {
+            Row row = dict.getRow(i + 1) == null ? dict.createRow(i + 1) : dict.getRow(i + 1);
+            row.createCell(column).setCellValue(values.get(i));
+        }
         String rangeName = "person_import_options_" + column;
         org.apache.poi.ss.usermodel.Name named = workbook.getName(rangeName);
         if (named == null) named = workbook.createName();
         named.setNameName(rangeName);
-        named.setRefersToFormula("'填写说明'!$A$" + (start + 1) + ":$A$" + (start + values.size()));
+        String letter = CellReference.convertNumToColString(column);
+        named.setRefersToFormula("'下拉选项'!$" + letter + "$2:$" + letter + "$" + (values.size() + 1));
         DataValidationHelper helper = sheet.getDataValidationHelper();
         DataValidationConstraint constraint = helper.createFormulaListConstraint(rangeName);
-        DataValidation validation = helper.createValidation(constraint, new org.apache.poi.ss.util.CellRangeAddressList(firstRow, lastRow, column, column));
+        DataValidation validation = helper.createValidation(constraint, new CellRangeAddressList(firstRow, lastRow, column, column));
         validation.setSuppressDropDownArrow(true); validation.setShowErrorBox(true); sheet.addValidationData(validation);
+    }
+
+    private static void addDependentClassValidation(Sheet sheet, int firstRow, int lastRow,
+                                                     int gradeColumn, int classColumn,
+                                                     Map<String, List<String>> gradeClasses,
+                                                     Workbook workbook) {
+        if (gradeClasses.isEmpty()) return;
+        Sheet options = workbook.getSheet("下拉选项");
+        int mapGradeColumn = 16;
+        int mapRangeColumn = 17;
+        int classOptionsColumn = 18;
+        Row title = options.getRow(0) == null ? options.createRow(0) : options.getRow(0);
+        title.createCell(mapGradeColumn).setCellValue("年级");
+        title.createCell(mapRangeColumn).setCellValue("班级范围");
+        int index = 0;
+        for (Map.Entry<String, List<String>> entry : gradeClasses.entrySet()) {
+            Row mapRow = options.getRow(index + 1) == null ? options.createRow(index + 1) : options.getRow(index + 1);
+            String rangeName = "person_import_grade_" + index;
+            mapRow.createCell(mapGradeColumn).setCellValue(entry.getKey());
+            mapRow.createCell(mapRangeColumn).setCellValue(rangeName);
+            List<String> classes = entry.getValue().isEmpty() ? List.of("") : entry.getValue();
+            int optionColumn = classOptionsColumn + index;
+            title.createCell(optionColumn).setCellValue(entry.getKey());
+            for (int rowIndex = 0; rowIndex < classes.size(); rowIndex++) {
+                Row row = options.getRow(rowIndex + 1) == null ? options.createRow(rowIndex + 1) : options.getRow(rowIndex + 1);
+                row.createCell(optionColumn).setCellValue(classes.get(rowIndex));
+            }
+            org.apache.poi.ss.usermodel.Name range = workbook.createName();
+            range.setNameName(rangeName);
+            String letter = CellReference.convertNumToColString(optionColumn);
+            range.setRefersToFormula("'下拉选项'!$" + letter + "$2:$" + letter + "$" + (classes.size() + 1));
+            index++;
+        }
+        org.apache.poi.ss.usermodel.Name mapRange = workbook.createName();
+        mapRange.setNameName("person_import_grade_class_map");
+        String firstLetter = CellReference.convertNumToColString(mapGradeColumn);
+        String lastLetter = CellReference.convertNumToColString(mapRangeColumn);
+        mapRange.setRefersToFormula("'下拉选项'!$" + firstLetter + "$2:$" + lastLetter + "$" + (gradeClasses.size() + 1));
+
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        String gradeLetter = CellReference.convertNumToColString(gradeColumn);
+        String formula = "INDIRECT(VLOOKUP($" + gradeLetter + (firstRow + 1)
+                + ",person_import_grade_class_map,2,FALSE))";
+        DataValidation validation = helper.createValidation(helper.createFormulaListConstraint(formula),
+                new CellRangeAddressList(firstRow, lastRow, classColumn, classColumn));
+        validation.setSuppressDropDownArrow(true);
+        validation.setShowErrorBox(true);
+        sheet.addValidationData(validation);
+    }
+
+    private static CellStyle templateHeaderStyle(Workbook workbook, String requirement) {
+        CellStyle style = workbook.createCellStyle();
+        style.setWrapText(true);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setFillForegroundColor(("必填".equals(requirement) ? IndexedColors.DARK_RED
+                : "条件必填".equals(requirement) ? IndexedColors.DARK_YELLOW : IndexedColors.GREY_50_PERCENT).getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setBorderBottom(BorderStyle.THIN);
+        Font font = workbook.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.WHITE.getIndex());
+        style.setFont(font);
+        return style;
     }
 
     private static boolean allowedImportRole(String roleKey) {
