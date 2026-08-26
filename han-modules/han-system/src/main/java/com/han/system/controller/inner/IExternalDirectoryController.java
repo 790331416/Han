@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /** 供 han-open 调用的受限教育目录内部接口，浏览器和第三方应用不得直接访问。 */
 @InnerAuth
@@ -46,5 +47,11 @@ public class IExternalDirectoryController {
             @RequestParam(required = false) Integer pageNum,
             @RequestParam(required = false) Integer pageSize) {
         return R.ok(directoryService.devices(tenantId, schoolIds, status, updatedAfter, pageNum, pageSize));
+    }
+
+    @GetMapping("/schools/names")
+    public R<Map<Long, String>> schoolNames(@RequestParam Long tenantId,
+                                            @RequestParam List<Long> schoolIds) {
+        return R.ok(directoryService.schoolNames(tenantId, schoolIds));
     }
 }

@@ -119,6 +119,10 @@ async function installPortalShell(page: Page) {
     code: 200,
     data: { rows: [app], total: 1, pageNum: 1, pageSize: 100, pages: 1 }
   }))
+  await page.route('**/open/app/201/school-names', (route) => json(route, {
+    code: 200, data: { '1001': '鲁巴数智教育中心' }
+  }))
+  await page.route('**/open/app/201', (route) => json(route, { code: 200, data: app }))
   await page.route('**/open/api-resource/list**', (route) => json(route, { code: 200, data: [resource] }))
   await page.route('**/open/api-resource/401', (route) => json(route, { code: 200, data: resource }))
   await page.route('**/open/api-resource/401**', (route) => json(route, { code: 200, data: resource }))
@@ -152,6 +156,16 @@ async function selectDebugInputs(page: Page) {
 }
 
 test.describe('厂商门户在线调测受控联调', () => {
+  test('应用编辑页使用学校名称而不是数据库 ID', async ({ page }) => {
+    await installPortalShell(page)
+    await page.goto('/open/portal')
+    await page.getByRole('tab', { name: '应用管理' }).click()
+    await page.getByRole('button', { name: '编辑', exact: true }).click()
+
+    await expect(page.getByText('鲁巴数智教育中心', { exact: true })).toBeVisible()
+    await expect(page.getByText('1001', { exact: true })).toHaveCount(0)
+  })
+
   test('Token→目录接口→审计链路成功，敏感字段不进入审计且 Secret 保留在当前页面', async ({ page }) => {
     let tokenRequestBody = ''
     let directoryAuthorization = ''

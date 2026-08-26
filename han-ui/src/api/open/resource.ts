@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request'
+import service, { get, post } from '@/utils/request'
 
 export interface OpenApiResource {
   id?: string | number
@@ -83,4 +83,11 @@ export type OpenIntegrationExportFormat = 'zip' | 'openapi' | 'postman' | 'envir
 export function openIntegrationExportUrl(format: OpenIntegrationExportFormat, baseUrl: string) {
   const file = { zip: 'package.zip', openapi: 'openapi.json', postman: 'postman.json', environment: 'environment.json' }[format]
   return `/open/public/integration/${file}?baseUrl=${encodeURIComponent(baseUrl)}`
+}
+
+export function downloadOpenAppIntegration(format: OpenIntegrationExportFormat, appId: string | number,
+                                           environment: 'SANDBOX' | 'PROD', baseUrl: string) {
+  const file = { zip: 'package', openapi: 'openapi', postman: 'postman', environment: 'environment' }[format]
+  return service({ url: `/open/app/integration/${file}`, method: 'GET',
+    params: { appId, environment, baseUrl }, responseType: 'blob' })
 }

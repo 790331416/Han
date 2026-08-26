@@ -11,6 +11,9 @@ import com.han.common.core.exception.BusinessException;
 import com.han.open.domain.dto.OpenApiIntegrationExportDTO;
 import com.han.open.domain.po.OpenApiResourcePo;
 import com.han.open.domain.po.OpenApiResourceVersionPo;
+import com.han.open.domain.po.OpenAppResourceGrantPo;
+import com.han.open.domain.vo.OpenAppVO;
+import com.han.open.mapper.OpenAppResourceGrantMapper;
 import com.han.open.mapper.OpenApiResourceMapper;
 import com.han.open.mapper.OpenApiResourceVersionMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +23,10 @@ import org.springframework.util.StringUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -50,20 +55,63 @@ public class OpenApiIntegrationExportService {
 
     private final OpenApiResourceMapper resourceMapper;
     private final OpenApiResourceVersionMapper versionMapper;
+    private final OpenAppResourceGrantMapper grantMapper;
     private final ObjectMapper objectMapper;
 
     public OpenApiIntegrationExportDTO build(String rawBaseUrl) {
         String baseUrl = normalizeBaseUrl(rawBaseUrl);
-        List<ResourceDocument> documents = loadPublishedDocuments();
+        List<ResourceDocument> documents = loadPublishedDocuments(null);
+        return buildExport(baseUrl, documents, "鲁巴开放平台通用对接", "通用目录", scopes(documents));
+    }
+
+    public OpenApiIntegrationExportDTO buildForApp(String rawBaseUrl, OpenAppVO app, String rawEnvironment) {
+        if (app == null || app.getAppId() == null) {
+            throw new BusinessException("导出应用不能为空");
+        }
+        if (grantMapper == null) {
+            throw new BusinessException("应用授权查询未配置");
+        }
+        String environment = normalizeEnvironment(rawEnvironment);
+        List<OpenAppResourceGrantPo> grants = grantMapper.selectList(
+                new LambdaQueryWrapper<OpenAppResourceGrantPo>()
+                        .eq(app.getTenantId() != null, OpenAppResourceGrantPo::getTenantId, app.getTenantId())
+                        .eq(OpenAppResourceGrantPo::getAppId, app.getAppId())
+                        .eq(OpenAppResourceGrantPo::getEnvironment, environment)
+                        .eq(OpenAppResourceGrantPo::getStatus, 1)
+                        .eq(OpenAppResourceGrantPo::getDelFlag, 0)
+                        .and(value -> value.isNull(OpenAppResourceGrantPo::getExpiresAt)
+                                .or().gt(OpenAppResourceGrantPo::getExpiresAt, LocalDateTime.now())));
+        Map<Long, Set<String>> grantScopes = new LinkedHashMap<>();
+        if (grants != null) {
+            grants.forEach(grant -> grantScopes.put(grant.getResourceId(), splitScopes(grant.getScopes())));
+        }
+        Set<String> appScopes = app.getScopes() == null ? Set.of() : new LinkedHashSet<>(app.getScopes());
+        List<ResourceDocument> documents = loadPublishedDocuments(grantScopes.keySet()).stream()
+                .filter(document -> appScopes.contains(document.resource().getScopeCode()))
+                .filter(document -> grantScopes.getOrDefault(document.resource().getId(), Set.of())
+                        .contains(document.resource().getScopeCode()))
+                .toList();
+        if (documents.isEmpty()) {
+            throw new BusinessException("当前应用在所选环境没有有效授权接口");
+        }
+        String environmentName = "PROD".equals(environment) ? "生产" : "沙箱";
+        String filename = safeExportName(app.getAppName()) + "应用对接-" + environmentName;
+        return buildExport(normalizeBaseUrl(rawBaseUrl), documents, filename,
+                app.getAppName() + " / " + environmentName, scopes(documents));
+    }
+
+    private OpenApiIntegrationExportDTO buildExport(String baseUrl, List<ResourceDocument> documents,
+                                                     String filenameBase, String packageName, String scopeText) {
         ObjectNode openApi = buildOpenApi(baseUrl, documents);
-        ObjectNode collection = buildPostmanCollection(baseUrl, documents, openApi);
-        ObjectNode environment = buildPostmanEnvironment(baseUrl);
+        ObjectNode collection = buildPostmanCollection(baseUrl, documents, openApi, scopeText);
+        ObjectNode environment = buildPostmanEnvironment(baseUrl, scopeText);
         byte[] openApiBytes = json(openApi);
         byte[] collectionBytes = json(collection);
         byte[] environmentBytes = json(environment);
-        byte[] readmeBytes = readme(baseUrl, documents.size()).getBytes(StandardCharsets.UTF_8);
-        return new OpenApiIntegrationExportDTO(openApiBytes, collectionBytes, environmentBytes, readmeBytes,
-                zip(baseUrl, documents, openApiBytes, collectionBytes, environmentBytes, readmeBytes));
+        byte[] readmeBytes = readme(baseUrl, packageName, documents.size(), scopeText).getBytes(StandardCharsets.UTF_8);
+        return new OpenApiIntegrationExportDTO(filenameBase, openApiBytes, collectionBytes, environmentBytes, readmeBytes,
+                zip(baseUrl, filenameBase, packageName, scopeText, documents,
+                        openApiBytes, collectionBytes, environmentBytes, readmeBytes));
     }
 
     String normalizeBaseUrl(String value) {
@@ -82,9 +130,13 @@ public class OpenApiIntegrationExportService {
         }
     }
 
-    private List<ResourceDocument> loadPublishedDocuments() {
+    private List<ResourceDocument> loadPublishedDocuments(Set<Long> allowedIds) {
+        if (allowedIds != null && allowedIds.isEmpty()) {
+            return List.of();
+        }
         List<OpenApiResourcePo> resources = resourceMapper.selectList(
                 new LambdaQueryWrapper<OpenApiResourcePo>()
+                        .in(allowedIds != null, OpenApiResourcePo::getId, allowedIds)
                         .eq(OpenApiResourcePo::getStatus, RESOURCE_ENABLED)
                         .eq(OpenApiResourcePo::getPublishStatus, RESOURCE_PUBLISHED)
                         .orderByAsc(OpenApiResourcePo::getSort)
@@ -108,6 +160,30 @@ public class OpenApiIntegrationExportService {
                 .filter(resource -> currentVersions.containsKey(resource.getId()))
                 .map(resource -> new ResourceDocument(resource, currentVersions.get(resource.getId())))
                 .toList();
+    }
+
+    private String normalizeEnvironment(String value) {
+        String environment = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("SANDBOX", "PROD").contains(environment)) {
+            throw new BusinessException("导出环境只能是 SANDBOX 或 PROD");
+        }
+        return environment;
+    }
+
+    private Set<String> splitScopes(String value) {
+        if (!StringUtils.hasText(value)) return Set.of();
+        return java.util.Arrays.stream(value.trim().split("[\\s,]+"))
+                .filter(StringUtils::hasText).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private String scopes(List<ResourceDocument> documents) {
+        return documents.stream().map(document -> document.resource().getScopeCode())
+                .filter(StringUtils::hasText).distinct().collect(java.util.stream.Collectors.joining(" "));
+    }
+
+    private String safeExportName(String value) {
+        String name = defaultText(value, "开放平台").replaceAll("[\\\\/:*?\"<>|\\r\\n]", "-").trim();
+        return name.length() > 50 ? name.substring(0, 50) : name;
     }
 
     private ObjectNode buildOpenApi(String baseUrl, List<ResourceDocument> documents) {
@@ -295,7 +371,8 @@ public class OpenApiIntegrationExportService {
         return schema;
     }
 
-    private ObjectNode buildPostmanCollection(String baseUrl, List<ResourceDocument> documents, ObjectNode openApi) {
+    private ObjectNode buildPostmanCollection(String baseUrl, List<ResourceDocument> documents,
+                                              ObjectNode openApi, String scopeText) {
         ObjectNode collection = objectMapper.createObjectNode();
         ObjectNode info = collection.putObject("info");
         info.put("_postman_id", UUID.nameUUIDFromBytes(("collection:" + baseUrl).getBytes(StandardCharsets.UTF_8)).toString());
@@ -308,6 +385,7 @@ public class OpenApiIntegrationExportService {
         addVariable(variables, "baseUrl", baseUrl, "string");
         addVariable(variables, "clientId", "", "string");
         addVariable(variables, "clientSecret", "", "string");
+        addVariable(variables, "scopes", scopeText, "string");
         addVariable(variables, "accessToken", "", "string");
         addVariable(variables, "tokenExpiresAt", "0", "string");
 
@@ -434,7 +512,7 @@ public class OpenApiIntegrationExportService {
         response.put("body", pretty(value));
     }
 
-    private ObjectNode buildPostmanEnvironment(String baseUrl) {
+    private ObjectNode buildPostmanEnvironment(String baseUrl, String scopeText) {
         ObjectNode environment = objectMapper.createObjectNode();
         environment.put("id", UUID.nameUUIDFromBytes(("environment:" + baseUrl).getBytes(StandardCharsets.UTF_8)).toString());
         environment.put("name", "鲁巴教育开放平台环境");
@@ -442,6 +520,7 @@ public class OpenApiIntegrationExportService {
         addEnvironmentValue(values, "baseUrl", baseUrl, "default");
         addEnvironmentValue(values, "clientId", "", "default");
         addEnvironmentValue(values, "clientSecret", "", "secret");
+        addEnvironmentValue(values, "scopes", scopeText, "default");
         environment.put("_postman_variable_scope", "environment");
         environment.put("_postman_exported_at", Instant.now().toString());
         environment.put("_postman_exported_using", "鲁巴教育开放平台");
@@ -453,6 +532,7 @@ public class OpenApiIntegrationExportService {
                 const baseUrl = (pm.environment.get('baseUrl') || pm.collectionVariables.get('baseUrl') || '').replace(/\\/$/, '');
                 const clientId = pm.environment.get('clientId') || pm.collectionVariables.get('clientId');
                 const clientSecret = pm.environment.get('clientSecret') || pm.collectionVariables.get('clientSecret');
+                const scopes = pm.environment.get('scopes') || pm.collectionVariables.get('scopes') || '';
                 const accessToken = pm.collectionVariables.get('accessToken');
                 const expiresAt = Number(pm.collectionVariables.get('tokenExpiresAt') || 0);
                 if (!baseUrl || !clientId || !clientSecret) {
@@ -466,7 +546,8 @@ public class OpenApiIntegrationExportService {
                     body: { mode: 'urlencoded', urlencoded: [
                       { key: 'grant_type', value: 'client_credentials' },
                       { key: 'client_id', value: clientId },
-                      { key: 'client_secret', value: clientSecret }
+                      { key: 'client_secret', value: clientSecret },
+                      { key: 'scope', value: scopes }
                     ] }
                   }, (error, response) => {
                     if (error) throw error;
@@ -529,25 +610,43 @@ public class OpenApiIntegrationExportService {
         variable.put("enabled", true);
     }
 
-    private byte[] zip(String baseUrl, List<ResourceDocument> documents, byte[] openApi,
+    private byte[] zip(String baseUrl, String filenameBase, String packageName, String scopeText,
+                       List<ResourceDocument> documents, byte[] openApi,
                        byte[] collection, byte[] environment, byte[] readme) {
         try (ByteArrayOutputStream output = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
-            writeZipEntry(zip, "openapi.json", openApi);
-            writeZipEntry(zip, "lubashu-open-platform.postman_collection.json", collection);
-            writeZipEntry(zip, "lubashu-open-platform.postman_environment.json", environment);
-            writeZipEntry(zip, "README.md", readme);
-            writeZipEntry(zip, "docs/鉴权与密钥使用说明.md", authGuide(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "docs/完整接口参考.md", apiReference(documents).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "docs/接口清单.csv", endpointCsv(documents).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/README.md", demoGuide().getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/demo.env.example", demoEnvironment(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/curl/demo.sh", curlDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/python/demo.py", pythonDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/node/demo.mjs", nodeDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/java/OpenPlatformDemo.java", javaDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
-            writeZipEntry(zip, "demos/go/main.go", goDemo(baseUrl).getBytes(StandardCharsets.UTF_8));
+            String root = filenameBase + "/";
+            writeZipEntry(zip, root + "README.md", readme);
+            writeZipEntry(zip, root + "API导入文件/openapi.json", openApi);
+            writeZipEntry(zip, root + "API导入文件/postman_collection.json", collection);
+            writeZipEntry(zip, root + "API导入文件/postman_environment.json", environment);
+            writeZipEntry(zip, root + "文档/01-快速接入.md", quickStart(baseUrl, scopeText).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "文档/02-鉴权与Scope说明.md", authGuide(baseUrl, scopeText).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "文档/03-接口清单.csv", endpointCsv(documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "文档/04-完整接口参考.md", apiReference(documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/README.md", demoGuide(scopeText).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/配置示例.env", demoEnvironment(baseUrl, scopeText).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/cURL/README.md", languageGuide("cURL", "sh 调用全部已授权接口.sh").getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/cURL/调用全部已授权接口.sh", curlDemo(baseUrl, scopeText, documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Python/README.md", languageGuide("Python", "python -m unittest && python src/open_platform_demo.py").getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Python/pyproject.toml", pythonProject().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Python/src/open_platform_demo.py", pythonDemo(baseUrl, scopeText, documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Python/tests/test_open_platform_demo.py", pythonTest().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Node.js/README.md", languageGuide("Node.js", "npm test && npm start").getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Node.js/package.json", nodeProject().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Node.js/src/open-platform-demo.mjs", nodeDemo(baseUrl, scopeText, documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Node.js/test/open-platform-demo.test.mjs", nodeTest().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Java/README.md", languageGuide("Java", "mvn test && mvn exec:java").getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Java/pom.xml", javaProject().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Java/src/main/java/com/lubashu/openplatform/demo/OpenPlatformDemo.java", javaDemo(baseUrl, scopeText, documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Java/src/test/java/com/lubashu/openplatform/demo/OpenPlatformDemoTest.java", javaTest().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Go/README.md", languageGuide("Go", "go test ./... && go run ./cmd/demo").getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Go/go.mod", goProject().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Go/cmd/demo/main.go", goDemo(baseUrl, scopeText, documents).getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "示例项目/Go/cmd/demo/main_test.go", goTest().getBytes(StandardCharsets.UTF_8));
+            writeZipEntry(zip, root + "校验报告/生成信息.json", generationInfo(packageName, documents, scopeText));
+            writeZipEntry(zip, root + "校验报告/测试结果.md", validationGuide().getBytes(StandardCharsets.UTF_8));
             for (ResourceDocument document : documents) {
-                writeExamples(zip, document);
+                writeExamples(zip, root, document);
             }
             zip.finish();
             return output.toByteArray();
@@ -562,30 +661,46 @@ public class OpenApiIntegrationExportService {
         zip.closeEntry();
     }
 
-    private String readme(String baseUrl, int apiCount) {
+    private String readme(String baseUrl, String packageName, int apiCount, String scopeText) {
         return """
-                 # 鲁巴教育开放平台对接包
+                # %s
 
-                本包包含 %d 个当前已启用、已发布接口。每个接口仅保留最新发布版本。
+                本包包含 %d 个当前环境已授权接口，只保留最新发布版本。
 
-                - `openapi.json`：唯一的 OpenAPI 3.0.3 最新通用版，不含应用密钥，可导入 Apifox、ApiPost、Postman。
-                - `*.postman_collection.json`：Postman Collection v2.1，包含获取和缓存 Access Token 的集合级脚本。
-                - `*.postman_environment.json`：环境模板，`clientId` 和 `clientSecret` 故意留空。
-                - `docs/`：Key/Secret 使用说明、完整接口参考和 CSV 接口清单。
-                - `examples/`：每个接口的请求、成功响应和错误响应实例。
-                - `demos/`：cURL、Python、Node.js、Java、Go 五种可运行 Demo。
+                - `文档/`：快速接入、Scope 说明、接口清单与完整字段示例。
+                - `API导入文件/`：Apifox、ApiPost、Postman 可直接导入。
+                - `示例项目/`：Java、Python、Node.js、Go、cURL 完整示例。
+                - `校验报告/`：生成信息和发布前检查说明。
 
-                 ## 直接调测
+                填写各示例项目中的 Client ID、Client Secret 后运行。Scope 已按应用授权生成：
 
-                1. 导入 Collection 和 Environment，并选中该环境。
-                2. 填写同一应用、同一环境的 `clientId` / `clientSecret`。
-                3. 运行已授权的接口；脚本会调用 `%s/open/oauth2/token` 换取 Bearer Token。
+                ```text
+                %s
+                ```
 
-                 公开文档不需要密钥，真实接口调用必须使用已开通对应 Scope 的应用凭证。
-                """.formatted(apiCount, baseUrl);
+                Token 地址：`%s/open/oauth2/token`。Secret 不得提交到 Git 或写入日志。
+                """.formatted(packageName, apiCount, scopeText, baseUrl);
     }
 
-    private String authGuide(String baseUrl) {
+    private String quickStart(String baseUrl, String scopeText) {
+        return """
+                # 快速接入
+
+                1. 在凭证管理中获取当前环境的 Client ID 和 Client Secret。
+                2. 使用 `%s/open/oauth2/token` 获取 Access Token。
+                3. Token 请求中的 Scope 可一次传多个，使用空格分隔。
+                4. 调用接口时携带 `Authorization: Bearer ACCESS_TOKEN`。
+                5. HTTP 2xx 后继续检查业务 `success` 和 `code`。
+
+                当前包 Scope：
+
+                ```text
+                %s
+                ```
+                """.formatted(baseUrl, scopeText);
+    }
+
+    private String authGuide(String baseUrl, String scopeText) {
         return """
                 # 鉴权与 Key/Secret 使用说明
 
@@ -613,13 +728,13 @@ public class OpenApiIntegrationExportService {
                       --data-urlencode 'grant_type=client_credentials' __CONT__
                       --data-urlencode 'client_id=YOUR_CLIENT_ID' __CONT__
                       --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' __CONT__
-                      --data-urlencode 'scope=classroom.app.read classroom.course.read'
+                      --data-urlencode 'scope=%s'
 
                 成功响应中的 access_token 是临时令牌，expires_in 是有效秒数。
 
-                如果应用已经获得视频课堂全部权限，也可以一次请求：
+                当前应用对接包已经按有效授权生成 Scope：
 
-                    scope=classroom.live.read classroom.app.read classroom.course.read classroom.course.write classroom.live.control classroom.record.control classroom.member.control classroom.device.read classroom.event.read
+                    scope=%s
 
                 ## 调用接口
 
@@ -628,7 +743,7 @@ public class OpenApiIntegrationExportService {
 
                 HTTP 2xx 不等于业务成功；兼容接口还必须检查 success=true 和 code=200。
                 Secret 不得写入前端、Git、URL、日志或公开文档。
-                """.formatted(baseUrl, baseUrl).replace("__CONT__", "\\");
+                """.formatted(baseUrl, scopeText, scopeText, baseUrl).replace("__CONT__", "\\");
     }
 
     private String apiReference(List<ResourceDocument> documents) {
@@ -662,7 +777,7 @@ public class OpenApiIntegrationExportService {
     }
 
     private String endpointCsv(List<ResourceDocument> documents) {
-        StringBuilder result = new StringBuilder("\uFEFFresourceCode,name,category,method,path,scope,latestVersion\r\n");
+        StringBuilder result = new StringBuilder("\uFEFF接口编码,接口名称,分类,请求方式,路径,Scope,最新版本\r\n");
         for (ResourceDocument document : documents) {
             OpenApiResourcePo resource = document.resource();
             result.append(csv(resource.getResourceCode())).append(',')
@@ -676,11 +791,11 @@ public class OpenApiIntegrationExportService {
         return result.toString();
     }
 
-    private void writeExamples(ZipOutputStream zip, ResourceDocument document) throws IOException {
+    private void writeExamples(ZipOutputStream zip, String root, ResourceDocument document) throws IOException {
         String name = safeFilename(document.resource().getResourceCode());
-        writeZipEntry(zip, "examples/" + name + ".request.json", jsonExample(document.version().getRequestExampleJson()));
-        writeZipEntry(zip, "examples/" + name + ".response.json", jsonExample(document.version().getResponseExamplesJson()));
-        writeZipEntry(zip, "examples/" + name + ".errors.json", jsonExample(document.version().getErrorExamplesJson()));
+        writeZipEntry(zip, root + "文档/接口示例/" + name + ".请求.json", jsonExample(document.version().getRequestExampleJson()));
+        writeZipEntry(zip, root + "文档/接口示例/" + name + ".成功响应.json", jsonExample(document.version().getResponseExamplesJson()));
+        writeZipEntry(zip, root + "文档/接口示例/" + name + ".错误响应.json", jsonExample(document.version().getErrorExamplesJson()));
     }
 
     private byte[] jsonExample(String value) {
@@ -688,39 +803,28 @@ public class OpenApiIntegrationExportService {
         return json(node == null ? objectMapper.createObjectNode() : node);
     }
 
-    private String demoGuide() {
+    private String demoGuide(String scopeText) {
         return """
                 # 多语言 Demo
 
-                五个 Demo 都只使用语言标准库，通过环境变量读取凭证，默认调用“查询应用升级信息”只读接口。
-                调用其他接口时，从 docs/接口清单.csv 复制 Method、Path、Scope，并按 examples 目录填写 Query 或 Body。
+                五个项目都先获取一次 Token，再复用 Token 调用每个已授权接口方法。
 
-                必填变量：OPEN_PLATFORM_CLIENT_ID、OPEN_PLATFORM_CLIENT_SECRET。
-                可选变量：OPEN_PLATFORM_BASE_URL、OPEN_PLATFORM_METHOD、OPEN_PLATFORM_PATH、
-                OPEN_PLATFORM_SCOPE、OPEN_PLATFORM_QUERY、OPEN_PLATFORM_BODY。
-
-                运行：
-                - sh curl/demo.sh
-                - python python/demo.py
-                - node node/demo.mjs
-                - javac java/OpenPlatformDemo.java && java -cp java OpenPlatformDemo
-                - go run go/main.go
-
-                控制类接口不会自动批量运行，请使用隔离测试数据逐条执行。
-                """;
+                - Client ID 和 Client Secret 默认留空，可填写代码常量或使用环境变量。
+                - Scope 已固定为：`%s`。
+                - 查询接口默认运行；控制类接口需显式设置 `OPEN_PLATFORM_RUN_WRITE_APIS=true`。
+                - 可用 `OPEN_PLATFORM_ONLY_RESOURCE=接口编码` 只运行一个接口。
+                """.formatted(scopeText);
     }
 
-    private String demoEnvironment(String baseUrl) {
+    private String demoEnvironment(String baseUrl, String scopeText) {
         return """
                 OPEN_PLATFORM_BASE_URL=%s
                 OPEN_PLATFORM_CLIENT_ID=
                 OPEN_PLATFORM_CLIENT_SECRET=
-                OPEN_PLATFORM_METHOD=GET
-                OPEN_PLATFORM_PATH=/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo
-                OPEN_PLATFORM_SCOPE=classroom.app.read
-                OPEN_PLATFORM_QUERY=appId=com.example.video&versionCode=1
-                OPEN_PLATFORM_BODY=
-                """.formatted(baseUrl);
+                OPEN_PLATFORM_SCOPES=%s
+                OPEN_PLATFORM_RUN_WRITE_APIS=false
+                OPEN_PLATFORM_ONLY_RESOURCE=
+                """.formatted(baseUrl, scopeText);
     }
 
     private String curlDemo(String baseUrl) {
@@ -917,6 +1021,560 @@ public class OpenApiIntegrationExportService {
                     }
                 }
                 """.replace("@@BASE_URL@@", baseUrl);
+    }
+
+    private String curlDemo(String baseUrl, String scopeText, List<ResourceDocument> documents) {
+        StringBuilder script = new StringBuilder("""
+                #!/usr/bin/env sh
+                set -eu
+
+                BASE_URL="${OPEN_PLATFORM_BASE_URL:-@@BASE_URL@@}"
+                CONTENT_TYPE='application/x-www-form-urlencoded'
+                GRANT_TYPE='client_credentials'
+                CLIENT_ID="${OPEN_PLATFORM_CLIENT_ID:-}"
+                CLIENT_SECRET="${OPEN_PLATFORM_CLIENT_SECRET:-}"
+                SCOPES="${OPEN_PLATFORM_SCOPES:-@@SCOPES@@}"
+                RUN_WRITE_APIS="${OPEN_PLATFORM_RUN_WRITE_APIS:-false}"
+                ONLY_RESOURCE="${OPEN_PLATFORM_ONLY_RESOURCE:-}"
+
+                get_access_token() {
+                  test -n "$CLIENT_ID" && test -n "$CLIENT_SECRET" || { echo '请填写 Client ID 和 Client Secret' >&2; exit 1; }
+                  token_json="$(curl -fsS -X POST "$BASE_URL/open/oauth2/token" __CONT__
+                    -H "Content-Type: $CONTENT_TYPE" __CONT__
+                    --data-urlencode "grant_type=$GRANT_TYPE" __CONT__
+                    --data-urlencode "client_id=$CLIENT_ID" __CONT__
+                    --data-urlencode "client_secret=$CLIENT_SECRET" __CONT__
+                    --data-urlencode "scope=$SCOPES")"
+                  printf '%s' "$token_json" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p'
+                }
+
+                call_api() {
+                  method="$1"; path="$2"; query="$3"; body="$4"; url="$BASE_URL$path"
+                  test -z "$query" || url="$url?$query"
+                  if [ -n "$body" ]; then
+                    response="$(curl -fsS -X "$method" "$url" -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json' -d "$body")"
+                  else
+                    response="$(curl -fsS -X "$method" "$url" -H "Authorization: Bearer $ACCESS_TOKEN")"
+                  fi
+                  printf '%s\n' "$response"
+                  if printf '%s' "$response" | grep -Eq '"success"[[:space:]]*:[[:space:]]*false'; then return 1; fi
+                  business_code="$(printf '%s' "$response" | sed -n 's/.*"code"[[:space:]]*:[[:space:]]*"*\\([0-9][0-9]*\\)"*.*/\\1/p')"
+                  test -z "$business_code" || [ "$business_code" = 200 ]
+                }
+
+                should_run() { [ -z "$ONLY_RESOURCE" ] || [ "$ONLY_RESOURCE" = "$1" ]; }
+
+                """.replace("@@BASE_URL@@", baseUrl).replace("@@SCOPES@@", scopeText).replace("__CONT__", "\\"));
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            script.append(shellMethodName(resource.getResourceCode())).append("() {\n  call_api ")
+                    .append(shellQuote(resource.getHttpMethod())).append(' ')
+                    .append(shellQuote(resource.getPath())).append(' ')
+                    .append(shellQuote(demoQuery(document))).append(' ')
+                    .append(shellQuote(demoBody(document))).append("\n}\n\n");
+        }
+        script.append("ACCESS_TOKEN=\"$(get_access_token)\"\ntest -n \"$ACCESS_TOKEN\" || { echo 'Token 响应缺少 access_token' >&2; exit 1; }\n");
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            script.append("if should_run ").append(shellQuote(resource.getResourceCode()));
+            if (isControl(resource)) script.append(" && [ \"$RUN_WRITE_APIS\" = true ]");
+            script.append("; then echo ").append(shellQuote("调用：" + resource.getResourceName()))
+                    .append("; ").append(shellMethodName(resource.getResourceCode())).append("; fi\n");
+        }
+        return script.toString();
+    }
+
+    private String pythonDemo(String baseUrl, String scopeText, List<ResourceDocument> documents) {
+        StringBuilder source = new StringBuilder("""
+                import json
+                import os
+                import urllib.parse
+                import urllib.request
+
+                BASE_URL = os.getenv("OPEN_PLATFORM_BASE_URL", @@BASE_URL@@).rstrip("/")
+                CONTENT_TYPE = "application/x-www-form-urlencoded"
+                GRANT_TYPE = "client_credentials"
+                CLIENT_ID = ""
+                CLIENT_SECRET = ""
+                SCOPES = @@SCOPES@@
+                RUN_WRITE_APIS = os.getenv("OPEN_PLATFORM_RUN_WRITE_APIS", "false").lower() == "true"
+                ONLY_RESOURCE = os.getenv("OPEN_PLATFORM_ONLY_RESOURCE", "")
+
+                def credential(name: str, configured: str) -> str:
+                    return configured or os.getenv(name, "")
+
+                def get_access_token() -> str:
+                    client_id = credential("OPEN_PLATFORM_CLIENT_ID", CLIENT_ID)
+                    secret = credential("OPEN_PLATFORM_CLIENT_SECRET", CLIENT_SECRET)
+                    if not client_id or not secret:
+                        raise ValueError("请填写 Client ID 和 Client Secret")
+                    data = urllib.parse.urlencode({"grant_type": GRANT_TYPE, "client_id": client_id,
+                        "client_secret": secret, "scope": os.getenv("OPEN_PLATFORM_SCOPES", SCOPES)}).encode()
+                    request = urllib.request.Request(BASE_URL + "/open/oauth2/token", data,
+                        {"Content-Type": CONTENT_TYPE}, method="POST")
+                    with urllib.request.urlopen(request) as response:
+                        return json.load(response)["access_token"]
+
+                def call_api(token: str, method: str, path: str, query: str = "", body: str = ""):
+                    url = BASE_URL + path + (("?" + query) if query else "")
+                    headers = {"Authorization": "Bearer " + token}
+                    if body:
+                        headers["Content-Type"] = "application/json"
+                    request = urllib.request.Request(url, body.encode() if body else None, headers, method=method)
+                    with urllib.request.urlopen(request) as response:
+                        payload = json.load(response)
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                    if "success" in payload and payload["success"] is not True:
+                        raise RuntimeError("业务请求失败")
+                    if "code" in payload and str(payload["code"]) != "200":
+                        raise RuntimeError("业务请求失败: " + str(payload["code"]))
+                    return payload
+
+                """.replace("@@BASE_URL@@", literal(baseUrl)).replace("@@SCOPES@@", literal(scopeText)));
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("def ").append(snakeName(resource.getResourceCode())).append("(token: str):\n")
+                    .append("    return call_api(token, ").append(literal(resource.getHttpMethod())).append(", ")
+                    .append(literal(resource.getPath())).append(", ").append(literal(demoQuery(document))).append(", ")
+                    .append(literal(demoBody(document))).append(")\n\n");
+        }
+        source.append("def main():\n    token = get_access_token()\n");
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("    if (not ONLY_RESOURCE or ONLY_RESOURCE == ").append(literal(resource.getResourceCode())).append(")");
+            if (isControl(resource)) source.append(" and RUN_WRITE_APIS");
+            source.append(":\n        ").append(snakeName(resource.getResourceCode())).append("(token)\n");
+        }
+        source.append("\nif __name__ == \"__main__\":\n    main()\n");
+        return source.toString();
+    }
+
+    private String nodeDemo(String baseUrl, String scopeText, List<ResourceDocument> documents) {
+        StringBuilder source = new StringBuilder("""
+                import { pathToFileURL } from 'node:url';
+
+                export const BASE_URL = (process.env.OPEN_PLATFORM_BASE_URL || @@BASE_URL@@).replace(/\\/$/, '');
+                export const CONTENT_TYPE = 'application/x-www-form-urlencoded';
+                export const GRANT_TYPE = 'client_credentials';
+                export const CLIENT_ID = '';
+                export const CLIENT_SECRET = '';
+                export const SCOPES = @@SCOPES@@;
+                const RUN_WRITE_APIS = (process.env.OPEN_PLATFORM_RUN_WRITE_APIS || 'false') === 'true';
+                const ONLY_RESOURCE = process.env.OPEN_PLATFORM_ONLY_RESOURCE || '';
+                const credential = (name, configured) => configured || process.env[name] || '';
+
+                export async function getAccessToken() {
+                  const clientId = credential('OPEN_PLATFORM_CLIENT_ID', CLIENT_ID);
+                  const secret = credential('OPEN_PLATFORM_CLIENT_SECRET', CLIENT_SECRET);
+                  if (!clientId || !secret) throw new Error('请填写 Client ID 和 Client Secret');
+                  const response = await fetch(BASE_URL + '/open/oauth2/token', { method: 'POST',
+                    headers: {'Content-Type': CONTENT_TYPE}, body: new URLSearchParams({ grant_type: GRANT_TYPE,
+                      client_id: clientId, client_secret: secret, scope: process.env.OPEN_PLATFORM_SCOPES || SCOPES }) });
+                  if (!response.ok) throw new Error('获取 Token 失败: HTTP ' + response.status);
+                  const payload = await response.json();
+                  if (!payload.access_token) throw new Error('Token 响应缺少 access_token');
+                  return payload.access_token;
+                }
+
+                async function callApi(token, method, path, query = '', body = '') {
+                  const response = await fetch(BASE_URL + path + (query ? '?' + query : ''), { method,
+                    headers: {Authorization: 'Bearer ' + token, ...(body ? {'Content-Type': 'application/json'} : {})},
+                    body: body || undefined });
+                  const payload = await response.json();
+                  console.log(JSON.stringify(payload, null, 2));
+                  if (!response.ok || (Object.hasOwn(payload, 'success') && !payload.success)
+                      || (Object.hasOwn(payload, 'code') && String(payload.code) !== '200')) throw new Error('业务请求失败');
+                  return payload;
+                }
+
+                """.replace("@@BASE_URL@@", literal(baseUrl)).replace("@@SCOPES@@", literal(scopeText)));
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("export const ").append(camelName(resource.getResourceCode())).append(" = token => callApi(token, ")
+                    .append(literal(resource.getHttpMethod())).append(", ").append(literal(resource.getPath())).append(", ")
+                    .append(literal(demoQuery(document))).append(", ").append(literal(demoBody(document))).append(");\n");
+        }
+        source.append("\nexport async function main() {\n  const token = await getAccessToken();\n");
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("  if ((!ONLY_RESOURCE || ONLY_RESOURCE === ").append(literal(resource.getResourceCode())).append(")");
+            if (isControl(resource)) source.append(" && RUN_WRITE_APIS");
+            source.append(") await ").append(camelName(resource.getResourceCode())).append("(token);\n");
+        }
+        source.append("}\n\nif (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();\n");
+        return source.toString();
+    }
+
+    private String javaDemo(String baseUrl, String scopeText, List<ResourceDocument> documents) {
+        StringBuilder source = new StringBuilder("""
+                package com.lubashu.openplatform.demo;
+
+                import java.net.URI;
+                import java.net.URLEncoder;
+                import java.net.http.HttpClient;
+                import java.net.http.HttpRequest;
+                import java.net.http.HttpResponse;
+                import java.nio.charset.StandardCharsets;
+                import java.util.regex.Matcher;
+                import java.util.regex.Pattern;
+
+                public final class OpenPlatformDemo {
+                    static final String BASE_URL = @@BASE_URL@@;
+                    static final String TOKEN_PATH = "/open/oauth2/token";
+                    static final String CONTENT_TYPE = "application/x-www-form-urlencoded";
+                    static final String GRANT_TYPE = "client_credentials";
+                    static final String CLIENT_ID = "";
+                    static final String CLIENT_SECRET = "";
+                    static final String SCOPES = @@SCOPES@@;
+                    static final boolean RUN_WRITE_APIS = Boolean.parseBoolean(env("OPEN_PLATFORM_RUN_WRITE_APIS", "false"));
+                    static final String ONLY_RESOURCE = env("OPEN_PLATFORM_ONLY_RESOURCE", "");
+                    static final HttpClient HTTP = HttpClient.newHttpClient();
+
+                    private OpenPlatformDemo() {}
+
+                    public static void main(String[] args) throws Exception {
+                        String accessToken = getAccessToken();
+                """.replace("@@BASE_URL@@", literal(baseUrl)).replace("@@SCOPES@@", literal(scopeText)));
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("        if (shouldRun(").append(literal(resource.getResourceCode())).append(")");
+            if (isControl(resource)) source.append(" && RUN_WRITE_APIS");
+            source.append(") ").append(camelName(resource.getResourceCode())).append("(accessToken);\n");
+        }
+        source.append("    }\n\n").append("""
+                    static String getAccessToken() throws Exception {
+                        String clientId = credential("OPEN_PLATFORM_CLIENT_ID", CLIENT_ID);
+                        String secret = credential("OPEN_PLATFORM_CLIENT_SECRET", CLIENT_SECRET);
+                        if (clientId.isBlank() || secret.isBlank()) throw new IllegalArgumentException("请填写 Client ID 和 Client Secret");
+                        String tokenBody = "grant_type=" + form(GRANT_TYPE) + "&client_id=" + form(clientId)
+                                + "&client_secret=" + form(secret) + "&scope=" + form(env("OPEN_PLATFORM_SCOPES", SCOPES));
+                        String base = env("OPEN_PLATFORM_BASE_URL", BASE_URL).replaceAll("/$", "");
+                        HttpRequest request = HttpRequest.newBuilder(URI.create(base + TOKEN_PATH))
+                                .header("Content-Type", CONTENT_TYPE).POST(HttpRequest.BodyPublishers.ofString(tokenBody)).build();
+                        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+                        Matcher matcher = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(response.body());
+                        if (response.statusCode() < 200 || response.statusCode() >= 300 || !matcher.find())
+                            throw new IllegalStateException("获取 Access Token 失败: HTTP " + response.statusCode());
+                        return matcher.group(1);
+                    }
+
+                """);
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("    static String ").append(camelName(resource.getResourceCode())).append("(String token) throws Exception {\n")
+                    .append("        return callApi(token, ").append(literal(resource.getHttpMethod())).append(", ")
+                    .append(literal(resource.getPath())).append(", ").append(literal(demoQuery(document))).append(", ")
+                    .append(literal(demoBody(document))).append(");\n    }\n\n");
+        }
+        source.append("""
+                    static String callApi(String token, String method, String path, String query, String body) throws Exception {
+                        String base = env("OPEN_PLATFORM_BASE_URL", BASE_URL).replaceAll("/$", "");
+                        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + path + (query.isBlank() ? "" : "?" + query)))
+                                .header("Authorization", "Bearer " + token);
+                        if (body.isBlank()) builder.method(method, HttpRequest.BodyPublishers.noBody());
+                        else builder.header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(body));
+                        HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+                        System.out.println(response.body());
+                        Matcher code = Pattern.compile("\\\"code\\\"\\s*:\\s*\\\"?([0-9]+)\\\"?").matcher(response.body());
+                        if (response.statusCode() < 200 || response.statusCode() >= 300
+                                || response.body().matches("(?s).*\\\"success\\\"\\s*:\\s*false.*")
+                                || (code.find() && !"200".equals(code.group(1))))
+                            throw new IllegalStateException("接口调用失败: HTTP " + response.statusCode());
+                        return response.body();
+                    }
+
+                    static boolean shouldRun(String resourceCode) { return ONLY_RESOURCE.isBlank() || ONLY_RESOURCE.equals(resourceCode); }
+                    static String credential(String name, String configured) { return configured.isBlank() ? env(name, "") : configured; }
+                    static String env(String name, String fallback) { String value = System.getenv(name); return value == null || value.isBlank() ? fallback : value; }
+                    static String form(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
+                }
+                """);
+        return source.toString();
+    }
+
+    private String goDemo(String baseUrl, String scopeText, List<ResourceDocument> documents) {
+        StringBuilder source = new StringBuilder("""
+                package main
+
+                import (
+                \t"encoding/json"
+                \t"fmt"
+                \t"io"
+                \t"net/http"
+                \t"net/url"
+                \t"os"
+                \t"strings"
+                )
+
+                const baseURL = @@BASE_URL@@
+                const contentType = "application/x-www-form-urlencoded"
+                const grantType = "client_credentials"
+                const clientID = ""
+                const clientSecret = ""
+                const scopes = @@SCOPES@@
+
+                func env(name, fallback string) string {
+                \tif value := os.Getenv(name); value != "" {
+                \t\treturn value
+                \t}
+                \treturn fallback
+                }
+
+                func credential(name, configured string) string {
+                \tif configured != "" {
+                \t\treturn configured
+                \t}
+                \treturn os.Getenv(name)
+                }
+
+                func getAccessToken() string {
+                \tid, secret := credential("OPEN_PLATFORM_CLIENT_ID", clientID), credential("OPEN_PLATFORM_CLIENT_SECRET", clientSecret)
+                \tif id == "" || secret == "" {
+                \t\tpanic("请填写 Client ID 和 Client Secret")
+                \t}
+                \tform := url.Values{"grant_type": {grantType}, "client_id": {id}, "client_secret": {secret},
+                \t\t"scope": {env("OPEN_PLATFORM_SCOPES", scopes)}}
+                \tresponse, err := http.PostForm(strings.TrimRight(env("OPEN_PLATFORM_BASE_URL", baseURL), "/")+"/open/oauth2/token", form)
+                \tif err != nil {
+                \t\tpanic(err)
+                \t}
+                \tdefer response.Body.Close()
+                \tvar payload map[string]interface{}
+                \tif err = json.NewDecoder(response.Body).Decode(&payload); err != nil {
+                \t\tpanic(err)
+                \t}
+                \ttoken, _ := payload["access_token"].(string)
+                \tif response.StatusCode < 200 || response.StatusCode >= 300 || token == "" {
+                \t\tpanic("获取 Access Token 失败")
+                \t}
+                \treturn token
+                }
+
+                func callAPI(token, method, path, query, body string) string {
+                \tendpoint := strings.TrimRight(env("OPEN_PLATFORM_BASE_URL", baseURL), "/") + path
+                \tif query != "" {
+                \t\tendpoint += "?" + query
+                \t}
+                \trequest, err := http.NewRequest(method, endpoint, strings.NewReader(body))
+                \tif err != nil {
+                \t\tpanic(err)
+                \t}
+                \trequest.Header.Set("Authorization", "Bearer "+token)
+                \tif body != "" {
+                \t\trequest.Header.Set("Content-Type", "application/json")
+                \t}
+                \tresponse, err := http.DefaultClient.Do(request)
+                \tif err != nil {
+                \t\tpanic(err)
+                \t}
+                \tdefer response.Body.Close()
+                \tcontent, _ := io.ReadAll(response.Body)
+                \tfmt.Println(string(content))
+                \tif response.StatusCode < 200 || response.StatusCode >= 300 {
+                \t\tpanic("接口调用失败")
+                \t}
+                \tvar payload map[string]interface{}
+                \tif json.Unmarshal(content, &payload) == nil {
+                \t\tif success, ok := payload["success"].(bool); ok && !success {
+                \t\t\tpanic("业务请求失败")
+                \t\t}
+                \t\tif code, ok := payload["code"]; ok && fmt.Sprint(code) != "200" {
+                \t\t\tpanic("业务请求失败")
+                \t\t}
+                \t}
+                \treturn string(content)
+                }
+
+                """.replace("@@BASE_URL@@", literal(baseUrl)).replace("@@SCOPES@@", literal(scopeText)));
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("func ").append(pascalName(resource.getResourceCode())).append("(token string) string {\n\treturn callAPI(token, ")
+                    .append(literal(resource.getHttpMethod())).append(", ").append(literal(resource.getPath())).append(", ")
+                    .append(literal(demoQuery(document))).append(", ").append(literal(demoBody(document))).append(")\n}\n");
+        }
+        source.append("\nfunc main() {\n\ttoken := getAccessToken()\n\tonly := os.Getenv(\"OPEN_PLATFORM_ONLY_RESOURCE\")\n");
+        if (documents.stream().map(ResourceDocument::resource).anyMatch(this::isControl)) {
+            source.append("\trunWrite := os.Getenv(\"OPEN_PLATFORM_RUN_WRITE_APIS\") == \"true\"\n");
+        }
+        for (ResourceDocument document : documents) {
+            OpenApiResourcePo resource = document.resource();
+            source.append("\tif only == \"\" || only == ").append(literal(resource.getResourceCode()));
+            if (isControl(resource)) source.append(" && runWrite");
+            source.append(" {\n\t\t").append(pascalName(resource.getResourceCode())).append("(token)\n\t}\n");
+        }
+        source.append("}\n");
+        return source.toString();
+    }
+
+    private String languageGuide(String language, String command) {
+        return "# " + language + " 示例项目\n\n1. 填写 Client ID 和 Client Secret，或设置同名环境变量。\n"
+                + "2. 执行：`" + command + "`。\n3. 控制类接口仅在 `OPEN_PLATFORM_RUN_WRITE_APIS=true` 时执行。\n";
+    }
+
+    private String pythonProject() {
+        return "[project]\nname = \"lubashu-open-platform-demo\"\nversion = \"1.0.0\"\nrequires-python = \">=3.10\"\n";
+    }
+
+    private String pythonTest() {
+        return """
+                import pathlib, sys, unittest
+                sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
+                import open_platform_demo as demo
+
+                class DemoTest(unittest.TestCase):
+                    def test_generated_configuration(self):
+                        self.assertTrue(demo.SCOPES)
+                        self.assertNotIn("接口要求的Scope", demo.SCOPES)
+
+                if __name__ == "__main__": unittest.main()
+                """;
+    }
+
+    private String nodeProject() {
+        return """
+                {"name":"lubashu-open-platform-demo","version":"1.0.0","type":"module","private":true,
+                "scripts":{"start":"node src/open-platform-demo.mjs","test":"node --test --test-isolation=none"}}
+                """;
+    }
+
+    private String nodeTest() {
+        return """
+                import test from 'node:test';
+                import assert from 'node:assert/strict';
+                import { SCOPES } from '../src/open-platform-demo.mjs';
+                test('生成具体 Scope', () => { assert.ok(SCOPES); assert.ok(!SCOPES.includes('接口要求的Scope')); });
+                """;
+    }
+
+    private String javaProject() {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.lubashu</groupId><artifactId>open-platform-demo</artifactId><version>1.0.0</version>
+                  <properties><maven.compiler.release>17</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
+                  <dependencies><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version><scope>test</scope></dependency></dependencies>
+                  <build><plugins>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.2</version></plugin>
+                    <plugin><groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.5.0</version>
+                      <configuration><mainClass>com.lubashu.openplatform.demo.OpenPlatformDemo</mainClass></configuration></plugin>
+                  </plugins></build>
+                </project>
+                """;
+    }
+
+    private String javaTest() {
+        return """
+                package com.lubashu.openplatform.demo;
+                import org.junit.jupiter.api.Test;
+                import static org.junit.jupiter.api.Assertions.*;
+                class OpenPlatformDemoTest {
+                    @Test void generatedConfigurationIsConcreteAndSecretFree() {
+                        assertFalse(OpenPlatformDemo.SCOPES.isBlank());
+                        assertFalse(OpenPlatformDemo.SCOPES.contains("接口要求的Scope"));
+                        assertTrue(OpenPlatformDemo.CLIENT_ID.isBlank());
+                        assertTrue(OpenPlatformDemo.CLIENT_SECRET.isBlank());
+                    }
+                }
+                """;
+    }
+
+    private String goProject() { return "module lubashu-open-platform-demo\n\ngo 1.21\n"; }
+
+    private String goTest() {
+        return """
+                package main
+
+                import (
+                \t"strings"
+                \t"testing"
+                )
+
+                func TestGeneratedScopes(t *testing.T) {
+                \tif scopes == "" || strings.Contains(scopes, "接口要求的Scope") {
+                \t\tt.Fatal("Scope 未正确生成")
+                \t}
+                }
+                """;
+    }
+
+    private byte[] generationInfo(String packageName, List<ResourceDocument> documents, String scopeText) {
+        ObjectNode info = objectMapper.createObjectNode();
+        info.put("对接包", packageName);
+        info.put("生成时间", Instant.now().toString());
+        info.put("接口数量", documents.size());
+        info.put("Scope", scopeText);
+        info.put("生成器版本", "2.0");
+        return json(info);
+    }
+
+    private String validationGuide() {
+        return """
+                # 测试结果说明
+
+                本包由同一份已授权接口模型生成 OpenAPI、Postman、文档和五语言项目。
+                发布前门禁执行 OpenAPI 校验、敏感信息扫描，以及 Java、Python、Node.js、Go、cURL 的构建或语法检查。
+                真实接口仍受凭证状态、环境、学校数据范围和业务参数约束；控制类接口默认不自动执行。
+                """;
+    }
+
+    private String demoQuery(ResourceDocument document) {
+        if (!usesQueryParameters(document.resource(), objectMapper.createObjectNode())) return "";
+        JsonNode example = redactPayload(parse(document.version().getRequestExampleJson()));
+        if (example == null || !example.isObject()) return "";
+        List<String> values = new ArrayList<>();
+        example.fields().forEachRemaining(entry -> values.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                + "=" + URLEncoder.encode(text(entry.getValue()), StandardCharsets.UTF_8)));
+        return String.join("&", values);
+    }
+
+    private String demoBody(ResourceDocument document) {
+        if (usesQueryParameters(document.resource(), objectMapper.createObjectNode())) return "";
+        JsonNode example = redactPayload(parse(document.version().getRequestExampleJson()));
+        return example == null || example.isNull() ? "{}" : example.toString();
+    }
+
+    private boolean isControl(OpenApiResourcePo resource) {
+        return "CONTROL".equalsIgnoreCase(resource.getSensitivity());
+    }
+
+    private String literal(String value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? "" : value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Demo 字符串生成失败", ex);
+        }
+    }
+
+    private String[] words(String value) {
+        return defaultText(value, "api").split("[^A-Za-z0-9]+");
+    }
+
+    private String camelName(String value) {
+        String[] parts = words(value);
+        StringBuilder name = new StringBuilder(parts[0].isEmpty() ? "api" : parts[0].toLowerCase(Locale.ROOT));
+        for (int index = 1; index < parts.length; index++) {
+            if (!parts[index].isEmpty()) name.append(Character.toUpperCase(parts[index].charAt(0))).append(parts[index].substring(1));
+        }
+        if (Character.isDigit(name.charAt(0))) name.insert(0, "api");
+        return name.toString();
+    }
+
+    private String pascalName(String value) {
+        String name = camelName(value);
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
+
+    private String snakeName(String value) {
+        String name = defaultText(value, "api").replaceAll("[^A-Za-z0-9]+", "_").toLowerCase(Locale.ROOT);
+        return Character.isDigit(name.charAt(0)) ? "api_" + name : name;
+    }
+
+    private String shellMethodName(String value) { return snakeName(value); }
+
+    private String shellQuote(String value) {
+        return "'" + (value == null ? "" : value).replace("'", "'\"'\"'") + "'";
     }
 
     private String markdown(String value) {

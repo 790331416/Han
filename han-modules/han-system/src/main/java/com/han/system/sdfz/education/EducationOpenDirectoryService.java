@@ -98,6 +98,18 @@ public class EducationOpenDirectoryService {
         return PageResult.of(rows, page.getTotal(), current, size);
     }
 
+    /** 仅解析调用方已经授权的学校名称，未知 ID 不返回。 */
+    public Map<Long, String> schoolNames(Long tenantId, Collection<Long> schoolIds) {
+        Scope scope = scope(tenantId, schoolIds);
+        Map<Long, EduSchoolPo> schools = schools(scope.tenantId(), scope.schoolIds());
+        Map<Long, String> result = new LinkedHashMap<>();
+        scope.schoolIds().forEach(id -> {
+            EduSchoolPo school = schools.get(id);
+            if (school != null) result.put(id, schoolName(school));
+        });
+        return result;
+    }
+
     private Map<Long, List<EducationClassSummaryVO>> classes(Long tenantId, List<Long> personIds) {
         if (personIds.isEmpty()) {
             return Map.of();

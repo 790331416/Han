@@ -221,6 +221,12 @@ public interface SystemServiceClient {
             @RequestParam(value = "pageNum", required = false) Integer pageNum,
             @RequestParam(value = "pageSize", required = false) Integer pageSize);
 
+    /** 按开放应用已经授权的学校 ID 返回展示名称，不扩大数据范围。 */
+    @GetExchange("/external/directory/schools/names")
+    R<Map<Long, String>> getOpenSchoolNames(
+            @RequestParam("tenantId") Long tenantId,
+            @RequestParam("schoolIds") List<Long> schoolIds);
+
     /** 创建禁用的开放平台厂商门户账号。 */
     @PostExchange("/vendor/portal/account")
     R<Long> createOpenVendorAccount(@RequestBody OpenVendorAccountCreateDTO dto);

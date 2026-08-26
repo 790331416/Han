@@ -166,12 +166,12 @@
         <div class="card-header">
           <span>在线调测</span>
           <span>
-            <el-tag type="warning">仅调用已发布目录</el-tag>
+            <el-tag type="warning">仅显示当前应用已授权接口</el-tag>
             <el-dropdown style="margin-left: 12px" @command="downloadIntegrationDocument">
-              <el-button type="primary" :icon="Download">导出对接文档<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <el-button type="primary" :icon="Download" :disabled="!debugAppId">导出对接文档<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="zip">完整对接包（文档 + 五语言 Demo）</el-dropdown-item>
+                  <el-dropdown-item command="zip">当前应用对接包（中文文档 + 五语言项目）</el-dropdown-item>
                   <el-dropdown-item command="openapi">OpenAPI 3.0 最新通用版</el-dropdown-item>
                   <el-dropdown-item command="postman">Postman Collection v2.1</el-dropdown-item>
                   <el-dropdown-item command="environment">Postman 环境模板</el-dropdown-item>
@@ -286,7 +286,7 @@
         </el-form-item>
         <el-form-item v-if="needsSchoolScope" label="授权学校">
           <div class="readonly-school-scope">
-            <el-tag v-for="schoolId in appForm.schoolIds || []" :key="String(schoolId)">{{ schoolId }}</el-tag>
+            <el-tag v-for="schoolId in appForm.schoolIds || []" :key="String(schoolId)">{{ appSchoolNames[String(schoolId)] || '学校名称未同步' }}</el-tag>
             <el-text v-if="!(appForm.schoolIds || []).length" type="warning">待平台管理员授权</el-text>
             <div class="form-hint">学校数据范围由平台管理员在“开放平台 → 应用管理”中授权，厂商不可自行扩大。</div>
           </div>
@@ -332,9 +332,9 @@ import { ArrowDown, Download, Key, Plus, Refresh } from '@element-plus/icons-vue
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { formatDate } from '@/utils/request'
-import { listOpenApp, getOpenApp, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, submitAppLifecycleApply, type OpenApp, type OpenAppForm } from '@/api/open/app'
+import { listOpenApp, getOpenApp, getOpenAppSchoolNames, addOpenApp, updateOpenApp, deleteOpenApp, changeAppLifecycleStatus, submitAppLifecycleApply, type OpenApp, type OpenAppForm } from '@/api/open/app'
 import { getOpenVendor, updateOpenVendor, type OpenVendor, type OpenVendorProfileForm } from '@/api/open/vendor'
-import { listOpenApiResource, getOpenApiResourceDetail, openIntegrationExportUrl, type OpenApiResource, type OpenApiResourceDetail, type OpenIntegrationExportFormat } from '@/api/open/resource'
+import { listOpenApiResource, getOpenApiResourceDetail, openIntegrationExportUrl, downloadOpenAppIntegration, type OpenApiResource, type OpenApiResourceDetail, type OpenIntegrationExportFormat } from '@/api/open/resource'
 import { listAuthorizationRequests, listAppGrants, listAppCredentials, generateAppCredential, rotateAppCredential, type OpenAuthorizationRequest, type OpenAuthorizationRequestQuery, type OpenCredential, type OpenCredentialSecret, type OpenGrant } from '@/api/open/authorization'
 import { addOpenApiTestRun, listOpenApiTestRuns, listMyOpenVendors, submitGrantApply, type GrantApplyForm, type OpenApiTestRun } from '@/api/open/portal'
 import { loadDictOptions, OPEN_IDENTITY_SCOPE_DICT, type DictOption } from '@/utils/dict-options'
@@ -376,6 +376,7 @@ const appDialogVisible = ref(false)
 const appSubmitting = ref(false)
 const appFormRef = ref<FormInstance>()
 const selectedAppResourceIds = ref<Array<string | number>>([])
+const appSchoolNames = ref<Record<string, string>>({})
 const debugAppId = ref<string | number>()
 const debugResourceId = ref<string | number>()
 const debugEnvironment = ref<'SANDBOX' | 'PROD'>('SANDBOX')
@@ -737,13 +738,29 @@ function formatResponse(value: string) {
   try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
 }
 
-function downloadIntegrationDocument(format: OpenIntegrationExportFormat) {
-  const link = document.createElement('a')
-  link.href = openIntegrationExportUrl(format, window.location.origin)
-  link.download = ''
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
+async function downloadIntegrationDocument(format: OpenIntegrationExportFormat) {
+  if (format === 'openapi') {
+    const link = document.createElement('a')
+    link.href = openIntegrationExportUrl(format, window.location.origin)
+    link.download = '鲁巴开放平台最新通用OpenAPI.json'
+    link.click()
+    return
+  }
+  if (!debugAppId.value || !selectedApp.value) { ElMessage.warning('请先选择应用'); return }
+  try {
+    const response = await downloadOpenAppIntegration(format, debugAppId.value, debugEnvironment.value, window.location.origin)
+    const extension = format === 'zip' ? '.zip' : '.json'
+    const suffix = format === 'postman' ? '-Postman' : format === 'environment' ? '-Postman环境' : ''
+    const filename = `${selectedApp.value.appName}应用对接-${environmentLabel(debugEnvironment.value)}${suffix}${extension}`
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([(response as any).data]))
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(link.href)
+    ElMessage.success('对接文档已导出')
+  } catch (error) {
+    notifyError(error, '导出对接文档失败')
+  }
 }
 
 async function loadGrantRequests() {
@@ -793,7 +810,10 @@ function openAppCreate() { resetAppForm(); appForm.vendorId = vendors.value[0]?.
 async function openAppEdit(row: OpenApp) {
   resetAppForm()
   try {
-    Object.assign(appForm, await getOpenApp(row.appId).then(response => response.data))
+    const appResponse = await getOpenApp(row.appId)
+    Object.assign(appForm, appResponse.data)
+    try { appSchoolNames.value = (await getOpenAppSchoolNames(row.appId)).data || {} }
+    catch { appSchoolNames.value = {}; ElMessage.warning('授权学校名称加载失败，请稍后重试') }
     identityScopes.value = (appForm.scopes || []).filter(scope => scope === 'openid' || scope === 'profile')
     selectedAppResourceIds.value = applicableResources.value
       .filter(resource => (appForm.scopes || []).includes(resource.scopeCode))
@@ -807,6 +827,7 @@ function resetAppForm() {
   Object.assign(appForm, { appId: undefined, appName: '', appDesc: '', appType: 'web', vendorId: undefined, redirectUris: [], scopes: [], schoolIds: [], grantTypes: ['authorization_code', 'refresh_token', 'client_credentials'], environmentPolicy: 'SANDBOX_FIRST', contactName: '' })
   identityScopes.value = []
   selectedAppResourceIds.value = []
+  appSchoolNames.value = {}
 }
 async function submitApp() {
   if (!(await appFormRef.value?.validate())) return

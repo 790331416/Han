@@ -6,12 +6,17 @@ import com.han.common.core.exception.BusinessException;
 import com.han.open.domain.dto.OpenApiIntegrationExportDTO;
 import com.han.open.domain.po.OpenApiResourcePo;
 import com.han.open.domain.po.OpenApiResourceVersionPo;
+import com.han.open.domain.po.OpenAppResourceGrantPo;
+import com.han.open.domain.vo.OpenAppVO;
+import com.han.open.mapper.OpenAppResourceGrantMapper;
 import com.han.open.mapper.OpenApiResourceMapper;
 import com.han.open.mapper.OpenApiResourceVersionMapper;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,8 +35,9 @@ class OpenApiIntegrationExportServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final OpenApiResourceMapper resourceMapper = mock(OpenApiResourceMapper.class);
     private final OpenApiResourceVersionMapper versionMapper = mock(OpenApiResourceVersionMapper.class);
+    private final OpenAppResourceGrantMapper grantMapper = mock(OpenAppResourceGrantMapper.class);
     private final OpenApiIntegrationExportService service =
-            new OpenApiIntegrationExportService(resourceMapper, versionMapper, objectMapper);
+            new OpenApiIntegrationExportService(resourceMapper, versionMapper, grantMapper, objectMapper);
 
     @Test
     void exportsExecutableSecretFreeCollectionAndCompleteZip() throws Exception {
@@ -94,20 +100,57 @@ class OpenApiIntegrationExportServiceTest {
                 contents.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
             }
         }
-        assertThat(entries).contains("openapi.json", "lubashu-open-platform.postman_collection.json",
-                "lubashu-open-platform.postman_environment.json", "README.md", "docs/鉴权与密钥使用说明.md",
-                "docs/完整接口参考.md", "docs/接口清单.csv", "demos/curl/demo.sh", "demos/python/demo.py",
-                "demos/node/demo.mjs", "demos/java/OpenPlatformDemo.java", "demos/go/main.go",
-                "examples/classroom.live-status.read.request.json");
-        assertThat(contents.get("README.md")).contains("最新通用版", "五种可运行 Demo");
-        assertThat(contents.get("docs/鉴权与密钥使用说明.md"))
-                .contains("多个 Scope 使用空格分隔", "classroom.app.read classroom.course.read",
+        String root = "鲁巴开放平台通用对接/";
+        assertThat(entries).contains(root + "README.md", root + "API导入文件/openapi.json",
+                root + "API导入文件/postman_collection.json", root + "API导入文件/postman_environment.json",
+                root + "文档/02-鉴权与Scope说明.md", root + "文档/04-完整接口参考.md", root + "文档/03-接口清单.csv",
+                root + "示例项目/cURL/调用全部已授权接口.sh", root + "示例项目/Python/src/open_platform_demo.py",
+                root + "示例项目/Node.js/src/open-platform-demo.mjs",
+                root + "示例项目/Java/pom.xml",
+                root + "示例项目/Java/src/main/java/com/lubashu/openplatform/demo/OpenPlatformDemo.java",
+                root + "示例项目/Go/go.mod", root + "示例项目/Go/cmd/demo/main.go",
+                root + "文档/接口示例/classroom.live-status.read.请求.json");
+        assertThat(contents.get(root + "README.md")).contains("通用目录", "示例项目", "Java");
+        assertThat(contents.get(root + "文档/02-鉴权与Scope说明.md"))
+                .contains("多个 Scope 使用空格分隔", "scope=classroom.live.read",
                         "\\\n", "-H 'Content-Type: application/x-www-form-urlencoded'");
-        assertThat(contents.get("docs/完整接口参考.md")).contains(resource.getPath(), resource.getScopeCode());
-        assertThat(contents.get("demos/python/demo.py")).contains("OPEN_PLATFORM_CLIENT_SECRET", "/open/oauth2/token");
-        assertThat(contents.get("demos/curl/demo.sh")).contains("\\\n", "-H 'Content-Type: application/x-www-form-urlencoded'");
+        assertThat(contents.get(root + "文档/04-完整接口参考.md")).contains(resource.getPath(), resource.getScopeCode());
+        assertThat(contents.get(root + "示例项目/Python/src/open_platform_demo.py"))
+                .contains("OPEN_PLATFORM_CLIENT_SECRET", "/open/oauth2/token", "classroom_live_status_read");
+        assertThat(contents.get(root + "示例项目/cURL/调用全部已授权接口.sh"))
+                .contains("\\\n", "Content-Type: $CONTENT_TYPE", "classroom_live_status_read");
+        assertThat(contents.get(root + "示例项目/Java/src/main/java/com/lubashu/openplatform/demo/OpenPlatformDemo.java"))
+                .contains("static final String CLIENT_ID = \"\"", "classroomLiveStatusRead");
         assertThat(contents.values()).allMatch(value -> !value.contains("must-not-leak"));
-        assertThat(contents.get("openapi.json")).doesNotContain("/obsolete");
+        assertThat(contents.get(root + "API导入文件/openapi.json")).doesNotContain("/obsolete");
+        Files.write(Path.of("target", "generated-integration-package.zip"), export.zip());
+    }
+
+    @Test
+    void applicationPackageContainsOnlyEffectiveAuthorizedResources() throws Exception {
+        OpenApiResourcePo authorized = resource(1L, "classroom.app-upgrade.read", "查询应用升级信息", "classroom.app.read");
+        OpenApiResourcePo unauthorized = resource(2L, "directory.teachers", "教师目录", "edu.teacher.read");
+        OpenApiResourceVersionPo authorizedVersion = version(11L, 1L, authorized.getPath());
+        OpenApiResourceVersionPo unauthorizedVersion = version(12L, 2L, unauthorized.getPath());
+        OpenAppResourceGrantPo grant = new OpenAppResourceGrantPo();
+        grant.setResourceId(1L);
+        grant.setScopes("classroom.app.read");
+        when(grantMapper.selectList(any())).thenReturn(List.of(grant));
+        when(resourceMapper.selectList(any())).thenReturn(List.of(authorized, unauthorized));
+        when(versionMapper.selectList(any())).thenReturn(List.of(authorizedVersion, unauthorizedVersion));
+        OpenAppVO app = new OpenAppVO();
+        app.setAppId(201L);
+        app.setTenantId(99L);
+        app.setAppName("视频平台");
+        app.setScopes(List.of("classroom.app.read", "edu.teacher.read"));
+
+        OpenApiIntegrationExportDTO export = service.buildForApp("https://example.test", app, "PROD");
+
+        assertThat(export.filenameBase()).isEqualTo("视频平台应用对接-生产");
+        String openApi = new String(export.openApiJson(), StandardCharsets.UTF_8);
+        assertThat(openApi).contains(authorized.getPath()).doesNotContain(unauthorized.getPath());
+        assertThat(new String(export.postmanEnvironmentJson(), StandardCharsets.UTF_8))
+                .contains("classroom.app.read").doesNotContain("edu.teacher.read");
     }
 
     @Test
@@ -115,5 +158,33 @@ class OpenApiIntegrationExportServiceTest {
         assertThatThrownBy(() -> service.build("javascript:alert(1)"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("HTTP(S)");
+    }
+
+    private static OpenApiResourcePo resource(long id, String code, String name, String scope) {
+        OpenApiResourcePo resource = new OpenApiResourcePo();
+        resource.setId(id);
+        resource.setResourceCode(code);
+        resource.setResourceName(name);
+        resource.setCategory("测试");
+        resource.setHttpMethod("GET");
+        resource.setPath("/open/api/v1/" + code.replace('.', '/'));
+        resource.setScopeCode(scope);
+        resource.setStatus(0);
+        resource.setPublishStatus(2);
+        return resource;
+    }
+
+    private static OpenApiResourceVersionPo version(long id, long resourceId, String path) {
+        OpenApiResourceVersionPo version = new OpenApiResourceVersionPo();
+        version.setId(id);
+        version.setResourceId(resourceId);
+        version.setStatus(1);
+        version.setDelFlag(0);
+        version.setVersion("v1");
+        version.setOpenapiJson("{\"openapi\":\"3.0.3\",\"paths\":{\"" + path
+                + "\":{\"get\":{\"responses\":{\"200\":{\"description\":\"成功\"}}}}}}");
+        version.setRequestExampleJson("{}");
+        version.setResponseExamplesJson("{\"code\":200}");
+        return version;
     }
 }

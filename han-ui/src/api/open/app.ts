@@ -70,6 +70,10 @@ export function getOpenApp(id: string | number) {
   return get<OpenApp>(`/open/app/${id}`)
 }
 
+export function getOpenAppSchoolNames(id: string | number) {
+  return get<Record<string, string>>(`/open/app/${id}/school-names`)
+}
+
 export interface OpenAppCredential {
   appId: string | number
   appKey: string

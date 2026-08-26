@@ -6261,4 +6261,14 @@ WHERE resource_row.resource_code = 'classroom.event.class-over'
   AND version_row.status = 1
   AND version_row.del_flag = 0;
 
+-- 14 条视频课堂接口均允许在厂商在线调测中选择；控制类接口仍受应用授权、Scope 和学校范围校验。
+UPDATE open_api_resource
+SET allow_test = 1
+WHERE resource_code IN (
+    'classroom.live-status.read', 'classroom.app-upgrade.read', 'classroom.course.list', 'classroom.course.save',
+    'classroom.live.start', 'classroom.live.join', 'classroom.live.enter', 'classroom.record.start',
+    'classroom.record.stop', 'classroom.member.kick', 'classroom.member.mute', 'classroom.device.read',
+    'classroom.event.subscribe', 'classroom.event.class-over'
+);
+
 COMMIT;
