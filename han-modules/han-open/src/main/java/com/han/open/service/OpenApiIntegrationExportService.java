@@ -598,25 +598,37 @@ public class OpenApiIntegrationExportService {
 
                 沙箱和生产凭证不能混用。Secret 遗失后无法找回，只能在凭证管理中轮换。
 
+                ## Scope 如何传
+
+                - 一次 Token 请求可以传一个或多个 Scope；多个 Scope 使用空格分隔。
+                - 同一个 Access Token 可以调用它所包含 Scope 对应的全部已授权接口，无需每个接口重新获取 Token。
+                - 多个接口可能共用同一个 Scope，例如开始课堂、加入课堂和进入课程共用 classroom.live.control。
+                - 请求的 Scope 不能超过应用在当前环境已授权的范围；建议按最小权限申请。
+                - 省略 scope 时，当前平台会使用应用已配置的全部 Scope，但正式对接建议显式填写。
+
                 ## 获取 Access Token
 
-                    curl -X POST '%s/open/oauth2/token' \
-                      -H 'Content-Type: application/x-www-form-urlencoded' \
-                      --data-urlencode 'grant_type=client_credentials' \
-                      --data-urlencode 'client_id=YOUR_CLIENT_ID' \
-                      --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' \
-                      --data-urlencode 'scope=接口要求的Scope'
+                    curl -X POST '%s/open/oauth2/token' __CONT__
+                      -H 'Content-Type: application/x-www-form-urlencoded' __CONT__
+                      --data-urlencode 'grant_type=client_credentials' __CONT__
+                      --data-urlencode 'client_id=YOUR_CLIENT_ID' __CONT__
+                      --data-urlencode 'client_secret=YOUR_CLIENT_SECRET' __CONT__
+                      --data-urlencode 'scope=classroom.app.read classroom.course.read'
 
                 成功响应中的 access_token 是临时令牌，expires_in 是有效秒数。
 
+                如果应用已经获得视频课堂全部权限，也可以一次请求：
+
+                    scope=classroom.live.read classroom.app.read classroom.course.read classroom.course.write classroom.live.control classroom.record.control classroom.member.control classroom.device.read classroom.event.read
+
                 ## 调用接口
 
-                    curl '%s/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo?appId=com.example.video&versionCode=1' \
+                    curl '%s/open/api/v1/classroom/user/tAppUpgrade/getAppUpgradeInfo?appId=com.example.video&versionCode=1' __CONT__
                       -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 
                 HTTP 2xx 不等于业务成功；兼容接口还必须检查 success=true 和 code=200。
                 Secret 不得写入前端、Git、URL、日志或公开文档。
-                """.formatted(baseUrl, baseUrl);
+                """.formatted(baseUrl, baseUrl).replace("__CONT__", "\\");
     }
 
     private String apiReference(List<ResourceDocument> documents) {
@@ -723,11 +735,11 @@ public class OpenApiIntegrationExportService {
                 scope="${OPEN_PLATFORM_SCOPE:-classroom.app.read}"
                 query="${OPEN_PLATFORM_QUERY:-appId=com.example.video&versionCode=1}"
                 body="${OPEN_PLATFORM_BODY:-}"
-                token_json="$(curl -fsS -X POST "$base_url/open/oauth2/token" \
-                  -H 'Content-Type: application/x-www-form-urlencoded' \
-                  --data-urlencode 'grant_type=client_credentials' \
-                  --data-urlencode "client_id=$OPEN_PLATFORM_CLIENT_ID" \
-                  --data-urlencode "client_secret=$OPEN_PLATFORM_CLIENT_SECRET" \
+                token_json="$(curl -fsS -X POST "$base_url/open/oauth2/token" __CONT__
+                  -H 'Content-Type: application/x-www-form-urlencoded' __CONT__
+                  --data-urlencode 'grant_type=client_credentials' __CONT__
+                  --data-urlencode "client_id=$OPEN_PLATFORM_CLIENT_ID" __CONT__
+                  --data-urlencode "client_secret=$OPEN_PLATFORM_CLIENT_SECRET" __CONT__
                   --data-urlencode "scope=$scope")"
                 token="$(printf '%s' "$token_json" | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
                 test -n "$token"
@@ -738,7 +750,7 @@ public class OpenApiIntegrationExportService {
                 else
                   curl -fsS -X "$method" "$url" -H "Authorization: Bearer $token"
                 fi
-                """.replace("@@BASE_URL@@", baseUrl);
+                """.replace("@@BASE_URL@@", baseUrl).replace("__CONT__", "\\");
     }
 
     private String pythonDemo(String baseUrl) {

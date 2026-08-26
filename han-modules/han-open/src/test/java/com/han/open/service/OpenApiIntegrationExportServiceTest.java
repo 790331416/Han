@@ -100,8 +100,12 @@ class OpenApiIntegrationExportServiceTest {
                 "demos/node/demo.mjs", "demos/java/OpenPlatformDemo.java", "demos/go/main.go",
                 "examples/classroom.live-status.read.request.json");
         assertThat(contents.get("README.md")).contains("最新通用版", "五种可运行 Demo");
+        assertThat(contents.get("docs/鉴权与密钥使用说明.md"))
+                .contains("多个 Scope 使用空格分隔", "classroom.app.read classroom.course.read",
+                        "\\\n", "-H 'Content-Type: application/x-www-form-urlencoded'");
         assertThat(contents.get("docs/完整接口参考.md")).contains(resource.getPath(), resource.getScopeCode());
         assertThat(contents.get("demos/python/demo.py")).contains("OPEN_PLATFORM_CLIENT_SECRET", "/open/oauth2/token");
+        assertThat(contents.get("demos/curl/demo.sh")).contains("\\\n", "-H 'Content-Type: application/x-www-form-urlencoded'");
         assertThat(contents.values()).allMatch(value -> !value.contains("must-not-leak"));
         assertThat(contents.get("openapi.json")).doesNotContain("/obsolete");
     }
