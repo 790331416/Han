@@ -18,8 +18,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -176,26 +174,26 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
         if (requiredScope != null && !requiredScope.isBlank() && !scopes.contains(requiredScope)) {
             throw new BusinessException("应用未获授权范围: " + requiredScope);
         }
-        List<Long> schoolIds = record.schoolIds() == null ? List.of() : record.schoolIds();
+        // 学校范围只有一个来源：应用管理中的授权学校。接口授权只控制资源、环境和有效期。
+        List<Long> schoolIds = app.getSchoolIds() == null ? List.of() : app.getSchoolIds();
         if (app.getVendorId() != null && StringUtils.hasText(requiredScope)) {
             if (authorizationService == null || appId == null || record.tenantId() == null) {
                 throw new BusinessException("应用授权上下文缺失");
             }
-            String dataScope;
+            String grant;
             if (requireResource) {
                 if (!StringUtils.hasText(resourceCode)) {
                     throw new BusinessException("资源编码不能为空");
                 }
-                dataScope = authorizationService.resolveAuthorizedDataScope(
+                grant = authorizationService.resolveAuthorizedDataScope(
                         record.tenantId(), appId, environment, requiredScope.trim(), resourceCode.trim());
             } else {
-                dataScope = authorizationService.resolveAuthorizedDataScope(
+                grant = authorizationService.resolveAuthorizedDataScope(
                         record.tenantId(), appId, environment, requiredScope.trim());
             }
-            if (dataScope == null) {
+            if (grant == null) {
                 throw new BusinessException("应用未获授权资源或授权已失效");
             }
-            schoolIds = resolveSchoolIds(dataScope, schoolIds);
         }
         return new OpenAccessTokenContext(record.userId(), record.tenantId(), record.clientId(), scopes,
                 schoolIds, record.applicationVersion(), record.refreshToken(), appId, environment);
@@ -409,51 +407,6 @@ public class OAuth2ServiceImpl implements IOAuth2Service {
             throw new BusinessException("环境类型仅支持SANDBOX或PROD");
         }
         return normalized;
-    }
-
-    private List<Long> resolveSchoolIds(String dataScope, List<Long> fallback) {
-        if (!StringUtils.hasText(dataScope)) {
-            return fallback;
-        }
-        final Map<String, Object> map;
-        try {
-            map = HanJsonUtil.parseMap(dataScope);
-        } catch (RuntimeException e) {
-            throw new BusinessException("授权数据范围格式非法");
-        }
-        if (!map.containsKey("schoolIds")) {
-            return fallback;
-        }
-        Object raw = map.get("schoolIds");
-        if (!(raw instanceof Collection<?> values)) {
-            throw new BusinessException("授权学校范围格式非法");
-        }
-        List<Long> schoolIds = new ArrayList<>();
-        for (Object value : values) {
-            long id;
-            try {
-                if (value instanceof Number number) {
-                    double numeric = number.doubleValue();
-                    if (!Double.isFinite(numeric) || numeric != Math.rint(numeric)) {
-                        throw new NumberFormatException();
-                    }
-                    id = number.longValue();
-                } else if (value instanceof String text && StringUtils.hasText(text)) {
-                    id = Long.parseLong(text.trim());
-                } else {
-                    throw new NumberFormatException();
-                }
-            } catch (NumberFormatException e) {
-                throw new BusinessException("授权学校范围格式非法");
-            }
-            if (id <= 0L || !schoolIds.contains(id)) {
-                if (id <= 0L) {
-                    throw new BusinessException("授权学校范围格式非法");
-                }
-                schoolIds.add(id);
-            }
-        }
-        return List.copyOf(schoolIds);
     }
 
     private static String applicationVersion(OpenAppVO app) {

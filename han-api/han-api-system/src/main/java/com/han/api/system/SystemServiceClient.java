@@ -227,6 +227,13 @@ public interface SystemServiceClient {
             @RequestParam("tenantId") Long tenantId,
             @RequestParam("schoolIds") List<Long> schoolIds);
 
+    /** 已授权开放应用按设备编码读取单台设备。 */
+    @GetExchange("/external/directory/device")
+    R<EducationDeviceDirectoryVO> getOpenDirectoryDevice(
+            @RequestParam("tenantId") Long tenantId,
+            @RequestParam("schoolIds") List<Long> schoolIds,
+            @RequestParam("deviceCode") String deviceCode);
+
     /** 创建禁用的开放平台厂商门户账号。 */
     @PostExchange("/vendor/portal/account")
     R<Long> createOpenVendorAccount(@RequestBody OpenVendorAccountCreateDTO dto);

@@ -55,7 +55,6 @@ export function getPublicVendorApplication(contactPhone: string) {
 export interface GrantApplyResource {
   resourceId: string | number
   scopes: string
-  dataScope?: string
   quota?: number
   expireDays?: number
 }
@@ -96,6 +95,7 @@ export interface OpenApiTestRunForm {
   resourceId: string | number
   environment: 'SANDBOX' | 'PROD'
   statusCode: number
+  businessSuccess: boolean
   durationMs: number
   responseSize: number
   traceId?: string

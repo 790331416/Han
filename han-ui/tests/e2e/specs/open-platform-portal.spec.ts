@@ -211,13 +211,30 @@ test.describe('厂商门户在线调测受控联调', () => {
     expect(auditRequestBody).not.toContain('e2e-access-token')
     expect(auditRequestBody).not.toContain('responseBody')
     const audit = JSON.parse(auditRequestBody) as Record<string, unknown>
-    expect(audit).toEqual(expect.objectContaining({ appId: app.appId, resourceId: resource.id, statusCode: 200 }))
+    expect(audit).toEqual(expect.objectContaining({ appId: app.appId, resourceId: resource.id, statusCode: 200, businessSuccess: true }))
     expect(audit).not.toHaveProperty('token')
     expect(audit).not.toHaveProperty('clientSecret')
     expect(audit).not.toHaveProperty('responseBody')
     expect(pageErrors).toEqual([])
     expect(consoleErrors).toEqual([])
     expect(organizationRequests).toEqual([])
+  })
+
+  test('HTTP 200 的业务失败会标红并按失败写入审计', async ({ page }) => {
+    let auditRequestBody = ''
+    await openPortal(page, (route) => json(route, { access_token: 'e2e-access-token' }))
+    await page.route('**/open/api/v1/directory/teachers**', (route) => json(route, {
+      success: false, code: 500, message: '设备不存在或不在授权学校范围', result: null
+    }))
+    await page.route('**/open/debug/run/add', async (route) => {
+      auditRequestBody = route.request().postData() || ''
+      await json(route, { code: 200, data: { id: 9002 } })
+    })
+
+    await page.getByRole('button', { name: '获取 Token 并调测' }).click()
+
+    await expect(page.locator('.debug-response')).toContainText('设备不存在或不在授权学校范围')
+    expect(JSON.parse(auditRequestBody)).toEqual(expect.objectContaining({ statusCode: 200, businessSuccess: false }))
   })
 
   test('Token 业务错误和 HTTP 错误会中断调测并保留 Secret 便于重试', async ({ page }) => {

@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class EducationOpenDirectoryServiceTest {
@@ -47,6 +48,18 @@ class EducationOpenDirectoryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("开放目录未授权任何学校");
         verifyNoInteractions(personMapper);
+    }
+
+    @Test
+    void exactDeviceLookupReturnsNullWhenNoAuthorizedDeviceMatches() {
+        EduDeviceMapper deviceMapper = mock(EduDeviceMapper.class);
+        EducationOpenDirectoryService service = new EducationOpenDirectoryService(
+                mock(EduPersonMapper.class), mock(EduPersonClassMapper.class), mock(EduClassMapper.class),
+                deviceMapper, mock(EduSchoolMapper.class), mock(EduRoomMapper.class));
+        when(deviceMapper.selectOne(any())).thenReturn(null);
+
+        assertThat(service.device(1L, List.of(1001L), "MISSING")).isNull();
+        verify(deviceMapper).selectOne(any());
     }
 
     private static EducationOpenDirectoryService service(EduSchoolMapper schoolMapper) {

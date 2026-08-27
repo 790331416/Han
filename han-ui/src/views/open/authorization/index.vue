@@ -62,7 +62,6 @@
             <el-table-column label="资源" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ row.resourceName || row.resourceCode || row.resourceId }}</template></el-table-column>
             <el-table-column label="环境" width="90" align="center"><template #default="{ row }">{{ environmentLabel(row.environment) }}</template></el-table-column>
             <el-table-column label="Scope" prop="scopes" min-width="180" show-overflow-tooltip />
-            <el-table-column label="数据范围" prop="dataScope" min-width="220" show-overflow-tooltip />
             <el-table-column label="配额" width="90" align="center"><template #default="{ row }">{{ row.quota || '不限' }}</template></el-table-column>
             <el-table-column label="过期时间" min-width="170"><template #default="{ row }">{{ row.expiresAt ? formatDate(row.expiresAt) : '永久' }}</template></el-table-column>
             <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="grantStatusTagType(row.status)">{{ grantStatusLabel(row.status) }}</el-tag></template></el-table-column>

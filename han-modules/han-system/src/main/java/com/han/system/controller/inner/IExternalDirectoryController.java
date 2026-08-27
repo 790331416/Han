@@ -54,4 +54,11 @@ public class IExternalDirectoryController {
                                             @RequestParam List<Long> schoolIds) {
         return R.ok(directoryService.schoolNames(tenantId, schoolIds));
     }
+
+    @GetMapping("/device")
+    public R<EducationDeviceDirectoryVO> device(@RequestParam Long tenantId,
+                                                 @RequestParam List<Long> schoolIds,
+                                                 @RequestParam String deviceCode) {
+        return R.ok(directoryService.device(tenantId, schoolIds, deviceCode));
+    }
 }

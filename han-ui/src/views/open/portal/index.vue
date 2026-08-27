@@ -114,10 +114,7 @@
               <el-form-item label="调用配额"><el-input-number v-model="grantForm.quota" :min="0" :step="100" style="width: 100%" /></el-form-item>
               <el-form-item label="有效期（天）"><el-input-number v-model="grantForm.expireDays" :min="0" style="width: 100%" /><span class="form-tip">0 表示永久</span></el-form-item>
               <el-form-item label="授权学校" class="full-row">
-                <el-select v-model="grantForm.schoolIds" multiple clearable :disabled="!grantSchoolOptions.length" placeholder="从应用已授权学校中选择" style="width: 100%">
-                  <el-option v-for="schoolId in grantSchoolOptions" :key="String(schoolId)" :label="String(schoolId)" :value="schoolId" />
-                </el-select>
-                <span class="form-tip">只能选择平台管理员在应用管理中授权的学校；留空表示使用应用全部学校范围。</span>
+                <el-text type="info">统一继承应用管理中的授权学校，无需按接口重复配置。</el-text>
               </el-form-item>
               <el-form-item label="申请理由" required class="full-row"><el-input v-model="grantForm.applyReason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="说明业务场景和数据使用范围" /></el-form-item>
             </div>
@@ -435,8 +432,7 @@ const identityScopeOptions = ref<DictOption[]>([])
 const identityScopes = ref<string[]>([])
 const redirectUrisText = computed({ get: () => (appForm.redirectUris || []).join('\n'), set: (value: string) => { appForm.redirectUris = value.split('\n').map(item => item.trim()).filter(Boolean) } })
 const appRules: FormRules = { vendorId: [{ required: true, message: '请选择厂商', trigger: 'change' }], appName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }], appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }] }
-const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', schoolIds: [] as Array<string | number>, quota: 0, expireDays: 0, applyReason: '' })
-const grantSchoolOptions = computed(() => apps.value.find(app => String(app.appId) === String(grantForm.appId))?.schoolIds || [])
+const grantForm = reactive({ appId: undefined as string | number | undefined, environment: 'SANDBOX' as 'SANDBOX' | 'PROD', resourceIds: [] as Array<string | number>, scopes: '', quota: 0, expireDays: 0, applyReason: '' })
 
 async function loadVendors() {
   vendorLoading.value = true
@@ -711,16 +707,17 @@ async function runOnlineDebug() {
     const responseText = await response.text()
     const durationMs = Math.max(0, Math.round(performance.now() - startedAt))
     const responseSize = new Blob([responseText]).size
-    debugResponse.value = { ok: response.ok, statusCode: response.status, durationMs, responseSize, body: formatResponse(responseText) }
+    const businessSuccess = successfulResponse(response, responseText)
+    debugResponse.value = { ok: businessSuccess, statusCode: response.status, durationMs, responseSize, body: formatResponse(responseText) }
     auditAttempted = true
-    await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: response.status, durationMs, responseSize, traceId: response.headers.get('X-Trace-Id') || undefined })
+    await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: response.status, businessSuccess, durationMs, responseSize, traceId: response.headers.get('X-Trace-Id') || undefined })
     await loadDebugHistory()
   } catch (error) {
     const message = error instanceof Error ? error.message : '在线调测失败'
     if (apiAttempted && !auditAttempted && apiStartedAt !== null) {
       try {
         auditAttempted = true
-        await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: 0, durationMs: Math.max(0, Math.round(performance.now() - apiStartedAt)), responseSize: 0 })
+        await addOpenApiTestRun({ appId: debugAppId.value, resourceId: resource.id ?? '', environment: debugEnvironment.value, statusCode: 0, businessSuccess: false, durationMs: Math.max(0, Math.round(performance.now() - apiStartedAt)), responseSize: 0 })
       } catch {
         // 审计失败不覆盖原始调测错误；页面仍明确显示本次请求未取得 HTTP 响应。
       }
@@ -736,6 +733,15 @@ async function runOnlineDebug() {
 
 function formatResponse(value: string) {
   try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
+}
+
+function successfulResponse(response: Response, body: string) {
+  if (!response.ok) return false
+  try {
+    const value = JSON.parse(body) as { success?: unknown; code?: unknown }
+    if (value?.success === false) return false
+    return value?.code === undefined || Number(value.code) === 200
+  } catch { return true }
 }
 
 async function downloadIntegrationDocument(format: OpenIntegrationExportFormat) {
@@ -771,8 +777,7 @@ async function loadGrantRequests() {
 async function submitGrant() {
   if (!grantForm.appId || !grantForm.resourceIds.length || !grantForm.applyReason.trim()) { ElMessage.warning('请选择应用和接口，并填写申请理由'); return }
   const resourcesById = new Map(resources.value.map(item => [String(item.id), item]))
-  const dataScope = grantForm.schoolIds.length ? JSON.stringify({ schoolIds: grantForm.schoolIds }) : undefined
-  const payload: GrantApplyForm = { appId: grantForm.appId, environment: grantForm.environment, applyReason: grantForm.applyReason.trim(), resources: grantForm.resourceIds.map(id => ({ resourceId: id, scopes: grantForm.scopes.trim() || resourcesById.get(String(id))?.scopeCode || '', dataScope, quota: grantForm.quota || 0, expireDays: grantForm.expireDays || 0 })) }
+  const payload: GrantApplyForm = { appId: grantForm.appId, environment: grantForm.environment, applyReason: grantForm.applyReason.trim(), resources: grantForm.resourceIds.map(id => ({ resourceId: id, scopes: grantForm.scopes.trim() || resourcesById.get(String(id))?.scopeCode || '', quota: grantForm.quota || 0, expireDays: grantForm.expireDays || 0 })) }
   if (payload.resources.some(item => !item.scopes)) { ElMessage.warning('所选接口缺少默认 Scope，请手动填写'); return }
   grantSubmitting.value = true
   try { await submitGrantApply(payload); ElMessage.success('授权申请已提交'); grantForm.resourceIds = []; grantForm.applyReason = ''; await loadGrantRequests() } catch (error) { notifyError(error, '提交授权申请失败') } finally { grantSubmitting.value = false }
@@ -880,7 +885,6 @@ watch([identityScopes, selectedAppResourceIds, resources], () => {
     .map(resource => resource.scopeCode)
   appForm.scopes = [...new Set([...identityScopes.value, ...resourceScopes])]
 }, { deep: true })
-watch(() => grantForm.appId, () => { grantForm.schoolIds = [...grantSchoolOptions.value] })
 onMounted(async () => {
   identityScopeOptions.value = await loadDictOptions(OPEN_IDENTITY_SCOPE_DICT, [{ label: '用户唯一标识（openid）', value: 'openid' }, { label: '用户基础资料（profile）', value: 'profile' }])
   await Promise.all([loadVendors(), loadResources()])

@@ -118,7 +118,7 @@
           </el-checkbox-group>
           <div class="form-hint">仅用于用户授权后的 userinfo；普通服务调用无需选择。</div>
         </el-form-item>
-        <el-form-item label="授权接口">
+        <el-form-item label="接口范围">
           <div class="api-resource-list">
             <div v-for="(resources, category) in apiResourcesByCategory" :key="category" class="api-resource-group">
               <div class="api-resource-category">{{ category }}</div>
@@ -132,6 +132,7 @@
             </div>
             <el-empty v-if="!apiResources.length" description="暂无可授权接口" :image-size="60" />
           </div>
+          <div class="form-hint">这里确定应用可使用的接口范围；具体接口仍按环境审批，学校统一使用应用授权学校。</div>
         </el-form-item>
         <el-form-item v-if="needsSchoolScope" label="授权学校" prop="schoolIds">
           <el-select v-model="form.schoolIds" multiple filterable allow-create default-first-option clearable placeholder="选择学校或输入平台学校ID" style="width: 100%">

@@ -90,39 +90,15 @@ class OpenAppAuthorizationServiceImplTest {
     }
 
     @Test
-    void submitGrantApplyAcceptsSchoolSubsetOfApplicationScope() {
+    void submitGrantApplyRejectsResourceLevelSchoolScope() {
         SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
         GrantApplyVO apply = grantApplyVO();
         apply.getResources().get(0).setDataScope("{\"schoolIds\":[1002]}");
 
-        service.submitGrantApply(apply);
-
-        ArgumentCaptor<OpenAppResourceGrantPo> captor = ArgumentCaptor.forClass(OpenAppResourceGrantPo.class);
-        verify(baseMapper).insert(captor.capture());
-        assertThat(captor.getValue().getDataScope()).isEqualTo("{\"schoolIds\":[1002]}");
-    }
-
-    @Test
-    void submitGrantApplyRejectsSchoolOutsideApplicationScope() {
-        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
-        GrantApplyVO apply = grantApplyVO();
-        apply.getResources().get(0).setDataScope("{\"schoolIds\":[9999]}");
-
         assertThatThrownBy(() -> service.submitGrantApply(apply))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("资源数据范围不能超出应用授权学校");
+                .hasMessage("接口授权不再单独配置学校，请在应用管理中设置授权学校");
         verify(baseMapper, org.mockito.Mockito.times(0)).insert(any(OpenAppResourceGrantPo.class));
-    }
-
-    @Test
-    void submitGrantApplyRejectsMalformedDataScope() {
-        SecurityContextHolder.setLoginUser(LoginUser.builder().userId(42L).tenantId(99L).build());
-        GrantApplyVO apply = grantApplyVO();
-        apply.getResources().get(0).setDataScope("not-json");
-
-        assertThatThrownBy(() -> service.submitGrantApply(apply))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("授权数据范围格式非法");
     }
 
     @Test
@@ -354,7 +330,7 @@ class OpenAppAuthorizationServiceImplTest {
 
         assertThatThrownBy(() -> service.reviewGrantApply(2L, 1, "通过"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("资源数据范围不能超出应用授权学校");
+                .hasMessage("接口授权不再单独配置学校，请在应用管理中设置授权学校");
         verify(baseMapper, org.mockito.Mockito.times(0)).insert(any(OpenAppResourceGrantPo.class));
     }
 

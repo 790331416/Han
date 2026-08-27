@@ -112,6 +112,18 @@ class OpenApiTestRunServiceImplTest {
     }
 
     @Test
+    void httpSuccessWithBusinessFailureIsRecordedAsFailure() {
+        OpenApiTestRunDTO request = request();
+        request.setBusinessSuccess(false);
+
+        service.add(request);
+
+        var captor = forClass(OpenApiTestRunPo.class);
+        verify(runMapper).insert(captor.capture());
+        assertThat(captor.getValue().getResult()).isEqualTo("FAIL");
+    }
+
+    @Test
     void viewerCannotSubmitRun() {
         when(vendorUserMapper.selectOne(any())).thenReturn(member("VIEWER"));
 

@@ -120,13 +120,13 @@ public interface OpenAppAuthorizationService extends IService<OpenAppResourceGra
 
     /**
      * 查找租户内、指定环境和 Scope 对应的已发布有效授权。
-     * 返回空字符串表示授权存在但未配置额外数据范围，返回 null 表示没有有效授权。
+     * 返回空字符串表示授权有效，返回 null 表示没有有效授权；学校范围统一取应用配置。
      */
     String resolveAuthorizedDataScope(Long tenantId, Long appId, String environment, String scope);
 
     /**
      * 查找指定资源编码对应的已发布资源，并只校验该资源的有效授权。
-     * 用于避免多个资源共用 Scope 时发生越权。
+     * 用于避免多个资源共用 Scope 时发生越权；学校范围统一取应用配置。
      */
     String resolveAuthorizedDataScope(Long tenantId, Long appId, String environment,
                                       String scope, String resourceCode);

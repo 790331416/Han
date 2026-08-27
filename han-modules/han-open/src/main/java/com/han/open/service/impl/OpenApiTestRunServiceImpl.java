@@ -66,7 +66,8 @@ public class OpenApiTestRunServiceImpl extends ServiceImpl<OpenApiTestRunMapper,
         int statusCode = requireStatusCode(request.getStatusCode());
         int durationMs = requireDuration(request.getDurationMs());
         long responseSize = requireResponseSize(request.getResponseSize());
-        String result = statusCode >= 200 && statusCode < 400 ? "SUCCESS" : "FAIL";
+        String result = statusCode >= 200 && statusCode < 400
+                && !Boolean.FALSE.equals(request.getBusinessSuccess()) ? "SUCCESS" : "FAIL";
 
         OpenApiTestRunPo record = new OpenApiTestRunPo();
         record.setId(HanIdUtil.snowflakeId());

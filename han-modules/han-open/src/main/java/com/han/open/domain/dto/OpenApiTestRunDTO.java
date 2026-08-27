@@ -32,6 +32,9 @@ public class OpenApiTestRunDTO implements Serializable {
     @Max(value = 599, message = "响应状态码不合法")
     private Integer statusCode;
 
+    /** 浏览器根据业务响应信封判定；旧客户端不传时兼容按 HTTP 状态判断。 */
+    private Boolean businessSuccess;
+
     @NotNull(message = "请求耗时不能为空")
     @Min(value = 0, message = "请求耗时不合法")
     @Max(value = 600000, message = "请求耗时过大")
@@ -42,7 +45,7 @@ public class OpenApiTestRunDTO implements Serializable {
     @Max(value = 50000000, message = "响应大小过大")
     private Long responseSize;
 
-    /** 兼容旧客户端字段，但审计结果始终由服务端按 statusCode 派生。 */
+    /** 兼容旧客户端字段，不接受调用方直接指定审计结果。 */
     @JsonIgnore
     private String result;
 

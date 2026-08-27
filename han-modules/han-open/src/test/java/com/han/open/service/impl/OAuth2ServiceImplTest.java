@@ -149,7 +149,7 @@ class OAuth2ServiceImplTest {
     }
 
     @Test
-    void grantDataScopeOverridesTokenSchoolScope() {
+    void applicationSchoolScopeCannotBeOverriddenByResourceGrant() {
         IOpenAppService apps = mock(IOpenAppService.class);
         OpenAppAuthorizationService authorization = mock(OpenAppAuthorizationService.class);
         StringRedisTemplate redis = recordingRedis();
@@ -169,32 +169,7 @@ class OAuth2ServiceImplTest {
         OAuth2TokenVO token = service.token(request);
 
         assertThat(service.requireAccessToken(token.getAccessToken(), "edu.teacher.read").schoolIds())
-                .containsExactly(9L, 10L);
-    }
-
-    @Test
-    void rejectsMalformedGrantDataScope() {
-        IOpenAppService apps = mock(IOpenAppService.class);
-        OpenAppAuthorizationService authorization = mock(OpenAppAuthorizationService.class);
-        StringRedisTemplate redis = recordingRedis();
-        OpenAppVO app = app(List.of("edu.teacher.read"));
-        app.setAppId(55L);
-        app.setVendorId(77L);
-        app.setLifecycleStatus(5);
-        when(authorization.validateCredentialContext("prod-client", "secret"))
-                .thenReturn(new OpenAppAuthorizationService.CredentialContext(55L, "prod-client", "PROD"));
-        when(apps.selectVoById(55L)).thenReturn(app);
-        when(authorization.resolveAuthorizedDataScope(1L, 55L, "PROD", "edu.teacher.read"))
-                .thenReturn("{\"schoolIds\":\"not-a-list\"}");
-
-        OAuth2ServiceImpl service = new OAuth2ServiceImpl(apps, redis, authorization);
-        OAuth2TokenDTO request = tokenRequest("edu.teacher.read");
-        request.setClientId("prod-client");
-        OAuth2TokenVO token = service.token(request);
-
-        assertThatThrownBy(() -> service.requireAccessToken(token.getAccessToken(), "edu.teacher.read"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("授权学校范围格式非法");
+                .containsExactly(7L);
     }
 
     @Test

@@ -98,6 +98,27 @@ public class EducationOpenDirectoryService {
         return PageResult.of(rows, page.getTotal(), current, size);
     }
 
+    public EducationDeviceDirectoryVO device(Long tenantId, Collection<Long> schoolIds, String deviceCode) {
+        Scope scope = scope(tenantId, schoolIds);
+        if (deviceCode == null || deviceCode.isBlank()) {
+            throw new BusinessException("设备编码不能为空");
+        }
+        EduDevicePo device = deviceMapper.selectOne(tenantScoped(new LambdaQueryWrapper<EduDevicePo>(), scope.tenantId())
+                .eq(EduDevicePo::getDeviceCode, deviceCode.trim())
+                .in(EduDevicePo::getSchoolId, scope.schoolIds())
+                .eq(EduDevicePo::getDelFlag, 0)
+                .last("LIMIT 1"));
+        if (device == null) {
+            return null;
+        }
+        EduSchoolPo school = schools(scope.tenantId(), List.of(device.getSchoolId())).get(device.getSchoolId());
+        EduRoomPo room = device.getRoomId() == null ? null
+                : rooms(scope.tenantId(), List.of(device.getRoomId())).get(device.getRoomId());
+        return new EducationDeviceDirectoryVO(device.getId(), device.getDeviceCode(), device.getDeviceName(),
+                device.getDeviceType(), split(device.getApplicationTypes()), device.getSchoolId(), schoolName(school),
+                device.getRoomId(), room == null ? "" : room.getRoomName(), device.getStatus(), device.getUpdateTime());
+    }
+
     /** 仅解析调用方已经授权的学校名称，未知 ID 不返回。 */
     public Map<Long, String> schoolNames(Long tenantId, Collection<Long> schoolIds) {
         Scope scope = scope(tenantId, schoolIds);

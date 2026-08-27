@@ -38,11 +38,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -162,7 +160,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
             }
             OpenApiResourcePo resource = requireAppableResource(item.getResourceId());
             item.setScopes(resolveRequestedScope(item.getScopes(), resource.getScopeCode()));
-            validateResourceItem(item, app);
+            validateResourceItem(item);
 
             OpenAppResourceGrantPo exist = findGrant(tenantId, applyVO.getAppId(), item.getResourceId(), environment);
             if (exist != null && Integer.valueOf(GRANT_PENDING).equals(exist.getStatus())) {
@@ -259,7 +257,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
             if (status == REQUEST_APPROVED) {
                 OpenApiResourcePo resource = requireAppableResource(item.getResourceId());
                 item.setScopes(resolveRequestedScope(item.getScopes(), resource.getScopeCode()));
-                validateResourceItem(item, app);
+                validateResourceItem(item);
                 upsertApprovedGrant(request, item, resource, environment, tenantId, currentUserId, reason);
             } else if (status == REQUEST_REJECTED) {
                 markRejectedGrant(request, item, environment, tenantId, currentUserId, reason);
@@ -568,7 +566,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
                     .last("LIMIT 1"));
             if (resource != null && scope.equals(resource.getScopeCode() == null
                     ? null : resource.getScopeCode().trim())) {
-                return grant.getDataScope() == null ? "" : grant.getDataScope();
+                return "";
             }
         }
         return null;
@@ -611,7 +609,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         if (grant == null || isExpired(grant.getExpiresAt()) || !containsScope(grant.getScopes(), scope.trim())) {
             return null;
         }
-        return grant.getDataScope() == null ? "" : grant.getDataScope();
+        return "";
     }
 
     @Override
@@ -711,7 +709,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         grant.setResourceId(item.getResourceId());
         grant.setEnvironment(applyVO.getEnvironment());
         grant.setScopes(item.getScopes());
-        grant.setDataScope(item.getDataScope());
+        grant.setDataScope(null);
         grant.setQuota(item.getQuota() == null ? 0L : item.getQuota());
         grant.setExpiresAt(expireAt(item));
         grant.setStatus(GRANT_PENDING);
@@ -739,7 +737,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         grant.setResourceId(item.getResourceId());
         grant.setEnvironment(environment);
         grant.setScopes(resource.getScopeCode().trim());
-        grant.setDataScope(item.getDataScope());
+        grant.setDataScope(null);
         grant.setQuota(item.getQuota() == null ? 0L : item.getQuota());
         grant.setExpiresAt(expireAt(item));
         grant.setStatus(GRANT_ACTIVE);
@@ -768,7 +766,7 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
             grant.setResourceId(item.getResourceId());
             grant.setEnvironment(environment);
             grant.setScopes(item.getScopes());
-            grant.setDataScope(item.getDataScope());
+            grant.setDataScope(null);
             grant.setQuota(item.getQuota() == null ? 0L : item.getQuota());
             grant.setExpiresAt(expireAt(item));
             grant.setCreateBy(request.getApplicantId());
@@ -808,78 +806,15 @@ public class OpenAppAuthorizationServiceImpl extends ServiceImpl<OpenAppResource
         }
     }
 
-    private void validateResourceItem(GrantApplyVO.ResourceApplyItem item, OpenAppPo app) {
+    private void validateResourceItem(GrantApplyVO.ResourceApplyItem item) {
         if (item.getQuota() != null && item.getQuota() < 0) {
             throw new BusinessException("调用配额不能为负数");
         }
         if (item.getExpireDays() != null && item.getExpireDays() < 0) {
             throw new BusinessException("有效期不能为负数");
         }
-        validateDataScope(item.getDataScope(), app.getSchoolScope());
-    }
-
-    private void validateDataScope(String dataScope, String appSchoolScope) {
-        if (!StringUtils.hasText(dataScope)) {
-            return;
-        }
-        final Map<String, Object> scope;
-        try {
-            scope = objectMapper.readValue(dataScope, new TypeReference<Map<String, Object>>() {});
-        } catch (JsonProcessingException e) {
-            throw new BusinessException("授权数据范围格式非法");
-        }
-        if (!scope.containsKey("schoolIds")) {
-            return;
-        }
-        Object raw = scope.get("schoolIds");
-        if (!(raw instanceof Collection<?> values)) {
-            throw new BusinessException("授权学校范围格式非法");
-        }
-        Set<Long> allowed = parseSchoolIds(appSchoolScope);
-        for (Object value : values) {
-            long schoolId = parseSchoolId(value);
-            if (!allowed.contains(schoolId)) {
-                throw new BusinessException("资源数据范围不能超出应用授权学校");
-            }
-        }
-    }
-
-    private Set<Long> parseSchoolIds(String value) {
-        if (!StringUtils.hasText(value)) {
-            return Set.of();
-        }
-        try {
-            return java.util.Arrays.stream(value.split(","))
-                    .map(String::trim)
-                    .filter(StringUtils::hasText)
-                    .map(Long::valueOf)
-                    .filter(id -> id > 0L)
-                    .collect(Collectors.toUnmodifiableSet());
-        } catch (NumberFormatException e) {
-            throw new BusinessException("应用授权学校范围格式非法");
-        }
-    }
-
-    private long parseSchoolId(Object value) {
-        try {
-            long id;
-            if (value instanceof Number number) {
-                double numeric = number.doubleValue();
-                if (!Double.isFinite(numeric) || numeric != Math.rint(numeric)) {
-                    throw new NumberFormatException();
-                }
-                id = number.longValue();
-            } else if (value instanceof String text && StringUtils.hasText(text)) {
-                id = Long.parseLong(text.trim());
-            } else {
-                throw new NumberFormatException();
-            }
-            if (id <= 0L) {
-                throw new NumberFormatException();
-            }
-            return id;
-        } catch (NumberFormatException e) {
-            throw new BusinessException("授权学校范围格式非法");
+        if (StringUtils.hasText(item.getDataScope())) {
+            throw new BusinessException("接口授权不再单独配置学校，请在应用管理中设置授权学校");
         }
     }
 
