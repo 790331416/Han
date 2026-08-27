@@ -632,7 +632,7 @@ SET version_row.openapi_json = '{
             "name": "courseType",
             "in": "query",
             "required": false,
-            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间",
+            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间，6 设备手动开课",
             "schema": {
               "type": "string",
               "enum": [
@@ -640,7 +640,8 @@ SET version_row.openapi_json = '{
                 "2",
                 "3",
                 "4",
-                "5"
+                "5",
+                "6"
               ]
             },
             "example": "1"
@@ -1170,13 +1171,14 @@ SET version_row.openapi_json = '{
           },
           "courseType": {
             "type": "string",
-            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间",
+            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间，6 设备手动开课",
             "enum": [
               "1",
               "2",
               "3",
               "4",
-              "5"
+              "5",
+              "6"
             ]
           },
           "courseDesc": {
@@ -1786,7 +1788,7 @@ SET version_row.openapi_json = '{
           "视频课堂"
         ],
         "summary": "创建课程",
-        "description": "按旧 TbCourseInfo JSON 契约创建课程及可选听讲端。organId 必须属于应用授权学校；courseId、状态和审计字段由服务端覆盖。",
+        "description": "按旧 TbCourseInfo JSON 契约创建课程及可选听讲端。organId 必须属于应用授权学校；courseId、状态和审计字段由服务端覆盖。courseType=6 表示设备手动开课，不受学校节次区间限制。",
         "operationId": "saveCourseInfo",
         "security": [
           {
@@ -1797,7 +1799,7 @@ SET version_row.openapi_json = '{
         ],
         "requestBody": {
           "required": true,
-          "description": "课程对象；courseName 与 organId 必填，并应提供 ruleId 或 timeBegin。",
+          "description": "课程对象；courseName 与 organId 必填。courseType=6 设备手动开课可不传 ruleId，timeBegin 仅记录计划开始时间；其他类型应提供 ruleId，或由 timeBegin 匹配学校节次。",
           "content": {
             "application/json": {
               "schema": {
@@ -2080,7 +2082,7 @@ SET version_row.openapi_json = '{
             "required": [
               "timeBegin"
             ],
-            "description": "未指定 ruleId 时由计划开始时间匹配节次"
+            "description": "普通课程未指定 ruleId 时由计划开始时间匹配节次；courseType=6 的 timeBegin 不参与节次限制"
           }
         ],
         "properties": {
@@ -2095,13 +2097,14 @@ SET version_row.openapi_json = '{
           },
           "courseType": {
             "type": "string",
-            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间",
+            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间，6 设备手动开课",
             "enum": [
               "1",
               "2",
               "3",
               "4",
-              "5"
+              "5",
+              "6"
             ]
           },
           "courseDesc": {
@@ -3625,13 +3628,14 @@ SET version_row.openapi_json = '{
           },
           "courseType": {
             "type": "string",
-            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间",
+            "description": "课程类型：1 专递课堂，2 名师课堂，3 名校网络课堂，4 视频会议，5 直播间，6 设备手动开课",
             "enum": [
               "1",
               "2",
               "3",
               "4",
-              "5"
+              "5",
+              "6"
             ]
           },
           "courseDesc": {
