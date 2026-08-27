@@ -10,6 +10,8 @@ import com.han.open.domain.vo.OpenAccessTokenContext;
 import com.han.open.service.IOAuth2Service;
 import com.han.open.service.OpenClassroomProxyService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -19,7 +21,9 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,6 +84,23 @@ class OpenClassroomControllerTest {
         assertThat(body.path("code").asInt()).isEqualTo(500);
         assertThat(body.path("message").asText()).isEqualTo("设备不存在或不在授权学校范围");
         assertThat(body.path("result").isNull()).isTrue();
+    }
+
+    @Test
+    void courseListNarrowsAMultiSchoolApplicationToRequestedOrgan() {
+        OpenAccessTokenContext multiSchool = new OpenAccessTokenContext(1L, 99L, "video-platform",
+                Set.of("classroom.course.read"), List.of(7L, 8L), "1", "refresh", 123L, "PROD");
+        when(oauth2Service.requireAccessToken(anyString(), anyString(), anyString())).thenReturn(multiSchool);
+        when(proxyService.forward(any(), anyString(), any(), isNull(), any())).thenReturn(ResponseEntity.ok("{}"));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addParameter("organId", "8");
+
+        controller.courseList("Bearer access-token", request);
+
+        ArgumentCaptor<OpenAccessTokenContext> context = ArgumentCaptor.forClass(OpenAccessTokenContext.class);
+        verify(proxyService).forward(eq(HttpMethod.POST),
+                eq("/inner/open-classroom/tb-course-info/getCourseInfoList"), any(), isNull(), context.capture());
+        assertThat(context.getValue().schoolIds()).containsExactly(8L);
     }
 
     private static OpenAccessTokenContext context() {

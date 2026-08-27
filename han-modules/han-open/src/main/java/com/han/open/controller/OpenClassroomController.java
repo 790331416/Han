@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * 视频平台兼容接口。
@@ -61,8 +62,9 @@ public class OpenClassroomController {
     @RateLimiter(key = "openClassroom", time = 60, count = 120, limitType = RateLimiter.LimitType.IP)
     public ResponseEntity<String> courseList(@RequestHeader(value = "Authorization", required = false) String authorization,
                                              HttpServletRequest request) {
-        return forward(HttpMethod.POST, "/inner/open-classroom/tb-course-info/getCourseInfoList", authorization,
-                "classroom.course.read", "classroom.course.list", request, null);
+        OpenAccessTokenContext context = context(authorization, "classroom.course.read", "classroom.course.list");
+        return proxyService.forward(HttpMethod.POST, "/inner/open-classroom/tb-course-info/getCourseInfoList",
+                params(request), null, selectedSchool(context, request.getParameter("organId")));
     }
 
     @PostMapping("/tb-course-info/saveCourseInfo")
@@ -171,6 +173,26 @@ public class OpenClassroomController {
             throw new BusinessException("缺少开放平台 Bearer Token");
         }
         return oauth2Service.requireAccessToken(authorization.substring("Bearer ".length()).trim(), scope, resourceCode);
+    }
+
+    private static OpenAccessTokenContext selectedSchool(OpenAccessTokenContext context, String organId) {
+        if (organId == null || organId.isBlank()) {
+            if (context.schoolIds().size() != 1) {
+                throw new BusinessException("多学校应用查询课程时必须传 organId");
+            }
+            return context;
+        }
+        final long schoolId;
+        try {
+            schoolId = Long.parseLong(organId.trim());
+        } catch (NumberFormatException ex) {
+            throw new BusinessException("organId 格式不正确");
+        }
+        if (!context.schoolIds().contains(schoolId)) {
+            throw new BusinessException("应用未获该学校的数据授权");
+        }
+        return new OpenAccessTokenContext(context.userId(), context.tenantId(), context.clientId(), context.scopes(),
+                List.of(schoolId), context.applicationVersion(), context.refreshToken(), context.appId(), context.environment());
     }
 
     private static MultiValueMap<String, String> params(HttpServletRequest request) {
