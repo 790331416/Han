@@ -2714,7 +2714,7 @@ SET version_row.openapi_json = '{
           "视频课堂"
         ],
         "summary": "开始课堂",
-        "description": "启动主讲课堂。liveType=1 为设备端，liveType=2 为网页端；参数均放在查询字符串中。",
+        "description": "启动主讲课堂。视频平台/设备对接必须使用 liveType=1，返回 Token、roomId 和 WSS 信令地址；liveType=2 仅供浏览器网页端使用，返回带 Token 的页面地址。参数均放在查询字符串中。",
         "operationId": "startClassroom",
         "security": [
           {
@@ -2758,7 +2758,7 @@ SET version_row.openapi_json = '{
             "name": "liveType",
             "in": "query",
             "required": true,
-            "description": "接入类型：1 设备端，2 网页端",
+            "description": "接入类型：1 设备端（视频平台推荐，返回 WSS 信令参数），2 网页端（返回浏览器页面地址）",
             "schema": {
               "type": "string",
               "enum": [
@@ -2766,7 +2766,7 @@ SET version_row.openapi_json = '{
                 "2"
               ]
             },
-            "example": "2"
+            "example": "1"
           }
         ],
         "responses": {
@@ -2997,8 +2997,8 @@ SET version_row.openapi_json = '{
     }
   }
 }',
-    version_row.request_example_json = '{"memberId":"PRESENTER-001","roomId":"ROOM-TEST-001","name":"示例主讲人","liveType":"2"}',
-    version_row.response_examples_json = '{"success":true,"message":"操作成功！","code":200,"result":"wss://video.example.invalid/webrtc/?token=<video-token>","timestamp":0}'
+    version_row.request_example_json = '{"memberId":"PRESENTER-001","roomId":"ROOM-TEST-001","name":"示例主讲人","liveType":"1"}',
+    version_row.response_examples_json = '{"success":true,"message":"操作成功！","code":200,"result":{"token":"<video-token>","url":"wss://yunplay.lunengbashushuzhixuexiao.com:9999","roomId":"ROOM-TEST-001","role":"1"},"timestamp":0}'
 WHERE resource_row.resource_code = 'classroom.live.start'
   AND version_row.version = 'v1'
   AND version_row.status = 1
@@ -3027,7 +3027,7 @@ SET version_row.openapi_json = '{
           "视频课堂"
         ],
         "summary": "加入课堂",
-        "description": "听讲成员加入课堂。liveType=1 为设备端，liveType=2 为网页端；参数均放在查询字符串中。",
+        "description": "听讲成员加入课堂。视频平台/设备对接必须使用 liveType=1，返回 Token、roomId 和 WSS 信令地址；liveType=2 仅供浏览器网页端使用，返回带 Token 的页面地址。参数均放在查询字符串中。",
         "operationId": "joinClassroom",
         "security": [
           {
@@ -3071,7 +3071,7 @@ SET version_row.openapi_json = '{
             "name": "liveType",
             "in": "query",
             "required": true,
-            "description": "接入类型：1 设备端，2 网页端",
+            "description": "接入类型：1 设备端（视频平台推荐，返回 WSS 信令参数），2 网页端（返回浏览器页面地址）",
             "schema": {
               "type": "string",
               "enum": [
@@ -3079,7 +3079,7 @@ SET version_row.openapi_json = '{
                 "2"
               ]
             },
-            "example": "2"
+            "example": "1"
           }
         ],
         "responses": {
@@ -3310,8 +3310,8 @@ SET version_row.openapi_json = '{
     }
   }
 }',
-    version_row.request_example_json = '{"memberId":"LISTENER-001","roomId":"ROOM-TEST-001","name":"示例听讲成员","liveType":"2"}',
-    version_row.response_examples_json = '{"success":true,"message":"操作成功！","code":200,"result":"wss://video.example.invalid/webrtc/?token=<video-token>","timestamp":0}'
+    version_row.request_example_json = '{"memberId":"LISTENER-001","roomId":"ROOM-TEST-001","name":"示例听讲成员","liveType":"1"}',
+    version_row.response_examples_json = '{"success":true,"message":"操作成功！","code":200,"result":{"token":"<video-token>","url":"wss://yunplay.lunengbashushuzhixuexiao.com:9999","roomId":"ROOM-TEST-001","role":"2"},"timestamp":0}'
 WHERE resource_row.resource_code = 'classroom.live.join'
   AND version_row.version = 'v1'
   AND version_row.status = 1

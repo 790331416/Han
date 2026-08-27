@@ -44,7 +44,7 @@
   - `han/mysql/20260825_unified_file_storage.sql`：巴蜀生产 MySQL 的统一文件服务加法型升级，新增对象存储配置/活动指针，并补齐 `sys_file` 的存储配置、对象Key、学校与可见性字段；不包含任何密钥或生产数据
   - `upgrades/postgres/20260825_unified_file_storage.sql`：PostgreSQL 同步升级 `sys_file`、`sys_oss_config`、`sys_storage_active` 与 AI 知识库 `file_id`，现有明文配置不自动迁移，必须通过管理端重新加密录入
 - `sdfz/mysql/20260823_open_vendor_portal.sql`：附中 MySQL 厂商门户 `openVendor` 角色、门户路由及最小自服务权限；不授予厂商审核/管理员权限
-- `sdfz/mysql/20260826_open_classroom_contracts.sql`：开放平台视频课堂接口契约；`courseType=6` 为设备手动开课，可不传 `ruleId`，其 `timeBegin` 不参与学校节次限制
+- `sdfz/mysql/20260826_open_classroom_contracts.sql`：开放平台视频课堂接口契约；`courseType=6` 为设备手动开课，可不传 `ruleId`，其 `timeBegin` 不参与学校节次限制；视频平台调用开始/加入课堂使用 `liveType=1`，返回 WSS 信令参数
 - `archive/`
   - 已退役的旧 SQL、旧拆分结构与历史母本
 
