@@ -216,31 +216,27 @@ public class OpenClassroomController {
             return legacyJson(envelope);
         }
         Map<String, Object> result = new LinkedHashMap<>();
-        for (String field : new String[]{
-                "pk_id", "create_time", "update_time", "creator_id", "updator_id", "provice_code",
-                "creator_name", "updator_name", "device_name", "device_code", "device_description",
-                "supplier_id", "agr_id", "device_type_name", "device_type", "device_status", "org_id",
-                "org_name", "place_name", "place_id", "building_id", "del_flag", "supplier_name",
-                "agr_name", "application_type_name", "application_type", "device_source", "video_source",
-                "state", "channel_id", "channel_name", "sing_flag", "other_info", "channel_pk_id",
-                "time_text", "code_flag", "date", "is_replayable", "is_voiceable", "is_rotatable",
-                "parameter_id", "parameter"}) {
-            result.put(field, null);
-        }
-        if (device != null) {
-            result.put("pk_id", String.valueOf(device.deviceId()));
-            result.put("device_name", device.deviceName());
-            result.put("device_code", device.deviceCode());
-            result.put("device_type", device.deviceType());
-            result.put("device_type_name", device.deviceType());
+        result.put("pk_id", String.valueOf(device.deviceId()));
+        result.put("device_name", device.deviceName());
+        result.put("device_code", device.deviceCode());
+        result.put("device_type", device.deviceType());
+        result.put("device_type_name", device.deviceType());
+        if (device.status() != null) {
             result.put("device_status", device.status());
-            result.put("org_id", device.schoolId() == null ? null : String.valueOf(device.schoolId()));
+            result.put("state", String.valueOf(device.status()));
+        }
+        if (device.schoolId() != null) {
+            result.put("org_id", String.valueOf(device.schoolId()));
             result.put("org_name", device.schoolName());
-            result.put("place_id", device.roomId() == null ? null : String.valueOf(device.roomId()));
+        }
+        if (device.roomId() != null) {
+            result.put("place_id", String.valueOf(device.roomId()));
             result.put("place_name", device.roomName());
-            result.put("application_type", String.join(",", device.applicationTypes()));
-            result.put("application_type_name", String.join(",", device.applicationTypes()));
-            result.put("state", device.status() == null ? null : String.valueOf(device.status()));
+        }
+        if (device.applicationTypes() != null && !device.applicationTypes().isEmpty()) {
+            String applications = String.join(",", device.applicationTypes());
+            result.put("application_type", applications);
+            result.put("application_type_name", applications);
         }
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("success", true);

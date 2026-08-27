@@ -55,7 +55,8 @@ class OpenClassroomControllerTest {
         assertThat(body.path("success").asBoolean()).isTrue();
         assertThat(body.path("code").asInt()).isEqualTo(200);
         assertThat(body.path("result").path("device_code").asText()).isEqualTo("DEVICE-01");
-        assertThat(body.path("result").has("building_id")).isTrue();
+        assertThat(body.path("result").has("building_id")).isFalse();
+        assertThat(body.path("result").has("supplier_id")).isFalse();
         verify(oauth2Service).requireAccessToken("access-token", "classroom.device.read", "classroom.device.read");
         verify(systemServiceClient).getOpenDirectoryDevice(99L, List.of(7L), "DEVICE-01");
     }
